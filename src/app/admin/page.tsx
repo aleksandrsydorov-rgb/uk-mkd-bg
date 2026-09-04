@@ -210,6 +210,8 @@ export default function AdminPage() {
   const [chatSending, setChatSending] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectedChatRef = useRef<Property | null>(null);
+  selectedChatRef.current = selectedChatProperty;
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
 
   // ---------- ФОРМЫ ----------
@@ -486,26 +488,31 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadChatList();
+  }, [properties, allChatMessages]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!allowed) return;
     chatPollRef.current = setInterval(async () => {
       const { data: freshMsgs } = await supabase
         .from('chat_messages')
         .select('*')
         .order('created_at', { ascending: true });
-      if (freshMsgs) setAllChatMessages(freshMsgs as ChatMessage[]);
-      if (selectedChatProperty) {
-        const { data } = await supabase
-          .from('chat_messages')
-          .select('*')
-          .eq('property_id', selectedChatProperty.id)
-          .order('created_at', { ascending: true })
-          .limit(500);
-        if (data) setChatMessages(data as ChatMessage[]);
+      if (!freshMsgs) return;
+      const msgs = freshMsgs as ChatMessage[];
+      setAllChatMessages(msgs);
+      const sel = selectedChatRef.current;
+      if (sel) {
+        const thread = msgs.filter((m) => m.property_id === sel.id);
+        setChatMessages(thread);
+        if (thread.some((m) => m.sender === 'owner' && !m.read_by_uk)) {
+          void markUkMessagesRead(sel.id).catch(() => {});
+        }
       }
     }, 5000);
     return () => {
       if (chatPollRef.current) clearInterval(chatPollRef.current);
     };
-  }, [properties, allChatMessages, selectedChatProperty]);
+  }, [allowed]); // eslint-disable-line
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -515,19 +522,37 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!selectedChatProperty) return;
-    loadChatMessages();
-    const unread = chatMessages.filter((m) => m.sender === 'owner' && !m.read_by_uk);
-    if (unread.length > 0) {
-      supabase
-        .from('chat_messages')
-        .update({ read_by_uk: true })
-        .in('id', unread.map((m) => m.id))
-        .then(() => {
-          loadChatMessages();
-          loadAll();
-        });
-    }
+    let cancelled = false;
+    (async () => {
+      await loadChatMessages();
+      if (cancelled) return;
+      try {
+        await markUkMessagesRead(selectedChatProperty.id);
+      } catch {
+        /* keep the thread visible if the read flag cannot be saved */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedChatProperty]); // eslint-disable-line
+
+  async function markUkMessagesRead(propertyId: number) {
+    setChatMessages((prev) =>
+      prev.map((m) => (m.sender === 'owner' ? { ...m, read_by_uk: true } : m)),
+    );
+    setAllChatMessages((prev) =>
+      prev.map((m) =>
+        m.property_id === propertyId && m.sender === 'owner' ? { ...m, read_by_uk: true } : m,
+      ),
+    );
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ read_by_uk: true })
+      .eq('property_id', propertyId)
+      .eq('sender', 'owner');
+    if (error) throw error;
+  }
 
   async function handleSendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -536,6 +561,11 @@ export default function AdminPage() {
     if (!msg) return;
     setChatSending(true);
     try {
+      try {
+        await markUkMessagesRead(selectedChatProperty.id);
+      } catch (readErr: any) {
+        setError(readErr?.message ?? t('err.sendShort'));
+      }
       const { data: inserted, error: insertErr } = await supabase
         .from('chat_messages')
         .insert({
@@ -547,11 +577,12 @@ export default function AdminPage() {
         .select('*')
         .single();
       if (insertErr) throw insertErr;
-      setChatMessages((prev) => [...prev, inserted as ChatMessage]);
+      const row = inserted as ChatMessage;
+      setChatMessages((prev) => [...prev, row]);
+      setAllChatMessages((prev) => [...prev, row]);
       setChatInput('');
-      await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка отправки');
+      setError(e?.message ?? t('err.sendShort'));
     } finally {
       setChatSending(false);
     }

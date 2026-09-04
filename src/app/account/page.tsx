@@ -478,18 +478,24 @@ export default function AccountPage() {
     }
   }, [chatMessages]);
 
-  // Отметить прочитанными при открытии чата
   useEffect(() => {
     if (activeMenu !== 'чат' || !property) return;
-    const unread = chatMessages.filter((m) => m.sender === 'uk' && !m.read_by_owner);
-    if (unread.length > 0) {
-      supabase
-        .from('chat_messages')
-        .update({ read_by_owner: true })
-        .in('id', unread.map((m) => m.id))
-        .then(() => loadChatMessages());
-    }
-  }, [activeMenu]); // eslint-disable-line
+    void markOwnerMessagesRead(property.id);
+  }, [activeMenu, property?.id]); // eslint-disable-line
+
+  async function markOwnerMessagesRead(propertyId: number) {
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ read_by_owner: true })
+      .eq('property_id', propertyId)
+      .eq('sender', 'uk')
+      .eq('read_by_owner', false);
+    if (error) return;
+    setChatMessages((prev) =>
+      prev.map((m) => (m.sender === 'uk' ? { ...m, read_by_owner: true } : m)),
+    );
+    setUnreadChatCount(0);
+  }
 
   async function handleSendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -498,6 +504,7 @@ export default function AccountPage() {
     if (!msg) return;
     setChatSending(true);
     try {
+      await markOwnerMessagesRead(property.id);
       const { data: inserted, error: insertErr } = await supabase
         .from('chat_messages')
         .insert({

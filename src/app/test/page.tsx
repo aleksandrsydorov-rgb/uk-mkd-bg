@@ -2,7 +2,17 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { BrandMark } from '@/components/BrandMark';
 
+export const dynamic = 'force-dynamic';
+
 export default async function TestPage() {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return (
+      <div className="min-h-screen bg-[#070b0a] p-6 text-white/70">
+        Задайте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY.
+      </div>
+    );
+  }
+
   const { data: properties, error: propError } = await supabase
     .from('properties')
     .select('*')

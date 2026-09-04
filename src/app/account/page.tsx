@@ -39,6 +39,7 @@ import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type Support
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
 type Category = 'сантехника' | 'электрика' | 'уборка' | 'отопление' | 'другое';
 type Priority = 'низкий' | 'средний' | 'высокий';
@@ -1987,8 +1988,7 @@ export default function AccountPage() {
       case 'чат':
         return (
           <div
-            className="flex rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden flex-col"
-            style={{ height: 'calc(100vh - 160px)' }}
+            className="flex h-[calc(100dvh-11.5rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] md:h-[calc(100vh-160px)]"
           >
             {/* Шапка чата */}
             <div className="px-5 py-3 border-b border-white/10 bg-[#070b0a]/50">
@@ -2089,7 +2089,7 @@ export default function AccountPage() {
   // ОСНОВНОЙ LAYOUT
   // ===================================================================
   return (
-    <div className="min-h-screen bg-[#070b0a] text-white flex">
+    <div className="flex min-h-dvh bg-[#070b0a] text-white">
       {sidebarOpen && (
         <button
           type="button"
@@ -2099,17 +2099,26 @@ export default function AccountPage() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 flex-col border-r border-white/10 bg-[#101816] transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:flex-shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-white/10 bg-[#101816] transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
           sidebarOpen
             ? 'translate-x-0 md:w-64'
             : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:translate-x-0'
         }`}
       >
-        <div className="p-3 border-b border-white/10 flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 p-3">
           {sidebarOpen && <BrandMark compact />}
           <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-lg bg-white/10 p-2 text-white/70 md:hidden"
+            aria-label={t('common.closeMenu')}
+          >
+            ✕
+          </button>
+          <button
+            type="button"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/10 text-white/70"
+            className="hidden rounded-lg bg-white/10 p-1.5 text-white/70 md:block"
             title={sidebarOpen ? t('common.collapse') : t('common.expand')}
           >
             {sidebarOpen ? '◀' : '▶'}
@@ -2198,23 +2207,15 @@ export default function AccountPage() {
       </aside>
 
       {/* ===== ОСНОВНОЙ КОНТЕНТ ===== */}
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-4 py-3 backdrop-blur md:px-6 md:py-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              className="rounded-lg bg-[#101816] p-2 text-white/80 md:hidden"
-              aria-label={t('common.openMenu')}
-              onClick={() => setSidebarOpen(true)}
-            >
-              ☰
-            </button>
+      <main className="min-w-0 flex-1 overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
+          <div className="min-w-0">
             <h1 className="truncate text-base font-semibold md:text-xl">
               {MENU_ITEMS.find((m) => m.key === activeMenu)?.icon}{' '}
               {MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
             </h1>
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="hidden shrink-0 items-center gap-3 md:flex">
             <LanguageSwitcher compact />
             <Link href="/" className="text-sm text-white/50 hover:text-white/80">
               {t('common.backHome')}
@@ -2222,7 +2223,7 @@ export default function AccountPage() {
           </div>
         </div>
 
-        <div className="p-4 md:p-6">
+        <div className="p-3 md:p-6">
           {properties.length > 1 && (
             <ApartmentPicker
               properties={properties}
@@ -2257,6 +2258,18 @@ export default function AccountPage() {
           )}
         </div>
       </main>
+      <MobileBottomNav
+        items={[
+          { key: 'квартира', label: t('account.apt'), icon: '🏠' },
+          { key: 'финансы', label: t('account.finance'), icon: '💰' },
+          { key: 'заявки', label: t('account.requests'), icon: '📋' },
+          { key: 'чат', label: t('account.tabChat'), icon: '💬', badge: unreadChatCount || undefined },
+        ]}
+        activeKey={activeMenu}
+        moreActive={!['квартира', 'финансы', 'заявки', 'чат'].includes(activeMenu)}
+        onSelect={(key) => setActiveMenu(key as MenuSection)}
+        onMore={() => setSidebarOpen(true)}
+      />
     </div>
   );
 }

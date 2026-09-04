@@ -19,6 +19,12 @@ export const metadata: Metadata = {
     "Прозрачное управление МКД: расходы УК, опросы жильцов, заявки и счётчики.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html

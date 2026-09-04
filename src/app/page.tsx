@@ -38,8 +38,10 @@ export default function HomePage() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-2">
-            <LanguageSwitcher compact />
+          <div className="flex items-center gap-1.5">
+            <div className="hidden sm:block">
+              <LanguageSwitcher compact />
+            </div>
             <Link
               href="/account"
               className="hidden rounded-lg px-3 py-2 text-sm text-white/60 hover:bg-white/5 hover:text-white sm:inline-flex"
@@ -48,7 +50,7 @@ export default function HomePage() {
             </Link>
             <Link
               href="/account"
-              className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3.5 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20"
+              className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20"
             >
               {t('common.login')}
             </Link>
@@ -66,6 +68,9 @@ export default function HomePage() {
         {menuOpen && (
           <div className="border-t border-white/10 bg-[#070b0a] px-4 py-3 md:hidden">
             <div className="flex flex-col gap-1">
+              <div className="mb-2 px-1 sm:hidden">
+                <LanguageSwitcher compact />
+              </div>
               {nav.map((item) => (
                 <a
                   key={item.href}

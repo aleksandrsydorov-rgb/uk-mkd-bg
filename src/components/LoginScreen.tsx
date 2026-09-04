@@ -16,7 +16,7 @@ export function LoginScreen({
 }) {
   const { t } = useI18n();
   return (
-    <div className="relative min-h-screen bg-[#070b0a] text-white flex items-center justify-center">
+    <div className="relative min-h-dvh bg-[#070b0a] text-white flex items-center justify-center px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-teal-500/10 blur-3xl" />
@@ -34,7 +34,7 @@ export function LoginScreen({
             <div>
               <label className="text-sm text-white/70">Email</label>
               <input
-                className="mt-2 w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-white"
+                className="mt-2 w-full rounded-xl border border-white/10 bg-[#070b0a] px-3 py-3 text-base text-white"
                 value={email}
                 onChange={(e) => onEmailChange(e.target.value)}
                 placeholder="email@example.com"
@@ -44,7 +44,7 @@ export function LoginScreen({
             </div>
             <button
               type="submit"
-              className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 font-semibold text-white"
+              className="w-full min-h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white"
             >
               {t('common.login')}
             </button>

@@ -13,7 +13,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
           key={code}
           type="button"
           onClick={() => setLocale(code)}
-          className={`rounded-full px-2 py-1 text-[11px] font-semibold tracking-wide transition ${
+          className={`min-h-8 rounded-full px-2.5 py-1.5 text-[11px] font-semibold tracking-wide transition ${
             locale === code
               ? 'bg-emerald-500/25 text-emerald-200'
               : 'text-white/45 hover:text-white/80'

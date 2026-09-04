@@ -36,6 +36,7 @@ export const ru = {
     floor: 'этаж',
     apt: 'кв.',
     language: 'Язык',
+    more: 'Ещё',
   },
   login: {
     title: 'Вход',
@@ -99,6 +100,7 @@ export const ru = {
     announcements: 'Сообщения от УК',
     polls: 'Опросы УК',
     chat: 'Чат с УК',
+    tabChat: 'Чат',
     yourApt: 'Ваша квартира',
     selectedApt: 'Выбранная квартира',
     onAccount: 'На аккаунте {count} квартир · общая площадь {area} м²',
@@ -495,6 +497,7 @@ export const en: Messages = {
     floor: 'floor',
     apt: 'apt.',
     language: 'Language',
+    more: 'More',
   },
   login: {
     title: 'Sign in',
@@ -558,6 +561,7 @@ export const en: Messages = {
     announcements: 'MC notices',
     polls: 'MC polls',
     chat: 'Chat with MC',
+    tabChat: 'Chat',
     yourApt: 'Your apartment',
     selectedApt: 'Selected apartment',
     onAccount: '{count} apartments on this account · total area {area} m²',
@@ -954,6 +958,7 @@ export const bg: Messages = {
     floor: 'етаж',
     apt: 'ап.',
     language: 'Език',
+    more: 'Още',
   },
   login: {
     title: 'Вход',
@@ -1017,6 +1022,7 @@ export const bg: Messages = {
     announcements: 'Съобщения от УК',
     polls: 'Анкети на УК',
     chat: 'Чат с УК',
+    tabChat: 'Чат',
     yourApt: 'Вашият апартамент',
     selectedApt: 'Избран апартамент',
     onAccount: 'В акаунта {count} апартамента · обща площ {area} м²',

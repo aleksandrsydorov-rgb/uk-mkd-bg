@@ -15,18 +15,21 @@ export function MobileBottomNav({
   moreActive,
   onSelect,
   onMore,
+  hidden = false,
 }: {
   items: MobileNavItem[];
   activeKey: string;
   moreActive: boolean;
   onSelect: (key: string) => void;
   onMore: () => void;
+  hidden?: boolean;
 }) {
   const { t } = useI18n();
+  if (hidden) return null;
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0c1211]/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#0c1211]/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl md:hidden"
       aria-label={t('common.menu')}
     >
       <div className="grid grid-cols-5">

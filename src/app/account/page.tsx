@@ -2093,13 +2093,13 @@ export default function AccountPage() {
       {sidebarOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
           aria-label={t('common.closeMenu')}
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-white/10 bg-[#101816] transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-white/10 bg-[#101816] transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
           sidebarOpen
             ? 'translate-x-0 md:w-64'
             : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:translate-x-0'
@@ -2160,7 +2160,7 @@ export default function AccountPage() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-white/10">
+        <div className="space-y-2 border-t border-white/10 p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {sidebarOpen ? (
             <div className="space-y-2">
               <LanguageSwitcher compact />
@@ -2176,7 +2176,7 @@ export default function AccountPage() {
                 )}
                 <button
                   onClick={handleLogout}
-                  className="flex-1 text-center text-xs rounded-lg border border-white/10 bg-white/10 px-2 py-1.5 hover:bg-white/10"
+                  className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/10 px-2 text-sm hover:bg-white/10"
                 >
                   {t('common.logout')}
                 </button>
@@ -2215,11 +2215,20 @@ export default function AccountPage() {
               {MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
             </h1>
           </div>
-          <div className="hidden shrink-0 items-center gap-3 md:flex">
-            <LanguageSwitcher compact />
-            <Link href="/" className="text-sm text-white/50 hover:text-white/80">
-              {t('common.backHome')}
-            </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="min-h-10 rounded-lg border border-white/15 px-3 text-sm text-white/80 md:hidden"
+            >
+              {t('common.logout')}
+            </button>
+            <div className="hidden shrink-0 items-center gap-3 md:flex">
+              <LanguageSwitcher compact />
+              <Link href="/" className="text-sm text-white/50 hover:text-white/80">
+                {t('common.backHome')}
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -2269,6 +2278,7 @@ export default function AccountPage() {
         moreActive={!['квартира', 'финансы', 'заявки', 'чат'].includes(activeMenu)}
         onSelect={(key) => setActiveMenu(key as MenuSection)}
         onMore={() => setSidebarOpen(true)}
+        hidden={sidebarOpen}
       />
     </div>
   );

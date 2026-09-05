@@ -83,6 +83,42 @@ interface ChatMessage {
   read_by_owner: boolean;
 }
 
+const UK_CHAT_SEEN_KEY = 'uk_chat_seen_v1';
+
+function messageTime(iso: string) {
+  const n = new Date(iso).getTime();
+  return Number.isFinite(n) ? n : 0;
+}
+
+function loadUkChatSeenMap(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(UK_CHAT_SEEN_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistUkChatSeenMap(map: Record<string, string>) {
+  try {
+    localStorage.setItem(UK_CHAT_SEEN_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/** Owner message is new until UK opened/replied at or after it, or sent a later reply in the thread. */
+function isNewOwnerMessage(m: ChatMessage, thread: ChatMessage[], seenAt?: string) {
+  if (m.sender === 'uk') return false;
+  const t = messageTime(m.created_at);
+  if (seenAt && t <= messageTime(seenAt)) return false;
+  if (thread.some((x) => x.sender === 'uk' && messageTime(x.created_at) >= t)) return false;
+  return true;
+}
+
 interface ApartmentGuest {
   id: number;
   property_id: number;
@@ -213,6 +249,7 @@ export default function AdminPage() {
   const selectedChatRef = useRef<Property | null>(null);
   selectedChatRef.current = selectedChatProperty;
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
+  const [ukChatSeen, setUkChatSeen] = useState<Record<string, string>>({});
 
   // ---------- ФОРМЫ ----------
   const [showPropForm, setShowPropForm] = useState(false);
@@ -443,6 +480,26 @@ export default function AdminPage() {
   }, []);
 
   // ---------- ЗАГРУЗКА СПИСКА ЧАТОВ ----------
+  useEffect(() => {
+    setUkChatSeen(loadUkChatSeenMap());
+  }, []);
+
+  function markUkChatSeen(propertyId: number, at = new Date().toISOString()) {
+    const key = String(propertyId);
+    setUkChatSeen((prev) => {
+      const prevAt = prev[key];
+      if (prevAt && messageTime(prevAt) >= messageTime(at)) return prev;
+      const next = { ...prev, [key]: at };
+      persistUkChatSeenMap(next);
+      return next;
+    });
+    void supabase
+      .from('chat_messages')
+      .update({ read_by_uk: true })
+      .eq('property_id', propertyId)
+      .neq('sender', 'uk');
+  }
+
   async function loadChatList() {
     const allMsgs = allChatMessages;
     const byProp = new Map<number, ChatMessage[]>();
@@ -456,7 +513,8 @@ export default function AdminPage() {
       const msgsForProp = byProp.get(prop.id) ?? [];
       if (msgsForProp.length === 0) continue;
       const last = msgsForProp[msgsForProp.length - 1];
-      const unread = msgsForProp.filter((m) => m.sender === 'owner' && !m.read_by_uk).length;
+      const seenAt = ukChatSeen[String(prop.id)];
+      const unread = msgsForProp.filter((m) => isNewOwnerMessage(m, msgsForProp, seenAt)).length;
       list.push({ property: prop, lastMessage: last, unread });
     }
 
@@ -488,7 +546,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadChatList();
-  }, [properties, allChatMessages]); // eslint-disable-line
+  }, [properties, allChatMessages, ukChatSeen]); // eslint-disable-line
 
   useEffect(() => {
     if (!allowed) return;
@@ -504,9 +562,7 @@ export default function AdminPage() {
       if (sel) {
         const thread = msgs.filter((m) => m.property_id === sel.id);
         setChatMessages(thread);
-        if (thread.some((m) => m.sender === 'owner' && !m.read_by_uk)) {
-          void markUkMessagesRead(sel.id).catch(() => {});
-        }
+        markUkChatSeen(sel.id);
       }
     }, 5000);
     return () => {
@@ -522,37 +578,17 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!selectedChatProperty) return;
+    markUkChatSeen(selectedChatProperty.id);
     let cancelled = false;
     (async () => {
       await loadChatMessages();
       if (cancelled) return;
-      try {
-        await markUkMessagesRead(selectedChatProperty.id);
-      } catch {
-        /* keep the thread visible if the read flag cannot be saved */
-      }
+      markUkChatSeen(selectedChatProperty.id);
     })();
     return () => {
       cancelled = true;
     };
   }, [selectedChatProperty]); // eslint-disable-line
-
-  async function markUkMessagesRead(propertyId: number) {
-    setChatMessages((prev) =>
-      prev.map((m) => (m.sender === 'owner' ? { ...m, read_by_uk: true } : m)),
-    );
-    setAllChatMessages((prev) =>
-      prev.map((m) =>
-        m.property_id === propertyId && m.sender === 'owner' ? { ...m, read_by_uk: true } : m,
-      ),
-    );
-    const { error } = await supabase
-      .from('chat_messages')
-      .update({ read_by_uk: true })
-      .eq('property_id', propertyId)
-      .eq('sender', 'owner');
-    if (error) throw error;
-  }
 
   async function handleSendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -561,11 +597,7 @@ export default function AdminPage() {
     if (!msg) return;
     setChatSending(true);
     try {
-      try {
-        await markUkMessagesRead(selectedChatProperty.id);
-      } catch (readErr: any) {
-        setError(readErr?.message ?? t('err.sendShort'));
-      }
+      markUkChatSeen(selectedChatProperty.id);
       const { data: inserted, error: insertErr } = await supabase
         .from('chat_messages')
         .insert({
@@ -578,6 +610,7 @@ export default function AdminPage() {
         .single();
       if (insertErr) throw insertErr;
       const row = inserted as ChatMessage;
+      markUkChatSeen(selectedChatProperty.id, row.created_at);
       setChatMessages((prev) => [...prev, row]);
       setAllChatMessages((prev) => [...prev, row]);
       setChatInput('');
@@ -1901,7 +1934,7 @@ export default function AdminPage() {
                     const g = guestsForProperty(p.id);
                     const reqs = requestsForProperty(p.id);
                     const chats = chatForProperty(p.id);
-                    const unreadChats = chats.filter((m) => m.sender === 'owner' && !m.read_by_uk).length;
+                    const unreadChats = chats.filter((m) => isNewOwnerMessage(m, chats, ukChatSeen[String(p.id)])).length;
                     const annualFee = annualSupportFee(p.area_sqm, supportRate);
                     const listing = listingStatus(p.status);
                     return (
@@ -1997,6 +2030,7 @@ export default function AdminPage() {
                 meterReadings={metersForProperty(detailProperty.id)}
                 guests={guestsForProperty(detailProperty.id)}
                 chatMessages={chatForProperty(detailProperty.id)}
+                chatSeenAt={ukChatSeen[String(detailProperty.id)]}
                 supportRate={supportRate}
                 onClose={() => setDetailProperty(null)}
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
@@ -2981,7 +3015,9 @@ export default function AdminPage() {
                               <div className={`mt-1 text-[10px] ${isUk ? 'text-teal-200/70' : 'text-white/50'}`}>
                                 {new Date(m.created_at).toLocaleString(dateLocale,
                                   { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                {!m.read_by_uk && !isUk && <span className="ml-2 text-red-400">● новое</span>}
+                                {!isUk && isNewOwnerMessage(m, chatMessages, ukChatSeen[String(selectedChatProperty.id)]) && (
+                                  <span className="ml-2 text-red-400">● новое</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -3470,13 +3506,14 @@ function Metric({
 // МОДАЛЬНОЕ ОКНО — ДЕТАЛЬНЫЙ ПРОСМОТР ВСЕХ ДАННЫХ КВАРТИРЫ
 // =====================================================================
 function ApartmentDetailModal({
-  property, requests, meterReadings, guests, chatMessages, supportRate, onClose, onEdit, onOpenChat, onTakePayment,
+  property, requests, meterReadings, guests, chatMessages, chatSeenAt, supportRate, onClose, onEdit, onOpenChat, onTakePayment,
 }: {
   property: Property;
   requests: Request[];
   meterReadings: MeterReading[];
   guests: ApartmentGuest[];
   chatMessages: ChatMessage[];
+  chatSeenAt?: string;
   supportRate: number;
   onClose: () => void;
   onEdit: () => void;
@@ -3488,7 +3525,7 @@ function ApartmentDetailModal({
 
   const annualFee = annualSupportFee(property.area_sqm, supportRate);
   const monthlyFee = monthlySupportFee(property.area_sqm, supportRate);
-  const unreadChats = chatMessages.filter((m) => m.sender === 'owner' && !m.read_by_uk).length;
+  const unreadChats = chatMessages.filter((m) => isNewOwnerMessage(m, chatMessages, chatSeenAt)).length;
 
   function meterTypeLabel(kind: string) {
     if (kind === 'electricity_day') return t('form.elDayShort');
@@ -3776,7 +3813,9 @@ function ApartmentDetailModal({
                         <div className="whitespace-pre-wrap break-words">{m.message}</div>
                         <div className="text-[10px] text-white/40 mt-1">
                           {new Date(m.created_at).toLocaleString(dateLocale)}
-                          {isOwner && !m.read_by_uk && <span className="ml-2 text-red-400">● не прочитано</span>}
+                          {isOwner && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (
+                            <span className="ml-2 text-red-400">● не прочитано</span>
+                          )}
                         </div>
                       </div>
                     </div>

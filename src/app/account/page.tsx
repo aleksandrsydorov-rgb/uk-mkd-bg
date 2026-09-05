@@ -116,10 +116,10 @@ export default function AccountPage() {
     { key: 'квартира', label: t('account.apt'), icon: '🏠' },
     { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
     { key: 'финансы', label: t('account.finance'), icon: '💰' },
-    { key: 'расходы_ук', label: t('account.expenses'), icon: '🧾' },
     { key: 'счётчики', label: t('account.meters'), icon: '⚡' },
     { key: 'заявки', label: t('account.requests'), icon: '📋' },
     { key: 'сообщения', label: t('account.announcements'), icon: '📢' },
+    { key: 'расходы_ук', label: t('account.expenses'), icon: '🧾' },
     { key: 'опросы', label: t('account.polls'), icon: '🗳️' },
     { key: 'чат', label: t('account.chat'), icon: '💬' },
   ];
@@ -1455,9 +1455,6 @@ export default function AccountPage() {
         const balanceValue = totalDebt > 0 ? totalDebt : totalOver;
         return (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
-              {t('account.ukOnlyFee')}
-            </div>
             {properties.length > 1 && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
                 {t('account.summaryApts', { count: properties.length, area: myVoteWeight.toFixed(1) })}

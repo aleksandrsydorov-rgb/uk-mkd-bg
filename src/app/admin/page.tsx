@@ -231,6 +231,7 @@ export default function AdminPage() {
   const [aptGuestsFilter, setAptGuestsFilter] = useState<string>(''); // '' | 'has_guests' | 'no_guests'
   const [aptPetsFilter, setAptPetsFilter] = useState<string>(''); // '' | 'has_pets' | 'no_pets'
   const [aptSort, setAptSort] = useState<string>('apartment_number_asc');
+  const [aptFiltersOpen, setAptFiltersOpen] = useState(false);
 
   // ---------- ФИЛЬТРЫ ЗАЯВОК ----------
   const [reqStatusFilter, setReqStatusFilter] = useState<string>('');
@@ -238,6 +239,7 @@ export default function AdminPage() {
   const [reqPriorityFilter, setReqPriorityFilter] = useState<string>('');
   const [reqAptFilter, setReqAptFilter] = useState<string>('');
   const [reqSearch, setReqSearch] = useState('');
+  const [reqFiltersOpen, setReqFiltersOpen] = useState(false);
 
   // ---------- ФИЛЬТРЫ СЧЁТЧИКОВ ----------
   const [meterAptFilter, setMeterAptFilter] = useState<string>('');
@@ -970,7 +972,7 @@ export default function AdminPage() {
   }
 
   async function handleDeleteProp(id: number) {
-    if (!confirm('Удалить квартиру? Все связанные данные будут потеряны.')) return;
+    if (!confirm(t('confirm.deleteApt'))) return;
     try {
       const { error } = await supabase.from('properties').delete().eq('id', id);
       if (error) throw error;
@@ -1251,7 +1253,7 @@ export default function AdminPage() {
     const property = properties.find((p) => p.id === Number(payPropertyId));
     const amount = Number(String(payAmount).replace(',', '.'));
     if (!property) {
-      setError('Выберите квартиру.');
+      setError(t('err.pickApt'));
       return;
     }
     setPaySaving(true);
@@ -1303,8 +1305,12 @@ export default function AdminPage() {
     if (targets.length === 0) return;
     if (!confirm(
       targets.length === 1
-        ? `Начислить таксу ${annualSupportFee(targets[0].area_sqm, supportRate).toFixed(2)} € квартире ${targets[0].apartment_number} за ${year}?`
-        : `Начислить годовую таксу всем выбранным квартирам (${targets.length}) за ${year}? Повторно за этот год начислить нельзя.`,
+        ? t('confirm.chargeOne', {
+            amount: annualSupportFee(targets[0].area_sqm, supportRate).toFixed(2),
+            apt: targets[0].apartment_number,
+            year,
+          })
+        : t('confirm.chargeMany', { n: targets.length, year }),
     )) return;
     setChargeSaving(true);
     setError(null);
@@ -1496,17 +1502,17 @@ export default function AdminPage() {
     }
   }
 
-  async function handleApproveTransfer(t: OwnerTransfer) {
-    if (!confirm(`Утвердить смену собственника кв. ${propertyNameById(t.property_id)}?`)) return;
+  async function handleApproveTransfer(tr: OwnerTransfer) {
+    if (!confirm(t('admin.approveTransfer', { n: propertyNameById(tr.property_id) }))) return;
     try {
       const { error: updErr } = await supabase
         .from('properties')
         .update({
-          owner_name: t.to_owner_name,
-          owner_email: normalizeEmail(t.to_owner_email),
-          owner_phone: t.to_owner_phone,
+          owner_name: tr.to_owner_name,
+          owner_email: normalizeEmail(tr.to_owner_email),
+          owner_phone: tr.to_owner_phone,
         })
-        .eq('id', t.property_id);
+        .eq('id', tr.property_id);
       if (updErr) throw updErr;
       const { error } = await supabase
         .from('owner_transfers')
@@ -1515,7 +1521,7 @@ export default function AdminPage() {
           decided_at: new Date().toISOString(),
           decided_by: sessionEmail,
         })
-        .eq('id', t.id);
+        .eq('id', tr.id);
       if (error) throw error;
       await loadAll();
     } catch (e: any) {
@@ -1697,7 +1703,7 @@ export default function AdminPage() {
                         <div key={floor} className="rounded-lg bg-white/[0.04] px-2.5 py-2">
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="text-sm text-white">{floor} этаж</span>
-                            <span className="text-xs text-white/40">{floorApts.length} кв.</span>
+                            <span className="text-xs text-white/40">{t('account.aptsShort', { n: floorApts.length })}</span>
                           </div>
                           <div className={`mt-0.5 text-xs ${floorDebt > 0 ? 'text-yellow-300' : 'text-emerald-300/70'}`}>
                             {floorDebt.toFixed(0)} €
@@ -1747,8 +1753,8 @@ export default function AdminPage() {
       // =============================================================
       case 'квартиры':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="md:rounded-2xl md:border md:border-white/10 md:bg-white/[0.03] md:p-6">
+            <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
               <div>
                 <h2 className="text-lg font-semibold text-emerald-400">{t('admin.apartments')}</h2>
                 <span className="text-sm text-white/50">
@@ -1767,6 +1773,28 @@ export default function AdminPage() {
                   {t('admin.addPlus')}
                 </button>
               </div>
+            </div>
+
+            <div className="mb-3 flex gap-2 md:hidden">
+              <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-3 py-2.5 text-base text-white placeholder-white/40"
+                placeholder={t('common.search')}
+                value={aptSearch} onChange={(e) => setAptSearch(e.target.value)} />
+              <button
+                type="button"
+                onClick={() => setAptFiltersOpen((v) => !v)}
+                className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
+                  aptFiltersOpen || aptActiveFiltersCount > 0
+                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+                    : 'border-white/10 bg-[#101816] text-white/70'
+                }`}
+              >
+                {t('common.filters')}
+                {aptActiveFiltersCount > 0 ? ` ${aptActiveFiltersCount}` : ''}
+              </button>
+              <button type="button" onClick={startNewProp}
+                className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-sm font-semibold text-white">
+                +
+              </button>
             </div>
 
             {/* ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ */}
@@ -1841,8 +1869,8 @@ export default function AdminPage() {
             )}
 
             {/* ПАНЕЛЬ ФИЛЬТРОВ */}
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm text-white/50">
+            <div className={`mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-3 md:p-4 ${aptFiltersOpen ? 'block' : 'hidden'} md:block`}>
+              <div className="hidden items-center gap-2 text-sm text-white/50 md:flex">
                 <span className="font-medium text-white/70">{t('common.filters')}</span>
                 {aptActiveFiltersCount > 0 && (
                   <span className="text-xs bg-emerald-500/20 text-emerald-300 rounded-full px-2 py-0.5">
@@ -1850,13 +1878,15 @@ export default function AdminPage() {
                   </span>
                 )}
               </div>
-
-              {/* Поиск */}
-              <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white placeholder-white/40"
+              <input className="hidden w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white placeholder-white/40 md:block"
                 placeholder={t('admin.searchApts')}
                 value={aptSearch} onChange={(e) => setAptSearch(e.target.value)} />
-
-              {/* Выпадающие фильтры */}
+              {aptActiveFiltersCount > 0 && (
+                <button type="button" onClick={clearAptFilters}
+                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/70 md:hidden">
+                  {t('admin.resetN', { n: aptActiveFiltersCount })}
+                </button>
+              )}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                 <select value={aptFloorFilter} onChange={(e) => setAptFloorFilter(e.target.value)}
                   className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
@@ -1922,8 +1952,38 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* СПИСОК КВАРТИР — МОБИЛЬНЫЕ КАРТОЧКИ */}
+            <div className="space-y-2 md:hidden">
+              {filteredProperties.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setDetailProperty(p)}
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white">№ {p.apartment_number}</div>
+                      <div className="truncate text-sm text-white/60">{p.owner_name}</div>
+                    </div>
+                    <div className={`shrink-0 text-sm font-medium ${Number(p.debt) > 0 ? 'text-red-400' : 'text-emerald-300'}`}>
+                      {Number(p.debt ?? 0).toFixed(0)} €
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                    <span className={`rounded-full border px-2 py-0.5 ${occupancyBadgeClass(p.occupancy_status)}`}>
+                      {occupancyLabel(p.occupancy_status)}
+                    </span>
+                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-white/50">
+                      {p.floor} {t('common.floor')} · {p.area_sqm} {t('common.sqm')}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
             {/* ТАБЛИЦА КВАРТИР */}
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-white/50 border-b border-white/10">
@@ -2033,7 +2093,7 @@ export default function AdminPage() {
 
             {filteredProperties.length === 0 && (
               <div className="text-center text-sm text-white/40 py-8">
-                Нет квартир по выбранным фильтрам.
+                {t('admin.noAptsFilter')}
               </div>
             )}
 
@@ -2131,8 +2191,8 @@ export default function AdminPage() {
 
       case 'заявки':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="md:rounded-2xl md:border md:border-white/10 md:bg-white/[0.03] md:p-6">
+            <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
               <div>
                 <h2 className="text-lg font-semibold text-emerald-400">{t('admin.requests')}</h2>
                 <span className="text-sm text-white/50">
@@ -2147,9 +2207,27 @@ export default function AdminPage() {
               )}
             </div>
 
+            <div className="mb-3 flex gap-2 md:hidden">
+              <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-3 py-2.5 text-base text-white placeholder-white/40"
+                placeholder={t('common.search')}
+                value={reqSearch} onChange={(e) => setReqSearch(e.target.value)} />
+              <button
+                type="button"
+                onClick={() => setReqFiltersOpen((v) => !v)}
+                className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
+                  reqFiltersOpen || reqActiveFiltersCount > 0
+                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+                    : 'border-white/10 bg-[#101816] text-white/70'
+                }`}
+              >
+                {t('common.filters')}
+                {reqActiveFiltersCount > 0 ? ` ${reqActiveFiltersCount}` : ''}
+              </button>
+            </div>
+
             {/* ПАНЕЛЬ ФИЛЬТРОВ ЗАЯВОК */}
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-4 space-y-3">
-              <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white placeholder-white/40"
+            <div className={`mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-3 md:p-4 ${reqFiltersOpen ? 'block' : 'hidden'} md:block`}>
+              <input className="hidden w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white placeholder-white/40 md:block"
                 placeholder={t('common.search')}
                 value={reqSearch} onChange={(e) => setReqSearch(e.target.value)} />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -2251,9 +2329,9 @@ export default function AdminPage() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <select value={meterAptFilter} onChange={(e) => setMeterAptFilter(e.target.value)}
                   className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
-                  <option value="">Все квартиры</option>
+                  <option value="">{t('form.allApts')}</option>
                   {properties.map((p) => (
-                    <option key={p.id} value={String(p.id)}>кв. {p.apartment_number} — {p.owner_name}</option>
+                    <option key={p.id} value={String(p.id)}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
                   ))}
                 </select>
                 <select value={meterTypeFilter} onChange={(e) => setMeterTypeFilter(e.target.value)}
@@ -2280,9 +2358,9 @@ export default function AdminPage() {
                   <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                     value={meterForm.property_id}
                     onChange={(e) => setMeterForm({ ...meterForm, property_id: e.target.value })} required>
-                    <option value="">Выберите квартиру</option>
+                    <option value="">{t('form.pickApt')}</option>
                     {properties.map((p) => (
-                      <option key={p.id} value={p.id}>кв. {p.apartment_number} — {p.owner_name}</option>
+                      <option key={p.id} value={p.id}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
                     ))}
                   </select>
                   <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
@@ -2316,7 +2394,7 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-white/50 border-b border-white/10">
-                    <th className="py-2 px-3">Квартира</th>
+                    <th className="py-2 px-3">{t('admin.aptLabel')}</th>
                     <th className="py-2 px-3">Тип</th>
                     <th className="py-2 px-3">Показание</th>
                     <th className="py-2 px-3">Дата</th>
@@ -2857,7 +2935,7 @@ export default function AdminPage() {
                               <thead>
                                 <tr className="text-left text-white/40 border-b border-white/10">
                                   <th className="py-1 pr-2">Когда</th>
-                                  <th className="py-1 pr-2">Квартира</th>
+                                  <th className="py-1 pr-2">{t('admin.aptLabel')}</th>
                                   <th className="py-1 pr-2">Голос</th>
                                   <th className="py-1 text-right">Вес, м²</th>
                                 </tr>
@@ -3175,7 +3253,7 @@ export default function AdminPage() {
                     {chargeSaving ? 'Начисление…' : `Начислить всем (${chargeYear})`}
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-white/35">Уже начислено за {chargeYear}: {yearCharges.length} кв.</p>
+                <p className="mt-2 text-xs text-white/35">{t('admin.chargedApts', { year: chargeYear, n: yearCharges.length })}</p>
               </div>
             </div>
 
@@ -3186,7 +3264,7 @@ export default function AdminPage() {
               )}
               <form onSubmit={handleRecordSupportPayment} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="text-sm text-white/60 sm:col-span-2">
-                  Квартира
+                  {t('admin.aptLabel')}
                   <select
                     required
                     disabled={!canPay}
@@ -3203,7 +3281,7 @@ export default function AdminPage() {
                     }}
                     className="mt-1 block w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
                   >
-                    <option value="">Выберите квартиру</option>
+                    <option value="">{t('form.pickApt')}</option>
                     {properties.map((p) => (
                       <option key={p.id} value={p.id}>
                         № {p.apartment_number} · {p.owner_name ?? 'без владельца'} · долг {Number(p.debt ?? 0).toFixed(2)} €
@@ -3275,7 +3353,7 @@ export default function AdminPage() {
                     <thead>
                       <tr className="text-left text-white/40 border-b border-white/10">
                         <th className="py-2 pr-3">Дата</th>
-                        <th className="py-2 pr-3">Кв.</th>
+                        <th className="py-2 pr-3">{t('form.colApt')}</th>
                         <th className="py-2 pr-3">Тип</th>
                         <th className="py-2 pr-3">Сумма</th>
                         <th className="py-2 pr-3">После</th>
@@ -3592,20 +3670,15 @@ export default function AdminPage() {
           const finance = MENU_GROUPS.find((g) => g.id === 'finance');
           if (key === '__house' && house) {
             if (!house.items.includes(activeMenu)) setActiveMenu(house.items[0]);
-            setOpenMenuGroups(['house']);
-            setSidebarOpen(true);
             return;
           }
           if (key === '__finance' && finance) {
             if (!finance.items.includes(activeMenu)) setActiveMenu(finance.items[0]);
-            setOpenMenuGroups(['finance']);
-            setSidebarOpen(true);
             return;
           }
           setActiveMenu(key as AdminSection);
         }}
         onMore={() => {
-          setOpenMenuGroups(['work']);
           setSidebarOpen(true);
         }}
         hidden={sidebarOpen || (activeMenu === 'чат' && Boolean(selectedChatProperty))}
@@ -3710,7 +3783,7 @@ function ApartmentDetailModal({
         <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-xl font-semibold text-emerald-400">
-              Кв. {property.apartment_number} — {property.owner_name}
+              {t('picker.apt', { n: property.apartment_number })} — {property.owner_name}
             </h3>
             <div className="text-xs text-white/40 mt-1">
               {property.owner_email}{property.owner_phone && ` · ${property.owner_phone}`}
@@ -3769,7 +3842,7 @@ function ApartmentDetailModal({
           {activeTab === 'инфо' && (
             <div className="space-y-3 text-sm">
               <div className="grid gap-3 sm:grid-cols-2">
-                <InfoRow label="Номер квартиры" value={String(property.apartment_number ?? '—')} />
+                <InfoRow label={t('admin.phAptNo')} value={String(property.apartment_number ?? '—')} />
                 <InfoRow label="Этаж" value={String(property.floor ?? '—')} />
                 <InfoRow label="Площадь" value={`${property.area_sqm ?? '—'} м²`} />
                 <InfoRow label="Статус" value={listingStatus(property.status)} />

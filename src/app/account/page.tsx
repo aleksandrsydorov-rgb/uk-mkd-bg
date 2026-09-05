@@ -1990,82 +1990,123 @@ export default function AccountPage() {
       // ===========================================================
       case 'чат':
         return (
-          <div
-            className="flex h-[calc(100dvh-11.5rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] md:h-[calc(100vh-160px)]"
-          >
-            {/* Шапка чата */}
-            <div className="px-5 py-3 border-b border-white/10 bg-[#070b0a]/50">
-              <h2 className="text-sm font-semibold text-emerald-400">
-                {t('account.chatTitle')}
-              </h2>
-              <div className="text-xs text-white/40">
-                {t('account.chatApt', { n: String(property?.apartment_number ?? ''), owner: property?.owner_name ?? '' })}
+          <div className="relative flex h-[calc(100dvh-7.5rem)] flex-col overflow-hidden bg-[#0b1210] md:h-[calc(100vh-8.5rem)] md:rounded-3xl md:border md:border-white/10">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-40"
+              style={{
+                backgroundImage: 'radial-gradient(rgba(52,211,153,0.09) 1px, transparent 1px)',
+                backgroundSize: '22px 22px',
+              }}
+            />
+            <div className="relative z-10 flex items-center gap-3 border-b border-white/8 bg-[#0b1210]/80 px-4 py-3 backdrop-blur-md">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300">
+                {t('common.uk')}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-white">{t('account.chatTitle')}</div>
+                <div className="truncate text-xs text-white/40">
+                  {t('common.apt')} {property?.apartment_number}
+                  {property?.owner_name ? ` · ${property.owner_name}` : ''}
+                </div>
               </div>
             </div>
 
-            {/* Лента сообщений */}
-            <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div ref={chatScrollRef} className="chat-scroll relative z-10 min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6">
               {chatMessages.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-sm text-white/40">
-                  {t('account.chatEmpty')}
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 text-2xl">💬</div>
+                  <p className="max-w-xs text-sm text-white/45">{t('account.chatEmpty')}</p>
                 </div>
               ) : (
-                chatMessages.map((m) => {
-                  const isOwner = m.sender === 'owner';
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex ${isOwner ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
-                          isOwner
-                            ? 'bg-emerald-500/80 text-gray-50 rounded-br-sm'
-                            : 'bg-white/10 text-white rounded-bl-sm border border-white/15'
-                        }`}
-                      >
-                        <div className="whitespace-pre-wrap break-words">{m.message}</div>
-                        <div
-                          className={`mt-1 text-[10px] ${
-                            isOwner ? 'text-emerald-100/70' : 'text-white/50'
-                          }`}
-                        >
-                          {new Date(m.created_at).toLocaleString(dateLocale, {
-                            day: '2-digit',
-                            month: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                          {!m.read_by_owner && !isOwner && (
-                            <span className="ml-2 text-cyan-400">● {t('account.newMsg')}</span>
-                          )}
+                <div className="mx-auto flex max-w-2xl flex-col">
+                  {chatMessages.map((m, i) => {
+                    const isOwner = m.sender === 'owner';
+                    const prev = chatMessages[i - 1];
+                    const next = chatMessages[i + 1];
+                    const newDay = !prev || prev.created_at.slice(0, 10) !== m.created_at.slice(0, 10);
+                    const tight = Boolean(
+                      prev &&
+                        prev.sender === m.sender &&
+                        !newDay &&
+                        Math.abs(new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) < 5 * 60 * 1000,
+                    );
+                    const lastInGroup = !(
+                      next &&
+                      next.sender === m.sender &&
+                      next.created_at.slice(0, 10) === m.created_at.slice(0, 10) &&
+                      Math.abs(new Date(next.created_at).getTime() - new Date(m.created_at).getTime()) < 5 * 60 * 1000
+                    );
+                    const created = new Date(m.created_at);
+                    const dayLabel = newDay
+                      ? created.toDateString() === new Date().toDateString()
+                        ? t('common.today')
+                        : created.toDateString() === new Date(Date.now() - 86400000).toDateString()
+                          ? t('common.yesterday')
+                          : created.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long' })
+                      : null;
+                    return (
+                      <div key={m.id}>
+                        {dayLabel && (
+                          <div className="my-4 flex justify-center">
+                            <span className="rounded-full bg-black/30 px-3 py-1 text-[11px] text-white/45 backdrop-blur">
+                              {dayLabel}
+                            </span>
+                          </div>
+                        )}
+                        <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} ${tight ? 'mt-0.5' : 'mt-2.5'}`}>
+                          <div
+                            className={`max-w-[min(78%,28rem)] px-3.5 py-2 text-[15px] leading-snug shadow-sm ${
+                              isOwner
+                                ? `bg-emerald-600 text-white ${lastInGroup ? 'rounded-2xl rounded-br-md' : 'rounded-2xl'}`
+                                : `bg-[#1a2422] text-white ${lastInGroup ? 'rounded-2xl rounded-bl-md' : 'rounded-2xl'}`
+                            }`}
+                          >
+                            <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                            {lastInGroup && (
+                              <div className={`mt-1 flex items-center gap-1 text-[10px] ${isOwner ? 'justify-end text-emerald-100/70' : 'text-white/35'}`}>
+                                <span>
+                                  {created.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                {isOwner && (
+                                  <span className={m.read_by_uk ? 'text-emerald-200' : 'text-white/40'}>
+                                    {m.read_by_uk ? '✓✓' : '✓'}
+                                  </span>
+                                )}
+                                {!isOwner && !m.read_by_owner && (
+                                  <span className="text-cyan-400">● {t('account.newMsg')}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            {/* Поле ввода */}
             <form
               onSubmit={handleSendChat}
-              className="flex items-center gap-2 p-3 border-t border-white/10 bg-[#070b0a]/50"
+              className="relative z-10 border-t border-white/8 bg-[#0b1210]/90 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:px-6"
             >
-              <input
-                className="flex-1 rounded-lg border border-white/10 bg-[#101816] px-4 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-emerald-500/50"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder={t('account.chatPlaceholder')}
-                disabled={chatSending}
-              />
-              <button
-                type="submit"
-                disabled={chatSending || !chatInput.trim()}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {chatSending ? '...' : t('common.send')}
-              </button>
+              <div className="mx-auto flex max-w-2xl items-end gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#141c1a] px-4 py-3 text-base text-white placeholder-white/35 outline-none transition focus:border-emerald-500/40 md:text-sm"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={t('account.chatPlaceholder')}
+                  disabled={chatSending}
+                />
+                <button
+                  type="submit"
+                  disabled={chatSending || !chatInput.trim()}
+                  aria-label={t('common.send')}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-lg text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {chatSending ? '…' : '↑'}
+                </button>
+              </div>
             </form>
           </div>
         );
@@ -2210,7 +2251,11 @@ export default function AccountPage() {
       </aside>
 
       {/* ===== ОСНОВНОЙ КОНТЕНТ ===== */}
-      <main className="min-w-0 flex-1 overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
+      <main className={`min-w-0 flex-1 ${
+        activeMenu === 'чат'
+          ? 'overflow-hidden pb-0 md:pb-0'
+          : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
+      }`}>
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold md:text-xl">
@@ -2235,7 +2280,7 @@ export default function AccountPage() {
           </div>
         </div>
 
-        <div className="p-3 md:p-6">
+        <div className={activeMenu === 'чат' ? 'p-0 md:p-6' : 'p-3 md:p-6'}>
           {properties.length > 1 && (
             <ApartmentPicker
               properties={properties}

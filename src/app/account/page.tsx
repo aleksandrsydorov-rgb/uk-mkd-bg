@@ -1575,7 +1575,6 @@ export default function AccountPage() {
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
                 {t('account.houseTariffs')}
               </p>
-              <p className="mt-1 text-xs text-white/40">{t('account.tariffsHint')}</p>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <div className="rounded-xl bg-white/[0.04] px-3 py-3">
                   <div className="text-[11px] text-white/40">{t('account.elDay')}</div>

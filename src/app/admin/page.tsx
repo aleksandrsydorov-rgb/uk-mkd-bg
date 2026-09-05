@@ -48,6 +48,7 @@ import {
 } from '@/lib/finance';
 import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
+import { AdminReports } from '@/components/AdminReports';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 type Request = Database['public']['Tables']['requests']['Row'];
@@ -141,6 +142,7 @@ type AdminSection =
   | 'расходы'
   | 'опросы'
   | 'объявления'
+  | 'отчётность'
   | 'чат';
 
 function formatUkDate(dateStr: string) {
@@ -170,10 +172,17 @@ export default function AdminPage() {
     { key: 'персонал', label: t('admin.staff'), icon: '👷' },
     { key: 'такса', label: t('admin.fee'), icon: '💶' },
     { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
+    { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
     { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
     { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
     { key: 'чат', label: t('admin.chat'), icon: '💬' },
   ];
+  const MENU_GROUPS: { id: string; label: string; icon: string; items: AdminSection[] }[] = [
+    { id: 'house', label: t('admin.house'), icon: '🏠', items: ['квартиры', 'смены', 'счётчики', 'персонал'] },
+    { id: 'finance', label: t('admin.menuFinance'), icon: '💶', items: ['такса', 'расходы', 'отчётность'] },
+    { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'опросы', 'объявления'] },
+  ];
+  const TOP_MENU: AdminSection[] = ['обзор', 'чат'];
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
   const [hasCabinet, setHasCabinet] = useState(false);
@@ -192,6 +201,7 @@ export default function AdminPage() {
   // ---------- STATE ----------
   const [activeMenu, setActiveMenu] = useState<AdminSection>('обзор');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openMenuGroups, setOpenMenuGroups] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -478,6 +488,12 @@ export default function AdminPage() {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
+
+  useEffect(() => {
+    const group = MENU_GROUPS.find((g) => g.items.includes(activeMenu));
+    if (!group) return;
+    setOpenMenuGroups((prev) => (prev.includes(group.id) ? prev : [...prev, group.id]));
+  }, [activeMenu]); // eslint-disable-line
 
   // ---------- ЗАГРУЗКА СПИСКА ЧАТОВ ----------
   useEffect(() => {
@@ -1638,7 +1654,6 @@ export default function AdminPage() {
 
               <OverviewGroup
                 title={t('admin.fee')}
-                hint={t('account.ukOnlyFee')}
                 actionLabel={t('admin.publish')}
                 onAction={() => setActiveMenu('такса')}
               >
@@ -2931,22 +2946,45 @@ export default function AdminPage() {
           </div>
         );
 
+      case 'отчётность':
+        return (
+          <AdminReports
+            properties={properties}
+            requests={requests}
+            ukExpenses={ukExpenses}
+            ledger={ledger}
+            staff={staff}
+            supportRate={supportRate}
+            years={expenseYears}
+          />
+        );
+
       // =============================================================
       // ЧАТ
       // =============================================================
       case 'чат':
         return (
-          <div className="flex rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden"
-            style={{ height: 'calc(100vh - 160px)' }}>
-            <div className="w-72 flex-shrink-0 border-r border-white/10 flex flex-col">
+          <div
+            className={`flex overflow-hidden bg-white/[0.03] md:rounded-2xl md:border md:border-white/10 ${
+              selectedChatProperty
+                ? 'h-[calc(100dvh-3.4rem)] md:h-[calc(100vh-10rem)]'
+                : 'h-[calc(100dvh-8.1rem-env(safe-area-inset-bottom))] md:h-[calc(100vh-10rem)]'
+            }`}
+          >
+            <div
+              className={`w-full flex-col md:w-72 md:flex-shrink-0 md:border-r md:border-white/10 ${
+                selectedChatProperty ? 'hidden md:flex' : 'flex'
+              }`}
+            >
               <div className="px-4 py-3 border-b border-white/10 bg-white/[0.05]">
                 <h2 className="text-sm font-semibold text-emerald-400">
-                  Диалоги {totalUnreadChats > 0 && `(${totalUnreadChats} новых)`}
+                  {t('admin.dialogs')}{' '}
+                  {totalUnreadChats > 0 && t('admin.dialogsNew', { n: totalUnreadChats })}
                 </h2>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {chatProperties.length === 0 ? (
-                  <div className="p-4 text-sm text-white/40">Нет активных диалогов.</div>
+                  <div className="p-4 text-sm text-white/40">{t('admin.noDialogs')}</div>
                 ) : (
                   chatProperties.map((item) => (
                     <button key={item.property.id}
@@ -2957,12 +2995,12 @@ export default function AdminPage() {
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="text-sm text-white font-medium truncate">
-                            кв. {item.property.apartment_number}
+                            {t('common.apt')} {item.property.apartment_number}
                           </div>
                           <div className="text-xs text-white/40 truncate">{item.property.owner_name}</div>
                           {item.lastMessage && (
                             <div className="text-xs text-white/30 truncate mt-1">
-                              {item.lastMessage.sender === 'owner' ? '' : 'УК: '}{item.lastMessage.message}
+                              {item.lastMessage.sender === 'owner' ? '' : `${t('common.uk')}: `}{item.lastMessage.message}
                             </div>
                           )}
                         </div>
@@ -2977,15 +3015,26 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
-            <div className="flex-1 flex flex-col">
+            <div
+              className={`min-w-0 flex-1 flex-col ${
+                selectedChatProperty ? 'flex' : 'hidden md:flex'
+              }`}
+            >
               {selectedChatProperty ? (
                 <>
-                  <div className="px-5 py-3 border-b border-white/10 bg-white/[0.05] flex items-center justify-between">
-                    <div>
-                      <h2 className="text-sm font-semibold text-emerald-400">
-                        кв. {selectedChatProperty.apartment_number} — {selectedChatProperty.owner_name}
+                  <div className="flex items-start gap-2 border-b border-white/10 bg-white/[0.05] px-3 py-3 md:px-5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChatProperty(null)}
+                      className="mt-0.5 shrink-0 rounded-lg px-2 py-1 text-sm text-white/70 hover:bg-white/10 md:hidden"
+                    >
+                      ← {t('common.back')}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-sm font-semibold text-emerald-400">
+                        {t('common.apt')} {selectedChatProperty.apartment_number} — {selectedChatProperty.owner_name}
                       </h2>
-                      <div className="text-xs text-white/40">
+                      <div className="truncate text-xs text-white/40">
                         {selectedChatProperty.owner_email}
                         {selectedChatProperty.owner_phone && ` · ${selectedChatProperty.owner_phone}`}
                         {' · '}
@@ -2994,20 +3043,25 @@ export default function AdminPage() {
                         </span>
                       </div>
                     </div>
-                    <button onClick={() => setSelectedChatProperty(null)}
-                      className="text-white/50 hover:text-white/80 text-sm">✕ Закрыть</button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChatProperty(null)}
+                      className="hidden shrink-0 text-sm text-white/50 hover:text-white/80 md:inline"
+                    >
+                      ✕ {t('common.close')}
+                    </button>
                   </div>
-                  <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+                  <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3 md:p-4">
                     {chatMessages.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-sm text-white/40">
-                        Нет сообщений.
+                      <div className="flex h-full items-center justify-center text-sm text-white/40">
+                        {t('admin.noChatMessages')}
                       </div>
                     ) : (
                       chatMessages.map((m) => {
                         const isUk = m.sender === 'uk';
                         return (
                           <div key={m.id} className={`flex ${isUk ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
+                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm md:max-w-[75%] ${
                               isUk ? 'bg-teal-600 text-gray-50 rounded-br-sm'
                                    : 'bg-white/10 text-white rounded-bl-sm border border-white/15'
                             }`}>
@@ -3016,7 +3070,7 @@ export default function AdminPage() {
                                 {new Date(m.created_at).toLocaleString(dateLocale,
                                   { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 {!isUk && isNewOwnerMessage(m, chatMessages, ukChatSeen[String(selectedChatProperty.id)]) && (
-                                  <span className="ml-2 text-red-400">● новое</span>
+                                  <span className="ml-2 text-red-400">● {t('account.newMsg')}</span>
                                 )}
                               </div>
                             </div>
@@ -3026,19 +3080,19 @@ export default function AdminPage() {
                     )}
                   </div>
                   <form onSubmit={handleSendChat}
-                    className="flex items-center gap-2 p-3 border-t border-white/10 bg-white/[0.05]">
-                    <input className="flex-1 rounded-lg border border-white/10 bg-[#101816] px-4 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-teal-500/50"
+                    className="flex items-center gap-2 border-t border-white/10 bg-white/[0.05] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3">
+                    <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-4 py-2.5 text-base text-white placeholder-white/40 focus:outline-none focus:border-teal-500/50 md:text-sm"
                       value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Ответ жильцу..." disabled={chatSending} />
+                      placeholder={t('account.chatPlaceholder')} disabled={chatSending} />
                     <button type="submit" disabled={chatSending || !chatInput.trim()}
-                      className="rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed">
-                      {chatSending ? '...' : 'Отправить'}
+                      className="shrink-0 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                      {chatSending ? '...' : t('common.send')}
                     </button>
                   </form>
                 </>
               ) : (
-                <div className="flex items-center justify-center h-full text-sm text-white/40">
-                  Выберите диалог слева
+                <div className="flex h-full items-center justify-center text-sm text-white/40">
+                  {t('admin.pickDialog')}
                 </div>
               )}
             </div>
@@ -3056,10 +3110,6 @@ export default function AdminPage() {
         const yearPayments = ledger.filter((e) => e.kind === 'payment').reduce((s, e) => s + Number(e.amount), 0);
         return (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
-              УК принимает только таксу поддержки. Электричество и воду собственники платят сами.
-            </div>
-
             {supportFeeMissing && (
               <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
                 Нет таблиц в базе. Выполните <span className="font-mono text-amber-200">supabase/support_fee.sql</span> в SQL Editor.
@@ -3286,12 +3336,12 @@ export default function AdminPage() {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-white/10 bg-[#101816] transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#101816] transition-[transform,width] duration-300 md:pointer-events-auto md:static md:h-auto md:flex-shrink-0 ${
         sidebarOpen
-          ? 'translate-x-0 md:w-64'
-          : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:translate-x-0'
+          ? 'translate-x-0 md:w-64 md:min-w-64 md:max-w-64'
+          : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:min-w-16 md:max-w-16 md:translate-x-0'
       }`}>
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 p-3">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-white/10 p-3">
           {sidebarOpen && <BrandMark compact />}
           <button
             type="button"
@@ -3310,40 +3360,130 @@ export default function AdminPage() {
             {sidebarOpen ? '◀' : '▶'}
           </button>
         </div>
-        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {MENU_ITEMS.map((item) => (
-            <button key={item.key} onClick={() => {
-              setActiveMenu(item.key);
-              if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
-            }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
-                activeMenu === item.key
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  : 'text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent'
-              }`} title={item.label}>
-              <span className="text-lg flex-shrink-0">{item.icon}</span>
-              {sidebarOpen && (
-                <span className="flex items-center gap-2 truncate">
-                  {item.label}
-                  {item.key === 'чат' && totalUnreadChats > 0 && (
-                    <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                      {totalUnreadChats}
-                    </span>
-                  )}
-                  {item.key === 'смены' && pendingTransfersCount > 0 && (
-                    <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                      {pendingTransfersCount}
-                    </span>
-                  )}
-                  {item.key === 'опросы' && openPollsCount > 0 && (
-                    <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                      {openPollsCount}
-                    </span>
+        <nav className="min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-2">
+          {TOP_MENU.map((key) => {
+            const item = MENU_ITEMS.find((m) => m.key === key)!;
+            const active = activeMenu === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setActiveMenu(key);
+                  if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
+                  active
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent'
+                }`}
+                title={item.label}
+              >
+                <span className="relative text-lg flex-shrink-0">
+                  {item.icon}
+                  {!sidebarOpen && key === 'чат' && totalUnreadChats > 0 && (
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
                   )}
                 </span>
-              )}
-            </button>
-          ))}
+                {sidebarOpen && (
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="truncate">{item.label}</span>
+                    {key === 'чат' && totalUnreadChats > 0 && (
+                      <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                        {totalUnreadChats}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {MENU_GROUPS.map((group) => {
+            const childActive = group.items.includes(activeMenu);
+            const expanded = sidebarOpen && openMenuGroups.includes(group.id);
+            const badge =
+              group.id === 'house'
+                ? pendingTransfersCount
+                : group.id === 'finance'
+                  ? pendingUkExpenses.length
+                  : openPollsCount;
+            return (
+              <div key={group.id} className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!sidebarOpen) {
+                      setSidebarOpen(true);
+                      setOpenMenuGroups((prev) => (prev.includes(group.id) ? prev : [...prev, group.id]));
+                      return;
+                    }
+                    setOpenMenuGroups((prev) =>
+                      prev.includes(group.id) ? prev.filter((id) => id !== group.id) : [...prev, group.id],
+                    );
+                  }}
+                  className={`flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-xs font-medium uppercase tracking-wide ${
+                    childActive && !expanded
+                      ? 'text-emerald-300'
+                      : 'text-white/35 hover:text-white/60'
+                  }`}
+                  title={group.label}
+                >
+                  <span className="relative text-lg normal-case tracking-normal flex-shrink-0">
+                    {group.icon}
+                    {!sidebarOpen && badge > 0 && (
+                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
+                    )}
+                  </span>
+                  {sidebarOpen && (
+                    <>
+                      <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
+                      {badge > 0 && (
+                        <span className="shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-gray-900">
+                          {badge}
+                        </span>
+                      )}
+                      <span className="shrink-0 text-white/30">{expanded ? '▾' : '▸'}</span>
+                    </>
+                  )}
+                </button>
+                {expanded &&
+                  group.items.map((key) => {
+                    const item = MENU_ITEMS.find((m) => m.key === key)!;
+                    const active = activeMenu === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setActiveMenu(key);
+                          if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
+                        }}
+                        className={`mt-0.5 flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl border px-3 py-2 pl-10 text-sm transition-all ${
+                          active
+                            ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-300'
+                            : 'border-transparent text-white/50 hover:bg-white/5 hover:text-white/80'
+                        }`}
+                      >
+                        <span className="text-base flex-shrink-0">{item.icon}</span>
+                        <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
+                          <span className="truncate">{item.label}</span>
+                          {key === 'смены' && pendingTransfersCount > 0 && (
+                            <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                              {pendingTransfersCount}
+                            </span>
+                          )}
+                          {key === 'опросы' && openPollsCount > 0 && (
+                            <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                              {openPollsCount}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            );
+          })}
         </nav>
         <div className="space-y-2 border-t border-white/10 p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {sidebarOpen ? (
@@ -3393,7 +3533,11 @@ export default function AdminPage() {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
+      <main className={`min-w-0 flex-1 ${
+        activeMenu === 'чат'
+          ? 'overflow-hidden pb-0'
+          : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
+      }`}>
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold md:text-xl">
@@ -3418,7 +3562,7 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
-        <div className="p-3 md:p-6">
+        <div className={activeMenu === 'чат' ? 'p-0 md:p-6' : 'p-3 md:p-6'}>
           {error && (
             <div className="mb-4 rounded-xl border border-red-800 bg-red-900/20 p-4 text-red-200">
               {error}
@@ -3431,15 +3575,40 @@ export default function AdminPage() {
       <MobileBottomNav
         items={[
           { key: 'обзор', label: t('admin.overview'), icon: '📊' },
-          { key: 'заявки', label: t('admin.requests'), icon: '📋' },
-          { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
           { key: 'чат', label: t('account.tabChat'), icon: '💬', badge: totalUnreadChats || undefined },
+          { key: '__house', label: t('admin.house'), icon: '🏠', badge: pendingTransfersCount || undefined },
+          { key: '__finance', label: t('admin.menuFinance'), icon: '💶', badge: pendingUkExpenses.length || undefined },
         ]}
-        activeKey={activeMenu}
-        moreActive={!['обзор', 'заявки', 'расходы', 'чат'].includes(activeMenu)}
-        onSelect={(key) => setActiveMenu(key as AdminSection)}
-        onMore={() => setSidebarOpen(true)}
-        hidden={sidebarOpen}
+        activeKey={
+          MENU_GROUPS.find((g) => g.id === 'house')?.items.includes(activeMenu)
+            ? '__house'
+            : MENU_GROUPS.find((g) => g.id === 'finance')?.items.includes(activeMenu)
+              ? '__finance'
+              : activeMenu
+        }
+        moreActive={Boolean(MENU_GROUPS.find((g) => g.id === 'work')?.items.includes(activeMenu))}
+        onSelect={(key) => {
+          const house = MENU_GROUPS.find((g) => g.id === 'house');
+          const finance = MENU_GROUPS.find((g) => g.id === 'finance');
+          if (key === '__house' && house) {
+            if (!house.items.includes(activeMenu)) setActiveMenu(house.items[0]);
+            setOpenMenuGroups(['house']);
+            setSidebarOpen(true);
+            return;
+          }
+          if (key === '__finance' && finance) {
+            if (!finance.items.includes(activeMenu)) setActiveMenu(finance.items[0]);
+            setOpenMenuGroups(['finance']);
+            setSidebarOpen(true);
+            return;
+          }
+          setActiveMenu(key as AdminSection);
+        }}
+        onMore={() => {
+          setOpenMenuGroups(['work']);
+          setSidebarOpen(true);
+        }}
+        hidden={sidebarOpen || (activeMenu === 'чат' && Boolean(selectedChatProperty))}
       />
     </div>
   );
@@ -3673,7 +3842,6 @@ function ApartmentDetailModal({
                   <div>Вода: {WATER_RATE} €/м³</div>
                   <div>Такса: {supportRate} €/м²·год</div>
                 </div>
-                <p className="mt-2 text-xs text-white/40">Электричество и воду собственник платит сам. УК принимает только таксу поддержки.</p>
                 <button
                   type="button"
                   onClick={onTakePayment}

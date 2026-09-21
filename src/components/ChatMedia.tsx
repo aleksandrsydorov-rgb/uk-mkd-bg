@@ -25,7 +25,7 @@ export function ChatMedia({
       href={url}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex max-w-full items-center gap-2 rounded-lg bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
+      className="inline-flex max-w-full items-center gap-2 rounded-lg bg-hover px-3 py-2 text-sm hover:bg-hover"
     >
       <span aria-hidden>📎</span>
       <span className="truncate">{fileName || url}</span>

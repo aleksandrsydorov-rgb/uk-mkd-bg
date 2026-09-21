@@ -13,6 +13,7 @@ export function LoginScreen({
   loginError,
   loginLoading,
   onSubmit,
+  embedded = false,
 }: {
   email: string;
   onEmailChange: (value: string) => void;
@@ -21,69 +22,84 @@ export function LoginScreen({
   loginError?: string;
   loginLoading?: boolean;
   onSubmit: (e: React.FormEvent) => void;
+  embedded?: boolean;
 }) {
   const { t } = useI18n();
 
-  return (
-    <div className="relative min-h-dvh bg-[#070b0a] text-white flex items-center justify-center px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-teal-500/10 blur-3xl" />
+  const form = (
+    <div className={`w-full ${embedded ? 'max-w-[480px]' : 'max-w-md'} px-4`}>
+      {!embedded && (
+        <>
+          <div className="mb-4 flex justify-center">
+            <LanguageSwitcher />
+          </div>
+          <div className="mb-6 flex justify-center">
+            <BrandMark compact showTagline={false} />
+          </div>
+        </>
+      )}
+      <h2 className="mb-1 text-center text-xl font-semibold">
+        {embedded ? t('home.loginTitle') : t('login.title')}
+      </h2>
+      {embedded ? (
+        <p className="mb-4 text-center text-sm text-secondary">{t('home.loginSubtitle')}</p>
+      ) : (
+        <p className="mb-4 text-center text-sm text-secondary">{t('login.hint')}</p>
+      )}
+      <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div>
+            <label className="text-sm text-secondary">Email</label>
+            <input
+              className="mt-2 w-full rounded-[10px] border border-border-strong bg-surface px-3 py-3 text-base text-foreground"
+              value={email}
+              onChange={(e) => onEmailChange(e.target.value)}
+              placeholder="email@example.com"
+              type="email"
+              autoComplete="email"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-secondary">Password</label>
+            <input
+              className="mt-2 w-full rounded-[10px] border border-border-strong bg-surface px-3 py-3 text-base text-foreground"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              type="password"
+              autoComplete="current-password"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loginLoading}
+            className="min-h-11 w-full rounded-[10px] bg-accent px-4 py-3 font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {loginLoading ? '…' : t('common.login')}
+          </button>
+          {loginError ? (
+            <div className="rounded-lg border border-danger/25 bg-danger-bg p-3 text-sm text-danger">
+              {loginError}
+            </div>
+          ) : null}
+        </form>
       </div>
-      <div className="relative z-10 w-full max-w-md px-4">
-        <div className="mb-4 flex justify-center">
-          <LanguageSwitcher />
-        </div>
-        <div className="mb-6 flex justify-center">
-          <BrandMark />
-        </div>
-        <h1 className="text-xl font-semibold text-center mb-4">{t('login.title')}</h1>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm text-white/70">Email</label>
-              <input
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[#070b0a] px-3 py-3 text-base text-white"
-                value={email}
-                onChange={(e) => onEmailChange(e.target.value)}
-                placeholder="email@example.com"
-                type="email"
-                autoComplete="email"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-white/70">Password</label>
-              <input
-                className="mt-2 w-full rounded-xl border border-white/10 bg-[#070b0a] px-3 py-3 text-base text-white"
-                value={password}
-                onChange={(e) => onPasswordChange(e.target.value)}
-                type="password"
-                autoComplete="current-password"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className="w-full min-h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white disabled:opacity-50"
-            >
-              {loginLoading ? 'Signing in...' : t('common.login')}
-            </button>
-            {loginError ? (
-              <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-200">
-                {loginError}
-              </div>
-            ) : null}
-            <p className="text-xs text-white/40">
-              {t('login.hint')}
-            </p>
-          </form>
-        </div>
-        <div className="text-center mt-4">
-          <Link href="/" className="text-sm text-white/50 hover:text-white">
+      {!embedded && (
+        <div className="mt-4 text-center">
+          <Link href="/" className="text-sm text-secondary hover:text-foreground">
             {t('common.backHome')}
           </Link>
         </div>
-      </div>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return <div className="flex justify-center">{form}</div>;
+  }
+
+  return (
+    <div className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] text-foreground">
+      {form}
     </div>
   );
 }

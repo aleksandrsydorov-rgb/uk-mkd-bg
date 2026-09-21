@@ -1,31 +1,58 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useI18n } from '@/i18n/I18nProvider';
 
 export function BrandMark({
   href = '/',
   compact = false,
+  showTagline = true,
 }: {
   href?: string;
   compact?: boolean;
+  showTagline?: boolean;
 }) {
   const { t } = useI18n();
   return (
     <Link href={href} className="flex min-w-0 items-center gap-2.5">
-      <div
-        className={`flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/25 ${
-          compact ? 'h-8 w-8' : 'h-9 w-9'
+      <span
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ${
+          compact ? 'h-8 px-1' : 'h-9 px-1.5'
         }`}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" className={compact ? 'h-4 w-4' : 'h-5 w-5'}>
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-          <polyline points="9 22 9 12 15 12 15 22" />
-        </svg>
-      </div>
-      <span className={`truncate font-bold ${compact ? 'text-sm' : 'text-base sm:text-lg'}`}>
-        {t('brand.name')} <span className="text-emerald-400">{t('brand.country')}</span>
+        <Image
+          src="/brand/amadeus11-mark.png"
+          alt=""
+          width={580}
+          height={350}
+          className={`w-auto object-contain ${compact ? 'h-7' : 'h-8'}`}
+        />
+      </span>
+      <span className="min-w-0">
+        <span className={`block truncate font-bold tracking-[0.02em] text-foreground ${compact ? 'text-sm' : 'text-base sm:text-lg'}`}>
+          {t('brand.name')}
+        </span>
+        {showTagline && !compact && (
+          <span className="block truncate text-[11px] font-normal text-secondary">
+            {t('brand.tagline')}
+          </span>
+        )}
       </span>
     </Link>
+  );
+}
+
+export function AmadeusFullLogo() {
+  return (
+    <div className="inline-flex max-w-[220px] rounded-xl bg-white p-2">
+      <Image
+        src="/brand/amadeus11-logo.png"
+        alt="AMADEUS 11"
+        width={785}
+        height={615}
+        className="h-auto w-full object-contain"
+      />
+    </div>
   );
 }

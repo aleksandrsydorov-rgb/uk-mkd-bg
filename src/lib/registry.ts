@@ -97,7 +97,7 @@ export function buildRegistryPdfHtml(opts: {
     )
     .join('');
   return `<div style="font-family:'Segoe UI',Arial,sans-serif;padding:24px 28px 36px;color:#111;font-size:12px;line-height:1.4;background:#fff;">
-    <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#667;">МКД Болгария</div>
+    <div style="font-size:11px;letter-spacing:.12em;color:#667;">AMADEUS 11</div>
     <h1 style="margin:6px 0 4px;font-size:20px;font-weight:700;">${escapeHtml(opts.title)}</h1>
     <div style="margin-bottom:8px;color:#666;font-size:11px;">${escapeHtml(opts.generated)}</div>
     <p style="margin:0 0 16px;color:#555;font-size:11px;">${escapeHtml(opts.hint)}</p>

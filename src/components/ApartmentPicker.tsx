@@ -30,12 +30,12 @@ export function ApartmentPicker({
             onClick={() => onSelect(p.id)}
             className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
               active
-                ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
-                : 'border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20'
+                ? 'border-accent/30 bg-accent-bg text-accent'
+                : 'border-border bg-surface text-secondary hover:border-border-strong'
             }`}
           >
             <div className="font-medium">{t('picker.apt', { n: String(p.apartment_number) })}</div>
-            <div className="text-xs text-white/40">{Number(p.area_sqm ?? 0).toFixed(1)} {t('common.sqm')}</div>
+            <div className="text-xs text-muted">{Number(p.area_sqm ?? 0).toFixed(1)} {t('common.sqm')}</div>
           </button>
         );
       })}

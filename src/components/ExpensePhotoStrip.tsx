@@ -14,7 +14,7 @@ export function ExpensePhotoStrip({ urls, size = 'md' }: { urls: string[]; size?
           <img
             src={url}
             alt={t('photo.receipt')}
-            className={`${box} rounded-lg border border-white/10 object-cover`}
+            className={`${box} rounded-lg border border-border object-cover`}
           />
         </a>
       ))}

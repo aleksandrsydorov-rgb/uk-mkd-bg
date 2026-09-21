@@ -1,15 +1,65 @@
 @import "tailwindcss";
 
 :root {
-  --background: #070b0a;
-  --foreground: #f4f7f6;
+  --background: #f4f5f7;
+  --home-bg: #f4f5f3;
+  --foreground: #202523;
+  --surface: #ffffff;
+  --surface-secondary: #f8f9fa;
+  --surface-warm: #f7f3ed;
+  --hover: #eef2f5;
+  --border: #e2e5e3;
+  --border-strong: #d9dedc;
+  --text-secondary: #68716d;
+  --muted: #8a9390;
+  --accent: #3e6271;
+  --accent-hover: #345665;
+  --accent-bg: #eaf1f5;
+  --sea: #5e91a3;
+  --pool: #d9eef2;
+  --warm: #d39a6a;
+  --warm-light: #f1dec9;
+  --green: #738c72;
+  --success: #3f7d5a;
+  --success-bg: #edf7f1;
+  --warning: #a8752b;
+  --warning-bg: #fff7e8;
+  --danger: #b5524b;
+  --danger-bg: #fcefed;
+  --placeholder: #9aa29e;
+  --overlay: rgba(20, 25, 30, 0.25);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-home: var(--home-bg);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-surface-warm: var(--surface-warm);
+  --color-hover: var(--hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-bg: var(--accent-bg);
+  --color-sea: var(--sea);
+  --color-pool: var(--pool);
+  --color-warm: var(--warm);
+  --color-warm-light: var(--warm-light);
+  --color-green: var(--green);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-placeholder: var(--placeholder);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-card: 0 4px 20px rgb(20 30 30 / 0.04);
 }
 
 html {
@@ -21,6 +71,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
   overflow-x: hidden;
+  font-size: 15px;
 }
 
 button,
@@ -33,6 +84,22 @@ input,
 textarea,
 select {
   font-size: 16px;
+  background: var(--surface);
+  color: var(--foreground);
+  border-color: var(--border-strong);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--placeholder);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(63 98 122 / 0.12);
 }
 
 @media (min-width: 768px) {
@@ -43,9 +110,23 @@ select {
   }
 }
 
+table thead th {
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+table tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+table tbody tr:hover {
+  background: #f8fafb;
+}
+
 .chat-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  scrollbar-color: #c5ccd3 transparent;
 }
 
 .chat-scroll::-webkit-scrollbar {
@@ -57,6 +138,27 @@ select {
 }
 
 .chat-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: #c5ccd3;
   border-radius: 999px;
+}
+
+@keyframes home-fade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.home-fade {
+  animation: home-fade 0.45s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-fade {
+    animation: none;
+  }
 }

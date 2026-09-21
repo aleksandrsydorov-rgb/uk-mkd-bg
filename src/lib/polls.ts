@@ -98,9 +98,9 @@ export function isPollAcceptingVotes(poll: Poll) {
 }
 
 export function pollCategoryClass(category: string) {
-  if (category === 'покупка') return 'bg-blue-500/15 text-blue-300 border-blue-500/30';
-  if (category === 'ремонт') return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30';
-  return 'bg-teal-500/15 text-teal-300 border-teal-500/30';
+  if (category === 'покупка') return 'bg-accent-bg text-accent border-accent/25';
+  if (category === 'ремонт') return 'bg-warning-bg text-warning border-warning/25';
+  return 'bg-surface-secondary text-secondary border-border';
 }
 
 export type PollTallyAggregate = {

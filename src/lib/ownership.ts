@@ -25,8 +25,8 @@ export function listingStatus(raw: string | null | undefined): ListingStatus {
 
 export function listingStatusClass(status: ListingStatus) {
   return status === 'на продаже'
-    ? 'border-amber-500/40 bg-amber-500/15 text-amber-200'
-    : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200';
+    ? 'border-warning/25 bg-warning-bg text-warning'
+    : 'border-success/25 bg-success-bg text-success';
 }
 
 export function listingStatusLines(status: ListingStatus): [string, string] {
@@ -35,7 +35,7 @@ export function listingStatusLines(status: ListingStatus): [string, string] {
 }
 
 export function transferStatusClass(status: string) {
-  if (status === 'утверждена') return 'text-emerald-300';
-  if (status === 'отклонена') return 'text-red-300';
-  return 'text-amber-300';
+  if (status === 'утверждена') return 'text-success';
+  if (status === 'отклонена') return 'text-danger';
+  return 'text-warning';
 }

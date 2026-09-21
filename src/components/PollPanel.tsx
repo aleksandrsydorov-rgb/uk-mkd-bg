@@ -43,13 +43,13 @@ export function PollDetails({
         <img
           src={poll.photo_url}
           alt={poll.title}
-          className="w-full max-h-64 object-cover rounded-xl border border-white/10"
+          className="w-full max-h-64 object-cover rounded-xl border border-border"
         />
       )}
       {poll.body && (
-        <p className="text-sm text-white/70 whitespace-pre-wrap">{poll.body}</p>
+        <p className="text-sm text-secondary whitespace-pre-wrap">{poll.body}</p>
       )}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/40">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         {poll.budget_eur != null && Number(poll.budget_eur) > 0 && (
           <span>{t('poll.budget', { n: Number(poll.budget_eur).toFixed(2) })}</span>
         )}
@@ -65,10 +65,10 @@ export function PollDetails({
       <div
         className={`rounded-lg border px-3 py-2 text-sm ${
           decision === 'принято'
-            ? 'border-emerald-600/50 bg-emerald-900/30 text-emerald-200'
+            ? 'border-success/30 bg-success-bg text-success'
             : decision === 'не принято'
-              ? 'border-red-700/50 bg-red-900/20 text-red-200'
-              : 'border-white/10 bg-white/5 text-white/70'
+              ? 'border-danger/30 bg-danger-bg text-danger'
+              : 'border-border bg-surface-secondary text-secondary'
         }`}
       >
         {decision === 'принято' && (
@@ -88,7 +88,7 @@ export function PollDetails({
         )}
       </div>
       {(decision !== 'идёт' || tally.accepted) && (
-        <div className="text-xs text-white/40">
+        <div className="text-xs text-muted">
           {t('poll.stats', { voted: tally.votedWeight.toFixed(1), total: tally.total.toFixed(1) })}
         </div>
       )}
@@ -133,15 +133,15 @@ export function PollOptionBars({
             <div className="flex items-center justify-between gap-3 text-sm">
               <span>{row.option.label}</span>
               {showStats && (
-                <span className="text-xs text-white/40">
+                <span className="text-xs text-muted">
                   {row.weight.toFixed(1)} {t('common.sqm')} · {row.pctOfTotal.toFixed(1)}% · {row.apartments} {t('common.apt')}
                 </span>
               )}
             </div>
             {showStats && (
-              <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="mt-2 h-1.5 rounded-full bg-hover overflow-hidden">
                 <div
-                  className={`h-full ${row.pctOfTotal >= 51 ? 'bg-emerald-400' : 'bg-emerald-500/70'}`}
+                  className={`h-full ${row.pctOfTotal >= 51 ? 'bg-accent' : 'bg-accent'}`}
                   style={{ width: `${Math.min(row.pctOfTotal, 100)}%` }}
                 />
               </div>
@@ -150,7 +150,7 @@ export function PollOptionBars({
         );
         if (!onVote) {
           return (
-            <div key={row.option.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <div key={row.option.id} className="rounded-lg border border-border bg-surface px-3 py-2">
               {inner}
             </div>
           );
@@ -163,8 +163,8 @@ export function PollOptionBars({
             onClick={() => onVote(row.option.id)}
             className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
               selected
-                ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
-                : 'border-white/10 bg-white/5 text-white/80 hover:border-white/20'
+                ? 'border-accent/30 bg-accent-bg text-accent'
+                : 'border-border bg-surface-secondary text-secondary hover:border-border-strong'
             } disabled:opacity-60`}
           >
             {inner}

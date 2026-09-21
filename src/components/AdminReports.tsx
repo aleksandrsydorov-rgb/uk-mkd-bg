@@ -324,16 +324,16 @@ export function AdminReports({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-        <p className="text-sm text-white/55">{t('admin.reportsLead')}</p>
-        {pdfError && <p className="mt-2 text-sm text-red-400">{pdfError}</p>}
+      <div className="rounded-[14px] border border-border bg-surface shadow-card px-4 py-3">
+        <p className="text-sm text-secondary">{t('admin.reportsLead')}</p>
+        {pdfError && <p className="mt-2 text-sm text-danger">{pdfError}</p>}
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <label className="flex flex-col gap-1 text-sm text-white/70">
+          <label className="flex flex-col gap-1 text-sm text-secondary">
             <span>{t('admin.reportsYear')}</span>
             <select
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-white"
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-foreground"
             >
               {yearOptions.map((n) => (
                 <option key={n} value={String(n)}>
@@ -343,7 +343,7 @@ export function AdminReports({
             </select>
           </label>
           <div className="min-w-0 flex-1">
-            <div className="mb-1 text-sm text-white/70">{t('admin.reportsScope')}</div>
+            <div className="mb-1 text-sm text-secondary">{t('admin.reportsScope')}</div>
             <div className="flex flex-wrap gap-1.5">
               {[0, 1, 2, 3, 4].map((q) => (
                 <button
@@ -352,8 +352,8 @@ export function AdminReports({
                   onClick={() => setQuarter(q)}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
                     quarter === q
-                      ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-200'
-                      : 'border-white/10 bg-white/5 text-white/55 hover:bg-white/10'
+                      ? 'border-accent/30 bg-accent-bg text-accent'
+                      : 'border-border bg-surface-secondary text-secondary hover:bg-hover'
                   }`}
                 >
                   {q === 0 ? t('admin.reportsYearly') : t(`admin.reportsQ${q}` as 'admin.reportsQ1')}
@@ -365,14 +365,14 @@ export function AdminReports({
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {cards.map((card) => (
-          <div key={card.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <h2 className="text-sm font-semibold text-emerald-400">{card.title}</h2>
-            <p className="mt-1 text-sm text-white/45">{card.hint}</p>
+          <div key={card.id} className="rounded-[14px] border border-border bg-surface shadow-card p-4">
+            <h2 className="text-sm font-semibold text-accent">{card.title}</h2>
+            <p className="mt-1 text-sm text-muted">{card.hint}</p>
             <button
               type="button"
               disabled={busy !== null}
               onClick={() => void run(card.id, `mkd-${card.id}-${periodKey}.pdf`, card.build())}
-              className="mt-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
+              className="mt-4 rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
             >
               {busy === card.id ? t('common.preparingPdf') : t('common.downloadPdf')}
             </button>

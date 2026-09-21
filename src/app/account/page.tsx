@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -993,15 +993,14 @@ export default function AccountPage() {
 
   const debtColor = useMemo(() => {
     const d = properties.reduce((sum, p) => sum + Number(p.debt ?? 0), 0);
-    if (d <= 0) return 'text-emerald-300';
-    if (d < 100) return 'text-yellow-300';
-    return 'text-red-400';
+    if (d <= 0) return 'text-muted';
+    return 'text-danger';
   }, [properties]);
 
   const overColor = useMemo(() => {
     const o = properties.reduce((sum, p) => sum + Number(p.overpayment ?? 0), 0);
-    if (o <= 0) return 'text-emerald-300';
-    return 'text-emerald-400';
+    if (o <= 0) return 'text-muted';
+    return 'text-success';
   }, [properties]);
 
   const annualSupportFeeEur = useMemo(() => {
@@ -1072,34 +1071,34 @@ export default function AccountPage() {
     const consumption = current && previous ? current.value - previous.value : null;
 
     return (
-      <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-        <div className="text-sm text-white/50">{label}</div>
+      <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+        <div className="text-sm text-secondary">{label}</div>
         <div className="mt-3 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-white/70">{t('account.currentReading')}</span>
-            <span className="text-2xl font-semibold text-emerald-400">
+            <span className="text-sm text-secondary">{t('account.currentReading')}</span>
+            <span className="text-2xl font-semibold text-accent">
               {current ? current.value : '—'} {unit}
             </span>
           </div>
           {previous && (
-            <div className="flex items-center justify-between text-sm text-white/40">
+            <div className="flex items-center justify-between text-sm text-muted">
               <span>{t('account.previousReading')}</span>
               <span>{previous.value} {unit}</span>
             </div>
           )}
           {consumption !== null && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-white/50">{t('account.consumption')}</span>
-              <span className="text-yellow-300 font-medium">{consumption.toFixed(2)} {unit}</span>
+              <span className="text-secondary">{t('account.consumption')}</span>
+              <span className="text-warning font-medium">{consumption.toFixed(2)} {unit}</span>
             </div>
           )}
           {current && (
-            <div className="text-xs text-white/40 mt-1">
+            <div className="text-xs text-muted mt-1">
               {t('account.fromDate', { d: new Date(current.reading_date).toLocaleDateString(dateLocale) })}
             </div>
           )}
           {previous && (
-            <div className="text-xs text-white/40">
+            <div className="text-xs text-muted">
               {t('account.prevDate', { d: new Date(previous.reading_date).toLocaleDateString(dateLocale) })}
             </div>
           )}
@@ -1120,32 +1119,32 @@ export default function AccountPage() {
         return (
           <div className="space-y-4">
             {properties.length > 1 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+              <div className="rounded-[14px] border border-border bg-surface shadow-card p-4 text-sm text-secondary">
                 {t('account.onAccount', { count: properties.length, area: myVoteWeight.toFixed(1) })}
               </div>
             )}
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+            <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card">
               <div className="relative px-5 pb-5 pt-5 md:px-6 md:pt-6">
-                <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-emerald-500/10 blur-3xl" />
+                <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-bg blur-3xl" />
                 <div className="relative flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                       {properties.length > 1 ? t('account.selectedApt') : t('account.yourApt')}
                     </p>
                     <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <h2 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+                      <h2 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                         № {property?.apartment_number ?? '—'}
                       </h2>
-                      <p className="text-sm text-white/45">
+                      <p className="text-sm text-muted">
                         {property?.floor != null ? t('account.floorN', { n: property.floor }) : t('account.floorUnknown')}
                         {' · '}
                         {property?.area_sqm != null ? `${property.area_sqm} ${t('common.sqm')}` : t('account.areaUnknown')}
                       </p>
                     </div>
-                    <p className="mt-2 text-sm text-white/70">
+                    <p className="mt-2 text-sm text-secondary">
                       {property?.owner_name || t('account.ownerUnknown')}
                       {property?.owner_type ? (
-                        <span className="text-white/35">
+                        <span className="text-muted">
                           {' · '}
                           {labelOwnerType(property.owner_type, t)}
                           {property.company_name ? ` · ${property.company_name}` : ''}
@@ -1159,10 +1158,10 @@ export default function AccountPage() {
                     </span>
                     <span className={`rounded-full border px-2.5 py-1 text-xs ${
                       occupancyStatus === 'owner'
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                        ? 'border-accent/25 bg-accent-bg text-accent'
                         : occupancyStatus === 'standby'
-                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300'
-                          : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
+                          ? 'border-warning/25 bg-warning-bg text-warning'
+                          : 'border-accent/25 bg-accent-bg text-accent'
                     }`}>
                       {occupancyStatus === 'owner' && t('account.livesOwner')}
                       {occupancyStatus === 'standby' && t('account.away')}
@@ -1172,32 +1171,31 @@ export default function AccountPage() {
                 </div>
 
                 <div className="relative mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.debt')}</div>
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.debt')}</div>
                     <div className={`mt-1 text-lg font-semibold ${
-                      Number(property?.debt ?? 0) <= 0 ? 'text-emerald-300' :
-                      Number(property?.debt ?? 0) < 100 ? 'text-yellow-300' : 'text-red-400'
+                      Number(property?.debt ?? 0) <= 0 ? 'text-muted' : 'text-danger'
                     }`}>
                       {Number(property?.debt ?? 0).toFixed(2)} €
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.overpay')}</div>
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.overpay')}</div>
                     <div className={`mt-1 text-lg font-semibold ${
-                      Number(property?.overpayment ?? 0) > 0 ? 'text-emerald-400' : 'text-white'
+                      Number(property?.overpayment ?? 0) > 0 ? 'text-success' : 'text-muted'
                     }`}>
                       {Number(property?.overpayment ?? 0).toFixed(2)} €
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.feeYear')}</div>
-                    <div className="mt-1 text-lg font-semibold text-white">
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.feeYear')}</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">
                       {annualSupportFee(property?.area_sqm, supportRate).toFixed(0)} €
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.openRequests')}</div>
-                    <div className="mt-1 text-lg font-semibold text-white">
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.openRequests')}</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">
                       {requests.filter((r) =>
                         r.property_id === property?.id &&
                         r.status !== 'выполнена' &&
@@ -1208,16 +1206,16 @@ export default function AccountPage() {
                 </div>
 
                 <div className="relative mt-5">
-                  <p className="mb-2 text-[11px] uppercase tracking-wider text-white/35">{t('account.objectStatus')}</p>
-                  <div className="inline-flex w-full rounded-full bg-white/[0.04] p-1 sm:w-auto">
+                  <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.objectStatus')}</p>
+                  <div className="inline-flex w-full rounded-full bg-surface p-1 sm:w-auto">
                     <button
                       type="button"
                       disabled={listingSaving}
                       onClick={() => handleUpdateListing('в собственности')}
                       className={`flex-1 rounded-full px-4 py-2 text-sm transition disabled:opacity-50 sm:flex-none ${
                         currentListing === 'в собственности'
-                          ? 'bg-emerald-500/20 text-emerald-200 shadow-sm'
-                          : 'text-white/50 hover:text-white/80'
+                          ? 'bg-accent-bg text-accent'
+                          : 'text-secondary hover:text-foreground'
                       }`}
                     >
                       {t('account.owned')}
@@ -1228,8 +1226,8 @@ export default function AccountPage() {
                       onClick={() => handleUpdateListing('на продаже')}
                       className={`flex-1 rounded-full px-4 py-2 text-sm transition disabled:opacity-50 sm:flex-none ${
                         currentListing === 'на продаже'
-                          ? 'bg-amber-500/20 text-amber-200 shadow-sm'
-                          : 'text-white/50 hover:text-white/80'
+                          ? 'bg-warning/20 text-warning shadow-sm'
+                          : 'text-secondary hover:text-foreground'
                       }`}
                     >
                       {t('account.forSale')}
@@ -1241,21 +1239,21 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={() => setActiveMenu('жильцы')}
-                    className="rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/15"
+                    className="rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white shadow-card"
                   >
                     {t('account.manageOccupancy')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveMenu('заявки')}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
+                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover"
                   >
                     {t('account.requests')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveMenu('финансы')}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
+                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover"
                   >
                     {t('account.finance')}
                   </button>
@@ -1263,7 +1261,7 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03]">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card">
               <button
                 type="button"
                 onClick={() => setOwnerTransferOpen((v) => !v)}
@@ -1271,38 +1269,38 @@ export default function AccountPage() {
                 aria-expanded={ownerTransferOpen}
               >
                 <div>
-                  <h2 className="text-lg font-semibold text-emerald-400">{t('account.ownerTransfer')}</h2>
-                  <p className="mt-0.5 text-sm text-white/50">
+                  <h2 className="text-lg font-semibold text-accent">{t('account.ownerTransfer')}</h2>
+                  <p className="mt-0.5 text-sm text-secondary">
                     {pendingTransfer
                       ? t('account.transferPending')
                       : t('account.ownerTransferHint')}
                   </p>
                 </div>
-                <span className="shrink-0 text-white/40">{ownerTransferOpen ? '▲' : '▼'}</span>
+                <span className="shrink-0 text-muted">{ownerTransferOpen ? '▲' : '▼'}</span>
               </button>
               {ownerTransferOpen && (
-              <div className="border-t border-white/10 px-4 pb-6 pt-4 md:px-6">
-              <p className="text-sm text-white/50 mb-4">
+              <div className="border-t border-border px-4 pb-6 pt-4 md:px-6">
+              <p className="text-sm text-secondary mb-4">
                 {t('account.transferLead')}
               </p>
               {pendingTransfer ? (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+                <div className="rounded-xl border border-warning/25 bg-warning-bg p-4 text-sm text-warning">
                   {t('account.transferPending')}
-                  <div className="mt-2 text-white/70">
+                  <div className="mt-2 text-secondary">
                     {t('account.newOwner')}: {pendingTransfer.to_owner_name} ({pendingTransfer.to_owner_email})
                   </div>
                 </div>
               ) : (
                 <form onSubmit={handleSubmitTransfer} className="space-y-3">
                   <input
-                    className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.phOwnerName')}
                     value={transferForm.to_owner_name}
                     onChange={(e) => setTransferForm({ ...transferForm, to_owner_name: e.target.value })}
                     required
                   />
                   <input
-                    className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.phOwnerEmail')}
                     type="email"
                     value={transferForm.to_owner_email}
@@ -1310,13 +1308,13 @@ export default function AccountPage() {
                     required
                   />
                   <input
-                    className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.phPhoneOpt')}
                     value={transferForm.to_owner_phone}
                     onChange={(e) => setTransferForm({ ...transferForm, to_owner_phone: e.target.value })}
                   />
                   <textarea
-                    className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.phCommentUk')}
                     rows={3}
                     value={transferForm.note}
@@ -1325,7 +1323,7 @@ export default function AccountPage() {
                   <button
                     type="submit"
                     disabled={transferSubmitting}
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {transferSubmitting ? t('account.sending') : t('account.submitTransfer')}
                   </button>
@@ -1333,12 +1331,12 @@ export default function AccountPage() {
               )}
               {transfers.filter((tr) => tr.property_id === property?.id).length > 0 && (
                 <div className="mt-4 space-y-2">
-                  <div className="text-xs text-white/40">{t('account.transferHistory')}</div>
+                  <div className="text-xs text-muted">{t('account.transferHistory')}</div>
                   {transfers
                     .filter((tr) => tr.property_id === property?.id)
                     .slice(0, 5)
                     .map((tr) => (
-                      <div key={tr.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs">
+                      <div key={tr.id} className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
                         <span className={transferStatusClass(tr.status)}>{labelTransfer(tr.status, t)}</span>
                         {' · '}
                         {tr.to_owner_name} ({tr.to_owner_email})
@@ -1360,9 +1358,9 @@ export default function AccountPage() {
         return (
           <div className="space-y-6">
             {/* Статус проживания */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-              <h2 className="text-lg font-semibold text-emerald-400 mb-2">{t('account.occTitle')}</h2>
-              <p className="text-sm text-white/50 mb-4">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+              <h2 className="text-lg font-semibold text-accent mb-2">{t('account.occTitle')}</h2>
+              <p className="text-sm text-secondary mb-4">
                 {t('account.occLead', { n: String(property?.apartment_number ?? '') })}
               </p>
               <div className="grid gap-3 sm:grid-cols-3">
@@ -1372,13 +1370,13 @@ export default function AccountPage() {
                   disabled={occupancySaving}
                   className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
                     occupancyStatus === 'owner'
-                      ? 'border-emerald-500 bg-emerald-500/15'
-                      : 'border-white/10 bg-white/[0.04] hover:border-white/15'
+                      ? 'border-accent bg-accent-bg'
+                      : 'border-border bg-surface hover:border-border'
                   }`}
                 >
                   <div className="text-2xl mb-2">🏠</div>
-                  <div className="text-sm font-medium text-white">{t('account.occOwner')}</div>
-                  <div className="text-xs text-white/40 mt-1">{t('account.occOwnerHint')}</div>
+                  <div className="text-sm font-medium text-foreground">{t('account.occOwner')}</div>
+                  <div className="text-xs text-muted mt-1">{t('account.occOwnerHint')}</div>
                 </button>
 
                 {/* В отъезде */}
@@ -1387,13 +1385,13 @@ export default function AccountPage() {
                   disabled={occupancySaving}
                   className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
                     occupancyStatus === 'standby'
-                      ? 'border-yellow-500 bg-yellow-500/15'
-                      : 'border-white/10 bg-white/[0.04] hover:border-white/15'
+                      ? 'border-warning bg-warning-bg'
+                      : 'border-border bg-surface hover:border-border'
                   }`}
                 >
                   <div className="text-2xl mb-2">✈️</div>
-                  <div className="text-sm font-medium text-white">{t('account.occStandby')}</div>
-                  <div className="text-xs text-white/40 mt-1">{t('account.occStandbyHint')}</div>
+                  <div className="text-sm font-medium text-foreground">{t('account.occStandby')}</div>
+                  <div className="text-xs text-muted mt-1">{t('account.occStandbyHint')}</div>
                 </button>
 
                 {/* Арендаторы */}
@@ -1402,20 +1400,20 @@ export default function AccountPage() {
                   disabled={occupancySaving}
                   className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
                     occupancyStatus === 'rented'
-                      ? 'border-cyan-500 bg-cyan-500/15'
-                      : 'border-white/10 bg-white/[0.04] hover:border-white/15'
+                      ? 'border-accent bg-accent-bg'
+                      : 'border-border bg-surface hover:border-border'
                   }`}
                 >
                   <div className="text-2xl mb-2">👥</div>
-                  <div className="text-sm font-medium text-white">{t('account.occRent')}</div>
-                  <div className="text-xs text-white/40 mt-1">{t('account.occRentHint')}</div>
+                  <div className="text-sm font-medium text-foreground">{t('account.occRent')}</div>
+                  <div className="text-xs text-muted mt-1">{t('account.occRentHint')}</div>
                 </button>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-              <h2 className="text-lg font-semibold text-emerald-400 mb-2">{t('registry.occupantKind')}</h2>
-              <p className="text-sm text-white/50 mb-4">{t('registry.occupantLead')}</p>
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+              <h2 className="text-lg font-semibold text-accent mb-2">{t('registry.occupantKind')}</h2>
+              <p className="text-sm text-secondary mb-4">{t('registry.occupantLead')}</p>
               <div className="grid gap-3 sm:grid-cols-3">
                 {(['owner', 'tenant', 'user'] as OccupantKind[]).map((kind) => (
                   <button
@@ -1425,39 +1423,39 @@ export default function AccountPage() {
                     disabled={occupancySaving}
                     className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
                       occupantKind === kind
-                        ? 'border-emerald-500 bg-emerald-500/15'
-                        : 'border-white/10 bg-white/[0.04] hover:border-white/15'
+                        ? 'border-accent bg-accent-bg'
+                        : 'border-border bg-surface hover:border-border'
                     }`}
                   >
-                    <div className="text-sm font-medium text-white">{labelOccupantKind(kind, t)}</div>
+                    <div className="text-sm font-medium text-foreground">{labelOccupantKind(kind, t)}</div>
                   </button>
                 ))}
               </div>
               {occupantKind !== 'owner' && (
                 <form onSubmit={handleSaveOccupantDetails} className="mt-4 grid gap-3 sm:grid-cols-2">
                   <input
-                    className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('registry.occupantName')}
                     value={occupantForm.name}
                     onChange={(e) => setOccupantForm({ ...occupantForm, name: e.target.value })}
                   />
                   <input
-                    className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('registry.occupantPhone')}
                     value={occupantForm.phone}
                     onChange={(e) => setOccupantForm({ ...occupantForm, phone: e.target.value })}
                   />
                   <input
-                    className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     placeholder={t('registry.occupantEmail')}
                     type="email"
                     value={occupantForm.email}
                     onChange={(e) => setOccupantForm({ ...occupantForm, email: e.target.value })}
                   />
-                  <label className="text-sm text-white/60">
+                  <label className="text-sm text-secondary">
                     {t('registry.occupantUntil')}
                     <input
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                      className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                       type="date"
                       value={occupantForm.until}
                       onChange={(e) => setOccupantForm({ ...occupantForm, until: e.target.value })}
@@ -1466,7 +1464,7 @@ export default function AccountPage() {
                   <button
                     type="submit"
                     disabled={occupancySaving}
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2"
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2"
                   >
                     {occupancySaving ? t('common.saving') : t('common.save')}
                   </button>
@@ -1477,14 +1475,14 @@ export default function AccountPage() {
             {/* Информация о жильцах */}
             <>
                 {/* Период аренды */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-                  <h2 className="text-lg font-semibold text-emerald-400 mb-4">{t('account.stayPeriod')}</h2>
+                <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+                  <h2 className="text-lg font-semibold text-accent mb-4">{t('account.stayPeriod')}</h2>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="text-sm text-white/70 mb-1 block">{t('account.checkIn')}</label>
+                      <label className="text-sm text-secondary mb-1 block">{t('account.checkIn')}</label>
                       <input
                         type="date"
-                        className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         value={guestForm.check_in}
                         onChange={(e) =>
                           setGuestForm({ ...guestForm, check_in: e.target.value })
@@ -1492,10 +1490,10 @@ export default function AccountPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-sm text-white/70 mb-1 block">{t('account.checkOut')}</label>
+                      <label className="text-sm text-secondary mb-1 block">{t('account.checkOut')}</label>
                       <input
                         type="date"
-                        className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         value={guestForm.check_out}
                         onChange={(e) =>
                           setGuestForm({ ...guestForm, check_out: e.target.value })
@@ -1503,20 +1501,20 @@ export default function AccountPage() {
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-white/40 mt-2">
+                  <p className="text-xs text-muted mt-2">
                     {t('account.stayDatesHint')}
                   </p>
                 </div>
 
                 {/* Форма добавления жильца */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-                  <h2 className="text-lg font-semibold text-emerald-400 mb-4">
+                <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+                  <h2 className="text-lg font-semibold text-accent mb-4">
                     {t('account.addGuest')}
                   </h2>
                   <form onSubmit={handleAddGuest} className="space-y-3">
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       <input
-                        className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         placeholder={t('account.firstName')}
                         value={guestForm.first_name}
                         onChange={(e) =>
@@ -1525,7 +1523,7 @@ export default function AccountPage() {
                         required
                       />
                       <input
-                        className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         placeholder={t('account.lastName')}
                         value={guestForm.last_name}
                         onChange={(e) =>
@@ -1534,7 +1532,7 @@ export default function AccountPage() {
                         required
                       />
                       <input
-                        className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         placeholder={t('account.birthYear')}
                         type="number"
                         min="1900"
@@ -1544,31 +1542,31 @@ export default function AccountPage() {
                           setGuestForm({ ...guestForm, birth_year: e.target.value })
                         }
                       />
-                      <label className="flex items-center gap-2 text-sm text-white/70 sm:col-span-1">
+                      <label className="flex items-center gap-2 text-sm text-secondary sm:col-span-1">
                         <input
                           type="checkbox"
                           checked={guestForm.is_child}
                           onChange={(e) =>
                             setGuestForm({ ...guestForm, is_child: e.target.checked })
                           }
-                          className="w-4 h-4 accent-emerald-500"
+                          className="w-4 h-4 accent-accent"
                         />
                         {t('account.child18')}
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-white/70 sm:col-span-1">
+                      <label className="flex items-center gap-2 text-sm text-secondary sm:col-span-1">
                         <input
                           type="checkbox"
                           checked={guestForm.is_permanent}
                           onChange={(e) =>
                             setGuestForm({ ...guestForm, is_permanent: e.target.checked })
                           }
-                          className="w-4 h-4 accent-emerald-500"
+                          className="w-4 h-4 accent-accent"
                         />
                         {t('registry.resident')}
                       </label>
                       <input
                         type="date"
-                        className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         value={guestForm.check_in}
                         onChange={(e) =>
                           setGuestForm({ ...guestForm, check_in: e.target.value })
@@ -1577,7 +1575,7 @@ export default function AccountPage() {
                       />
                       <input
                         type="date"
-                        className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         value={guestForm.check_out}
                         onChange={(e) =>
                           setGuestForm({ ...guestForm, check_out: e.target.value })
@@ -1588,7 +1586,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={guestAdding}
-                      className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
+                      className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
                     >
                       {guestAdding ? t('account.adding') : t('account.addGuestPlus')}
                     </button>
@@ -1596,15 +1594,15 @@ export default function AccountPage() {
                 </div>
 
                 {/* Список жильцов */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+                <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-emerald-400">
+                    <h2 className="text-lg font-semibold text-accent">
                       {t('account.guestsN', { n: guests.length })}
                     </h2>
                     {guests.length > 0 && (
                       <button
                         onClick={handleClearAllGuests}
-                        className="text-xs text-red-400 hover:text-red-300"
+                        className="text-xs text-danger hover:text-danger"
                       >
                         {t('account.clearAll')}
                       </button>
@@ -1612,12 +1610,12 @@ export default function AccountPage() {
                   </div>
 
                   {guests.length === 0 ? (
-                    <div className="text-sm text-white/40">{t('account.noGuests')}</div>
+                    <div className="text-sm text-muted">{t('account.noGuests')}</div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-left text-white/50 border-b border-white/10">
+                          <tr className="text-left text-secondary border-b border-border">
                             <th className="py-2 px-3">№</th>
                             <th className="py-2 px-3">{t('account.firstName')}</th>
                             <th className="py-2 px-3">{t('account.lastName')}</th>
@@ -1633,30 +1631,30 @@ export default function AccountPage() {
                           {guests.map((g, i) => (
                             <tr
                               key={g.id}
-                              className="border-b border-white/10 hover:bg-white/[0.04]"
+                              className="border-b border-border hover:bg-surface"
                             >
-                              <td className="py-2 px-3 text-white/40">{i + 1}</td>
-                              <td className="py-2 px-3 text-white">{g.first_name}</td>
-                              <td className="py-2 px-3 text-white">{g.last_name}</td>
-                              <td className="py-2 px-3 text-white/70">
+                              <td className="py-2 px-3 text-muted">{i + 1}</td>
+                              <td className="py-2 px-3 text-foreground">{g.first_name}</td>
+                              <td className="py-2 px-3 text-foreground">{g.last_name}</td>
+                              <td className="py-2 px-3 text-secondary">
                                 {g.birth_year ?? '—'}
                               </td>
                               <td className="py-2 px-3">
                                 {g.is_child ? (
-                                  <span className="text-yellow-300">{t('account.child')}</span>
+                                  <span className="text-warning">{t('account.child')}</span>
                                 ) : (
-                                  <span className="text-emerald-300">{t('account.adult')}</span>
+                                  <span className="text-accent">{t('account.adult')}</span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-white/60 text-xs">
+                              <td className="py-2 px-3 text-secondary text-xs">
                                 {g.is_permanent ? t('common.yes') : t('common.no')}
                               </td>
-                              <td className="py-2 px-3 text-white/50 text-xs">
+                              <td className="py-2 px-3 text-secondary text-xs">
                                 {g.check_in
                                   ? new Date(g.check_in).toLocaleDateString(dateLocale)
                                   : '—'}
                               </td>
-                              <td className="py-2 px-3 text-white/50 text-xs">
+                              <td className="py-2 px-3 text-secondary text-xs">
                                 {g.check_out
                                   ? new Date(g.check_out).toLocaleDateString(dateLocale)
                                   : '—'}
@@ -1664,7 +1662,7 @@ export default function AccountPage() {
                               <td className="py-2 px-3">
                                 <button
                                   onClick={() => handleRemoveGuest(g.id)}
-                                  className="rounded px-2 py-1 text-xs bg-red-900/50 hover:bg-red-800/50 text-red-300"
+                                  className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger"
                                 >
                                   ✕
                                 </button>
@@ -1679,16 +1677,16 @@ export default function AccountPage() {
               </>
 
             {/* Домашние животные — показывается всегда */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-              <h2 className="text-lg font-semibold text-emerald-400 mb-2">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+              <h2 className="text-lg font-semibold text-accent mb-2">
                 {t('registry.petsTitle')} 🐾
               </h2>
-              <p className="text-sm text-white/50 mb-4">
+              <p className="text-sm text-secondary mb-4">
                 {t('registry.petsHintChip')}
               </p>
               <form onSubmit={handleAddPet} className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <select
-                  className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   value={petForm.species}
                   onChange={(e) => setPetForm({ ...petForm, species: e.target.value })}
                 >
@@ -1696,42 +1694,42 @@ export default function AccountPage() {
                   <option value="cat">{t('registry.cat')}</option>
                   <option value="other">{t('registry.otherPet')}</option>
                 </select>
-                <input className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   placeholder={t('registry.petName')} value={petForm.name}
                   onChange={(e) => setPetForm({ ...petForm, name: e.target.value })} />
-                <input className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   placeholder={t('registry.chip')} value={petForm.chip_no}
                   onChange={(e) => setPetForm({ ...petForm, chip_no: e.target.value })} />
-                <input className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   placeholder={t('registry.passport')} value={petForm.passport_no}
                   onChange={(e) => setPetForm({ ...petForm, passport_no: e.target.value })} />
                 <button type="submit" disabled={petSaving}
-                  className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {t('registry.addPet')}
                 </button>
               </form>
               {pets.length > 0 && (
                 <div className="mb-4 space-y-2">
                   {pets.map((pet) => (
-                    <div key={pet.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-sm">
+                    <div key={pet.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
                       <div>
-                        <div className="text-white">
+                        <div className="text-foreground">
                           {pet.species === 'dog' ? t('registry.dog') : pet.species === 'cat' ? t('registry.cat') : t('registry.otherPet')}
                           {pet.name ? ` · ${pet.name}` : ''}
                         </div>
-                        <div className="text-xs text-white/45">
+                        <div className="text-xs text-muted">
                           {pet.chip_no ? `${t('registry.chip')}: ${pet.chip_no}` : ''}
                           {pet.passport_no ? ` · ${t('registry.passport')}: ${pet.passport_no}` : ''}
                         </div>
                       </div>
-                      <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-red-400">✕</button>
+                      <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-danger">✕</button>
                     </div>
                   ))}
                 </div>
               )}
-              <p className="text-sm text-white/50 mb-2">{t('account.petsHint')}</p>
+              <p className="text-sm text-secondary mb-2">{t('account.petsHint')}</p>
               <textarea
-                className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                 placeholder={t('account.petsPh')}
                 rows={3}
                 value={petInfo}
@@ -1740,7 +1738,7 @@ export default function AccountPage() {
               <button
                 onClick={handleSavePetInfo}
                 disabled={occupancySaving}
-                className="mt-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
+                className="mt-3 rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
               >
                 {occupancySaving ? t('common.saving') : t('common.save')}
               </button>
@@ -1763,25 +1761,25 @@ export default function AccountPage() {
         return (
           <div className="space-y-4">
             {properties.length > 1 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
+              <div className="rounded-[14px] border border-border bg-surface shadow-card px-4 py-3 text-sm text-secondary">
                 {t('account.summaryApts', { count: properties.length, area: myVoteWeight.toFixed(1) })}
               </div>
             )}
 
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+            <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card">
               <div className="relative px-5 pb-5 pt-5 md:px-6 md:pt-6">
-                <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-emerald-500/10 blur-3xl" />
+                <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-bg blur-3xl" />
                 <div className="relative flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                       {t('account.toPay')}
                     </p>
                     <div className={`mt-1 text-3xl font-semibold tracking-tight md:text-4xl ${
-                      totalDebt > 0 ? debtColor : 'text-emerald-300'
+                      totalDebt > 0 ? debtColor : 'text-muted'
                     }`}>
                       {balanceValue.toFixed(2)} €
                     </div>
-                    <p className="mt-2 text-sm text-white/50">
+                    <p className="mt-2 text-sm text-secondary">
                       {totalDebt > 0
                         ? t('account.hasDebt')
                         : totalOver > 0
@@ -1791,41 +1789,41 @@ export default function AccountPage() {
                   </div>
                   <span className={`rounded-full border px-2.5 py-1 text-xs ${
                     totalDebt > 0
-                      ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300'
-                      : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      ? 'border-yellow-500/30 bg-yellow-500/10 text-warning'
+                      : 'border-accent/25 bg-accent-bg text-accent'
                   }`}>
                     {totalDebt > 0 ? t('account.needPay') : t('account.paid')}
                   </span>
                 </div>
 
                 <div className="relative mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.debt')}</div>
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.debt')}</div>
                     <div className={`mt-1 text-lg font-semibold ${debtColor}`}>
                       {totalDebt.toFixed(2)} €
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.overpay')}</div>
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.overpay')}</div>
                     <div className={`mt-1 text-lg font-semibold ${overColor}`}>
                       {totalOver.toFixed(2)} €
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.feeYear')}</div>
-                    <div className="mt-1 text-lg font-semibold text-white">
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.feeYear')}</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">
                       {annualSupportFeeEur.toFixed(0)} €
                     </div>
-                    <div className="mt-0.5 text-[11px] text-white/35">
+                    <div className="mt-0.5 text-[11px] text-muted">
                       {myVoteWeight.toFixed(1)} м² × {supportRate} €
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                    <div className="text-[11px] text-white/40">{t('account.feeMonth')}</div>
-                    <div className="mt-1 text-lg font-semibold text-white">
+                  <div className="rounded-xl bg-surface px-3 py-3">
+                    <div className="text-[11px] text-muted">{t('account.feeMonth')}</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">
                       {monthlyFee.toFixed(2)} €
                     </div>
-                    <div className="mt-0.5 text-[11px] text-white/35">{t('account.approx')}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{t('account.approx')}</div>
                   </div>
                 </div>
 
@@ -1833,14 +1831,14 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={() => setActiveMenu('счётчики')}
-                    className="rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/15"
+                    className="rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white shadow-card"
                   >
                     {t('account.metersBtn')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveMenu('расходы_ук')}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
+                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover"
                   >
                     {t('account.expenses')}
                   </button>
@@ -1857,19 +1855,19 @@ export default function AccountPage() {
                     onClick={() => setSelectedPropertyId(p.id)}
                     className={`rounded-2xl border px-4 py-3 text-left transition ${
                       p.id === property?.id
-                        ? 'border-emerald-500/40 bg-emerald-500/10'
-                        : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.05]'
+                        ? 'border-accent/30 bg-accent-bg'
+                        : 'border-border bg-surface hover:bg-surface'
                     }`}
                   >
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-medium text-white">№ {p.apartment_number}</span>
-                      <span className="text-xs text-white/40">{Number(p.area_sqm ?? 0)} {t('common.sqm')}</span>
+                      <span className="text-sm font-medium text-foreground">№ {p.apartment_number}</span>
+                      <span className="text-xs text-muted">{Number(p.area_sqm ?? 0)} {t('common.sqm')}</span>
                     </div>
                     <div className="mt-2 flex gap-4 text-sm">
-                      <span className={Number(p.debt ?? 0) > 0 ? 'text-yellow-300' : 'text-white/50'}>
+                      <span className={Number(p.debt ?? 0) > 0 ? 'text-warning' : 'text-secondary'}>
                         {t('account.debtAmt', { n: Number(p.debt ?? 0).toFixed(2) })}
                       </span>
-                      <span className={Number(p.overpayment ?? 0) > 0 ? 'text-emerald-300' : 'text-white/40'}>
+                      <span className={Number(p.overpayment ?? 0) > 0 ? 'text-success' : 'text-muted'}>
                         +{Number(p.overpayment ?? 0).toFixed(2)} €
                       </span>
                     </div>
@@ -1878,47 +1876,47 @@ export default function AccountPage() {
               </div>
             )}
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                 {t('account.houseTariffs')}
               </p>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                  <div className="text-[11px] text-white/40">{t('account.elDay')}</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{DAY_RATE}</div>
-                  <div className="text-[11px] text-white/35">{t('account.perKwh')}</div>
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <div className="text-[11px] text-muted">{t('account.elDay')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">{DAY_RATE}</div>
+                  <div className="text-[11px] text-muted">{t('account.perKwh')}</div>
                 </div>
-                <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                  <div className="text-[11px] text-white/40">{t('account.elNight')}</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{NIGHT_RATE}</div>
-                  <div className="text-[11px] text-white/35">{t('account.perKwh')}</div>
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <div className="text-[11px] text-muted">{t('account.elNight')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">{NIGHT_RATE}</div>
+                  <div className="text-[11px] text-muted">{t('account.perKwh')}</div>
                 </div>
-                <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                  <div className="text-[11px] text-white/40">{t('account.water')}</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{WATER_RATE}</div>
-                  <div className="text-[11px] text-white/35">{t('account.perM3')}</div>
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <div className="text-[11px] text-muted">{t('account.water')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">{WATER_RATE}</div>
+                  <div className="text-[11px] text-muted">{t('account.perM3')}</div>
                 </div>
-                <div className="rounded-xl bg-white/[0.04] px-3 py-3">
-                  <div className="text-[11px] text-white/40">{t('account.supportFee')}</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{supportRate}</div>
-                  <div className="text-[11px] text-white/35">{t('account.perSqmYear')}</div>
+                <div className="rounded-xl bg-surface px-3 py-3">
+                  <div className="text-[11px] text-muted">{t('account.supportFee')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">{supportRate}</div>
+                  <div className="text-[11px] text-muted">{t('account.perSqmYear')}</div>
                 </div>
               </div>
             </div>
 
             {supportLedger.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
+              <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                   {t('account.feePayments')}
                 </p>
                 <div className="mt-3 space-y-2">
                   {supportLedger.slice(0, 8).map((row) => (
                     <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                      <span className="text-white/50">
+                      <span className="text-secondary">
                         {new Date(row.created_at).toLocaleDateString(dateLocale)}
                         {properties.length > 1 ? ` · ${t('picker.apt', { n: properties.find((p) => p.id === row.property_id)?.apartment_number ?? '' })}` : ''}
                       </span>
-                      <span className={row.kind === 'payment' ? 'text-emerald-300' : 'text-amber-200'}>
+                      <span className={row.kind === 'payment' ? 'text-accent' : 'text-warning'}>
                         {row.kind === 'payment' ? '+' : `${t('account.charge')} `}
                         {Number(row.amount).toFixed(2)} €
                       </span>
@@ -1942,12 +1940,12 @@ export default function AccountPage() {
             ? ukExpensesTotal
             : expensesByYear.get(expenseYearFilter)?.total ?? 0;
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h2 className="text-lg font-semibold text-emerald-400">{t('account.expensesTitle')}</h2>
-              <div className="text-sm text-white/70">
+              <h2 className="text-lg font-semibold text-accent">{t('account.expensesTitle')}</h2>
+              <div className="text-sm text-secondary">
                 {expenseYearFilter === 'all' ? t('account.allYears') : expenseYearFilter}:{' '}
-                <span className="font-semibold text-emerald-400">{visibleTotal.toFixed(2)} €</span>
+                <span className="font-semibold text-accent">{visibleTotal.toFixed(2)} €</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mb-5">
@@ -1955,8 +1953,8 @@ export default function AccountPage() {
                 onClick={() => setExpenseYearFilter('all')}
                 className={`rounded-lg px-3 py-1.5 text-sm border ${
                   expenseYearFilter === 'all'
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                    : 'bg-[#070b0a]/40 text-white/50 border-white/10 hover:text-white/80'
+                    ? 'bg-accent-bg text-accent border-accent/25'
+                    : 'bg-surface-secondary text-secondary border-border hover:text-foreground'
                 }`}
               >
                 {t('account.allYears')}
@@ -1969,21 +1967,21 @@ export default function AccountPage() {
                     onClick={() => setExpenseYearFilter(year)}
                     className={`rounded-lg px-3 py-1.5 text-sm border ${
                       expenseYearFilter === year
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : 'bg-[#070b0a]/40 text-white/50 border-white/10 hover:text-white/80'
+                        ? 'bg-accent-bg text-accent border-accent/25'
+                        : 'bg-surface-secondary text-secondary border-border hover:text-foreground'
                     }`}
                   >
                     {year}
-                    <span className="ml-2 text-xs text-white/40">{total.toFixed(2)} €</span>
+                    <span className="ml-2 text-xs text-muted">{total.toFixed(2)} €</span>
                   </button>
                 );
               })}
             </div>
-            <p className="mb-4 text-sm text-white/50">
+            <p className="mb-4 text-sm text-secondary">
               {t('account.expensesPublished')}
             </p>
             {publishedUkExpenses.length === 0 ? (
-              <div className="text-sm text-white/50">{t('account.expensesEmpty')}</div>
+              <div className="text-sm text-secondary">{t('account.expensesEmpty')}</div>
             ) : (
               <div className="space-y-6">
                 {yearsToShow.map((year) => {
@@ -1992,30 +1990,30 @@ export default function AccountPage() {
                   return (
                     <div key={year}>
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-emerald-300">{year}</h3>
-                        <span className="text-sm text-white/50">
+                        <h3 className="text-sm font-semibold text-accent">{year}</h3>
+                        <span className="text-sm text-secondary">
                           {(group?.total ?? 0).toFixed(2)} €
                         </span>
                       </div>
                       {items.length === 0 ? (
-                        <div className="text-sm text-white/40">{t('account.noExpensesYear', { year })}</div>
+                        <div className="text-sm text-muted">{t('account.noExpensesYear', { year })}</div>
                       ) : (
                         <div className="space-y-2">
                           {items.map((e) => {
                             const photos = expensePhotoUrls(e);
                             return (
-                              <div key={e.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                              <div key={e.id} className="rounded-xl border border-border bg-surface p-3">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <div className="text-sm font-medium text-white">{e.title?.trim() || '—'}</div>
-                                    <div className="mt-0.5 text-xs text-white/40">{formatUkDate(e.expense_date)}</div>
+                                    <div className="text-sm font-medium text-foreground">{e.title?.trim() || '—'}</div>
+                                    <div className="mt-0.5 text-xs text-muted">{formatUkDate(e.expense_date)}</div>
                                     {photos.length > 0 && (
                                       <div className="mt-2">
                                         <ExpensePhotoStrip urls={photos} />
                                       </div>
                                     )}
                                   </div>
-                                  <div className="text-sm font-semibold text-white">
+                                  <div className="text-sm font-semibold text-foreground">
                                     {Number(e.amount).toFixed(2)} €
                                   </div>
                                 </div>
@@ -2038,8 +2036,8 @@ export default function AccountPage() {
       // ===========================================================
       case 'счётчики':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <h2 className="text-lg font-semibold text-emerald-400 mb-4">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+            <h2 className="text-lg font-semibold text-accent mb-4">
               {t('account.metersTitle')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
             </h2>
             <div className="grid gap-4 md:grid-cols-3">
@@ -2056,26 +2054,26 @@ export default function AccountPage() {
       case 'заявки':
         return (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <h2 className="text-lg font-semibold text-emerald-400">{t('account.requests')}</h2>
+                <h2 className="text-lg font-semibold text-accent">{t('account.requests')}</h2>
                 <button
                   type="button"
                   onClick={() => setShowRequestForm((v) => !v)}
-                  className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white"
+                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white"
                 >
                   {showRequestForm ? t('account.hideForm') : t('account.createRequest')}
                 </button>
               </div>
               {showRequestForm && (
-                <form onSubmit={handleCreateRequest} className="mb-6 space-y-4 rounded-xl border border-emerald-700/40 bg-white/[0.04] p-4">
-                  <h3 className="text-sm font-semibold text-emerald-300">
+                <form onSubmit={handleCreateRequest} className="mb-6 space-y-4 rounded-xl border border-border bg-surface p-4">
+                  <h3 className="text-sm font-semibold text-accent">
                     {t('account.newRequest')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
                   </h3>
                   <div>
-                    <label className="text-sm text-white/70 mb-1 block">{t('account.subject')}</label>
+                    <label className="text-sm text-secondary mb-1 block">{t('account.subject')}</label>
                     <input
-                      className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
                       placeholder={t('account.phReqTitle')}
@@ -2083,9 +2081,9 @@ export default function AccountPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm text-white/70 mb-1 block">{t('account.description')}</label>
+                    <label className="text-sm text-secondary mb-1 block">{t('account.description')}</label>
                     <textarea
-                      className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder={t('account.phReqBody')}
@@ -2095,9 +2093,9 @@ export default function AccountPage() {
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="text-sm text-white/70 mb-1 block">{t('account.category')}</label>
+                      <label className="text-sm text-secondary mb-1 block">{t('account.category')}</label>
                       <select
-                        className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         value={category}
                         onChange={(e) => setCategory(e.target.value as Category)}
                       >
@@ -2109,9 +2107,9 @@ export default function AccountPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-sm text-white/70 mb-1 block">{t('account.priority')}</label>
+                      <label className="text-sm text-secondary mb-1 block">{t('account.priority')}</label>
                       <select
-                        className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         value={priority}
                         onChange={(e) => setPriority(e.target.value as Priority)}
                       >
@@ -2122,51 +2120,51 @@ export default function AccountPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm text-white/70 mb-1 block">{t('account.photoOpt')}</label>
+                    <label className="text-sm text-secondary mb-1 block">{t('account.photoOpt')}</label>
                     <input
                       type="file"
                       accept="image/*"
-                      className="w-full text-sm text-white/50 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:text-white/80 hover:file:bg-white/20"
+                      className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary hover:file:bg-hover"
                       onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={creating}
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
                   >
                     {creating ? t('account.sending') : t('account.submitRequest')}
                   </button>
                 </form>
               )}
-              <div className="text-sm text-white/50 mb-3">{t('account.countPcs', { n: requests.length })}</div>
+              <div className="text-sm text-secondary mb-3">{t('account.countPcs', { n: requests.length })}</div>
               <div className="space-y-3">
               {requests.length === 0 ? (
-                <div className="text-sm text-white/50">{t('account.noRequestsYet')}</div>
+                <div className="text-sm text-secondary">{t('account.noRequestsYet')}</div>
               ) : (
                 requests.map((r) => (
                   <div
                     key={r.id}
-                    className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                    className="rounded-[14px] border border-border bg-surface p-4 shadow-card"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm text-white/70">
+                        <div className="text-sm text-secondary">
                           {t('picker.apt', { n: String(properties.find((p) => p.id === r.property_id)?.apartment_number ?? r.property_id ?? '') })} · {t('account.categoryOf', { c: labelCategory(r.category, t) })}
                         </div>
-                        <div className="text-white font-medium">{r.subject}</div>
+                        <div className="text-foreground font-medium">{r.subject}</div>
                       </div>
-                      <div className="text-sm text-white/70">
-                        {t('account.priority')}: <span className="text-white">{labelPriority(r.priority, t)}</span>
+                      <div className="text-sm text-secondary">
+                        {t('account.priority')}: <span className="text-foreground">{labelPriority(r.priority, t)}</span>
                         <div>
-                          {t('home.tagStatus')}: <span className="text-white">{labelRequestStatus(r.status, t)}</span>
+                          {t('home.tagStatus')}: <span className="text-foreground">{labelRequestStatus(r.status, t)}</span>
                         </div>
                       </div>
                     </div>
-                    <div className="mt-2 text-sm text-white/80">{r.description}</div>
+                    <div className="mt-2 text-sm text-secondary">{r.description}</div>
                     {r.photo_url && (
                       <a
-                        className="mt-3 block text-sm text-cyan-200 hover:underline"
+                        className="mt-3 block text-sm text-accent hover:underline"
                         href={r.photo_url}
                         target="_blank"
                         rel="noreferrer"
@@ -2174,7 +2172,7 @@ export default function AccountPage() {
                         {t('account.viewPhoto')}
                       </a>
                     )}
-                    <div className="mt-2 text-xs text-white/40">
+                    <div className="mt-2 text-xs text-muted">
                       {new Date(r.created_at).toLocaleString(dateLocale)}
                     </div>
                   </div>
@@ -2190,22 +2188,22 @@ export default function AccountPage() {
       // ===========================================================
       case 'сообщения':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <h2 className="text-lg font-semibold text-emerald-400 mb-4">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+            <h2 className="text-lg font-semibold text-accent mb-4">
               {t('account.announcementsTitle')}
             </h2>
             <div className="space-y-3">
               {announcements.length === 0 ? (
-                <div className="text-sm text-white/50">{t('account.noAnnouncements')}</div>
+                <div className="text-sm text-secondary">{t('account.noAnnouncements')}</div>
               ) : (
                 announcements.map((a) => (
                   <div
                     key={a.id}
-                    className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                    className="rounded-[14px] border border-border bg-surface p-4 shadow-card"
                   >
-                    <h3 className="text-white font-semibold">{a.title}</h3>
-                    <p className="mt-2 text-sm text-white/70 whitespace-pre-wrap">{a.body}</p>
-                    <div className="mt-2 text-xs text-white/40">
+                    <h3 className="text-foreground font-semibold">{a.title}</h3>
+                    <p className="mt-2 text-sm text-secondary whitespace-pre-wrap">{a.body}</p>
+                    <div className="mt-2 text-xs text-muted">
                       {a.created_by && `${t('account.fromBy', { name: a.created_by })} · `}
                       {new Date(a.created_at).toLocaleString(dateLocale)}
                     </div>
@@ -2222,13 +2220,13 @@ export default function AccountPage() {
       case 'опросы':
         return (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-              <h2 className="text-lg font-semibold text-emerald-400 mb-1">{t('account.pollsTitle')}</h2>
-              <p className="text-sm text-white/50 mb-4">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+              <h2 className="text-lg font-semibold text-accent mb-1">{t('account.pollsTitle')}</h2>
+              <p className="text-sm text-secondary mb-4">
                 {t('account.pollsLead')}
               </p>
               {polls.length === 0 ? (
-                <div className="text-sm text-white/50">{t('account.noPolls')}</div>
+                <div className="text-sm text-secondary">{t('account.noPolls')}</div>
               ) : (
                 <div className="space-y-4">
                   {polls.map((poll) => {
@@ -2242,25 +2240,25 @@ export default function AccountPage() {
                     const decision = pollDecisionLabel(poll, tally.accepted);
                     const decisionLabel = labelPollDecision(decision, t);
                     return (
-                      <div key={poll.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                      <div key={poll.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <span className={`text-xs rounded-full px-2 py-0.5 border ${pollCategoryClass(poll.category)}`}>
                             {labelPollCategory(poll.category, t)}
                           </span>
                           <span className={`text-xs ${
-                            decision === 'принято' ? 'text-emerald-300' :
-                            decision === 'не принято' ? 'text-red-300' : 'text-white/50'
+                            decision === 'принято' ? 'text-accent' :
+                            decision === 'не принято' ? 'text-danger' : 'text-secondary'
                           }`}>
                             {decisionLabel}
                           </span>
                           {myVoteWeight > 0 && (
-                            <span className="text-xs text-white/40">
+                            <span className="text-xs text-muted">
                               {t('account.yourWeight', { n: myVoteWeight.toFixed(1) })}
                               {properties.length > 1 ? ` · ${t('account.aptsShort', { n: properties.length })}` : ''}
                             </span>
                           )}
                         </div>
-                        <h3 className="text-white font-semibold mb-2">{poll.title}</h3>
+                        <h3 className="text-foreground font-semibold mb-2">{poll.title}</h3>
                         <PollDetails
                           poll={poll}
                           options={options}
@@ -2276,7 +2274,7 @@ export default function AccountPage() {
                             onVote={open ? (optionId) => handleVote(poll, optionId) : undefined}
                           />
                         </div>
-                        <div className="mt-2 text-xs text-white/40">
+                        <div className="mt-2 text-xs text-muted">
                           {myVote ? t('account.voteSaved') : open ? t('account.notVotedYet') : ''}
                         </div>
                       </div>
@@ -2293,14 +2291,14 @@ export default function AccountPage() {
       // ===========================================================
       case 'чат':
         return (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0b1210] md:m-4 md:rounded-2xl md:border md:border-white/10">
-            <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface md:m-4 md:rounded-2xl md:border md:border-border">
+            <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-bg text-xs font-semibold text-accent">
                 {t('common.uk')}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-white">{t('account.chatTitle')}</div>
-                <div className="truncate text-xs text-white/40">
+                <div className="truncate text-sm font-semibold text-foreground">{t('account.chatTitle')}</div>
+                <div className="truncate text-xs text-muted">
                   {t('common.apt')} {property?.apartment_number}
                   {property?.owner_name ? ` · ${property.owner_name}` : ''}
                 </div>
@@ -2310,8 +2308,8 @@ export default function AccountPage() {
             <div ref={chatScrollRef} className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
               {chatMessages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 text-2xl">💬</div>
-                  <p className="max-w-xs text-sm text-white/45">{t('account.chatEmpty')}</p>
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-secondary text-2xl">💬</div>
+                  <p className="max-w-xs text-sm text-muted">{t('account.chatEmpty')}</p>
                 </div>
               ) : (
                 <div className="mx-auto flex w-full max-w-3xl flex-col">
@@ -2344,7 +2342,7 @@ export default function AccountPage() {
                       <div key={m.id}>
                         {dayLabel && (
                           <div className="my-4 flex justify-center">
-                            <span className="rounded-full bg-white/8 px-3 py-1 text-[11px] text-white/45">
+                            <span className="rounded-full bg-hover px-3 py-1 text-[11px] text-muted">
                               {dayLabel}
                             </span>
                           </div>
@@ -2353,8 +2351,8 @@ export default function AccountPage() {
                           <div
                             className={`inline-flex max-w-[85%] flex-col px-3.5 py-2 text-[15px] leading-snug ${
                               isOwner
-                                ? `bg-emerald-600 text-white ${lastInGroup ? 'rounded-2xl rounded-br-md' : 'rounded-2xl'}`
-                                : `bg-[#1c2624] text-white ${lastInGroup ? 'rounded-2xl rounded-bl-md' : 'rounded-2xl'}`
+                                ? `bg-accent-bg text-foreground ${lastInGroup ? 'rounded-2xl rounded-br-md' : 'rounded-2xl'}`
+                                : `bg-surface-secondary text-foreground ${lastInGroup ? 'rounded-2xl rounded-bl-md' : 'rounded-2xl'}`
                             }`}
                           >
                             {m.photo_url && (
@@ -2366,17 +2364,17 @@ export default function AccountPage() {
                               <div className="whitespace-pre-wrap break-words">{m.message}</div>
                             ) : null}
                             {lastInGroup && (
-                              <div className={`mt-1 flex items-center gap-1 text-[10px] ${isOwner ? 'justify-end text-emerald-100/70' : 'text-white/35'}`}>
+                              <div className={`mt-1 flex items-center gap-1 text-[10px] ${isOwner ? 'justify-end text-secondary' : 'text-muted'}`}>
                                 <span>
                                   {created.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                                 {isOwner && (
-                                  <span className={m.read_by_uk ? 'text-emerald-200' : 'text-white/40'}>
+                                  <span className={m.read_by_uk ? 'text-accent' : 'text-muted'}>
                                     {m.read_by_uk ? '✓✓' : '✓'}
                                   </span>
                                 )}
                                 {!isOwner && !m.read_by_owner && (
-                                  <span className="text-cyan-400">● {t('account.newMsg')}</span>
+                                  <span className="text-accent">● {t('account.newMsg')}</span>
                                 )}
                               </div>
                             )}
@@ -2391,11 +2389,11 @@ export default function AccountPage() {
 
             <form
               onSubmit={handleSendChat}
-              className="shrink-0 border-t border-white/10 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4"
+              className="shrink-0 border-t border-border px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4"
             >
               <div className="mx-auto w-full max-w-3xl">
               {chatFile && (
-                <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
+                <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-surface-secondary px-3 py-2 text-sm text-secondary">
                   <span className="min-w-0 flex-1 truncate">📎 {chatFile.name}</span>
                   <button
                     type="button"
@@ -2403,7 +2401,7 @@ export default function AccountPage() {
                       setChatFile(null);
                       if (chatFileRef.current) chatFileRef.current.value = '';
                     }}
-                    className="shrink-0 text-xs text-white/50 hover:text-white"
+                    className="shrink-0 text-xs text-secondary hover:text-foreground"
                   >
                     {t('account.removeFile')}
                   </button>
@@ -2423,14 +2421,14 @@ export default function AccountPage() {
                   disabled={chatSending}
                   aria-label={t('account.attachFile')}
                   title={t('account.attachFile')}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-[#1a2422] text-white hover:bg-white/10 disabled:opacity-40"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-[#1a2422] text-foreground hover:bg-hover disabled:opacity-40"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                   </svg>
                 </button>
                 <input
-                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#141c1a] px-4 py-2.5 text-base text-white placeholder-white/35 outline-none transition focus:border-emerald-500/40 md:text-sm"
+                  className="min-w-0 flex-1 rounded-2xl border border-border bg-surface px-4 py-2.5 text-base text-foreground placeholder:text-placeholder outline-none transition focus:border-accent md:text-sm"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   placeholder={t('account.chatPlaceholder')}
@@ -2440,7 +2438,7 @@ export default function AccountPage() {
                   type="submit"
                   disabled={chatSending || (!chatInput.trim() && !chatFile)}
                   aria-label={t('common.send')}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-lg text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-lg text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {chatSending ? '…' : '↑'}
                 </button>
@@ -2460,8 +2458,8 @@ export default function AccountPage() {
   // ===================================================================
   if (!authReady) {
     return (
-      <div className="relative min-h-dvh bg-[#070b0a] text-white flex items-center justify-center px-4">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">
+      <div className="relative min-h-dvh bg-background text-foreground flex items-center justify-center px-4">
+        <div className="rounded-[14px] border border-border bg-surface shadow-card p-6 text-center text-secondary">
           {t('common.loading')}
         </div>
       </div>
@@ -2486,28 +2484,28 @@ export default function AccountPage() {
   // ОСНОВНОЙ LAYOUT
   // ===================================================================
   return (
-    <div className="flex min-h-dvh bg-[#070b0a] text-white">
+    <div className="flex min-h-dvh bg-background text-foreground">
       {sidebarOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-[rgba(20,25,30,0.25)] md:hidden"
           aria-label={t('common.closeMenu')}
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-white/10 bg-[#101816] transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-border bg-surface transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
           sidebarOpen
             ? 'translate-x-0 md:w-64'
             : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:translate-x-0'
         }`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 p-3">
+        <div className="flex items-center justify-between gap-2 border-b border-border p-3">
           {sidebarOpen && <BrandMark compact />}
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg bg-white/10 p-2 text-white/70 md:hidden"
+            className="rounded-lg bg-hover p-2 text-secondary md:hidden"
             aria-label={t('common.closeMenu')}
           >
             ✕
@@ -2515,7 +2513,7 @@ export default function AccountPage() {
           <button
             type="button"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="hidden rounded-lg bg-white/10 p-1.5 text-white/70 md:block"
+            className="hidden rounded-lg bg-hover p-1.5 text-secondary md:block"
             title={sidebarOpen ? t('common.collapse') : t('common.expand')}
           >
             {sidebarOpen ? '◀' : '▶'}
@@ -2532,8 +2530,8 @@ export default function AccountPage() {
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
                 activeMenu === item.key
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  : 'text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent'
+                  ? 'bg-accent-bg text-accent border border-accent/25'
+                  : 'text-secondary hover:bg-hover hover:text-foreground border border-transparent'
               }`}
               title={item.label}
             >
@@ -2542,12 +2540,12 @@ export default function AccountPage() {
                 <span className="flex items-center gap-2 text-left leading-tight">
                   {item.label}
                   {item.key === 'чат' && unreadChatCount > 0 && (
-                    <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                    <span className="ml-auto bg-danger text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                       {unreadChatCount}
                     </span>
                   )}
                   {item.key === 'опросы' && unansweredPollsCount > 0 && (
-                    <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                    <span className="ml-auto bg-warning text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                       {unansweredPollsCount}
                     </span>
                   )}
@@ -2557,23 +2555,23 @@ export default function AccountPage() {
           ))}
         </nav>
 
-        <div className="space-y-2 border-t border-white/10 p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="space-y-2 border-t border-border p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {sidebarOpen ? (
             <div className="space-y-2">
               <LanguageSwitcher compact />
-              <div className="text-xs text-white/40 truncate">{devEmail}</div>
+              <div className="text-xs text-muted truncate">{devEmail}</div>
               <div className="flex gap-2">
                 {isStaff && (
                   <Link
                     href="/admin"
-                    className="flex-1 text-center text-xs rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2 py-1.5 text-emerald-300"
+                    className="flex-1 text-center text-xs rounded-lg border border-accent/25 bg-accent-bg px-2 py-1.5 text-accent"
                   >
                     {t('common.uk')}
                   </Link>
                 )}
                 <button
                   onClick={handleLogout}
-                  className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/10 px-2 text-sm hover:bg-white/10"
+                  className="min-h-11 flex-1 rounded-xl border border-border bg-hover px-2 text-sm hover:bg-hover"
                 >
                   {t('common.logout')}
                 </button>
@@ -2585,7 +2583,7 @@ export default function AccountPage() {
               {isStaff && (
                 <Link
                   href="/admin"
-                  className="p-1.5 rounded-lg bg-emerald-500/20 text-xs"
+                  className="p-1.5 rounded-lg bg-accent-bg text-xs"
                   title={t('account.ukManage')}
                 >
                   ⚙
@@ -2593,7 +2591,7 @@ export default function AccountPage() {
               )}
               <button
                 onClick={handleLogout}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/10 text-xs"
+                className="p-1.5 rounded-lg bg-hover hover:bg-hover text-xs"
                 title={t('common.logout')}
               >
                 🚪
@@ -2609,31 +2607,32 @@ export default function AccountPage() {
           ? 'flex h-dvh flex-col overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
       }`}>
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2.5 md:px-6 md:py-4">
           <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold md:text-xl">
-              {MENU_ITEMS.find((m) => m.key === activeMenu)?.icon}{' '}
-              {MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
+            <p className="truncate text-xs font-bold tracking-[0.02em] text-foreground">{t('brand.name')}</p>
+            <h1 className="truncate text-base font-semibold md:text-lg">
+              {property ? `№ ${property.apartment_number}` : MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
+              {property?.owner_name ? ` · ${property.owner_name}` : ''}
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={handleLogout}
-              className="min-h-10 rounded-lg border border-white/15 px-3 text-sm text-white/80 md:hidden"
+              className="min-h-10 rounded-lg border border-border px-3 text-sm text-secondary md:hidden"
             >
               {t('common.logout')}
             </button>
             <div className="hidden shrink-0 items-center gap-3 md:flex">
               <LanguageSwitcher compact />
-              <Link href="/" className="text-sm text-white/50 hover:text-white/80">
+              <Link href="/" className="text-sm text-secondary hover:text-foreground">
                 {t('common.backHome')}
               </Link>
             </div>
           </div>
         </div>
 
-        <div className={activeMenu === 'чат' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'p-3 md:p-6'}>
+        <div className={activeMenu === 'чат' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'mx-auto w-full max-w-5xl p-4 md:p-8'}>
           {properties.length > 1 && (
             <div className={activeMenu === 'чат' ? 'shrink-0 px-4 pt-3' : undefined}>
             <ApartmentPicker
@@ -2644,17 +2643,17 @@ export default function AccountPage() {
             </div>
           )}
           {loading && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6 text-center text-secondary">
               {t('common.loading')}
             </div>
           )}
 
           {error && (
-            <div className={`rounded-xl border border-red-800 bg-red-900/20 p-4 text-red-200 ${activeMenu === 'чат' ? 'mx-3 mt-3 md:mx-4 shrink-0' : 'mb-4'}`}>
+            <div className={`rounded-xl border border-danger/25 bg-danger-bg p-4 text-danger ${activeMenu === 'чат' ? 'mx-3 mt-3 md:mx-4 shrink-0' : 'mb-4'}`}>
               {error}
               <button
                 onClick={() => setError(null)}
-                className="ml-3 text-xs text-red-400 hover:text-red-300"
+                className="ml-3 text-xs text-danger hover:text-danger"
               >
                 ✕
               </button>
@@ -2668,7 +2667,7 @@ export default function AccountPage() {
           )}
 
           {!loading && !property && !error && (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6 text-center text-secondary">
               {t('account.aptNotFound')}
             </div>
           )}

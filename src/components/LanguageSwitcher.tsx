@@ -7,7 +7,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const { locale, setLocale, t } = useI18n();
 
   return (
-    <div className={`inline-flex rounded-full bg-white/[0.06] p-0.5 ${compact ? '' : ''}`} role="group" aria-label={t('common.language')}>
+    <div className={`inline-flex rounded-full bg-surface-secondary p-0.5 ${compact ? '' : ''}`} role="group" aria-label={t('common.language')}>
       {LOCALES.map((code: Locale) => (
         <button
           key={code}
@@ -15,8 +15,8 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
           onClick={() => setLocale(code)}
           className={`min-h-8 rounded-full px-2.5 py-1.5 text-[11px] font-semibold tracking-wide transition ${
             locale === code
-              ? 'bg-emerald-500/25 text-emerald-200'
-              : 'text-white/45 hover:text-white/80'
+              ? 'bg-accent-bg text-accent'
+              : 'text-muted hover:text-foreground'
           }`}
           title={LOCALE_META[code].native}
         >

@@ -29,7 +29,7 @@ export function MobileBottomNav({
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#0c1211]/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl md:hidden"
       aria-label={t('common.menu')}
     >
       <div className="grid grid-cols-5">
@@ -41,13 +41,13 @@ export function MobileBottomNav({
               type="button"
               onClick={() => onSelect(item.key)}
               className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium ${
-                active ? 'text-emerald-300' : 'text-white/45'
+                active ? 'text-accent' : 'text-muted'
               }`}
             >
               <span className="text-lg leading-none">{item.icon}</span>
               <span className="max-w-full truncate">{item.label}</span>
               {item.badge ? (
-                <span className="absolute right-2 top-1 min-w-[16px] rounded-full bg-red-500 px-1 text-[9px] leading-4 text-white">
+                <span className="absolute right-2 top-1 min-w-[16px] rounded-full bg-danger px-1 text-[9px] leading-4 text-white">
                   {item.badge > 9 ? '9+' : item.badge}
                 </span>
               ) : null}
@@ -58,7 +58,7 @@ export function MobileBottomNav({
           type="button"
           onClick={onMore}
           className={`flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium ${
-            moreActive ? 'text-emerald-300' : 'text-white/45'
+            moreActive ? 'text-accent' : 'text-muted'
           }`}
         >
           <span className="text-lg leading-none">☰</span>

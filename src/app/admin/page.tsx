@@ -816,19 +816,19 @@ export default function AdminPage() {
 
   function occupancyColor(status: string | null) {
     switch (status) {
-      case 'owner': return 'text-emerald-300';
-      case 'standby': return 'text-yellow-300';
-      case 'rented': return 'text-cyan-300';
-      default: return 'text-emerald-300';
+      case 'owner': return 'text-accent';
+      case 'standby': return 'text-warning';
+      case 'rented': return 'text-accent';
+      default: return 'text-accent';
     }
   }
 
   function occupancyBadgeClass(status: string | null) {
     switch (status) {
-      case 'owner': return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-      case 'standby': return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30';
-      case 'rented': return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
-      default: return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+      case 'owner': return 'bg-accent-bg text-accent border-accent/25';
+      case 'standby': return 'bg-warning-bg text-warning border-warning/25';
+      case 'rented': return 'bg-accent-bg text-accent border-accent/25';
+      default: return 'bg-accent-bg text-accent border-accent/25';
     }
   }
 
@@ -1753,7 +1753,7 @@ export default function AdminPage() {
                     key={item.key + String(item.label)}
                     type="button"
                     onClick={() => setActiveMenu(item.key)}
-                    className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-100 hover:bg-amber-500/15"
+                    className="rounded-full border border-warning/25 bg-warning-bg px-3 py-1.5 text-xs text-warning hover:bg-warning-bg"
                   >
                     {item.label}: <span className="font-semibold">{item.value}</span>
                   </button>
@@ -1804,28 +1804,28 @@ export default function AdminPage() {
                   <Metric label={t('admin.ukSpend')} value={`${totalUkExpenses.toFixed(0)} €`} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setActiveMenu('чат')} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60 hover:bg-white/5">{t('admin.chats')}</button>
-                  <button type="button" onClick={() => setActiveMenu('опросы')} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60 hover:bg-white/5">{t('admin.polls')}</button>
-                  <button type="button" onClick={() => setActiveMenu('расходы')} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60 hover:bg-white/5">{t('admin.expenses')}</button>
-                  <button type="button" onClick={() => setActiveMenu('персонал')} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60 hover:bg-white/5">{t('admin.staff')}</button>
+                  <button type="button" onClick={() => setActiveMenu('чат')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.chats')}</button>
+                  <button type="button" onClick={() => setActiveMenu('опросы')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.polls')}</button>
+                  <button type="button" onClick={() => setActiveMenu('расходы')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.expenses')}</button>
+                  <button type="button" onClick={() => setActiveMenu('персонал')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.staff')}</button>
                 </div>
               </OverviewGroup>
 
               <OverviewGroup title={t('admin.floors')} hint={t('admin.floorDebtHint')}>
                 {uniqueFloors.length === 0 ? (
-                  <p className="text-sm text-white/40">{t('common.noData')}</p>
+                  <p className="text-sm text-muted">{t('common.noData')}</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                     {uniqueFloors.map((floor) => {
                       const floorApts = properties.filter((p) => Number(p.floor) === floor);
                       const floorDebt = floorApts.reduce((s, p) => s + Number(p.debt ?? 0), 0);
                       return (
-                        <div key={floor} className="rounded-lg bg-white/[0.04] px-2.5 py-2">
+                        <div key={floor} className="rounded-lg bg-surface px-2.5 py-2">
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-sm text-white">{floor} этаж</span>
-                            <span className="text-xs text-white/40">{t('account.aptsShort', { n: floorApts.length })}</span>
+                            <span className="text-sm text-foreground">{floor} этаж</span>
+                            <span className="text-xs text-muted">{t('account.aptsShort', { n: floorApts.length })}</span>
                           </div>
-                          <div className={`mt-0.5 text-xs ${floorDebt > 0 ? 'text-yellow-300' : 'text-emerald-300/70'}`}>
+                          <div className={`mt-0.5 text-xs ${floorDebt > 0 ? 'text-warning' : 'text-success'}`}>
                             {floorDebt.toFixed(0)} €
                           </div>
                         </div>
@@ -1842,22 +1842,22 @@ export default function AdminPage() {
               onAction={() => setActiveMenu('заявки')}
             >
               {requests.length === 0 ? (
-                <p className="text-sm text-white/40">{t('admin.noRequests')}</p>
+                <p className="text-sm text-muted">{t('admin.noRequests')}</p>
               ) : (
                 <div className="divide-y divide-white/5">
                   {requests.slice(0, 5).map((r) => (
                     <div key={r.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                       <div className="min-w-0">
-                        <div className="truncate text-sm text-white">{r.subject}</div>
-                        <div className="truncate text-xs text-white/40">
+                        <div className="truncate text-sm text-foreground">{r.subject}</div>
+                        <div className="truncate text-xs text-muted">
                           {propertyFullById(r.property_id ?? 0)} · {labelPriority(r.priority, t)}
                         </div>
                       </div>
                       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
-                        r.status === 'новая' ? 'border-blue-500/30 text-blue-300' :
-                        r.status === 'в работе' ? 'border-yellow-500/30 text-yellow-300' :
-                        r.status === 'выполнена' ? 'border-emerald-500/30 text-emerald-300' :
-                        'border-red-500/30 text-red-300'
+                        r.status === 'новая' ? 'border-accent/25 text-accent' :
+                        r.status === 'в работе' ? 'border-yellow-500/30 text-warning' :
+                        r.status === 'выполнена' ? 'border-accent/25 text-accent' :
+                        'border-danger/25 text-danger'
                       }`}>{r.status}</span>
                     </div>
                   ))}
@@ -1873,39 +1873,39 @@ export default function AdminPage() {
       // =============================================================
       case 'квартиры':
         return (
-          <div className="md:rounded-2xl md:border md:border-white/10 md:bg-white/[0.03] md:p-6">
+          <div className="md:rounded-2xl md:border md:border-border md:bg-surface md:p-6">
             <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
               <div>
-                <h2 className="text-lg font-semibold text-emerald-400">{t('admin.apartments')}</h2>
-                <span className="text-sm text-white/50">
+                <h2 className="text-lg font-semibold text-accent">{t('admin.apartments')}</h2>
+                <span className="text-sm text-secondary">
                   {t('admin.shownOf', { n: filteredProperties.length, total: properties.length })}
                 </span>
-                <p className="mt-1 text-xs text-white/35">{t('registry.exportHint')}</p>
+                <p className="mt-1 text-xs text-muted">{t('registry.exportHint')}</p>
               </div>
               <div className="flex gap-2">
                 {aptActiveFiltersCount > 0 && (
                   <button onClick={clearAptFilters}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
                     {t('admin.resetN', { n: aptActiveFiltersCount })}
                   </button>
                 )}
                 <button onClick={startNewProp}
-                  className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                   {t('admin.addPlus')}
                 </button>
                 <button type="button" onClick={() => exportRegistry('csv')}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
                   {t('registry.exportCsv')}
                 </button>
                 <button type="button" onClick={() => exportRegistry('pdf')}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
                   {t('registry.exportPdf')}
                 </button>
               </div>
             </div>
 
             <div className="mb-3 flex gap-2 md:hidden">
-              <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-3 py-2.5 text-base text-white placeholder-white/40"
+              <input className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2.5 text-base text-foreground placeholder:text-placeholder"
                 placeholder={t('common.search')}
                 value={aptSearch} onChange={(e) => setAptSearch(e.target.value)} />
               <button
@@ -1913,15 +1913,15 @@ export default function AdminPage() {
                 onClick={() => setAptFiltersOpen((v) => !v)}
                 className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
                   aptFiltersOpen || aptActiveFiltersCount > 0
-                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
-                    : 'border-white/10 bg-[#101816] text-white/70'
+                    ? 'border-accent/30 bg-accent-bg text-accent'
+                    : 'border-border bg-surface text-secondary'
                 }`}
               >
                 {t('common.filters')}
                 {aptActiveFiltersCount > 0 ? ` ${aptActiveFiltersCount}` : ''}
               </button>
               <button type="button" onClick={startNewProp}
-                className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-sm font-semibold text-white">
+                className="shrink-0 rounded-xl bg-accent hover:bg-accent-hover px-3 py-2 text-sm font-semibold text-white">
                 +
               </button>
             </div>
@@ -1929,52 +1929,52 @@ export default function AdminPage() {
             {/* ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ */}
             {showPropForm && (
               <form onSubmit={handleSaveProp}
-                className="mb-6 rounded-xl border border-emerald-700/50 bg-white/[0.05] p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-emerald-300">
+                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-accent">
                   {editingProp ? t('admin.editApt') : t('admin.newApt')}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.phAptNo')} value={propForm.apartment_number}
                     onChange={(e) => setPropForm({ ...propForm, apartment_number: e.target.value })} required />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.phFloor')} type="number" value={propForm.floor}
                     onChange={(e) => setPropForm({ ...propForm, floor: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.phArea')} type="number" value={propForm.area_sqm}
                     onChange={(e) => setPropForm({ ...propForm, area_sqm: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.phOwner')} value={propForm.owner_name}
                     onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })} required />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Email" type="email" value={propForm.owner_email}
                     onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })} required />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.phPhone')} value={propForm.owner_phone}
                     onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })} />
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={propForm.owner_type}
                     onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}>
                     <option value="физическое лицо">{t('ownerType.personShort')}</option>
                     <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
                   </select>
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.phCompany')} value={propForm.company_name}
                     onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })} />
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={propForm.status}
                     onChange={(e) => setPropForm({ ...propForm, status: e.target.value })}>
                     <option value="в собственности">{t('account.owned')}</option>
                     <option value="на продаже">{t('account.forSale')}</option>
                   </select>
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={propForm.occupancy_status}
                     onChange={(e) => setPropForm({ ...propForm, occupancy_status: e.target.value })}>
                     <option value="owner">{t('status.occOwner')}</option>
                     <option value="standby">{t('status.occStandby')}</option>
                     <option value="rented">{t('status.occRented')}</option>
                   </select>
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={propForm.occupant_kind}
                     onChange={(e) => setPropForm({ ...propForm, occupant_kind: e.target.value })}>
                     <option value="owner">{t('registry.occupantOwner')}</option>
@@ -1983,16 +1983,16 @@ export default function AdminPage() {
                   </select>
                   {(propForm.occupant_kind === 'tenant' || propForm.occupant_kind === 'user') && (
                     <>
-                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         placeholder={t('registry.occupantName')} value={propForm.occupant_name}
                         onChange={(e) => setPropForm({ ...propForm, occupant_name: e.target.value })} />
-                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         placeholder={t('registry.occupantPhone')} value={propForm.occupant_phone}
                         onChange={(e) => setPropForm({ ...propForm, occupant_phone: e.target.value })} />
-                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         placeholder={t('registry.occupantEmail')} type="email" value={propForm.occupant_email}
                         onChange={(e) => setPropForm({ ...propForm, occupant_email: e.target.value })} />
-                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         type="date" value={propForm.occupant_until}
                         onChange={(e) => setPropForm({ ...propForm, occupant_until: e.target.value })}
                         title={t('registry.occupantUntil')} />
@@ -2000,20 +2000,20 @@ export default function AdminPage() {
                   )}
                 </div>
                 {editingProp ? (
-                  <p className="text-xs text-white/50">
+                  <p className="text-xs text-secondary">
                     {t('admin.debt')}: {Number(editingProp.debt ?? 0).toFixed(2)} € · {t('admin.overpay')}: {Number(editingProp.overpayment ?? 0).toFixed(2)} €
                   </p>
                 ) : null}
-                <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                <input className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                   placeholder={t('account.pets')} value={propForm.pet_info}
                   onChange={(e) => setPropForm({ ...propForm, pet_info: e.target.value })} />
                 <div className="flex gap-2">
                   <button type="submit"
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                     {t('common.save')}
                   </button>
                   <button type="button" onClick={() => setShowPropForm(false)}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
                     {t('common.cancel')}
                   </button>
                 </div>
@@ -2021,40 +2021,40 @@ export default function AdminPage() {
             )}
 
             {/* ПАНЕЛЬ ФИЛЬТРОВ */}
-            <div className={`mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-3 md:p-4 ${aptFiltersOpen ? 'block' : 'hidden'} md:block`}>
-              <div className="hidden items-center gap-2 text-sm text-white/50 md:flex">
-                <span className="font-medium text-white/70">{t('common.filters')}</span>
+            <div className={`mb-4 rounded-xl border border-border bg-surface p-3 space-y-3 md:p-4 ${aptFiltersOpen ? 'block' : 'hidden'} md:block`}>
+              <div className="hidden items-center gap-2 text-sm text-secondary md:flex">
+                <span className="font-medium text-secondary">{t('common.filters')}</span>
                 {aptActiveFiltersCount > 0 && (
-                  <span className="text-xs bg-emerald-500/20 text-emerald-300 rounded-full px-2 py-0.5">
+                  <span className="text-xs bg-accent-bg text-accent rounded-full px-2 py-0.5">
                     {t('admin.activeN', { n: aptActiveFiltersCount })}
                   </span>
                 )}
               </div>
-              <input className="hidden w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white placeholder-white/40 md:block"
+              <input className="hidden w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-placeholder md:block"
                 placeholder={t('admin.searchApts')}
                 value={aptSearch} onChange={(e) => setAptSearch(e.target.value)} />
               {aptActiveFiltersCount > 0 && (
                 <button type="button" onClick={clearAptFilters}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/70 md:hidden">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary md:hidden">
                   {t('admin.resetN', { n: aptActiveFiltersCount })}
                 </button>
               )}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                 <select value={aptFloorFilter} onChange={(e) => setAptFloorFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allFloors')}</option>
                   {uniqueFloors.map((f) => <option key={f} value={String(f)}>{t('form.floorN', { n: f })}</option>)}
                 </select>
 
                 <select value={aptStatusFilter} onChange={(e) => setAptStatusFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.anyStatus')}</option>
                   <option value="в собственности">{t('account.owned')}</option>
                   <option value="на продаже">{t('account.forSale')}</option>
                 </select>
 
                 <select value={aptOccupancyFilter} onChange={(e) => setAptOccupancyFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.anyMode')}</option>
                   <option value="owner">{t('status.occOwner')}</option>
                   <option value="standby">{t('status.occStandby')}</option>
@@ -2062,14 +2062,14 @@ export default function AdminPage() {
                 </select>
 
                 <select value={aptOwnerTypeFilter} onChange={(e) => setAptOwnerTypeFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.anyOwnerType')}</option>
                   <option value="физическое лицо">{t('ownerType.personShort')}</option>
                   <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
                 </select>
 
                 <select value={aptDebtFilter} onChange={(e) => setAptDebtFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.anyDebt')}</option>
                   <option value="has_debt">{t('form.hasDebt')}</option>
                   <option value="no_debt">{t('form.noDebt')}</option>
@@ -2078,21 +2078,21 @@ export default function AdminPage() {
                 </select>
 
                 <select value={aptGuestsFilter} onChange={(e) => setAptGuestsFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allGuests')}</option>
                   <option value="has_guests">{t('form.withGuests')}</option>
                   <option value="no_guests">{t('form.noGuests')}</option>
                 </select>
 
                 <select value={aptPetsFilter} onChange={(e) => setAptPetsFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allPets')}</option>
                   <option value="has_pets">{t('form.withPets')}</option>
                   <option value="no_pets">{t('form.noPets')}</option>
                 </select>
 
                 <select value={aptSort} onChange={(e) => setAptSort(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="apartment_number_asc">{t('form.sortAptAsc')}</option>
                   <option value="apartment_number_desc">{t('form.sortAptDesc')}</option>
                   <option value="debt_desc">{t('form.sortDebtDesc')}</option>
@@ -2111,14 +2111,14 @@ export default function AdminPage() {
                   key={p.id}
                   type="button"
                   onClick={() => setDetailProperty(p)}
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left"
+                  className="w-full rounded-xl border border-border bg-surface p-3 text-left"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-semibold text-white">№ {p.apartment_number}</div>
-                      <div className="truncate text-sm text-white/60">{p.owner_name}</div>
+                      <div className="font-semibold text-foreground">№ {p.apartment_number}</div>
+                      <div className="truncate text-sm text-secondary">{p.owner_name}</div>
                     </div>
-                    <div className={`shrink-0 text-sm font-medium ${Number(p.debt) > 0 ? 'text-red-400' : 'text-emerald-300'}`}>
+                    <div className={`shrink-0 text-sm font-medium ${Number(p.debt) > 0 ? 'text-danger' : 'text-muted'}`}>
                       {Number(p.debt ?? 0).toFixed(0)} €
                     </div>
                   </div>
@@ -2126,7 +2126,7 @@ export default function AdminPage() {
                     <span className={`rounded-full border px-2 py-0.5 ${occupancyBadgeClass(p.occupancy_status)}`}>
                       {occupancyLabel(p.occupancy_status)}
                     </span>
-                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-white/50">
+                    <span className="rounded-full border border-border px-2 py-0.5 text-secondary">
                       {p.floor} {t('common.floor')} · {p.area_sqm} {t('common.sqm')}
                     </span>
                   </div>
@@ -2138,7 +2138,7 @@ export default function AdminPage() {
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-white/50 border-b border-white/10">
+                  <tr className="text-left text-secondary border-b border-border">
                     <th className="py-2 px-3">{t('form.colApt')}</th>
                     <th className="py-2 px-3">{t('form.colFloor')}</th>
                     <th className="py-2 px-3">{t('form.colArea')}</th>
@@ -2165,31 +2165,31 @@ export default function AdminPage() {
                     const annualFee = annualSupportFee(p.area_sqm, supportRate);
                     const listing = listingStatus(p.status);
                     return (
-                      <tr key={p.id} className="border-b border-white/10 hover:bg-white/[0.04]">
-                        <td className="py-2 px-3 text-white font-medium">{p.apartment_number}</td>
-                        <td className="py-2 px-3 text-white/70">{p.floor}</td>
-                        <td className="py-2 px-3 text-white/70">{p.area_sqm} м²</td>
+                      <tr key={p.id} className="border-b border-border hover:bg-surface">
+                        <td className="py-2 px-3 text-foreground font-medium">{p.apartment_number}</td>
+                        <td className="py-2 px-3 text-secondary">{p.floor}</td>
+                        <td className="py-2 px-3 text-secondary">{p.area_sqm} м²</td>
                         <td className="py-2 px-3">
-                          <div className="text-white">{p.owner_name}</div>
-                          <div className="text-xs text-white/40">{p.owner_email}</div>
+                          <div className="text-foreground">{p.owner_name}</div>
+                          <div className="text-xs text-muted">{p.owner_email}</div>
                         </td>
                         <td className="py-2 px-3">
                           <span className={`inline-flex min-w-[5.5rem] flex-col items-center rounded-full border px-2 py-1 text-center text-[11px] leading-tight ${listingStatusClass(listing)}`}>
                             {labelListing(listing, t)}
                           </span>
                         </td>
-                        <td className="py-2 px-3 text-white/50 text-xs">{p.owner_type === 'юридическое лицо' ? t('ownerType.companyShort') : t('ownerType.personShort')}</td>
+                        <td className="py-2 px-3 text-secondary text-xs">{p.owner_type === 'юридическое лицо' ? t('ownerType.companyShort') : t('ownerType.personShort')}</td>
                         <td className="py-2 px-3">
-                          <span className={Number(p.debt) > 0 ? 'text-red-400 font-medium' : 'text-emerald-300'}>
+                          <span className={Number(p.debt) > 0 ? 'text-danger font-medium' : 'text-muted'}>
                             {Number(p.debt ?? 0).toFixed(2)} €
                           </span>
                         </td>
                         <td className="py-2 px-3">
-                          <span className={Number(p.overpayment) > 0 ? 'text-emerald-300' : 'text-white/40'}>
+                          <span className={Number(p.overpayment) > 0 ? 'text-success' : 'text-muted'}>
                             {Number(p.overpayment ?? 0).toFixed(2)} €
                           </span>
                         </td>
-                        <td className="py-2 px-3 text-white/50 text-xs">{annualFee.toFixed(2)} €</td>
+                        <td className="py-2 px-3 text-secondary text-xs">{annualFee.toFixed(2)} €</td>
                         <td className="py-2 px-3">
                           <span className={`text-xs rounded-full px-2 py-1 border ${occupancyBadgeClass(p.occupancy_status)}`}>
                             {occupancyLabel(p.occupancy_status)}
@@ -2197,43 +2197,43 @@ export default function AdminPage() {
                         </td>
                         <td className="py-2 px-3">
                           {g.length > 0 ? (
-                            <span className="text-cyan-300 text-xs">{g.length} чел.</span>
+                            <span className="text-accent text-xs">{g.length} чел.</span>
                           ) : (
-                            <span className="text-white/30 text-xs">—</span>
+                            <span className="text-muted text-xs">—</span>
                           )}
                         </td>
-                        <td className="py-2 px-3 text-white/50 text-xs">
+                        <td className="py-2 px-3 text-secondary text-xs">
                           {p.pet_info ? '🐾' : '—'}
                         </td>
                         <td className="py-2 px-3">
                           {reqs.length > 0 ? (
-                            <span className="text-xs text-white/70">{reqs.length}</span>
+                            <span className="text-xs text-secondary">{reqs.length}</span>
                           ) : (
-                            <span className="text-white/30 text-xs">—</span>
+                            <span className="text-muted text-xs">—</span>
                           )}
                         </td>
                         <td className="py-2 px-3">
                           {chats.length > 0 ? (
-                            <span className="text-xs text-white/70">
+                            <span className="text-xs text-secondary">
                               {chats.length} сообщ.
                               {unreadChats > 0 && (
-                                <span className="ml-1 text-red-400 font-medium">({unreadChats} нов.)</span>
+                                <span className="ml-1 text-danger font-medium">({unreadChats} нов.)</span>
                               )}
                             </span>
                           ) : (
-                            <span className="text-white/30 text-xs">—</span>
+                            <span className="text-muted text-xs">—</span>
                           )}
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex gap-1">
                             <button onClick={() => setDetailProperty(p)} title="Детали"
-                              className="rounded px-2 py-1 text-xs bg-emerald-900/50 hover:bg-emerald-800/50 text-emerald-300">
+                              className="rounded px-2 py-1 text-xs bg-success-bg hover:bg-success-bg text-accent">
                               👁
                             </button>
                             <button onClick={() => startEditProp(p)} title="Редактировать"
-                              className="rounded px-2 py-1 text-xs bg-white/10 hover:bg-white/10 text-white/80">✎</button>
+                              className="rounded px-2 py-1 text-xs bg-hover hover:bg-hover text-secondary">✎</button>
                             <button onClick={() => handleDeleteProp(p.id)} title="Удалить"
-                              className="rounded px-2 py-1 text-xs bg-red-900/50 hover:bg-red-800/50 text-red-300">✕</button>
+                              className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">✕</button>
                           </div>
                         </td>
                       </tr>
@@ -2244,7 +2244,7 @@ export default function AdminPage() {
             </div>
 
             {filteredProperties.length === 0 && (
-              <div className="text-center text-sm text-white/40 py-8">
+              <div className="text-center text-sm text-muted py-8">
                 {t('admin.noAptsFilter')}
               </div>
             )}
@@ -2285,31 +2285,31 @@ export default function AdminPage() {
       // =============================================================
       case 'смены':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <h2 className="text-lg font-semibold text-emerald-400 mb-1">{t('admin.transfers')}</h2>
-            <p className="text-sm text-white/50 mb-4">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+            <h2 className="text-lg font-semibold text-accent mb-1">{t('admin.transfers')}</h2>
+            <p className="text-sm text-secondary mb-4">
               {t('admin.transferLead')}
             </p>
             {ownerTransfers.length === 0 ? (
-              <div className="text-sm text-white/40">{t('admin.noTransfers')}</div>
+              <div className="text-sm text-muted">{t('admin.noTransfers')}</div>
             ) : (
               <div className="space-y-3">
                 {ownerTransfers.map((tr) => (
-                  <div key={tr.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                  <div key={tr.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm text-white/50">{propertyFullById(tr.property_id)}</div>
-                        <div className="mt-1 text-sm text-white/70">
+                        <div className="text-sm text-secondary">{propertyFullById(tr.property_id)}</div>
+                        <div className="mt-1 text-sm text-secondary">
                           {tr.from_owner_name} ({tr.from_owner_email}) → {tr.to_owner_name} ({tr.to_owner_email})
                         </div>
                         {tr.to_owner_phone && (
-                          <div className="text-xs text-white/40">{t('form.tel', { n: tr.to_owner_phone })}</div>
+                          <div className="text-xs text-muted">{t('form.tel', { n: tr.to_owner_phone })}</div>
                         )}
-                        {tr.note && <div className="mt-2 text-sm text-white/60">{tr.note}</div>}
+                        {tr.note && <div className="mt-2 text-sm text-secondary">{tr.note}</div>}
                         {tr.reject_reason && (
-                          <div className="mt-1 text-xs text-red-300">{t('form.reason', { n: tr.reject_reason })}</div>
+                          <div className="mt-1 text-xs text-danger">{t('form.reason', { n: tr.reject_reason })}</div>
                         )}
-                        <div className="mt-2 text-xs text-white/40">
+                        <div className="mt-2 text-xs text-muted">
                           {new Date(tr.created_at).toLocaleString(dateLocale)}
                           {tr.decided_by ? ` · ${tr.decided_by}` : ''}
                         </div>
@@ -2321,14 +2321,14 @@ export default function AdminPage() {
                             <button
                               type="button"
                               onClick={() => handleApproveTransfer(tr)}
-                              className="rounded-lg bg-emerald-500/20 border border-emerald-500/30 px-3 py-1.5 text-xs text-emerald-200"
+                              className="rounded-lg bg-accent-bg border border-accent/25 px-3 py-1.5 text-xs text-accent"
                             >
                               {t('admin.approve')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleRejectTransfer(tr)}
-                              className="rounded-lg bg-red-500/15 border border-red-500/30 px-3 py-1.5 text-xs text-red-200"
+                              className="rounded-lg bg-danger-bg border border-danger/25 px-3 py-1.5 text-xs text-danger"
                             >
                               {t('admin.reject')}
                             </button>
@@ -2345,24 +2345,24 @@ export default function AdminPage() {
 
       case 'заявки':
         return (
-          <div className="md:rounded-2xl md:border md:border-white/10 md:bg-white/[0.03] md:p-6">
+          <div className="md:rounded-2xl md:border md:border-border md:bg-surface md:p-6">
             <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
               <div>
-                <h2 className="text-lg font-semibold text-emerald-400">{t('admin.requests')}</h2>
-                <span className="text-sm text-white/50">
+                <h2 className="text-lg font-semibold text-accent">{t('admin.requests')}</h2>
+                <span className="text-sm text-secondary">
                   {t('admin.shownOf', { n: filteredRequests.length, total: requests.length })}
                 </span>
               </div>
               {reqActiveFiltersCount > 0 && (
                 <button onClick={clearReqFilters}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/70 hover:bg-white/10">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
                     {t('admin.resetN', { n: reqActiveFiltersCount })}
                 </button>
               )}
             </div>
 
             <div className="mb-3 flex gap-2 md:hidden">
-              <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-3 py-2.5 text-base text-white placeholder-white/40"
+              <input className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2.5 text-base text-foreground placeholder:text-placeholder"
                 placeholder={t('common.search')}
                 value={reqSearch} onChange={(e) => setReqSearch(e.target.value)} />
               <button
@@ -2370,8 +2370,8 @@ export default function AdminPage() {
                 onClick={() => setReqFiltersOpen((v) => !v)}
                 className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
                   reqFiltersOpen || reqActiveFiltersCount > 0
-                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
-                    : 'border-white/10 bg-[#101816] text-white/70'
+                    ? 'border-accent/30 bg-accent-bg text-accent'
+                    : 'border-border bg-surface text-secondary'
                 }`}
               >
                 {t('common.filters')}
@@ -2380,13 +2380,13 @@ export default function AdminPage() {
             </div>
 
             {/* ПАНЕЛЬ ФИЛЬТРОВ ЗАЯВОК */}
-            <div className={`mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-3 md:p-4 ${reqFiltersOpen ? 'block' : 'hidden'} md:block`}>
-              <input className="hidden w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white placeholder-white/40 md:block"
+            <div className={`mb-4 rounded-xl border border-border bg-surface p-3 space-y-3 md:p-4 ${reqFiltersOpen ? 'block' : 'hidden'} md:block`}>
+              <input className="hidden w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-placeholder md:block"
                 placeholder={t('common.search')}
                 value={reqSearch} onChange={(e) => setReqSearch(e.target.value)} />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <select value={reqStatusFilter} onChange={(e) => setReqStatusFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allStatuses')}</option>
                   <option value="новая">{t('status.reqNew')}</option>
                   <option value="в работе">{t('status.reqWork')}</option>
@@ -2394,7 +2394,7 @@ export default function AdminPage() {
                   <option value="отклонена">{t('status.reqReject')}</option>
                 </select>
                 <select value={reqCategoryFilter} onChange={(e) => setReqCategoryFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allCategories')}</option>
                   <option value="сантехника">{t('cat.plumbing')}</option>
                   <option value="электрика">{t('cat.electric')}</option>
@@ -2403,14 +2403,14 @@ export default function AdminPage() {
                   <option value="другое">{t('cat.other')}</option>
                 </select>
                 <select value={reqPriorityFilter} onChange={(e) => setReqPriorityFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.anyPriority')}</option>
                   <option value="низкий">{t('status.prioLow')}</option>
                   <option value="средний">{t('status.prioMid')}</option>
                   <option value="высокий">{t('status.prioHigh')}</option>
                 </select>
                 <select value={reqAptFilter} onChange={(e) => setReqAptFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allApts')}</option>
                   {properties.map((p) => (
                     <option key={p.id} value={String(p.id)}>
@@ -2423,39 +2423,39 @@ export default function AdminPage() {
 
             {/* СПИСОК ЗАЯВОК */}
             <div className="space-y-3">
-              {filteredRequests.length === 0 && <div className="text-sm text-white/40">{t('form.noRequestsFound')}</div>}
+              {filteredRequests.length === 0 && <div className="text-sm text-muted">{t('form.noRequestsFound')}</div>}
               {filteredRequests.map((r) => (
-                <div key={r.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                <div key={r.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="text-white font-medium">{r.subject}</div>
-                      <div className="text-sm text-white/50 mt-1">{r.description}</div>
+                      <div className="text-foreground font-medium">{r.subject}</div>
+                      <div className="text-sm text-secondary mt-1">{r.description}</div>
                       <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <span className="text-xs text-white/40">{propertyFullById(r.property_id ?? 0)}</span>
-                        <span className="text-xs rounded-full bg-white/10 px-2 py-0.5 text-white/70 border border-white/15">{labelCategory(r.category, t)}</span>
+                        <span className="text-xs text-muted">{propertyFullById(r.property_id ?? 0)}</span>
+                        <span className="text-xs rounded-full bg-hover px-2 py-0.5 text-secondary border border-border">{labelCategory(r.category, t)}</span>
                         <span className={`text-xs rounded-full px-2 py-0.5 border ${priorityClass(r.priority)}`}>
                           {labelPriority(r.priority, t)}
                         </span>
                         {r.photo_url && (
                           <a href={r.photo_url} target="_blank" rel="noreferrer"
-                            className="text-xs text-cyan-300 hover:underline">{t('form.photo')}</a>
+                            className="text-xs text-accent hover:underline">{t('form.photo')}</a>
                         )}
                       </div>
-                      <div className="text-xs text-white/40 mt-2">
+                      <div className="text-xs text-muted mt-2">
                         {new Date(r.created_at).toLocaleString(dateLocale)}
                       </div>
                     </div>
                     <div className="text-right flex flex-col items-end gap-2">
                       <select value={r.status ?? 'новая'}
                         onChange={(e) => handleUpdateRequestStatus(r.id, e.target.value)}
-                        className="rounded-lg border border-white/10 bg-[#101816] px-3 py-1.5 text-sm text-white">
+                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground">
                         <option value="новая">{t('status.reqNew')}</option>
                         <option value="в работе">{t('status.reqWork')}</option>
                         <option value="выполнена">{t('status.reqDone')}</option>
                         <option value="отклонена">{t('status.reqReject')}</option>
                       </select>
                       <button onClick={() => handleDeleteRequest(r.id)}
-                        className="text-xs text-red-400 hover:text-red-300">{t('common.delete')}</button>
+                        className="text-xs text-danger hover:text-danger">{t('common.delete')}</button>
                     </div>
                   </div>
                 </div>
@@ -2469,27 +2469,27 @@ export default function AdminPage() {
       // =============================================================
       case 'счётчики':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-emerald-400">Показания счётчиков</h2>
+              <h2 className="text-lg font-semibold text-accent">Показания счётчиков</h2>
               <button onClick={() => setShowMeterForm(true)}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                 + Добавить
               </button>
             </div>
 
             {/* ФИЛЬТРЫ СЧЁТЧИКОВ */}
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="mb-4 rounded-[14px] border border-border bg-surface p-4 shadow-card">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <select value={meterAptFilter} onChange={(e) => setMeterAptFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">{t('form.allApts')}</option>
                   {properties.map((p) => (
                     <option key={p.id} value={String(p.id)}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
                   ))}
                 </select>
                 <select value={meterTypeFilter} onChange={(e) => setMeterTypeFilter(e.target.value)}
-                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white">
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
                   <option value="">Все типы</option>
                   <option value="electricity_day">Э/э день</option>
                   <option value="electricity_night">Э/э ночь</option>
@@ -2497,7 +2497,7 @@ export default function AdminPage() {
                 </select>
                 {(meterAptFilter !== '' || meterTypeFilter !== '') && (
                   <button onClick={() => { setMeterAptFilter(''); setMeterTypeFilter(''); }}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
                     Сбросить
                   </button>
                 )}
@@ -2506,10 +2506,10 @@ export default function AdminPage() {
 
             {showMeterForm && (
               <form onSubmit={handleSaveMeter}
-                className="mb-6 rounded-xl border border-emerald-700/50 bg-white/[0.05] p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-emerald-300">Новое показание</h3>
+                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-accent">Новое показание</h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={meterForm.property_id}
                     onChange={(e) => setMeterForm({ ...meterForm, property_id: e.target.value })} required>
                     <option value="">{t('form.pickApt')}</option>
@@ -2517,27 +2517,27 @@ export default function AdminPage() {
                       <option key={p.id} value={p.id}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
                     ))}
                   </select>
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={meterForm.meter_type}
                     onChange={(e) => setMeterForm({ ...meterForm, meter_type: e.target.value as any })}>
                     <option value="electricity_day">Э/э день</option>
                     <option value="electricity_night">Э/э ночь</option>
                     <option value="cold_water">Холодная вода</option>
                   </select>
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Показание" type="number" step="0.01" value={meterForm.value}
                     onChange={(e) => setMeterForm({ ...meterForm, value: e.target.value })} required />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     type="date" value={meterForm.reading_date}
                     onChange={(e) => setMeterForm({ ...meterForm, reading_date: e.target.value })} required />
                 </div>
                 <div className="flex gap-2">
                   <button type="submit"
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                     Сохранить
                   </button>
                   <button type="button" onClick={() => setShowMeterForm(false)}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
                     Отмена
                   </button>
                 </div>
@@ -2547,7 +2547,7 @@ export default function AdminPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-white/50 border-b border-white/10">
+                  <tr className="text-left text-secondary border-b border-border">
                     <th className="py-2 px-3">{t('admin.aptLabel')}</th>
                     <th className="py-2 px-3">Тип</th>
                     <th className="py-2 px-3">Показание</th>
@@ -2558,20 +2558,20 @@ export default function AdminPage() {
                 </thead>
                 <tbody>
                   {filteredMeters.slice(0, 100).map((m) => (
-                    <tr key={m.id} className="border-b border-white/10 hover:bg-white/[0.04]">
-                      <td className="py-2 px-3 text-white">{propertyNameById(m.property_id)}</td>
-                      <td className="py-2 px-3 text-white/70">
+                    <tr key={m.id} className="border-b border-border hover:bg-surface">
+                      <td className="py-2 px-3 text-foreground">{propertyNameById(m.property_id)}</td>
+                      <td className="py-2 px-3 text-secondary">
                         {m.meter_type === 'electricity_day' ? 'Э/э день' :
                          m.meter_type === 'electricity_night' ? 'Э/э ночь' : 'Вода'}
                       </td>
-                      <td className="py-2 px-3 text-white">{m.value}</td>
-                      <td className="py-2 px-3 text-white/50">
+                      <td className="py-2 px-3 text-foreground">{m.value}</td>
+                      <td className="py-2 px-3 text-secondary">
                         {new Date(m.reading_date).toLocaleDateString(dateLocale)}
                       </td>
-                      <td className="py-2 px-3 text-white/50">{m.submitted_by ?? '—'}</td>
+                      <td className="py-2 px-3 text-secondary">{m.submitted_by ?? '—'}</td>
                       <td className="py-2 px-3">
                         <button onClick={() => handleDeleteMeter(m.id)}
-                          className="rounded px-2 py-1 text-xs bg-red-900/50 hover:bg-red-800/50 text-red-300">✕</button>
+                          className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">✕</button>
                       </td>
                     </tr>
                   ))}
@@ -2579,7 +2579,7 @@ export default function AdminPage() {
               </table>
             </div>
             {filteredMeters.length === 0 && (
-              <div className="text-center text-sm text-white/40 py-4">Показаний не найдено.</div>
+              <div className="text-center text-sm text-muted py-4">Показаний не найдено.</div>
             )}
           </div>
         );
@@ -2595,24 +2595,24 @@ export default function AdminPage() {
             ? totalUkExpenses
             : expensesByYear.get(expenseYearFilter)?.total ?? 0;
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-lg font-semibold text-emerald-400">Расходы УК</h2>
-                <div className="text-sm text-white/50 mt-1">
+                <h2 className="text-lg font-semibold text-accent">Расходы УК</h2>
+                <div className="text-sm text-secondary mt-1">
                   Опубликовано {expenseYearFilter === 'all' ? 'всего' : expenseYearFilter}: {visibleTotal.toFixed(2)} €
                   {pendingUkExpenses.length > 0 && (
-                    <span className="ml-2 text-amber-200">
+                    <span className="ml-2 text-warning">
                       · на проверке {pendingUkExpenses.length} ({pendingUkExpenses.reduce((s, x) => s + Number(x.amount ?? 0), 0).toFixed(2)} €)
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-white/40">
+                <p className="mt-1 text-xs text-muted">
                   {t('admin.expenseHint')}
                 </p>
               </div>
               <button onClick={startNewExpense}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                 + Добавить
               </button>
             </div>
@@ -2621,8 +2621,8 @@ export default function AdminPage() {
                 onClick={() => setExpenseYearFilter('all')}
                 className={`rounded-lg px-3 py-1.5 text-sm border ${
                   expenseYearFilter === 'all'
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                    : 'bg-white/[0.04] text-white/50 border-white/10 hover:text-white/80'
+                    ? 'bg-accent-bg text-accent border-accent/25'
+                    : 'bg-surface text-secondary border-border hover:text-foreground'
                 }`}
               >
                 Все годы
@@ -2635,14 +2635,14 @@ export default function AdminPage() {
                     onClick={() => setExpenseYearFilter(year)}
                     className={`rounded-lg px-3 py-1.5 text-sm border ${
                       expenseYearFilter === year
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : 'bg-white/[0.04] text-white/50 border-white/10 hover:text-white/80'
+                        ? 'bg-accent-bg text-accent border-accent/25'
+                        : 'bg-surface text-secondary border-border hover:text-foreground'
                     }`}
                   >
                     {year}
-                    <span className="ml-2 text-xs text-white/40">{total.toFixed(2)} €</span>
+                    <span className="ml-2 text-xs text-muted">{total.toFixed(2)} €</span>
                     {(expensesByYear.get(year)?.pendingTotal ?? 0) > 0 && (
-                      <span className="ml-1 text-xs text-amber-200">+{expensesByYear.get(year)?.pendingTotal.toFixed(0)}</span>
+                      <span className="ml-1 text-xs text-warning">+{expensesByYear.get(year)?.pendingTotal.toFixed(0)}</span>
                     )}
                   </button>
                 );
@@ -2650,21 +2650,21 @@ export default function AdminPage() {
             </div>
             {showExpenseForm && (
               <form onSubmit={handleSaveExpense}
-                className="mb-6 rounded-xl border border-emerald-700/50 bg-white/[0.05] p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-emerald-300">
+                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-accent">
                   {editingExpense ? 'Редактировать расход' : 'Новый расход'}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <input type="date" required
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={expenseForm.expense_date}
                     onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })} />
                   <input type="number" step="0.01" min="0.01" required
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Сумма (€)" value={expenseForm.amount}
                     onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} />
                   <input
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white sm:col-span-2"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground sm:col-span-2"
                     placeholder="Куда потрачено (ремонт, уборка, материалы...)"
                     value={expenseForm.title}
                     onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
@@ -2672,7 +2672,7 @@ export default function AdminPage() {
                   />
                 </div>
                 <div>
-                  <p className="mb-2 text-xs text-white/50">
+                  <p className="mb-2 text-xs text-secondary">
                     Фото чека и покупки — до {MAX_EXPENSE_PHOTOS} шт.
                   </p>
                   {(expenseExistingUrls.length > 0 || expensePhotoFiles.length > 0) && (
@@ -2680,11 +2680,11 @@ export default function AdminPage() {
                       {expenseExistingUrls.map((url) => (
                         <div key={url} className="relative">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" className="h-16 w-16 rounded-lg border border-white/10 object-cover" />
+                          <img src={url} alt="" className="h-16 w-16 rounded-lg border border-border object-cover" />
                           <button
                             type="button"
                             onClick={() => setExpenseExistingUrls((prev) => prev.filter((u) => u !== url))}
-                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1.5 text-xs text-white"
+                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1.5 text-xs text-foreground"
                           >
                             ×
                           </button>
@@ -2693,11 +2693,11 @@ export default function AdminPage() {
                       {expensePhotoFiles.map((file, i) => (
                         <div key={`${file.name}-${i}`} className="relative">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={URL.createObjectURL(file)} alt="" className="h-16 w-16 rounded-lg border border-white/10 object-cover" />
+                          <img src={URL.createObjectURL(file)} alt="" className="h-16 w-16 rounded-lg border border-border object-cover" />
                           <button
                             type="button"
                             onClick={() => setExpensePhotoFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1.5 text-xs text-white"
+                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1.5 text-xs text-foreground"
                           >
                             ×
                           </button>
@@ -2710,7 +2710,7 @@ export default function AdminPage() {
                       type="file"
                       accept="image/*"
                       multiple
-                      className="w-full text-sm text-white/50 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:text-white/80"
+                      className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary"
                       onChange={(e) => {
                         const room = MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
                         const added = Array.from(e.target.files ?? []).slice(0, room);
@@ -2722,20 +2722,20 @@ export default function AdminPage() {
                 </div>
                 <div className="flex gap-2">
                   <button type="submit"
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                     {editingExpense && isExpensePublished(editingExpense) && canApproveUkExpenses(staffRole)
                       ? 'Сохранить'
                       : 'Отправить на утверждение'}
                   </button>
                   <button type="button" onClick={() => { setShowExpenseForm(false); setEditingExpense(null); setExpensePhotoFiles([]); }}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
                     Отмена
                   </button>
                 </div>
               </form>
             )}
             {ukExpenses.length === 0 && !showExpenseForm ? (
-              <div className="text-center text-sm text-white/40 py-4">Расходов пока нет.</div>
+              <div className="text-center text-sm text-muted py-4">Расходов пока нет.</div>
             ) : (
               <div className="space-y-6">
                 {yearsToShow.map((year) => {
@@ -2744,36 +2744,36 @@ export default function AdminPage() {
                   return (
                     <div key={year}>
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-emerald-300">{year}</h3>
-                        <span className="text-sm text-white/50">
+                        <h3 className="text-sm font-semibold text-accent">{year}</h3>
+                        <span className="text-sm text-secondary">
                           опубликовано {(group?.total ?? 0).toFixed(2)} €
                           {(group?.pendingTotal ?? 0) > 0 && (
-                            <span className="ml-2 text-amber-200">на проверке {(group?.pendingTotal ?? 0).toFixed(2)} €</span>
+                            <span className="ml-2 text-warning">на проверке {(group?.pendingTotal ?? 0).toFixed(2)} €</span>
                           )}
                         </span>
                       </div>
                       {items.length === 0 ? (
-                        <div className="text-sm text-white/40 py-2">За {year} год расходов нет.</div>
+                        <div className="text-sm text-muted py-2">За {year} год расходов нет.</div>
                       ) : (
                         <div className="space-y-2">
                           {items.map((exp) => {
                             const published = isExpensePublished(exp);
                             const photos = expensePhotoUrls(exp);
                             return (
-                              <div key={exp.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                              <div key={exp.id} className="rounded-xl border border-border bg-surface p-3">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-sm font-medium text-white">{exp.title?.trim() || 'Без названия'}</span>
+                                      <span className="text-sm font-medium text-foreground">{exp.title?.trim() || 'Без названия'}</span>
                                       <span className={`rounded-full border px-2 py-0.5 text-[11px] ${
                                         published
-                                          ? 'border-emerald-500/30 text-emerald-300'
-                                          : 'border-amber-500/30 text-amber-200'
+                                          ? 'border-accent/25 text-accent'
+                                          : 'border-warning/25 text-warning'
                                       }`}>
                                         {published ? 'опубликован' : 'на проверке'}
                                       </span>
                                     </div>
-                                    <div className="mt-1 text-xs text-white/40">
+                                    <div className="mt-1 text-xs text-muted">
                                       {formatUkDate(exp.expense_date)} · {exp.created_by || 'УК'}
                                       {exp.approved_by ? ` · утвердил ${exp.approved_by}` : ''}
                                     </div>
@@ -2784,23 +2784,23 @@ export default function AdminPage() {
                                     )}
                                   </div>
                                   <div className="flex shrink-0 flex-col items-end gap-2">
-                                    <div className="text-sm font-semibold text-white">{Number(exp.amount).toFixed(2)} €</div>
+                                    <div className="text-sm font-semibold text-foreground">{Number(exp.amount).toFixed(2)} €</div>
                                     <div className="flex flex-wrap justify-end gap-1">
                                       {!published && canApproveUkExpenses(staffRole) && (
                                         <button
                                           type="button"
                                           onClick={() => handleApproveExpense(exp)}
-                                          className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs text-emerald-200"
+                                          className="rounded-full bg-accent-bg px-3 py-1 text-xs text-accent"
                                         >
                                           Опубликовать
                                         </button>
                                       )}
                                       {( !published || canApproveUkExpenses(staffRole) ) && (
                                         <button type="button" onClick={() => startEditExpense(exp)}
-                                          className="rounded px-2 py-1 text-xs bg-white/10 text-white/80">✎</button>
+                                          className="rounded px-2 py-1 text-xs bg-hover text-secondary">✎</button>
                                       )}
                                       <button type="button" onClick={() => handleDeleteExpense(exp.id)}
-                                        className="rounded px-2 py-1 text-xs bg-red-900/50 text-red-300">✕</button>
+                                        className="rounded px-2 py-1 text-xs bg-danger-bg text-danger">✕</button>
                                     </div>
                                   </div>
                                 </div>
@@ -2823,25 +2823,25 @@ export default function AdminPage() {
       // =============================================================
       case 'персонал':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-emerald-400">Персонал</h2>
+              <h2 className="text-lg font-semibold text-accent">Персонал</h2>
               <button onClick={startNewStaff}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                 + Добавить
               </button>
             </div>
             {showStaffForm && (
               <form onSubmit={handleSaveStaff}
-                className="mb-6 rounded-xl border border-emerald-700/50 bg-white/[0.05] p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-emerald-300">
+                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-accent">
                   {editingStaff ? 'Редактировать сотрудника' : 'Новый сотрудник'}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Имя" value={staffForm.name}
                     onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required />
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={staffForm.role}
                     onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required>
                     <option value="" disabled>Должность</option>
@@ -2849,16 +2849,16 @@ export default function AdminPage() {
                       <option key={role.value} value={role.value}>{role.label}</option>
                     ))}
                   </select>
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Email для входа" type="email" value={staffForm.email}
                     onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Телефон" value={staffForm.phone}
                     onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Зарплата (€/мес)" type="number" value={staffForm.salary_eur}
                     onChange={(e) => setStaffForm({ ...staffForm, salary_eur: e.target.value })} />
-                  <label className="flex items-center gap-2 text-sm text-white/70">
+                  <label className="flex items-center gap-2 text-sm text-secondary">
                     <input type="checkbox" checked={staffForm.active}
                       onChange={(e) => setStaffForm({ ...staffForm, active: e.target.checked })} />
                     Активен
@@ -2866,11 +2866,11 @@ export default function AdminPage() {
                 </div>
                 <div className="flex gap-2">
                   <button type="submit"
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                     Сохранить
                   </button>
                   <button type="button" onClick={() => setShowStaffForm(false)}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
                     Отмена
                   </button>
                 </div>
@@ -2879,7 +2879,7 @@ export default function AdminPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-white/50 border-b border-white/10">
+                  <tr className="text-left text-secondary border-b border-border">
                     <th className="py-2 px-3">Имя</th>
                     <th className="py-2 px-3">Должность</th>
                     <th className="py-2 px-3">Email</th>
@@ -2891,25 +2891,25 @@ export default function AdminPage() {
                 </thead>
                 <tbody>
                   {staff.map((s) => (
-                    <tr key={s.id} className="border-b border-white/10 hover:bg-white/[0.04]">
-                      <td className="py-2 px-3 text-white">{s.name}</td>
-                      <td className="py-2 px-3 text-white/70">{s.role}</td>
-                      <td className="py-2 px-3 text-white/50">{s.email ?? '—'}</td>
-                      <td className="py-2 px-3 text-white/50">{s.phone ?? '—'}</td>
-                      <td className="py-2 px-3 text-white">
+                    <tr key={s.id} className="border-b border-border hover:bg-surface">
+                      <td className="py-2 px-3 text-foreground">{s.name}</td>
+                      <td className="py-2 px-3 text-secondary">{s.role}</td>
+                      <td className="py-2 px-3 text-secondary">{s.email ?? '—'}</td>
+                      <td className="py-2 px-3 text-secondary">{s.phone ?? '—'}</td>
+                      <td className="py-2 px-3 text-foreground">
                         {s.salary_eur ? `${Number(s.salary_eur).toFixed(2)} €` : '—'}
                       </td>
                       <td className="py-2 px-3">
-                        <span className={s.active ? 'text-emerald-300' : 'text-white/40'}>
+                        <span className={s.active ? 'text-accent' : 'text-muted'}>
                           {s.active ? 'Активен' : 'Неактивен'}
                         </span>
                       </td>
                       <td className="py-2 px-3">
                         <div className="flex gap-1">
                           <button onClick={() => startEditStaff(s)}
-                            className="rounded px-2 py-1 text-xs bg-white/10 hover:bg-white/10 text-white/80">✎</button>
+                            className="rounded px-2 py-1 text-xs bg-hover hover:bg-hover text-secondary">✎</button>
                           <button onClick={() => handleDeleteStaff(s.id)}
-                            className="rounded px-2 py-1 text-xs bg-red-900/50 hover:bg-red-800/50 text-red-300">✕</button>
+                            className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">✕</button>
                         </div>
                       </td>
                     </tr>
@@ -2926,20 +2926,20 @@ export default function AdminPage() {
       case 'опросы':
         return (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-emerald-400">Опросы жильцов</h2>
+                <h2 className="text-lg font-semibold text-accent">Опросы жильцов</h2>
                 <button onClick={startNewPoll}
-                  className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                   + Новый опрос
                 </button>
               </div>
               {showPollForm && (
                 <form onSubmit={handleSavePoll}
-                  className="mb-6 rounded-xl border border-emerald-700/50 bg-white/[0.05] p-4 space-y-3">
-                  <h3 className="text-sm font-semibold text-emerald-300">Вынести на рассмотрение</h3>
+                  className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-accent">Вынести на рассмотрение</h3>
                   <select
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={pollForm.category}
                     onChange={(e) => setPollForm({ ...pollForm, category: e.target.value as PollCategory })}
                   >
@@ -2947,47 +2947,47 @@ export default function AdminPage() {
                     <option value="покупка">Покупка</option>
                     <option value="опрос">Опрос</option>
                   </select>
-                  <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Что купить или отремонтировать?" value={pollForm.title}
                     onChange={(e) => setPollForm({ ...pollForm, title: e.target.value })} required />
-                  <textarea className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <textarea className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder="Пояснение для жильцов" rows={3} value={pollForm.body}
                     onChange={(e) => setPollForm({ ...pollForm, body: e.target.value })} />
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">Начало голосования</label>
+                      <label className="text-xs text-secondary mb-1 block">Начало голосования</label>
                       <input type="date"
-                        className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         value={pollForm.voting_starts}
                         onChange={(e) => setPollForm({ ...pollForm, voting_starts: e.target.value })} />
                     </div>
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">Окончание голосования</label>
+                      <label className="text-xs text-secondary mb-1 block">Окончание голосования</label>
                       <input type="date"
-                        className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         value={pollForm.deadline}
                         onChange={(e) => setPollForm({ ...pollForm, deadline: e.target.value })} />
                     </div>
                     <div>
-                      <label className="text-xs text-white/50 mb-1 block">Бюджет (€)</label>
+                      <label className="text-xs text-secondary mb-1 block">Бюджет (€)</label>
                       <input type="number" step="0.01" min="0"
-                        className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                         placeholder="0.00" value={pollForm.budget_eur}
                         onChange={(e) => setPollForm({ ...pollForm, budget_eur: e.target.value })} />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-white/50 mb-1 block">Фото</label>
+                    <label className="text-xs text-secondary mb-1 block">Фото</label>
                     <input type="file" accept="image/*"
-                      className="w-full text-sm text-white/50 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:text-white/80"
+                      className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary"
                       onChange={(e) => setPollPhoto(e.target.files?.[0] ?? null)} />
                   </div>
                   <div className="space-y-2">
-                    <div className="text-xs text-white/50">Варианты ответа</div>
+                    <div className="text-xs text-secondary">Варианты ответа</div>
                     {pollForm.options.map((opt, i) => (
                       <div key={i} className="flex gap-2">
                         <input
-                          className="flex-1 rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                           value={opt}
                           onChange={(e) => {
                             const next = [...pollForm.options];
@@ -3002,30 +3002,30 @@ export default function AdminPage() {
                               ...pollForm,
                               options: pollForm.options.filter((_, idx) => idx !== i),
                             })}
-                            className="rounded px-2 text-xs text-red-300 bg-red-900/40">✕</button>
+                            className="rounded px-2 text-xs text-danger bg-danger-bg">✕</button>
                         )}
                       </div>
                     ))}
                     <button type="button"
                       onClick={() => setPollForm({ ...pollForm, options: [...pollForm.options, ''] })}
-                      className="text-xs text-emerald-300 hover:text-emerald-400">
+                      className="text-xs text-accent hover:text-accent-hover">
                       + Добавить вариант
                     </button>
                   </div>
                   <div className="flex gap-2">
                     <button type="submit"
-                      className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                      className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                       Опубликовать
                     </button>
                     <button type="button" onClick={() => setShowPollForm(false)}
-                      className="rounded-lg border border-white/10 bg-[#101816] px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+                      className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
                       Отмена
                     </button>
                   </div>
                 </form>
               )}
               {polls.length === 0 && !showPollForm && (
-                <div className="text-sm text-white/40">Опросов нет. Создайте голосование по покупке или ремонту.</div>
+                <div className="text-sm text-muted">Опросов нет. Создайте голосование по покупке или ремонту.</div>
               )}
               <div className="space-y-4">
                 {polls.map((poll) => {
@@ -3038,32 +3038,32 @@ export default function AdminPage() {
                   const tally = tallyPoll(options, votesForPoll, properties);
                   const decision = pollDecisionLabel(poll, tally.accepted);
                   return (
-                    <div key={poll.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                    <div key={poll.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
                       <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
                         <div>
                           <div className="flex flex-wrap items-center gap-2 mb-1">
                             <span className={`text-xs rounded-full px-2 py-0.5 border ${pollCategoryClass(poll.category)}`}>
                               {poll.category}
                             </span>
-                            <span className={`text-xs ${open ? 'text-emerald-300' : 'text-white/40'}`}>
+                            <span className={`text-xs ${open ? 'text-accent' : 'text-muted'}`}>
                               {poll.status}
                             </span>
                             <span className={`text-xs ${
-                              decision === 'принято' ? 'text-emerald-300' :
-                              decision === 'не принято' ? 'text-red-300' : 'text-white/50'
+                              decision === 'принято' ? 'text-accent' :
+                              decision === 'не принято' ? 'text-danger' : 'text-secondary'
                             }`}>
                               {decision}
                             </span>
                           </div>
-                          <h3 className="text-white font-semibold">{poll.title}</h3>
+                          <h3 className="text-foreground font-semibold">{poll.title}</h3>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => handleTogglePoll(poll)}
-                            className="rounded px-2 py-1 text-xs bg-white/10 hover:bg-white/10 text-white/80">
+                            className="rounded px-2 py-1 text-xs bg-hover hover:bg-hover text-secondary">
                             {poll.status === 'открыт' ? 'Закрыть' : 'Открыть'}
                           </button>
                           <button onClick={() => handleDeletePoll(poll.id)}
-                            className="rounded px-2 py-1 text-xs bg-red-900/50 hover:bg-red-800/50 text-red-300">
+                            className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">
                             Удалить
                           </button>
                         </div>
@@ -3075,18 +3075,18 @@ export default function AdminPage() {
                       <button
                         type="button"
                         onClick={() => setExpandedPollHistory(expandedPollHistory === poll.id ? null : poll.id)}
-                        className="mt-3 text-xs text-emerald-300 hover:text-emerald-400"
+                        className="mt-3 text-xs text-accent hover:text-accent-hover"
                       >
                         {expandedPollHistory === poll.id ? 'Скрыть историю' : `История голосования (${history.length})`}
                       </button>
                       {expandedPollHistory === poll.id && (
                         <div className="mt-2 overflow-x-auto">
                           {history.length === 0 ? (
-                            <div className="text-xs text-white/40">Записей пока нет.</div>
+                            <div className="text-xs text-muted">Записей пока нет.</div>
                           ) : (
                             <table className="w-full text-xs">
                               <thead>
-                                <tr className="text-left text-white/40 border-b border-white/10">
+                                <tr className="text-left text-muted border-b border-border">
                                   <th className="py-1 pr-2">Когда</th>
                                   <th className="py-1 pr-2">{t('admin.aptLabel')}</th>
                                   <th className="py-1 pr-2">Голос</th>
@@ -3095,7 +3095,7 @@ export default function AdminPage() {
                               </thead>
                               <tbody>
                                 {history.map((h) => (
-                                  <tr key={h.id} className="border-b border-white/10 text-white/70">
+                                  <tr key={h.id} className="border-b border-border text-secondary">
                                     <td className="py-1 pr-2">
                                       {new Date(h.created_at).toLocaleString(dateLocale)}
                                     </td>
@@ -3124,50 +3124,50 @@ export default function AdminPage() {
       // =============================================================
       case 'объявления':
         return (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-emerald-400">Объявления</h2>
+              <h2 className="text-lg font-semibold text-accent">Объявления</h2>
               <button onClick={() => setShowAnnForm(true)}
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                 + Создать
               </button>
             </div>
             {showAnnForm && (
               <form onSubmit={handleSaveAnn}
-                className="mb-6 rounded-xl border border-emerald-700/50 bg-white/[0.05] p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-emerald-300">Новое объявление</h3>
-                <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-accent">Новое объявление</h3>
+                <input className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                   placeholder="Заголовок" value={annForm.title}
                   onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })} required />
-                <textarea className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                <textarea className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                   placeholder="Текст объявления" rows={4} value={annForm.body}
                   onChange={(e) => setAnnForm({ ...annForm, body: e.target.value })} required />
-                <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                   placeholder="От кого" value={annForm.created_by}
                   onChange={(e) => setAnnForm({ ...annForm, created_by: e.target.value })} />
                 <div className="flex gap-2">
                   <button type="submit"
-                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                     Опубликовать
                   </button>
                   <button type="button" onClick={() => setShowAnnForm(false)}
-                    className="rounded-lg border border-white/10 bg-[#101816] px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
                     Отмена
                   </button>
                 </div>
               </form>
             )}
             <div className="space-y-3">
-              {announcements.length === 0 && <div className="text-sm text-white/40">Объявлений нет.</div>}
+              {announcements.length === 0 && <div className="text-sm text-muted">Объявлений нет.</div>}
               {announcements.map((a) => (
-                <div key={a.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                <div key={a.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-white font-semibold">{a.title}</h3>
+                    <h3 className="text-foreground font-semibold">{a.title}</h3>
                     <button onClick={() => handleDeleteAnn(a.id)}
-                      className="text-xs text-red-400 hover:text-red-300">Удалить</button>
+                      className="text-xs text-danger hover:text-danger">Удалить</button>
                   </div>
-                  <p className="text-sm text-white/70 whitespace-pre-wrap">{a.body}</p>
-                  <div className="mt-2 text-xs text-white/40">
+                  <p className="text-sm text-secondary whitespace-pre-wrap">{a.body}</p>
+                  <div className="mt-2 text-xs text-muted">
                     {a.created_by && `От: ${a.created_by} · `}
                     {new Date(a.created_at).toLocaleString(dateLocale)}
                   </div>
@@ -3196,47 +3196,47 @@ export default function AdminPage() {
       case 'чат':
         return (
           <div
-            className={`flex overflow-hidden bg-white/[0.03] md:rounded-2xl md:border md:border-white/10 ${
+            className={`flex overflow-hidden bg-surface md:rounded-2xl md:border md:border-border ${
               selectedChatProperty
                 ? 'h-[calc(100dvh-3.4rem)] md:h-[calc(100vh-10rem)]'
                 : 'h-[calc(100dvh-8.1rem-env(safe-area-inset-bottom))] md:h-[calc(100vh-10rem)]'
             }`}
           >
             <div
-              className={`w-full flex-col md:w-72 md:flex-shrink-0 md:border-r md:border-white/10 ${
+              className={`w-full flex-col md:w-72 md:flex-shrink-0 md:border-r md:border-border ${
                 selectedChatProperty ? 'hidden md:flex' : 'flex'
               }`}
             >
-              <div className="px-4 py-3 border-b border-white/10 bg-white/[0.05]">
-                <h2 className="text-sm font-semibold text-emerald-400">
+              <div className="px-4 py-3 border-b border-border bg-surface">
+                <h2 className="text-sm font-semibold text-accent">
                   {t('admin.dialogs')}{' '}
                   {totalUnreadChats > 0 && t('admin.dialogsNew', { n: totalUnreadChats })}
                 </h2>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {chatProperties.length === 0 ? (
-                  <div className="p-4 text-sm text-white/40">{t('admin.noDialogs')}</div>
+                  <div className="p-4 text-sm text-muted">{t('admin.noDialogs')}</div>
                 ) : (
                   chatProperties.map((item) => (
                     <button key={item.property.id}
                       onClick={() => setSelectedChatProperty(item.property)}
-                      className={`w-full text-left px-4 py-3 border-b border-white/10 hover:bg-white/[0.04] transition-colors ${
-                        selectedChatProperty?.id === item.property.id ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : ''
+                      className={`w-full text-left px-4 py-3 border-b border-border hover:bg-surface transition-colors ${
+                        selectedChatProperty?.id === item.property.id ? 'bg-accent-bg border-l-2 border-l-accent' : ''
                       }`}>
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm text-white font-medium truncate">
+                          <div className="text-sm text-foreground font-medium truncate">
                             {t('common.apt')} {item.property.apartment_number}
                           </div>
-                          <div className="text-xs text-white/40 truncate">{item.property.owner_name}</div>
+                          <div className="text-xs text-muted truncate">{item.property.owner_name}</div>
                           {item.lastMessage && (
-                            <div className="text-xs text-white/30 truncate mt-1">
+                            <div className="text-xs text-muted truncate mt-1">
                               {item.lastMessage.sender === 'owner' ? '' : `${t('common.uk')}: `}{chatPreviewText(item.lastMessage.message, item.lastMessage.file_name, item.lastMessage.photo_url)}
                             </div>
                           )}
                         </div>
                         {item.unread > 0 && (
-                          <span className="ml-2 flex-shrink-0 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                          <span className="ml-2 flex-shrink-0 bg-danger text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                             {item.unread}
                           </span>
                         )}
@@ -3253,19 +3253,19 @@ export default function AdminPage() {
             >
               {selectedChatProperty ? (
                 <>
-                  <div className="flex items-start gap-2 border-b border-white/10 bg-white/[0.05] px-3 py-3 md:px-5">
+                  <div className="flex items-start gap-2 border-b border-border bg-surface px-3 py-3 md:px-5">
                     <button
                       type="button"
                       onClick={() => setSelectedChatProperty(null)}
-                      className="mt-0.5 shrink-0 rounded-lg px-2 py-1 text-sm text-white/70 hover:bg-white/10 md:hidden"
+                      className="mt-0.5 shrink-0 rounded-lg px-2 py-1 text-sm text-secondary hover:bg-hover md:hidden"
                     >
                       ← {t('common.back')}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-sm font-semibold text-emerald-400">
+                      <h2 className="truncate text-sm font-semibold text-accent">
                         {t('common.apt')} {selectedChatProperty.apartment_number} — {selectedChatProperty.owner_name}
                       </h2>
-                      <div className="truncate text-xs text-white/40">
+                      <div className="truncate text-xs text-muted">
                         {selectedChatProperty.owner_email}
                         {selectedChatProperty.owner_phone && ` · ${selectedChatProperty.owner_phone}`}
                         {' · '}
@@ -3277,14 +3277,14 @@ export default function AdminPage() {
                     <button
                       type="button"
                       onClick={() => setSelectedChatProperty(null)}
-                      className="hidden shrink-0 text-sm text-white/50 hover:text-white/80 md:inline"
+                      className="hidden shrink-0 text-sm text-secondary hover:text-foreground md:inline"
                     >
                       ✕ {t('common.close')}
                     </button>
                   </div>
                   <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3 md:p-4">
                     {chatMessages.length === 0 ? (
-                      <div className="flex h-full items-center justify-center text-sm text-white/40">
+                      <div className="flex h-full items-center justify-center text-sm text-muted">
                         {t('admin.noChatMessages')}
                       </div>
                     ) : (
@@ -3293,8 +3293,8 @@ export default function AdminPage() {
                         return (
                           <div key={m.id} className={`flex ${isUk ? 'justify-end' : 'justify-start'}`}>
                             <div className={`w-fit max-w-[85%] rounded-2xl px-4 py-2.5 text-sm md:max-w-[75%] ${
-                              isUk ? 'bg-teal-600 text-gray-50 rounded-br-sm'
-                                   : 'bg-white/10 text-white rounded-bl-sm border border-white/15'
+                              isUk ? 'bg-accent-bg text-foreground rounded-br-sm'
+                                   : 'bg-hover text-foreground rounded-bl-sm border border-border'
                             }`}>
                               {m.photo_url && (
                                 <div className={m.message.trim() ? 'mb-2' : ''}>
@@ -3304,11 +3304,11 @@ export default function AdminPage() {
                               {m.message.trim() ? (
                                 <div className="whitespace-pre-wrap break-words">{m.message}</div>
                               ) : null}
-                              <div className={`mt-1 text-[10px] ${isUk ? 'text-teal-200/70' : 'text-white/50'}`}>
+                              <div className={`mt-1 text-[10px] ${isUk ? 'text-secondary' : 'text-secondary'}`}>
                                 {new Date(m.created_at).toLocaleString(dateLocale,
                                   { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 {!isUk && isNewOwnerMessage(m, chatMessages, ukChatSeen[String(selectedChatProperty.id)]) && (
-                                  <span className="ml-2 text-red-400">● {t('account.newMsg')}</span>
+                                  <span className="ml-2 text-danger">● {t('account.newMsg')}</span>
                                 )}
                               </div>
                             </div>
@@ -3318,9 +3318,9 @@ export default function AdminPage() {
                     )}
                   </div>
                   <form onSubmit={handleSendChat}
-                    className="border-t border-white/10 bg-white/[0.05] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3">
+                    className="border-t border-border bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3">
                     {chatFile && (
-                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/80">
+                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary">
                         <span className="min-w-0 flex-1 truncate">📎 {chatFile.name}</span>
                         <button
                           type="button"
@@ -3328,7 +3328,7 @@ export default function AdminPage() {
                             setChatFile(null);
                             if (chatFileRef.current) chatFileRef.current.value = '';
                           }}
-                          className="shrink-0 text-xs text-white/50 hover:text-white"
+                          className="shrink-0 text-xs text-secondary hover:text-foreground"
                         >
                           {t('account.removeFile')}
                         </button>
@@ -3348,22 +3348,22 @@ export default function AdminPage() {
                       disabled={chatSending}
                       aria-label={t('account.attachFile')}
                       title={t('account.attachFile')}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#101816] text-white/70 hover:bg-white/10 disabled:opacity-40"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-secondary hover:bg-hover disabled:opacity-40"
                     >
                       📎
                     </button>
-                    <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-4 py-2.5 text-base text-white placeholder-white/40 focus:outline-none focus:border-teal-500/50 md:text-sm"
+                    <input className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-base text-foreground placeholder:text-placeholder focus:outline-none focus:border-accent md:text-sm"
                       value={chatInput} onChange={(e) => setChatInput(e.target.value)}
                       placeholder={t('account.chatPlaceholder')} disabled={chatSending} />
                     <button type="submit" disabled={chatSending || (!chatInput.trim() && !chatFile)}
-                      className="shrink-0 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                      className="shrink-0 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed">
                       {chatSending ? '...' : t('common.send')}
                     </button>
                     </div>
                   </form>
                 </>
               ) : (
-                <div className="flex h-full items-center justify-center text-sm text-white/40">
+                <div className="flex h-full items-center justify-center text-sm text-muted">
                   {t('admin.pickDialog')}
                 </div>
               )}
@@ -3383,21 +3383,21 @@ export default function AdminPage() {
         return (
           <div className="space-y-4">
             {supportFeeMissing && (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                Нет таблиц в базе. Выполните <span className="font-mono text-amber-200">supabase/support_fee.sql</span> в SQL Editor.
+              <div className="rounded-2xl border border-warning/25 bg-warning-bg px-4 py-3 text-sm text-warning">
+                Нет таблиц в базе. Выполните <span className="font-mono text-warning">supabase/support_fee.sql</span> в SQL Editor.
               </div>
             )}
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Ставка таксы</p>
-                <div className="mt-1 text-3xl font-semibold text-white">{supportRate} € <span className="text-base font-normal text-white/40">/ м² в год</span></div>
-                <p className="mt-2 text-sm text-white/45">
+              <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Ставка таксы</p>
+                <div className="mt-1 text-3xl font-semibold text-foreground">{supportRate} € <span className="text-base font-normal text-muted">/ м² в год</span></div>
+                <p className="mt-2 text-sm text-muted">
                   По дому {annualSupportTotal.toFixed(2)} € в год
                 </p>
                 {canRate ? (
                   <form onSubmit={handleSaveSupportRate} className="mt-4 flex flex-wrap items-end gap-2">
-                    <label className="text-sm text-white/60">
+                    <label className="text-sm text-secondary">
                       Новая ставка
                       <input
                         type="number"
@@ -3405,29 +3405,29 @@ export default function AdminPage() {
                         step="0.01"
                         value={supportRateInput}
                         onChange={(e) => setSupportRateInput(e.target.value)}
-                        className="mt-1 block w-36 rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                        className="mt-1 block w-36 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                       />
                     </label>
                     <button
                       type="submit"
                       disabled={rateSaving || supportFeeMissing}
-                      className="rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
                       {rateSaving ? 'Сохранение…' : 'Сохранить ставку'}
                     </button>
                   </form>
                 ) : (
-                  <p className="mt-3 text-xs text-white/40">Ставку меняет только администратор.</p>
+                  <p className="mt-3 text-xs text-muted">Ставку меняет только администратор.</p>
                 )}
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Начисление за год</p>
-                <p className="mt-2 text-sm text-white/50">
+              <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Начисление за год</p>
+                <p className="mt-2 text-sm text-secondary">
                   Добавляет годовую таксу в долг (переплата гасится первой). Повторно за тот же год не начисляется.
                 </p>
                 <div className="mt-4 flex flex-wrap items-end gap-2">
-                  <label className="text-sm text-white/60">
+                  <label className="text-sm text-secondary">
                     Год
                     <input
                       type="number"
@@ -3435,29 +3435,29 @@ export default function AdminPage() {
                       max="2100"
                       value={chargeYear}
                       onChange={(e) => setChargeYear(e.target.value)}
-                      className="mt-1 block w-28 rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                      className="mt-1 block w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                     />
                   </label>
                   <button
                     type="button"
                     disabled={chargeSaving || !canPay || supportFeeMissing}
                     onClick={() => handleChargeSupport(properties.map((p) => p.id))}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover disabled:opacity-50"
                   >
                     {chargeSaving ? 'Начисление…' : `Начислить всем (${chargeYear})`}
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-white/35">{t('admin.chargedApts', { year: chargeYear, n: yearCharges.length })}</p>
+                <p className="mt-2 text-xs text-muted">{t('admin.chargedApts', { year: chargeYear, n: yearCharges.length })}</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Принять оплату таксы</p>
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Принять оплату таксы</p>
               {!canPay && (
-                <p className="mt-2 text-sm text-amber-200">Принимать оплату могут администратор и бухгалтер.</p>
+                <p className="mt-2 text-sm text-warning">Принимать оплату могут администратор и бухгалтер.</p>
               )}
               <form onSubmit={handleRecordSupportPayment} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="text-sm text-white/60 sm:col-span-2">
+                <label className="text-sm text-secondary sm:col-span-2">
                   {t('admin.aptLabel')}
                   <select
                     required
@@ -3473,7 +3473,7 @@ export default function AdminPage() {
                         debt > 0 ? debt.toFixed(2) : String(monthlySupportFee(p.area_sqm, supportRate)),
                       );
                     }}
-                    className="mt-1 block w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   >
                     <option value="">{t('form.pickApt')}</option>
                     {properties.map((p) => (
@@ -3483,7 +3483,7 @@ export default function AdminPage() {
                     ))}
                   </select>
                 </label>
-                <label className="text-sm text-white/60">
+                <label className="text-sm text-secondary">
                   Сумма €
                   <input
                     required
@@ -3493,30 +3493,30 @@ export default function AdminPage() {
                     step="0.01"
                     value={payAmount}
                     onChange={(e) => setPayAmount(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   />
                 </label>
-                <label className="text-sm text-white/60">
+                <label className="text-sm text-secondary">
                   Комментарий
                   <input
                     disabled={!canPay}
                     value={payNote}
                     onChange={(e) => setPayNote(e.target.value)}
                     placeholder="Наличные, банк…"
-                    className="mt-1 block w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   />
                 </label>
                 {selectedPay && (
                   <div className="sm:col-span-2 flex flex-wrap gap-2 text-xs">
-                    <button type="button" className="rounded-full border border-white/10 px-3 py-1 text-white/70"
+                    <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
                       onClick={() => setPayAmount(Number(selectedPay.debt ?? 0) > 0 ? Number(selectedPay.debt).toFixed(2) : '0.01')}>
                       Весь долг
                     </button>
-                    <button type="button" className="rounded-full border border-white/10 px-3 py-1 text-white/70"
+                    <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
                       onClick={() => setPayAmount(String(monthlySupportFee(selectedPay.area_sqm, supportRate)))}>
                       Месяц
                     </button>
-                    <button type="button" className="rounded-full border border-white/10 px-3 py-1 text-white/70"
+                    <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
                       onClick={() => setPayAmount(String(annualSupportFee(selectedPay.area_sqm, supportRate)))}>
                       Год
                     </button>
@@ -3526,7 +3526,7 @@ export default function AdminPage() {
                   <button
                     type="submit"
                     disabled={!canPay || paySaving || supportFeeMissing}
-                    className="rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    className="rounded-full bg-accent hover:bg-accent-hover px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {paySaving ? 'Запись…' : 'Внести оплату'}
                   </button>
@@ -3534,18 +3534,18 @@ export default function AdminPage() {
               </form>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Журнал таксы</p>
-                <p className="text-xs text-white/40">Оплаты в журнале: {yearPayments.toFixed(2)} €</p>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Журнал таксы</p>
+                <p className="text-xs text-muted">Оплаты в журнале: {yearPayments.toFixed(2)} €</p>
               </div>
               {ledger.length === 0 ? (
-                <p className="mt-3 text-sm text-white/40">Записей пока нет.</p>
+                <p className="mt-3 text-sm text-muted">Записей пока нет.</p>
               ) : (
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-white/40 border-b border-white/10">
+                      <tr className="text-left text-muted border-b border-border">
                         <th className="py-2 pr-3">Дата</th>
                         <th className="py-2 pr-3">{t('form.colApt')}</th>
                         <th className="py-2 pr-3">Тип</th>
@@ -3558,21 +3558,21 @@ export default function AdminPage() {
                       {ledger.slice(0, 40).map((row) => {
                         const apt = properties.find((p) => p.id === row.property_id);
                         return (
-                          <tr key={row.id} className="border-b border-white/5">
-                            <td className="py-2 pr-3 text-white/50">
+                          <tr key={row.id} className="border-b border-border">
+                            <td className="py-2 pr-3 text-secondary">
                               {new Date(row.created_at).toLocaleString(dateLocale)}
                             </td>
-                            <td className="py-2 pr-3 text-white">{apt?.apartment_number ?? row.property_id}</td>
+                            <td className="py-2 pr-3 text-foreground">{apt?.apartment_number ?? row.property_id}</td>
                             <td className="py-2 pr-3">
-                              <span className={row.kind === 'payment' ? 'text-emerald-300' : 'text-amber-200'}>
+                              <span className={row.kind === 'payment' ? 'text-accent' : 'text-warning'}>
                                 {row.kind === 'payment' ? 'оплата' : `начисление ${row.period ?? ''}`}
                               </span>
                             </td>
-                            <td className="py-2 pr-3 text-white">{Number(row.amount).toFixed(2)} €</td>
-                            <td className="py-2 pr-3 text-white/50 text-xs">
+                            <td className="py-2 pr-3 text-foreground">{Number(row.amount).toFixed(2)} €</td>
+                            <td className="py-2 pr-3 text-secondary text-xs">
                               долг {Number(row.debt_after ?? 0).toFixed(2)} · +{Number(row.overpayment_after ?? 0).toFixed(2)}
                             </td>
-                            <td className="py-2 pr-3 text-white/40 text-xs">{row.recorded_by ?? '—'}</td>
+                            <td className="py-2 pr-3 text-muted text-xs">{row.recorded_by ?? '—'}</td>
                           </tr>
                         );
                       })}
@@ -3592,41 +3592,41 @@ export default function AdminPage() {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen bg-[#070b0a] text-white flex items-center justify-center">
-        <div className="text-lg text-white/50">{t('common.loading')}</div>
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="text-lg text-secondary">{t('common.loading')}</div>
       </div>
     );
   }
 
   if (!allowed || loading) {
     return (
-      <div className="min-h-screen bg-[#070b0a] text-white flex items-center justify-center">
-        <div className="text-lg text-white/50">{t('admin.loading')}</div>
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="text-lg text-secondary">{t('admin.loading')}</div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-dvh bg-[#070b0a] text-white">
+    <div className="flex min-h-dvh bg-background text-foreground">
       {sidebarOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-[rgba(20,25,30,0.25)] md:hidden"
           aria-label={t('common.closeMenu')}
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#101816] transition-[transform,width] duration-300 md:pointer-events-auto md:static md:h-auto md:flex-shrink-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-border bg-surface transition-[transform,width] duration-300 md:pointer-events-auto md:static md:h-auto md:flex-shrink-0 ${
         sidebarOpen
           ? 'translate-x-0 md:w-64 md:min-w-64 md:max-w-64'
           : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:min-w-16 md:max-w-16 md:translate-x-0'
       }`}>
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-white/10 p-3">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-border p-3">
           {sidebarOpen && <BrandMark compact />}
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg bg-white/10 p-2 text-white/70 md:hidden"
+            className="rounded-lg bg-hover p-2 text-secondary md:hidden"
             aria-label={t('common.closeMenu')}
           >
             ✕
@@ -3634,7 +3634,7 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="hidden rounded-lg bg-white/10 p-1.5 text-white/70 md:block"
+            className="hidden rounded-lg bg-hover p-1.5 text-secondary md:block"
             title={sidebarOpen ? t('common.collapse') : t('common.expand')}
           >
             {sidebarOpen ? '◀' : '▶'}
@@ -3654,22 +3654,22 @@ export default function AdminPage() {
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
                   active
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    : 'text-white/50 hover:bg-white/5 hover:text-white/80 border border-transparent'
+                    ? 'bg-accent-bg text-accent border border-accent/25'
+                    : 'text-secondary hover:bg-hover hover:text-foreground border border-transparent'
                 }`}
                 title={item.label}
               >
                 <span className="relative text-lg flex-shrink-0">
                   {item.icon}
                   {!sidebarOpen && key === 'чат' && totalUnreadChats > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger" />
                   )}
                 </span>
                 {sidebarOpen && (
                   <span className="flex min-w-0 flex-1 items-center gap-2">
                     <span className="truncate">{item.label}</span>
                     {key === 'чат' && totalUnreadChats > 0 && (
-                      <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                      <span className="ml-auto bg-danger text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                         {totalUnreadChats}
                       </span>
                     )}
@@ -3703,26 +3703,26 @@ export default function AdminPage() {
                   }}
                   className={`flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-xs font-medium uppercase tracking-wide ${
                     childActive && !expanded
-                      ? 'text-emerald-300'
-                      : 'text-white/35 hover:text-white/60'
+                      ? 'text-accent'
+                      : 'text-muted hover:text-foreground/60'
                   }`}
                   title={group.label}
                 >
                   <span className="relative text-lg normal-case tracking-normal flex-shrink-0">
                     {group.icon}
                     {!sidebarOpen && badge > 0 && (
-                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
+                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-warning" />
                     )}
                   </span>
                   {sidebarOpen && (
                     <>
                       <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
                       {badge > 0 && (
-                        <span className="shrink-0 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-gray-900">
+                        <span className="shrink-0 rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-gray-900">
                           {badge}
                         </span>
                       )}
-                      <span className="shrink-0 text-white/30">{expanded ? '▾' : '▸'}</span>
+                      <span className="shrink-0 text-muted">{expanded ? '▾' : '▸'}</span>
                     </>
                   )}
                 </button>
@@ -3740,20 +3740,20 @@ export default function AdminPage() {
                         }}
                         className={`mt-0.5 flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl border px-3 py-2 pl-10 text-sm transition-all ${
                           active
-                            ? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-300'
-                            : 'border-transparent text-white/50 hover:bg-white/5 hover:text-white/80'
+                            ? 'border-accent/25 bg-accent-bg text-accent'
+                            : 'border-transparent text-secondary hover:bg-hover hover:text-foreground'
                         }`}
                       >
                         <span className="text-base flex-shrink-0">{item.icon}</span>
                         <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
                           <span className="truncate">{item.label}</span>
                           {key === 'смены' && pendingTransfersCount > 0 && (
-                            <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                            <span className="ml-auto bg-warning text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                               {pendingTransfersCount}
                             </span>
                           )}
                           {key === 'опросы' && openPollsCount > 0 && (
-                            <span className="ml-auto bg-amber-500 text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                            <span className="ml-auto bg-warning text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                               {openPollsCount}
                             </span>
                           )}
@@ -3765,14 +3765,14 @@ export default function AdminPage() {
             );
           })}
         </nav>
-        <div className="space-y-2 border-t border-white/10 p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="space-y-2 border-t border-border p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {sidebarOpen ? (
             <div className="space-y-2">
               <LanguageSwitcher compact />
-              <div className="text-xs text-white/40 truncate">{sessionEmail}</div>
+              <div className="text-xs text-muted truncate">{sessionEmail}</div>
               {hasCabinet && (
                 <Link href="/account"
-                  className="block text-center text-xs rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2 py-1.5 text-emerald-300">
+                  className="block text-center text-xs rounded-lg border border-accent/25 bg-accent-bg px-2 py-1.5 text-accent">
                   {t('account.myApts')}
                 </Link>
               )}
@@ -3781,31 +3781,31 @@ export default function AdminPage() {
                 onClick={() => {
                   void handleLogout();
                 }}
-                className="min-h-11 w-full rounded-xl border border-white/10 bg-white/10 px-2 text-sm"
+                className="min-h-11 w-full rounded-xl border border-border bg-hover px-2 text-sm"
               >
                 {t('common.logout')}
               </button>
               <Link href="/"
-                className="block text-center text-xs rounded-lg border border-white/10 bg-white/10 px-2 py-1.5 hover:bg-white/10">
+                className="block text-center text-xs rounded-lg border border-border bg-hover px-2 py-1.5 hover:bg-hover">
                 {t('common.home')}
               </Link>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
               {hasCabinet && (
-                <Link href="/account" className="p-1.5 rounded-lg bg-emerald-500/20 text-xs" title={t('account.myApts')}>🏠</Link>
+                <Link href="/account" className="p-1.5 rounded-lg bg-accent-bg text-xs" title={t('account.myApts')}>🏠</Link>
               )}
               <button
                 type="button"
                 onClick={() => {
                   void handleLogout();
                 }}
-                className="p-1.5 rounded-lg bg-white/10 text-xs"
+                className="p-1.5 rounded-lg bg-hover text-xs"
                 title={t('common.logout')}
               >
                 🚪
               </button>
-              <Link href="/" className="p-1.5 rounded-lg bg-white/10 hover:bg-white/10 text-xs" title={t('common.home')}>←</Link>
+              <Link href="/" className="p-1.5 rounded-lg bg-hover hover:bg-hover text-xs" title={t('common.home')}>←</Link>
             </div>
           )}
         </div>
@@ -3816,10 +3816,10 @@ export default function AdminPage() {
           ? 'overflow-hidden pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
       }`}>
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2.5 md:px-6 md:py-4">
           <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold md:text-xl">
-              {MENU_ITEMS.find((m) => m.key === activeMenu)?.icon}{' '}
+            <p className="truncate text-xs font-bold tracking-[0.02em] text-foreground">{t('brand.name')}</p>
+            <h1 className="truncate text-base font-semibold md:text-lg">
               {MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
             </h1>
           </div>
@@ -3829,21 +3829,21 @@ export default function AdminPage() {
               onClick={() => {
                 void handleLogout();
               }}
-              className="min-h-10 rounded-lg border border-white/15 px-3 text-sm text-white/80 md:hidden"
+              className="min-h-10 rounded-lg border border-border px-3 text-sm text-secondary md:hidden"
             >
               {t('common.logout')}
             </button>
             <div className="hidden shrink-0 items-center gap-3 md:flex">
               <LanguageSwitcher compact />
-              <Link href="/" className="text-sm text-white/50 hover:text-white/80">{t('common.backHome')}</Link>
+              <Link href="/" className="text-sm text-secondary hover:text-foreground">{t('common.backHome')}</Link>
             </div>
           </div>
         </div>
-        <div className={activeMenu === 'чат' ? 'p-0 md:p-6' : 'p-3 md:p-6'}>
+        <div className={activeMenu === 'чат' ? 'p-0 md:p-6' : 'p-4 md:p-8'}>
           {error && (
-            <div className="mb-4 rounded-xl border border-red-800 bg-red-900/20 p-4 text-red-200">
+            <div className="mb-4 rounded-xl border border-danger/25 bg-danger-bg p-4 text-danger">
               {error}
-              <button onClick={() => setError(null)} className="ml-3 text-xs text-red-400 hover:text-red-300">✕</button>
+              <button onClick={() => setError(null)} className="ml-3 text-xs text-danger hover:text-danger">✕</button>
             </div>
           )}
           {renderContent()}
@@ -3903,17 +3903,17 @@ function OverviewGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:p-5">
+    <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">{title}</h2>
-          {hint && <p className="mt-1 text-xs text-white/40">{hint}</p>}
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
         </div>
         {onAction && (
           <button
             type="button"
             onClick={onAction}
-            className="shrink-0 rounded-full border border-white/10 px-3 py-1 text-xs text-emerald-300 hover:bg-white/5"
+            className="shrink-0 rounded-full border border-border px-3 py-1 text-xs text-accent hover:bg-hover"
           >
             {actionLabel ?? 'Открыть'}
           </button>
@@ -3934,9 +3934,9 @@ function Metric({
   alert?: boolean;
 }) {
   return (
-    <div className="rounded-xl bg-white/[0.04] px-3 py-2.5">
-      <div className="text-[11px] text-white/40">{label}</div>
-      <div className={`mt-0.5 text-lg font-semibold tabular-nums ${alert ? 'text-yellow-300' : 'text-white'}`}>
+    <div className="rounded-xl bg-surface-secondary px-3 py-2.5">
+      <div className="text-[11px] text-muted">{label}</div>
+      <div className={`mt-0.5 text-lg font-semibold tabular-nums ${alert ? 'text-danger' : 'text-foreground'}`}>
         {value}
       </div>
     </div>
@@ -4072,21 +4072,21 @@ function ApartmentDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-[#101816] max-h-[90vh] flex flex-col"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,25,30,0.25)] p-4" onClick={onClose}>
+      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-border bg-surface shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
         onClick={(e) => e.stopPropagation()}>
         {/* ШАПКА */}
-        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between flex-shrink-0">
           <div>
-            <h3 className="text-xl font-semibold text-emerald-400">
+            <h3 className="text-xl font-semibold text-accent">
               {t('picker.apt', { n: property.apartment_number })} — {property.owner_name}
             </h3>
-            <div className="text-xs text-white/40 mt-1">
+            <div className="text-xs text-muted mt-1">
               {property.owner_email}{property.owner_phone && ` · ${property.owner_phone}`}
               {' · '}
               <span className={
-                property.occupancy_status === 'owner' ? 'text-emerald-300' :
-                property.occupancy_status === 'standby' ? 'text-yellow-300' : 'text-cyan-300'
+                property.occupancy_status === 'owner' ? 'text-accent' :
+                property.occupancy_status === 'standby' ? 'text-warning' : 'text-accent'
               }>
                 {property.occupancy_status === 'owner' ? 'Собственник' :
                  property.occupancy_status === 'standby' ? 'В отъезде' : 'Арендаторы'}
@@ -4095,19 +4095,19 @@ function ApartmentDetailModal({
           </div>
           <div className="flex gap-2">
             <button onClick={onOpenChat}
-              className="rounded-lg border border-teal-600/50 bg-teal-600/20 px-3 py-1.5 text-xs text-teal-300 hover:bg-teal-600/30">
+              className="rounded-lg border border-accent/25 bg-accent-bg px-3 py-1.5 text-xs text-accent hover:bg-hover">
               💬 Чат {unreadChats > 0 && `(${unreadChats})`}
             </button>
             <button onClick={onEdit}
-              className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10">
+              className="rounded-lg border border-border bg-hover px-3 py-1.5 text-xs text-secondary hover:bg-hover">
               ✎ Редактировать
             </button>
-            <button onClick={onClose} className="text-white/50 hover:text-white/80 text-xl px-2">✕</button>
+            <button onClick={onClose} className="text-secondary hover:text-foreground text-xl px-2">✕</button>
           </div>
         </div>
 
         {/* ВКЛАДКИ */}
-        <div className="px-6 pt-3 border-b border-white/10 flex gap-1 flex-shrink-0 overflow-x-auto">
+        <div className="px-6 pt-3 border-b border-border flex gap-1 flex-shrink-0 overflow-x-auto">
           {[
             { key: 'инфо', label: 'Инфо', count: null },
             { key: 'финансы', label: 'Финансы', count: null },
@@ -4119,12 +4119,12 @@ function ApartmentDetailModal({
             <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
               className={`px-4 py-2 text-sm rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
-                  ? 'border-emerald-500 text-emerald-300 bg-white/[0.04]'
-                  : 'border-transparent text-white/50 hover:text-white/80'
+                  ? 'border-accent text-accent bg-surface'
+                  : 'border-transparent text-secondary hover:text-foreground'
               }`}>
               {tab.label}
               {tab.count !== null && tab.count > 0 && (
-                <span className="ml-1 text-xs bg-white/10 rounded-full px-1.5 py-0.5 text-white/70">
+                <span className="ml-1 text-xs bg-hover rounded-full px-1.5 py-0.5 text-secondary">
                   {tab.count}
                 </span>
               )}
@@ -4157,20 +4157,20 @@ function ApartmentDetailModal({
                   </>
                 )}
               </div>
-              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="text-white/50 text-xs mb-2">Режим проживания</div>
+              <div className="mt-4 rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                <div className="text-secondary text-xs mb-2">Режим проживания</div>
                 <div className={`text-lg font-medium ${
-                  property.occupancy_status === 'owner' ? 'text-emerald-300' :
-                  property.occupancy_status === 'standby' ? 'text-yellow-300' : 'text-cyan-300'
+                  property.occupancy_status === 'owner' ? 'text-accent' :
+                  property.occupancy_status === 'standby' ? 'text-warning' : 'text-accent'
                 }`}>
                   {property.occupancy_status === 'owner' ? '🏠 Собственник проживает' :
                    property.occupancy_status === 'standby' ? '✈️ В отъезде' : '👥 Арендаторы'}
                 </div>
               </div>
               {property.pet_info && (
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="text-white/50 text-xs mb-1">🐾 Питомцы</div>
-                  <div className="text-white">{property.pet_info}</div>
+                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                  <div className="text-secondary text-xs mb-1">🐾 Питомцы</div>
+                  <div className="text-foreground">{property.pet_info}</div>
                 </div>
               )}
             </div>
@@ -4180,41 +4180,41 @@ function ApartmentDetailModal({
           {activeTab === 'финансы' && (
             <div className="space-y-4 text-sm">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="text-white/50 text-xs">Задолженность</div>
+                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                  <div className="text-secondary text-xs">Задолженность</div>
                   <div className={`text-2xl font-bold mt-1 ${
-                    Number(property.debt) > 0 ? 'text-red-400' : 'text-emerald-300'
+                    Number(property.debt) > 0 ? 'text-danger' : 'text-accent'
                   }`}>
                     {Number(property.debt ?? 0).toFixed(2)} €
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="text-white/50 text-xs">Переплата</div>
+                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                  <div className="text-secondary text-xs">Переплата</div>
                   <div className={`text-2xl font-bold mt-1 ${
-                    Number(property.overpayment) > 0 ? 'text-emerald-300' : 'text-white/40'
+                    Number(property.overpayment) > 0 ? 'text-accent' : 'text-muted'
                   }`}>
                     {Number(property.overpayment ?? 0).toFixed(2)} €
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="text-white/50 text-xs">Такса поддержки (годовая)</div>
-                  <div className="text-xl font-semibold text-white mt-1">
+                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                  <div className="text-secondary text-xs">Такса поддержки (годовая)</div>
+                  <div className="text-xl font-semibold text-foreground mt-1">
                     {annualFee.toFixed(2)} €
                   </div>
-                  <div className="text-xs text-white/40 mt-1">
+                  <div className="text-xs text-muted mt-1">
                     {supportRate} €/м² × {property.area_sqm} м²
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="text-white/50 text-xs">Такса поддержки (мес.)</div>
-                  <div className="text-xl font-semibold text-white mt-1">
+                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                  <div className="text-secondary text-xs">Такса поддержки (мес.)</div>
+                  <div className="text-xl font-semibold text-foreground mt-1">
                     {monthlyFee.toFixed(2)} €
                   </div>
                 </div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="text-white/50 text-xs mb-2">Тарифы</div>
-                <div className="grid gap-1 text-xs text-white/70 sm:grid-cols-2">
+              <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+                <div className="text-secondary text-xs mb-2">Тарифы</div>
+                <div className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
                   <div>Э/э день: {DAY_RATE} €/кВтч</div>
                   <div>Э/э ночь: {NIGHT_RATE} €/кВтч</div>
                   <div>Вода: {WATER_RATE} €/м³</div>
@@ -4223,7 +4223,7 @@ function ApartmentDetailModal({
                 <button
                   type="button"
                   onClick={onTakePayment}
-                  className="mt-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white"
+                  className="mt-3 rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white"
                 >
                   Принять оплату таксы
                 </button>
@@ -4235,11 +4235,11 @@ function ApartmentDetailModal({
           {activeTab === 'счётчики' && (
             <div>
               {meterReadings.length === 0 ? (
-                <div className="text-sm text-white/40">Показаний счётчиков нет.</div>
+                <div className="text-sm text-muted">Показаний счётчиков нет.</div>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-white/50 border-b border-white/10">
+                    <tr className="text-left text-secondary border-b border-border">
                       <th className="py-2 px-3">Тип</th>
                       <th className="py-2 px-3">Показание</th>
                       <th className="py-2 px-3">Дата</th>
@@ -4248,13 +4248,13 @@ function ApartmentDetailModal({
                   </thead>
                   <tbody>
                     {meterReadings.map((m) => (
-                      <tr key={m.id} className="border-b border-white/10">
-                        <td className="py-2 px-3 text-white">{meterTypeLabel(m.meter_type)}</td>
-                        <td className="py-2 px-3 text-white">{m.value}</td>
-                        <td className="py-2 px-3 text-white/50">
+                      <tr key={m.id} className="border-b border-border">
+                        <td className="py-2 px-3 text-foreground">{meterTypeLabel(m.meter_type)}</td>
+                        <td className="py-2 px-3 text-foreground">{m.value}</td>
+                        <td className="py-2 px-3 text-secondary">
                           {new Date(m.reading_date).toLocaleDateString(dateLocale)}
                         </td>
-                        <td className="py-2 px-3 text-white/50">{m.submitted_by ?? '—'}</td>
+                        <td className="py-2 px-3 text-secondary">{m.submitted_by ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -4267,28 +4267,28 @@ function ApartmentDetailModal({
           {activeTab === 'заявки' && (
             <div className="space-y-3">
               {requests.length === 0 ? (
-                <div className="text-sm text-white/40">Заявок нет.</div>
+                <div className="text-sm text-muted">Заявок нет.</div>
               ) : (
                 requests.map((r) => (
-                  <div key={r.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                  <div key={r.id} className="rounded-xl border border-border bg-surface p-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-white font-medium text-sm">{r.subject}</div>
+                      <div className="text-foreground font-medium text-sm">{r.subject}</div>
                       <span className={`text-xs rounded-full px-2 py-1 border ${
-                        r.status === 'новая' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' :
-                        r.status === 'в работе' ? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' :
-                        r.status === 'выполнена' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' :
-                        'bg-red-500/15 text-red-300 border-red-500/30'
+                        r.status === 'новая' ? 'bg-accent-bg text-accent border-accent/25' :
+                        r.status === 'в работе' ? 'bg-warning-bg text-warning border-warning/25' :
+                        r.status === 'выполнена' ? 'bg-accent-bg text-accent border-accent/25' :
+                        'bg-danger-bg text-danger border-danger/25'
                       }`}>{labelRequestStatus(r.status, t)}</span>
                     </div>
-                    <div className="text-sm text-white/50 mt-1">{r.description}</div>
+                    <div className="text-sm text-secondary mt-1">{r.description}</div>
                     <div className="flex gap-2 mt-2">
-                      <span className="text-xs text-white/40">{labelCategory(r.category, t)} · {labelPriority(r.priority, t)}</span>
+                      <span className="text-xs text-muted">{labelCategory(r.category, t)} · {labelPriority(r.priority, t)}</span>
                       {r.photo_url && (
                         <a href={r.photo_url} target="_blank" rel="noreferrer"
-                          className="text-xs text-cyan-300 hover:underline">📷 Фото</a>
+                          className="text-xs text-accent hover:underline">📷 Фото</a>
                       )}
                     </div>
-                    <div className="text-xs text-white/40 mt-1">
+                    <div className="text-xs text-muted mt-1">
                       {new Date(r.created_at).toLocaleString(dateLocale)}
                     </div>
                   </div>
@@ -4301,25 +4301,25 @@ function ApartmentDetailModal({
           {activeTab === 'жильцы' && (
             <div className="space-y-6">
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-emerald-300">{t('registry.household')}</h4>
-                <p className="mb-3 text-xs text-white/40">{t('registry.householdHint')}</p>
+                <h4 className="mb-2 text-sm font-semibold text-accent">{t('registry.household')}</h4>
+                <p className="mb-3 text-xs text-muted">{t('registry.householdHint')}</p>
                 <form onSubmit={handleAddGuest} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <input
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.firstName')}
                     value={guestForm.first_name}
                     onChange={(e) => setGuestForm({ ...guestForm, first_name: e.target.value })}
                     required
                   />
                   <input
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.lastName')}
                     value={guestForm.last_name}
                     onChange={(e) => setGuestForm({ ...guestForm, last_name: e.target.value })}
                     required
                   />
                   <input
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('account.birthYear')}
                     type="number"
                     min="1900"
@@ -4327,34 +4327,34 @@ function ApartmentDetailModal({
                     value={guestForm.birth_year}
                     onChange={(e) => setGuestForm({ ...guestForm, birth_year: e.target.value })}
                   />
-                  <label className="flex items-center gap-2 text-sm text-white/70">
+                  <label className="flex items-center gap-2 text-sm text-secondary">
                     <input
                       type="checkbox"
                       checked={guestForm.is_child}
                       onChange={(e) => setGuestForm({ ...guestForm, is_child: e.target.checked })}
-                      className="h-4 w-4 accent-emerald-500"
+                      className="h-4 w-4 accent-accent"
                     />
                     {t('account.child18')}
                   </label>
-                  <label className="flex items-center gap-2 text-sm text-white/70">
+                  <label className="flex items-center gap-2 text-sm text-secondary">
                     <input
                       type="checkbox"
                       checked={guestForm.is_permanent}
                       onChange={(e) => setGuestForm({ ...guestForm, is_permanent: e.target.checked })}
-                      className="h-4 w-4 accent-emerald-500"
+                      className="h-4 w-4 accent-accent"
                     />
                     {t('registry.resident')}
                   </label>
                   <input
                     type="date"
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={guestForm.check_in}
                     onChange={(e) => setGuestForm({ ...guestForm, check_in: e.target.value })}
                     title={t('account.checkIn')}
                   />
                   <input
                     type="date"
-                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={guestForm.check_out}
                     onChange={(e) => setGuestForm({ ...guestForm, check_out: e.target.value })}
                     title={t('account.checkOut')}
@@ -4362,18 +4362,18 @@ function ApartmentDetailModal({
                   <button
                     type="submit"
                     disabled={guestSaving}
-                    className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+                    className="rounded-lg bg-accent px-3 py-2 text-sm text-white disabled:opacity-50"
                   >
                     {guestSaving ? t('account.adding') : t('account.addGuestPlus')}
                   </button>
                 </form>
               {guests.length === 0 ? (
-                <div className="text-sm text-white/40">{t('account.noGuests')}</div>
+                <div className="text-sm text-muted">{t('account.noGuests')}</div>
               ) : (
                 <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-white/50 border-b border-white/10">
+                    <tr className="text-left text-secondary border-b border-border">
                       <th className="py-2 px-3">№</th>
                       <th className="py-2 px-3">{t('account.firstName')}</th>
                       <th className="py-2 px-3">{t('account.lastName')}</th>
@@ -4387,26 +4387,26 @@ function ApartmentDetailModal({
                   </thead>
                   <tbody>
                     {guests.map((g, i) => (
-                      <tr key={g.id} className="border-b border-white/10">
-                        <td className="py-2 px-3 text-white/40">{i + 1}</td>
-                        <td className="py-2 px-3 text-white">{g.first_name}</td>
-                        <td className="py-2 px-3 text-white">{g.last_name}</td>
-                        <td className="py-2 px-3 text-white/70">{g.birth_year ?? '—'}</td>
+                      <tr key={g.id} className="border-b border-border">
+                        <td className="py-2 px-3 text-muted">{i + 1}</td>
+                        <td className="py-2 px-3 text-foreground">{g.first_name}</td>
+                        <td className="py-2 px-3 text-foreground">{g.last_name}</td>
+                        <td className="py-2 px-3 text-secondary">{g.birth_year ?? '—'}</td>
                         <td className="py-2 px-3">
-                          {g.is_child ? <span className="text-yellow-300">{t('account.child')}</span>
-                                     : <span className="text-emerald-300">{t('account.adult')}</span>}
+                          {g.is_child ? <span className="text-warning">{t('account.child')}</span>
+                                     : <span className="text-accent">{t('account.adult')}</span>}
                         </td>
-                        <td className="py-2 px-3 text-white/60 text-xs">
+                        <td className="py-2 px-3 text-secondary text-xs">
                           {g.is_permanent ? t('common.yes') : t('common.no')}
                         </td>
-                        <td className="py-2 px-3 text-white/50 text-xs">
+                        <td className="py-2 px-3 text-secondary text-xs">
                           {g.check_in ? new Date(g.check_in).toLocaleDateString(dateLocale) : '—'}
                         </td>
-                        <td className="py-2 px-3 text-white/50 text-xs">
+                        <td className="py-2 px-3 text-secondary text-xs">
                           {g.check_out ? new Date(g.check_out).toLocaleDateString(dateLocale) : '—'}
                         </td>
                         <td className="py-2 px-3">
-                          <button type="button" onClick={() => handleRemoveGuest(g.id)} className="text-xs text-red-400">
+                          <button type="button" onClick={() => handleRemoveGuest(g.id)} className="text-xs text-danger">
                             ✕
                           </button>
                         </td>
@@ -4418,46 +4418,46 @@ function ApartmentDetailModal({
               )}
               </div>
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-emerald-300">{t('registry.petsTitle')}</h4>
-                <p className="mb-3 text-xs text-white/40">{t('registry.petsHintChip')}</p>
+                <h4 className="mb-2 text-sm font-semibold text-accent">{t('registry.petsTitle')}</h4>
+                <p className="mb-3 text-xs text-muted">{t('registry.petsHintChip')}</p>
                 <form onSubmit={handleAddPet} className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={petForm.species} onChange={(e) => setPetForm({ ...petForm, species: e.target.value })}>
                     <option value="dog">{t('registry.dog')}</option>
                     <option value="cat">{t('registry.cat')}</option>
                     <option value="other">{t('registry.otherPet')}</option>
                   </select>
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('registry.petName')} value={petForm.name}
                     onChange={(e) => setPetForm({ ...petForm, name: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('registry.chip')} value={petForm.chip_no}
                     onChange={(e) => setPetForm({ ...petForm, chip_no: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('registry.passport')} value={petForm.passport_no}
                     onChange={(e) => setPetForm({ ...petForm, passport_no: e.target.value })} />
                   <button type="submit" disabled={petSaving}
-                    className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">
+                    className="rounded-lg bg-accent px-3 py-2 text-sm text-white disabled:opacity-50">
                     {t('registry.addPet')}
                   </button>
                 </form>
                 {pets.length === 0 ? (
-                  <div className="text-sm text-white/40">—</div>
+                  <div className="text-sm text-muted">—</div>
                 ) : (
                   <div className="space-y-2">
                     {pets.map((pet) => (
-                      <div key={pet.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-sm">
+                      <div key={pet.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
                         <div>
-                          <div className="text-white">
+                          <div className="text-foreground">
                             {pet.species === 'dog' ? t('registry.dog') : pet.species === 'cat' ? t('registry.cat') : t('registry.otherPet')}
                             {pet.name ? ` · ${pet.name}` : ''}
                           </div>
-                          <div className="text-xs text-white/45">
+                          <div className="text-xs text-muted">
                             {pet.chip_no ? `${t('registry.chip')}: ${pet.chip_no}` : ''}
                             {pet.passport_no ? ` · ${t('registry.passport')}: ${pet.passport_no}` : ''}
                           </div>
                         </div>
-                        <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-red-400">✕</button>
+                        <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-danger">✕</button>
                       </div>
                     ))}
                   </div>
@@ -4470,16 +4470,16 @@ function ApartmentDetailModal({
           {activeTab === 'чат' && (
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {chatMessages.length === 0 ? (
-                <div className="text-sm text-white/40">Нет сообщений.</div>
+                <div className="text-sm text-muted">Нет сообщений.</div>
               ) : (
                 chatMessages.map((m) => {
                   const isOwner = m.sender === 'owner';
                   return (
                     <div key={m.id} className={`flex ${isOwner ? 'justify-start' : 'justify-end'}`}>
                       <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                        isOwner ? 'bg-white/10 text-white border border-white/15' : 'bg-teal-600 text-gray-50'
+                        isOwner ? 'bg-hover text-foreground border border-border' : 'bg-accent-bg text-foreground'
                       }`}>
-                        <div className="text-xs text-white/50 mb-1">
+                        <div className="text-xs text-secondary mb-1">
                           {isOwner ? 'Жилец' : 'УК'}
                         </div>
                         {m.photo_url && (
@@ -4490,10 +4490,10 @@ function ApartmentDetailModal({
                         {m.message.trim() ? (
                           <div className="whitespace-pre-wrap break-words">{m.message}</div>
                         ) : null}
-                        <div className="text-[10px] text-white/40 mt-1">
+                        <div className="text-[10px] text-muted mt-1">
                           {new Date(m.created_at).toLocaleString(dateLocale)}
                           {isOwner && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (
-                            <span className="ml-2 text-red-400">● не прочитано</span>
+                            <span className="ml-2 text-danger">● не прочитано</span>
                           )}
                         </div>
                       </div>
@@ -4511,9 +4511,9 @@ function ApartmentDetailModal({
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/10">
-      <span className="text-white/50">{label}</span>
-      <span className="text-white font-medium">{value}</span>
+    <div className="flex items-center justify-between py-2 border-b border-border">
+      <span className="text-secondary">{label}</span>
+      <span className="text-foreground font-medium">{value}</span>
     </div>
   );
 }

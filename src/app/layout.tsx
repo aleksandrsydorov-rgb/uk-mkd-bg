@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "МКД Болгария — кабинет собственника",
+  title: "AMADEUS 11 | Sunny Beach",
   description:
-    "Прозрачное управление МКД: расходы УК, опросы жильцов, заявки и счётчики.",
+    "Official website of AMADEUS 11 residential complex in Sunny Beach, Bulgaria. Официальный сайт жилого комплекса AMADEUS 11 на Солнечном Берегу.",
 };
 
 export const viewport = {

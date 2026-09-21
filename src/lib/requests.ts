@@ -19,7 +19,7 @@ export function priorityLabel(raw: string | null | undefined) {
 
 export function priorityClass(raw: string | null | undefined) {
   const p = normalizePriority(raw);
-  if (p === 'высокий') return 'bg-red-500/15 text-red-300 border-red-500/30';
-  if (p === 'низкий') return 'bg-white/10 text-white/70 border-white/15';
-  return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30';
+  if (p === 'высокий') return 'bg-danger-bg text-danger border-danger/25';
+  if (p === 'низкий') return 'bg-surface-secondary text-secondary border-border';
+  return 'bg-warning-bg text-warning border-warning/25';
 }

@@ -49,10 +49,7 @@ export async function resolveAccess(
     if (!isMissingColumn(staffRes.error, 'email')) throw staffRes.error;
   } else {
     const rows = (staffRes.data as StaffRecord[]) ?? [];
-    staff =
-      rows.find((s) => s.active !== false) ??
-      rows[0] ??
-      null;
+    staff = rows.find((s) => s.active !== false) ?? null;
   }
 
   const properties = (propsRes.data as Property[]) ?? [];

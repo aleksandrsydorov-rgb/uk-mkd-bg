@@ -2842,15 +2842,14 @@ export default function AdminPage() {
                   <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                     placeholder="Имя" value={staffForm.name}
                     onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
-                    list="staff-roles"
-                    placeholder="Должность" value={staffForm.role}
-                    onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required />
-                  <datalist id="staff-roles">
+                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    value={staffForm.role}
+                    onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required>
+                    <option value="" disabled>Должность</option>
                     {STAFF_ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role} />
+                      <option key={role.value} value={role.value}>{role.label}</option>
                     ))}
-                  </datalist>
+                  </select>
                   <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                     placeholder="Email для входа" type="email" value={staffForm.email}
                     onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />

@@ -249,6 +249,14 @@ export default function AccountPage() {
     setDevEmail(email);
   }
 
+  function handleDevLogin(email: string) {
+    const next = normalizeEmail(email);
+    if (!next) return;
+    writeSessionEmail(next);
+    setEmailInput(next);
+    setDevEmail(next);
+  }
+
   function handleLogout() {
     clearSessionEmail();
     setDevEmail('');
@@ -2435,6 +2443,7 @@ export default function AccountPage() {
         email={emailInput}
         onEmailChange={setEmailInput}
         onSubmit={handleLogin}
+        onDevLogin={handleDevLogin}
       />
     );
   }

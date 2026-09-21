@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n } from '@/i18n/I18nProvider';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 
 type DevAccount = {
   email: string;
@@ -40,6 +40,7 @@ export function LoginScreen({
   onDevLogin: (email: string) => void;
 }) {
   const { t } = useI18n();
+  const [supabase] = useState(() => createClient());
   const [devAccounts, setDevAccounts] = useState<DevAccount[]>([]);
   const [devLoading, setDevLoading] = useState(false);
   const [devError, setDevError] = useState<string | null>(null);

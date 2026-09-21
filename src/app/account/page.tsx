@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
@@ -133,6 +134,9 @@ export default function AccountPage() {
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
 
   // ---------- ОСНОВНЫЕ ДАННЫЕ ----------
@@ -241,12 +245,36 @@ export default function AccountPage() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     const email = normalizeEmail(emailInput);
-    if (!email) return;
-    writeSessionEmail(email);
-    setDevEmail(email);
+    if (!email || !passwordInput) return;
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const client = createClient();
+      const { data, error } = await client.auth.signInWithPassword({
+        email,
+        password: passwordInput,
+      });
+      if (error) {
+        setLoginError(error.message);
+        return;
+      }
+      const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
+      if (!authenticatedEmail) {
+        setLoginError('No email on authenticated user');
+        return;
+      }
+      writeSessionEmail(authenticatedEmail);
+      setEmailInput(authenticatedEmail);
+      setDevEmail(authenticatedEmail);
+      setPasswordInput('');
+    } catch (err: unknown) {
+      setLoginError(err instanceof Error ? err.message : 'Sign in failed');
+    } finally {
+      setLoginLoading(false);
+    }
   }
 
   function handleDevLogin(email: string) {
@@ -2442,6 +2470,10 @@ export default function AccountPage() {
       <LoginScreen
         email={emailInput}
         onEmailChange={setEmailInput}
+        password={passwordInput}
+        onPasswordChange={setPasswordInput}
+        loginError={loginError}
+        loginLoading={loginLoading}
         onSubmit={handleLogin}
         onDevLogin={handleDevLogin}
       />

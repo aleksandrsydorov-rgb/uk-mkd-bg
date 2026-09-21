@@ -103,6 +103,15 @@ export function pollCategoryClass(category: string) {
   return 'bg-teal-500/15 text-teal-300 border-teal-500/30';
 }
 
+export type PollTallyAggregate = {
+  poll_id: number;
+  option_id: number;
+  option_weight: number;
+  apartment_count: number;
+  total_building_weight: number;
+  percentage: number;
+};
+
 export function tallyPoll(
   options: PollOption[],
   votes: PollVote[],
@@ -127,6 +136,47 @@ export function tallyPoll(
   const votedWeight = rows.reduce((s, r) => s + r.weight, 0);
   const winner = [...rows].sort((a, b) => b.weight - a.weight)[0] ?? null;
   const accepted = Boolean(winner && winner.pctOfTotal >= MAJORITY_SHARE * 100);
+  return {
+    total,
+    votedWeight,
+    rows,
+    winner,
+    accepted,
+    majorityWeight: total * MAJORITY_SHARE,
+  };
+}
+
+export type PollTally = ReturnType<typeof tallyPoll>;
+
+export function tallyFromAggregates(
+  options: PollOption[],
+  aggregates: PollTallyAggregate[],
+): PollTally {
+  const pollId = options[0]?.poll_id;
+  const related = pollId == null ? [] : aggregates.filter((a) => a.poll_id === pollId);
+  const total = Number(related[0]?.total_building_weight ?? 0);
+  const byOption = new Map(related.map((a) => [a.option_id, a]));
+  const rows = options.map((option) => {
+    const row = byOption.get(option.id);
+    const weight = Number(row?.option_weight ?? 0);
+    const pctOfTotal = Number(
+      row?.percentage ?? (total > 0 ? (weight / total) * 100 : 0),
+    );
+    return {
+      option,
+      apartments: Number(row?.apartment_count ?? 0),
+      weight,
+      pctOfTotal,
+    };
+  });
+  const votedWeight = rows.reduce((s, r) => s + r.weight, 0);
+  const winner =
+    [...rows].sort((a, b) => {
+      if (b.weight !== a.weight) return b.weight - a.weight;
+      if (a.option.sort_order !== b.option.sort_order) return a.option.sort_order - b.option.sort_order;
+      return a.option.id - b.option.id;
+    })[0] ?? null;
+  const accepted = Boolean(winner && total > 0 && winner.weight / total >= MAJORITY_SHARE);
   return {
     total,
     votedWeight,

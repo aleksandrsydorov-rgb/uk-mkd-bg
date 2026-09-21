@@ -650,7 +650,32 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      cast_poll_vote: {
+        Args: { p_poll_id: number; p_option_id: number };
+        Returns: {
+          poll_id: number;
+          status: string;
+          result: string | null;
+          result_option_id: number | null;
+          winner_option_id: number | null;
+          winner_weight: number;
+          total_building_weight: number;
+          accepted: boolean;
+        }[];
+      };
+      get_poll_tallies: {
+        Args: Record<string, never>;
+        Returns: {
+          poll_id: number;
+          option_id: number;
+          option_weight: number;
+          apartment_count: number;
+          total_building_weight: number;
+          percentage: number;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

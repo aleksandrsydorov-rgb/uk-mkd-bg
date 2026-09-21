@@ -6,6 +6,7 @@ import {
   type AreaShare,
   type Poll,
   type PollOption,
+  type PollTally,
   type PollVote,
 } from '@/lib/polls';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -22,14 +23,16 @@ export function PollDetails({
   options,
   votes,
   properties,
+  tally: tallyProp,
 }: {
   poll: Poll;
   options: PollOption[];
-  votes: PollVote[];
-  properties: AreaShare[];
+  votes?: PollVote[];
+  properties?: AreaShare[];
+  tally?: PollTally;
 }) {
   const { t } = useI18n();
-  const tally = tallyPoll(options, votes, properties);
+  const tally = tallyProp ?? tallyPoll(options, votes ?? [], properties ?? []);
   const decision = pollDecisionLabel(poll, tally.accepted);
   const start = formatDate(poll.voting_starts);
   const end = formatDate(poll.deadline);
@@ -98,6 +101,7 @@ export function PollOptionBars({
   options,
   votes,
   properties,
+  tally: tallyProp,
   myOptionId,
   disabled,
   onVote,
@@ -105,15 +109,16 @@ export function PollOptionBars({
 }: {
   poll: Poll;
   options: PollOption[];
-  votes: PollVote[];
-  properties: AreaShare[];
+  votes?: PollVote[];
+  properties?: AreaShare[];
+  tally?: PollTally;
   myOptionId?: number;
   disabled?: boolean;
   onVote?: (optionId: number) => void;
   alwaysShowStats?: boolean;
 }) {
   const { t } = useI18n();
-  const tally = tallyPoll(options, votes, properties);
+  const tally = tallyProp ?? tallyPoll(options, votes ?? [], properties ?? []);
   const showStats =
     alwaysShowStats ||
     tally.accepted ||

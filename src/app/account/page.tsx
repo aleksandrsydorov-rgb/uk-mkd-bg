@@ -11,11 +11,10 @@ import {
   isPollAcceptingVotes,
   pollCategoryClass,
   pollDecisionLabel,
-  propertyVoteWeight,
-  tallyPoll,
-  type AreaShare,
+  tallyFromAggregates,
   type Poll,
   type PollOption,
+  type PollTallyAggregate,
   type PollVote,
 } from '@/lib/polls';
 import { PollDetails, PollOptionBars } from '@/components/PollPanel';
@@ -156,7 +155,7 @@ export default function AccountPage() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
   const [pollVotes, setPollVotes] = useState<PollVote[]>([]);
-  const [apartmentShares, setApartmentShares] = useState<AreaShare[]>([]);
+  const [pollTallies, setPollTallies] = useState<PollTallyAggregate[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // ---------- СЧЁТЧИКИ ----------
@@ -330,7 +329,7 @@ export default function AccountPage() {
       setPolls([]);
       setPollOptions([]);
       setPollVotes([]);
-      setApartmentShares([]);
+      setPollTallies([]);
       setTransfers([]);
       setGuests([]);
       setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
@@ -399,11 +398,11 @@ export default function AccountPage() {
           setUkExpenses((expData as UkExpense[]) ?? []);
         }
 
-        const [pollsRes, optRes, voteRes, sharesRes] = await Promise.all([
+        const [pollsRes, optRes, voteRes, tallyRes] = await Promise.all([
           supabase.from('polls').select('*').order('created_at', { ascending: false }),
           supabase.from('poll_options').select('*').order('sort_order', { ascending: true }),
           supabase.from('poll_votes').select('*'),
-          supabase.from('properties').select('id, area_sqm'),
+          supabase.rpc('get_poll_tallies'),
         ]);
         if (pollsRes.error) {
           if (!isMissingRelation(pollsRes.error, 'polls')) throw pollsRes.error;
@@ -423,10 +422,11 @@ export default function AccountPage() {
         } else {
           setPollVotes((voteRes.data as PollVote[]) ?? []);
         }
-        if (sharesRes.error) {
-          setApartmentShares(access.properties.map((p) => ({ id: p.id, area_sqm: p.area_sqm })));
+        if (tallyRes.error) {
+          if (!isMissingRelation(tallyRes.error, 'get_poll_tallies')) throw tallyRes.error;
+          setPollTallies([]);
         } else {
-          setApartmentShares((sharesRes.data as AreaShare[]) ?? []);
+          setPollTallies((tallyRes.data as PollTallyAggregate[]) ?? []);
         }
 
         const { data: trData, error: trErr } = await supabase
@@ -973,17 +973,17 @@ export default function AccountPage() {
     }
   }
 
-  async function refreshPolls(propertyId: number) {
-    const [pollsRes, optRes, voteRes, sharesRes] = await Promise.all([
+  async function refreshPolls() {
+    const [pollsRes, optRes, voteRes, tallyRes] = await Promise.all([
       supabase.from('polls').select('*').order('created_at', { ascending: false }),
       supabase.from('poll_options').select('*').order('sort_order', { ascending: true }),
       supabase.from('poll_votes').select('*'),
-      supabase.from('properties').select('id, area_sqm'),
+      supabase.rpc('get_poll_tallies'),
     ]);
     if (!pollsRes.error) setPolls((pollsRes.data as Poll[]) ?? []);
     if (!optRes.error) setPollOptions((optRes.data as PollOption[]) ?? []);
     if (!voteRes.error) setPollVotes((voteRes.data as PollVote[]) ?? []);
-    if (!sharesRes.error) setApartmentShares((sharesRes.data as AreaShare[]) ?? []);
+    if (!tallyRes.error) setPollTallies((tallyRes.data as PollTallyAggregate[]) ?? []);
   }
 
   async function handleVote(poll: Poll, optionId: number) {
@@ -991,31 +991,19 @@ export default function AccountPage() {
     if (!isPollAcceptingVotes(poll)) return;
     setVotingPollId(poll.id);
     setError(null);
-    const rows = properties.map((p) => ({
-      poll_id: poll.id,
-      option_id: optionId,
-      property_id: p.id,
-      weight: propertyVoteWeight(p.area_sqm),
-    }));
     try {
-      const { error } = await supabase.from('poll_votes').upsert(rows, {
-        onConflict: 'poll_id,property_id',
+      const { error } = await supabase.rpc('cast_poll_vote', {
+        p_poll_id: poll.id,
+        p_option_id: optionId,
       });
       if (error) throw error;
-      await supabase.from('poll_vote_history').insert(rows);
-      const { data: votesData } = await supabase.from('poll_votes').select('*').eq('poll_id', poll.id);
-      const options = pollOptions.filter((o) => o.poll_id === poll.id);
-      const tally = tallyPoll(options, (votesData as PollVote[]) ?? [], apartmentShares);
-      if (tally.accepted) {
-        await supabase.from('polls').update({
-          status: 'закрыт',
-          result: 'принято',
-          result_option_id: tally.winner?.option.id ?? optionId,
-        }).eq('id', poll.id);
-      }
-      await refreshPolls(properties[0].id);
-    } catch (e: any) {
-      setError(e?.message ?? t('err.vote'));
+      await refreshPolls();
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
+          ? (e as { message: string }).message
+          : t('err.vote');
+      setError(message);
     } finally {
       setVotingPollId(null);
     }
@@ -2274,10 +2262,8 @@ export default function AccountPage() {
                     const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
                     const myVote = votesForPoll.find((v) => myPropertyIds.includes(v.property_id));
                     const open = isPollAcceptingVotes(poll);
-                    const decision = pollDecisionLabel(
-                      poll,
-                      tallyPoll(options, votesForPoll, apartmentShares).accepted
-                    );
+                    const tally = tallyFromAggregates(options, pollTallies);
+                    const decision = pollDecisionLabel(poll, tally.accepted);
                     const decisionLabel = labelPollDecision(decision, t);
                     return (
                       <div key={poll.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
@@ -2302,15 +2288,13 @@ export default function AccountPage() {
                         <PollDetails
                           poll={poll}
                           options={options}
-                          votes={votesForPoll}
-                          properties={apartmentShares}
+                          tally={tally}
                         />
                         <div className="mt-3">
                           <PollOptionBars
                             poll={poll}
                             options={options}
-                            votes={votesForPoll}
-                            properties={apartmentShares}
+                            tally={tally}
                             myOptionId={myVote?.option_id}
                             disabled={!open || votingPollId === poll.id}
                             onVote={open ? (optionId) => handleVote(poll, optionId) : undefined}

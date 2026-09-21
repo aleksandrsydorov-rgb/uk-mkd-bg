@@ -520,6 +520,22 @@ export default function AdminPage() {
     };
   }, [router]);
 
+  async function handleLogout() {
+    try {
+      const authClient = createBrowserClient();
+      await authClient.auth.signOut();
+    } catch {
+      // logout UI должен продолжиться
+    } finally {
+      clearSessionEmail();
+      setSessionEmail('');
+      setStaffRole('');
+      setHasCabinet(false);
+      setAllowed(false);
+      router.replace('/account');
+    }
+  }
+
   useEffect(() => {
     if (allowed) loadAll();
   }, [allowed]);
@@ -3804,8 +3820,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearSessionEmail();
-                  router.replace('/account');
+                  void handleLogout();
                 }}
                 className="min-h-11 w-full rounded-xl border border-white/10 bg-white/10 px-2 text-sm"
               >
@@ -3824,8 +3839,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearSessionEmail();
-                  router.replace('/account');
+                  void handleLogout();
                 }}
                 className="p-1.5 rounded-lg bg-white/10 text-xs"
                 title={t('common.logout')}
@@ -3854,8 +3868,7 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => {
-                clearSessionEmail();
-                router.replace('/account');
+                void handleLogout();
               }}
               className="min-h-10 rounded-lg border border-white/15 px-3 text-sm text-white/80 md:hidden"
             >

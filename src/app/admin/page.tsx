@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
@@ -195,6 +196,7 @@ export default function AdminPage() {
   const [staffRole, setStaffRole] = useState('');
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
   const [supportRateInput, setSupportRateInput] = useState(String(DEFAULT_SUPPORT_RATE));
   const [supportFeeMissing, setSupportFeeMissing] = useState(false);
@@ -474,12 +476,25 @@ export default function AdminPage() {
   useEffect(() => {
     let cancelled = false;
     async function gate() {
-      const email = readSessionEmail();
-      if (!email) {
-        router.replace('/account');
-        return;
-      }
       try {
+        let email = '';
+
+        if (process.env.NODE_ENV === 'development') {
+          const saved = readSessionEmail();
+          if (saved) email = saved;
+        }
+
+        if (!email) {
+          const authClient = createBrowserClient();
+          const { data } = await authClient.auth.getUser();
+          email = normalizeEmail(data.user?.email ?? '');
+        }
+
+        if (!email) {
+          router.replace('/account');
+          return;
+        }
+
         const access = await resolveAccess(email);
         if (cancelled) return;
         if (!access.isStaff) {
@@ -495,6 +510,8 @@ export default function AdminPage() {
           setError(e?.message ?? 'Нет доступа');
           router.replace('/account');
         }
+      } finally {
+        if (!cancelled) setAuthReady(true);
       }
     }
     gate();
@@ -3596,6 +3613,14 @@ export default function AdminPage() {
       default:
         return null;
     }
+  }
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-[#070b0a] text-white flex items-center justify-center">
+        <div className="text-lg text-white/50">{t('common.loading')}</div>
+      </div>
+    );
   }
 
   if (!allowed || loading) {

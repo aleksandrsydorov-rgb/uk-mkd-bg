@@ -21,7 +21,7 @@ import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTrans
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { resolveAccess } from '@/lib/access';
-import { clearSessionEmail, normalizeEmail, readSessionEmail } from '@/lib/session';
+import { clearSessionEmail, normalizeEmail } from '@/lib/session';
 import { useRouter } from 'next/navigation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -287,8 +287,6 @@ export default function AdminPage() {
     owner_type: 'физическое лицо',
     company_name: '',
     status: 'в собственности',
-    debt: '0',
-    overpayment: '0',
     occupancy_status: 'owner',
     occupant_kind: 'owner',
     occupant_name: '',
@@ -475,17 +473,8 @@ export default function AdminPage() {
     let cancelled = false;
     async function gate() {
       try {
-        let email = '';
-
-        if (process.env.NODE_ENV === 'development') {
-          const saved = readSessionEmail();
-          if (saved) email = saved;
-        }
-
-        if (!email) {
-          const { data } = await supabase.auth.getUser();
-          email = normalizeEmail(data.user?.email ?? '');
-        }
+        const { data } = await supabase.auth.getUser();
+        const email = normalizeEmail(data.user?.email ?? '');
 
         if (!email) {
           router.replace('/account');
@@ -1058,8 +1047,6 @@ export default function AdminPage() {
       owner_type: p.owner_type ?? 'физическое лицо',
       company_name: p.company_name ?? '',
       status: listingStatus(p.status),
-      debt: String(p.debt ?? 0),
-      overpayment: String(p.overpayment ?? 0),
       occupancy_status: p.occupancy_status ?? 'owner',
       occupant_kind: normalizeOccupantKind(p.occupant_kind),
       occupant_name: p.occupant_name ?? '',
@@ -1076,7 +1063,7 @@ export default function AdminPage() {
     setPropForm({
       apartment_number: '', floor: '', area_sqm: '', owner_name: '', owner_email: '',
       owner_phone: '', owner_type: 'физическое лицо', company_name: '', status: 'в собственности',
-      debt: '0', overpayment: '0', occupancy_status: 'owner',
+      occupancy_status: 'owner',
       occupant_kind: 'owner', occupant_name: '', occupant_phone: '', occupant_email: '', occupant_until: '',
       pet_info: '',
     });
@@ -1096,8 +1083,6 @@ export default function AdminPage() {
       owner_type: propForm.owner_type,
       company_name: propForm.company_name.trim() || null,
       status: propForm.status,
-      debt: Number(propForm.debt) || 0,
-      overpayment: Number(propForm.overpayment) || 0,
       occupancy_status: propForm.occupancy_status,
       occupant_kind: propForm.occupant_kind,
       occupant_name: propForm.occupant_name.trim() || null,
@@ -2014,13 +1999,12 @@ export default function AdminPage() {
                         title={t('registry.occupantUntil')} />
                     </>
                   )}
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
-                    placeholder={t('admin.phDebt')} type="number" value={propForm.debt}
-                    onChange={(e) => setPropForm({ ...propForm, debt: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
-                    placeholder={t('admin.phOver')} type="number" value={propForm.overpayment}
-                    onChange={(e) => setPropForm({ ...propForm, overpayment: e.target.value })} />
                 </div>
+                {editingProp ? (
+                  <p className="text-xs text-white/50">
+                    {t('admin.debt')}: {Number(editingProp.debt ?? 0).toFixed(2)} € · {t('admin.overpay')}: {Number(editingProp.overpayment ?? 0).toFixed(2)} €
+                  </p>
+                ) : null}
                 <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                   placeholder={t('account.pets')} value={propForm.pet_info}
                   onChange={(e) => setPropForm({ ...propForm, pet_info: e.target.value })} />

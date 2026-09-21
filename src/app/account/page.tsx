@@ -34,7 +34,7 @@ import {
   labelTransfer,
 } from '@/i18n/labels';
 import { resolveAccess } from '@/lib/access';
-import { clearSessionEmail, normalizeEmail, readSessionEmail, writeSessionEmail } from '@/lib/session';
+import { clearSessionEmail, normalizeEmail } from '@/lib/session';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
@@ -226,25 +226,11 @@ export default function AccountPage() {
     note: '',
   });
 
-  // ===================================================================
-  // DEV-ЛОГИН
-  // ===================================================================
   useEffect(() => {
     let cancelled = false;
 
     async function restoreUser() {
       try {
-        if (process.env.NODE_ENV === 'development') {
-          const saved = readSessionEmail();
-          if (saved) {
-            if (!cancelled) {
-              setDevEmail(saved);
-              setEmailInput(saved);
-            }
-            return;
-          }
-        }
-
         const { data } = await supabase.auth.getUser();
         const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
         if (authenticatedEmail && !cancelled) {
@@ -299,14 +285,6 @@ export default function AccountPage() {
     } finally {
       setLoginLoading(false);
     }
-  }
-
-  function handleDevLogin(email: string) {
-    const next = normalizeEmail(email);
-    if (!next) return;
-    writeSessionEmail(next);
-    setEmailInput(next);
-    setDevEmail(next);
   }
 
   async function handleLogout() {
@@ -2502,7 +2480,6 @@ export default function AccountPage() {
         loginError={loginError}
         loginLoading={loginLoading}
         onSubmit={handleLogin}
-        onDevLogin={handleDevLogin}
       />
     );
   }

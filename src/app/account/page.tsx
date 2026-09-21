@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
@@ -11,11 +11,10 @@ import {
   isPollAcceptingVotes,
   pollCategoryClass,
   pollDecisionLabel,
-  propertyVoteWeight,
-  tallyPoll,
-  type AreaShare,
+  tallyFromAggregates,
   type Poll,
   type PollOption,
+  type PollTallyAggregate,
   type PollVote,
 } from '@/lib/polls';
 import { PollDetails, PollOptionBars } from '@/components/PollPanel';
@@ -27,6 +26,7 @@ import {
   labelCategory,
   labelListing,
   labelOwnerType,
+  labelOccupantKind,
   labelPollCategory,
   labelPollDecision,
   labelPriority,
@@ -34,10 +34,13 @@ import {
   labelTransfer,
 } from '@/i18n/labels';
 import { resolveAccess } from '@/lib/access';
-import { clearSessionEmail, normalizeEmail, readSessionEmail, writeSessionEmail } from '@/lib/session';
+import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
+import { ChatMedia } from '@/components/ChatMedia';
+import { MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
+import { normalizeOccupantKind, type ApartmentPet, type OccupantKind } from '@/lib/registry';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -70,6 +73,8 @@ interface ChatMessage {
   message: string;
   read_by_uk: boolean;
   read_by_owner: boolean;
+  photo_url?: string | null;
+  file_name?: string | null;
 }
 
 interface ApartmentGuest {
@@ -81,6 +86,7 @@ interface ApartmentGuest {
   is_child: boolean;
   check_in: string | null;
   check_out: string | null;
+  is_permanent?: boolean | null;
 }
 
 type MenuSection =
@@ -112,6 +118,7 @@ const WATER_RATE = 3;
 export default function AccountPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
+  const [supabase] = useState(() => createClient());
   const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = [
     { key: 'квартира', label: t('account.apt'), icon: '🏠' },
     { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
@@ -126,6 +133,10 @@ export default function AccountPage() {
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
 
   // ---------- ОСНОВНЫЕ ДАННЫЕ ----------
@@ -144,7 +155,7 @@ export default function AccountPage() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
   const [pollVotes, setPollVotes] = useState<PollVote[]>([]);
-  const [apartmentShares, setApartmentShares] = useState<AreaShare[]>([]);
+  const [pollTallies, setPollTallies] = useState<PollTallyAggregate[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // ---------- СЧЁТЧИКИ ----------
@@ -163,17 +174,29 @@ export default function AccountPage() {
     is_child: false,
     check_in: '',
     check_out: '',
+    is_permanent: true,
   });
+  const [pets, setPets] = useState<ApartmentPet[]>([]);
+  const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
+  const [petSaving, setPetSaving] = useState(false);
   const [petInfo, setPetInfo] = useState<string>('');
   const [occupancySaving, setOccupancySaving] = useState(false);
   const [guestAdding, setGuestAdding] = useState(false);
+  const [occupantForm, setOccupantForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    until: '',
+  });
 
   // ---------- ЧАТ ----------
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  const [chatFile, setChatFile] = useState<File | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatFileRef = useRef<HTMLInputElement>(null);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ---------- МЕНЮ ----------
@@ -203,15 +226,26 @@ export default function AccountPage() {
     note: '',
   });
 
-  // ===================================================================
-  // DEV-ЛОГИН
-  // ===================================================================
   useEffect(() => {
-    const saved = readSessionEmail();
-    if (saved) {
-      setDevEmail(saved);
-      setEmailInput(saved);
+    let cancelled = false;
+
+    async function restoreUser() {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
+        if (authenticatedEmail && !cancelled) {
+          setDevEmail(authenticatedEmail);
+          setEmailInput(authenticatedEmail);
+        }
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
     }
+
+    void restoreUser();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -222,34 +256,63 @@ export default function AccountPage() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     const email = normalizeEmail(emailInput);
-    if (!email) return;
-    writeSessionEmail(email);
-    setDevEmail(email);
+    if (!email || !passwordInput) return;
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: passwordInput,
+      });
+      if (error) {
+        setLoginError(error.message);
+        return;
+      }
+      const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
+      if (!authenticatedEmail) {
+        setLoginError('No email on authenticated user');
+        return;
+      }
+      setEmailInput(authenticatedEmail);
+      setDevEmail(authenticatedEmail);
+      setPasswordInput('');
+    } catch (err: unknown) {
+      setLoginError(err instanceof Error ? err.message : 'Sign in failed');
+    } finally {
+      setLoginLoading(false);
+    }
   }
 
-  function handleLogout() {
-    clearSessionEmail();
-    setDevEmail('');
-    setIsStaff(false);
-    setProperties([]);
-    setSelectedPropertyId(null);
-    setRequests([]);
-    setAnnouncements([]);
-    setUkExpenses([]);
-    setPolls([]);
-    setPollOptions([]);
-    setPollVotes([]);
-    setApartmentShares([]);
-    setTransfers([]);
-    setGuests([]);
-    setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
-    setChatMessages([]);
-    setUnreadChatCount(0);
-    setError(null);
-    setEmailInput('');
+  async function handleLogout() {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Local session is still cleared below.
+    } finally {
+      setDevEmail('');
+      setEmailInput('');
+      setPasswordInput('');
+      setLoginError('');
+      setIsStaff(false);
+      setProperties([]);
+      setSelectedPropertyId(null);
+      setRequests([]);
+      setAnnouncements([]);
+      setUkExpenses([]);
+      setPolls([]);
+      setPollOptions([]);
+      setPollVotes([]);
+      setPollTallies([]);
+      setTransfers([]);
+      setGuests([]);
+      setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
+      setChatMessages([]);
+      setUnreadChatCount(0);
+      setError(null);
+    }
   }
 
   // ===================================================================
@@ -261,7 +324,7 @@ export default function AccountPage() {
       setLoading(true);
       setError(null);
       try {
-        const access = await resolveAccess(devEmail);
+        const access = await resolveAccess(devEmail, supabase);
         setIsStaff(access.isStaff);
         if (!access.isOwner) {
           setProperties([]);
@@ -311,11 +374,11 @@ export default function AccountPage() {
           setUkExpenses((expData as UkExpense[]) ?? []);
         }
 
-        const [pollsRes, optRes, voteRes, sharesRes] = await Promise.all([
+        const [pollsRes, optRes, voteRes, tallyRes] = await Promise.all([
           supabase.from('polls').select('*').order('created_at', { ascending: false }),
           supabase.from('poll_options').select('*').order('sort_order', { ascending: true }),
           supabase.from('poll_votes').select('*'),
-          supabase.from('properties').select('id, area_sqm'),
+          supabase.rpc('get_poll_tallies'),
         ]);
         if (pollsRes.error) {
           if (!isMissingRelation(pollsRes.error, 'polls')) throw pollsRes.error;
@@ -335,10 +398,11 @@ export default function AccountPage() {
         } else {
           setPollVotes((voteRes.data as PollVote[]) ?? []);
         }
-        if (sharesRes.error) {
-          setApartmentShares(access.properties.map((p) => ({ id: p.id, area_sqm: p.area_sqm })));
+        if (tallyRes.error) {
+          if (!isMissingRelation(tallyRes.error, 'get_poll_tallies')) throw tallyRes.error;
+          setPollTallies([]);
         } else {
-          setApartmentShares((sharesRes.data as AreaShare[]) ?? []);
+          setPollTallies((tallyRes.data as PollTallyAggregate[]) ?? []);
         }
 
         const { data: trData, error: trErr } = await supabase
@@ -387,6 +451,12 @@ export default function AccountPage() {
     async function loadPropertyScoped() {
       if (!property) return;
       setPetInfo(property.pet_info ?? '');
+      setOccupantForm({
+        name: property.occupant_name ?? '',
+        phone: property.occupant_phone ?? '',
+        email: property.occupant_email ?? '',
+        until: property.occupant_until ? String(property.occupant_until).slice(0, 10) : '',
+      });
       try {
         const { data: guestData, error: guestErr } = await supabase
           .from('apartment_guests')
@@ -395,6 +465,18 @@ export default function AccountPage() {
           .order('created_at', { ascending: true });
         if (guestErr) throw guestErr;
         setGuests((guestData as ApartmentGuest[]) ?? []);
+
+        const petsRes = await supabase
+          .from('apartment_pets')
+          .select('*')
+          .eq('property_id', property.id)
+          .order('created_at', { ascending: true });
+        if (petsRes.error) {
+          if (!isMissingRelation(petsRes.error, 'apartment_pets')) throw petsRes.error;
+          setPets([]);
+        } else {
+          setPets((petsRes.data as ApartmentPet[]) ?? []);
+        }
 
         const [dayRes, nightRes, waterRes] = await Promise.all([
           supabase
@@ -501,23 +583,42 @@ export default function AccountPage() {
     e.preventDefault();
     if (!property) return;
     const msg = chatInput.trim();
-    if (!msg) return;
+    if (!msg && !chatFile) return;
+    if (chatFile && chatFile.size > MAX_CHAT_FILE_BYTES) {
+      setError(t('account.fileTooBig'));
+      return;
+    }
     setChatSending(true);
+    setError(null);
     try {
       await markOwnerMessagesRead(property.id);
+      let photoUrl: string | null = null;
+      if (chatFile) photoUrl = await uploadPhotoIfAny(chatFile, 'chat');
+      const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
+        property_id: property.id,
+        sender: 'owner',
+        message: msg,
+        read_by_owner: true,
+      };
+      if (photoUrl) {
+        payload.photo_url = photoUrl;
+        payload.file_name = chatFile?.name ?? null;
+      }
       const { data: inserted, error: insertErr } = await supabase
         .from('chat_messages')
-        .insert({
-          property_id: property.id,
-          sender: 'owner',
-          message: msg,
-          read_by_owner: true,
-        })
+        .insert(payload)
         .select('*')
         .single();
-      if (insertErr) throw insertErr;
+      if (insertErr) {
+        const hint = insertErr.message?.includes('photo_url') || insertErr.message?.includes('file_name')
+          ? t('err.chatFileSql')
+          : insertErr.message;
+        throw new Error(hint);
+      }
       setChatMessages((prev) => [...prev, inserted as ChatMessage]);
       setChatInput('');
+      setChatFile(null);
+      if (chatFileRef.current) chatFileRef.current.value = '';
     } catch (e: any) {
       setError(e?.message ?? t('err.send'));
     } finally {
@@ -528,6 +629,55 @@ export default function AccountPage() {
   // ===================================================================
   // ЖИЛЬЦЫ — ФУНКЦИИ
   // ===================================================================
+  async function handleUpdateOccupantKind(kind: OccupantKind) {
+    if (!property) return;
+    setOccupancySaving(true);
+    try {
+      const { error: updErr } = await supabase
+        .from('properties')
+        .update({ occupant_kind: kind })
+        .eq('id', property.id);
+      if (updErr) {
+        const msg = updErr.message ?? '';
+        throw new Error(msg.includes('occupant_kind') ? t('err.registrySql') : msg);
+      }
+      setProperties((prev) =>
+        prev.map((p) => (p.id === property.id ? { ...p, occupant_kind: kind } : p)),
+      );
+    } catch (e: any) {
+      setError(e?.message ?? t('err.status'));
+    } finally {
+      setOccupancySaving(false);
+    }
+  }
+
+  async function handleSaveOccupantDetails(e: React.FormEvent) {
+    e.preventDefault();
+    if (!property) return;
+    setOccupancySaving(true);
+    setError(null);
+    try {
+      const payload = {
+        occupant_name: occupantForm.name.trim() || null,
+        occupant_phone: occupantForm.phone.trim() || null,
+        occupant_email: occupantForm.email.trim() || null,
+        occupant_until: occupantForm.until || null,
+      };
+      const { error: updErr } = await supabase.from('properties').update(payload).eq('id', property.id);
+      if (updErr) {
+        const msg = updErr.message ?? '';
+        throw new Error(msg.includes('occupant_') ? t('err.registrySql') : msg);
+      }
+      setProperties((prev) =>
+        prev.map((p) => (p.id === property.id ? { ...p, ...payload } : p)),
+      );
+    } catch (err: any) {
+      setError(err?.message ?? t('err.save'));
+    } finally {
+      setOccupancySaving(false);
+    }
+  }
+
   async function handleUpdateOccupancy(status: OccupancyStatus) {
     if (!property) return;
     setOccupancySaving(true);
@@ -614,19 +764,27 @@ export default function AccountPage() {
     if (!fn || !ln) return;
     setGuestAdding(true);
     try {
-      const { data: inserted, error: insErr } = await supabase
+      const payload = {
+        property_id: property.id,
+        first_name: fn,
+        last_name: ln,
+        birth_year: guestForm.birth_year ? Number(guestForm.birth_year) : null,
+        is_child: guestForm.is_child,
+        is_permanent: guestForm.is_permanent,
+        check_in: guestForm.check_in || null,
+        check_out: guestForm.check_out || null,
+      };
+      let { data: inserted, error: insErr } = await supabase
         .from('apartment_guests')
-        .insert({
-          property_id: property.id,
-          first_name: fn,
-          last_name: ln,
-          birth_year: guestForm.birth_year ? Number(guestForm.birth_year) : null,
-          is_child: guestForm.is_child,
-          check_in: guestForm.check_in || null,
-          check_out: guestForm.check_out || null,
-        })
+        .insert(payload)
         .select('*')
         .single();
+      if (insErr && (insErr.message.includes('is_permanent') || insErr.message.includes('schema cache'))) {
+        const { is_permanent: _ignored, ...legacy } = payload;
+        const retry = await supabase.from('apartment_guests').insert(legacy).select('*').single();
+        inserted = retry.data;
+        insErr = retry.error;
+      }
       if (insErr) throw insErr;
       setGuests((prev) => [...prev, inserted as ApartmentGuest]);
       setGuestForm({
@@ -636,6 +794,7 @@ export default function AccountPage() {
         is_child: false,
         check_in: guestForm.check_in,
         check_out: guestForm.check_out,
+        is_permanent: true,
       });
     } catch (e: any) {
       setError(e?.message ?? t('err.addGuest'));
@@ -652,6 +811,46 @@ export default function AccountPage() {
       setGuests((prev) => prev.filter((g) => g.id !== id));
     } catch (e: any) {
       setError(e?.message ?? t('err.removeGuest'));
+    }
+  }
+
+  async function handleAddPet(e: React.FormEvent) {
+    e.preventDefault();
+    if (!property) return;
+    setPetSaving(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase
+        .from('apartment_pets')
+        .insert({
+          property_id: property.id,
+          species: petForm.species,
+          name: petForm.name.trim() || null,
+          chip_no: petForm.chip_no.trim() || null,
+          passport_no: petForm.passport_no.trim() || null,
+        })
+        .select('*')
+        .single();
+      if (error) {
+        throw new Error(error.message.includes('apartment_pets') ? t('err.registrySql') : error.message);
+      }
+      setPets((prev) => [...prev, data as ApartmentPet]);
+      setPetForm({ species: 'dog', name: '', chip_no: '', passport_no: '' });
+    } catch (e: any) {
+      setError(e?.message ?? t('err.save'));
+    } finally {
+      setPetSaving(false);
+    }
+  }
+
+  async function handleRemovePet(id: number) {
+    if (!confirm(t('confirm.removePet'))) return;
+    try {
+      const { error } = await supabase.from('apartment_pets').delete().eq('id', id);
+      if (error) throw error;
+      setPets((prev) => prev.filter((p) => p.id !== id));
+    } catch (e: any) {
+      setError(e?.message ?? t('err.delete'));
     }
   }
 
@@ -691,11 +890,12 @@ export default function AccountPage() {
   // ===================================================================
   // ЗАЯВКИ
   // ===================================================================
-  async function uploadPhotoIfAny(file: File | null) {
+  async function uploadPhotoIfAny(file: File | null, folder?: string) {
     if (!file || !property) return null;
     const fileExt = file.name.split('.').pop();
     const safeExt = fileExt ? fileExt.toLowerCase() : 'jpg';
-    const filePath = `${property.id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${safeExt}`;
+    const prefix = folder ? `${folder}/` : '';
+    const filePath = `${prefix}${property.id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${safeExt}`;
     const { data: uploadData, error: uploadErr } = await supabase.storage
       .from('request-photos')
       .upload(filePath, file, { upsert: true });
@@ -749,17 +949,17 @@ export default function AccountPage() {
     }
   }
 
-  async function refreshPolls(propertyId: number) {
-    const [pollsRes, optRes, voteRes, sharesRes] = await Promise.all([
+  async function refreshPolls() {
+    const [pollsRes, optRes, voteRes, tallyRes] = await Promise.all([
       supabase.from('polls').select('*').order('created_at', { ascending: false }),
       supabase.from('poll_options').select('*').order('sort_order', { ascending: true }),
       supabase.from('poll_votes').select('*'),
-      supabase.from('properties').select('id, area_sqm'),
+      supabase.rpc('get_poll_tallies'),
     ]);
     if (!pollsRes.error) setPolls((pollsRes.data as Poll[]) ?? []);
     if (!optRes.error) setPollOptions((optRes.data as PollOption[]) ?? []);
     if (!voteRes.error) setPollVotes((voteRes.data as PollVote[]) ?? []);
-    if (!sharesRes.error) setApartmentShares((sharesRes.data as AreaShare[]) ?? []);
+    if (!tallyRes.error) setPollTallies((tallyRes.data as PollTallyAggregate[]) ?? []);
   }
 
   async function handleVote(poll: Poll, optionId: number) {
@@ -767,31 +967,19 @@ export default function AccountPage() {
     if (!isPollAcceptingVotes(poll)) return;
     setVotingPollId(poll.id);
     setError(null);
-    const rows = properties.map((p) => ({
-      poll_id: poll.id,
-      option_id: optionId,
-      property_id: p.id,
-      weight: propertyVoteWeight(p.area_sqm),
-    }));
     try {
-      const { error } = await supabase.from('poll_votes').upsert(rows, {
-        onConflict: 'poll_id,property_id',
+      const { error } = await supabase.rpc('cast_poll_vote', {
+        p_poll_id: poll.id,
+        p_option_id: optionId,
       });
       if (error) throw error;
-      await supabase.from('poll_vote_history').insert(rows);
-      const { data: votesData } = await supabase.from('poll_votes').select('*').eq('poll_id', poll.id);
-      const options = pollOptions.filter((o) => o.poll_id === poll.id);
-      const tally = tallyPoll(options, (votesData as PollVote[]) ?? [], apartmentShares);
-      if (tally.accepted) {
-        await supabase.from('polls').update({
-          status: 'закрыт',
-          result: 'принято',
-          result_option_id: tally.winner?.option.id ?? optionId,
-        }).eq('id', poll.id);
-      }
-      await refreshPolls(properties[0].id);
-    } catch (e: any) {
-      setError(e?.message ?? t('err.vote'));
+      await refreshPolls();
+    } catch (e: unknown) {
+      const message =
+        e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
+          ? (e as { message: string }).message
+          : t('err.vote');
+      setError(message);
     } finally {
       setVotingPollId(null);
     }
@@ -865,6 +1053,7 @@ export default function AccountPage() {
   }, [publishedUkExpenses]);
 
   const occupancyStatus = (property?.occupancy_status ?? 'owner') as OccupancyStatus;
+  const occupantKind = normalizeOccupantKind(property?.occupant_kind);
   const currentListing = listingStatus(property?.status);
   const pendingTransfer = useMemo(
     () =>
@@ -1224,9 +1413,69 @@ export default function AccountPage() {
               </div>
             </div>
 
-            {/* Информация о жильцах (показывается при статусе rented) */}
-            {occupancyStatus === 'rented' && (
-              <>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <h2 className="text-lg font-semibold text-emerald-400 mb-2">{t('registry.occupantKind')}</h2>
+              <p className="text-sm text-white/50 mb-4">{t('registry.occupantLead')}</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(['owner', 'tenant', 'user'] as OccupantKind[]).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => handleUpdateOccupantKind(kind)}
+                    disabled={occupancySaving}
+                    className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
+                      occupantKind === kind
+                        ? 'border-emerald-500 bg-emerald-500/15'
+                        : 'border-white/10 bg-white/[0.04] hover:border-white/15'
+                    }`}
+                  >
+                    <div className="text-sm font-medium text-white">{labelOccupantKind(kind, t)}</div>
+                  </button>
+                ))}
+              </div>
+              {occupantKind !== 'owner' && (
+                <form onSubmit={handleSaveOccupantDetails} className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <input
+                    className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    placeholder={t('registry.occupantName')}
+                    value={occupantForm.name}
+                    onChange={(e) => setOccupantForm({ ...occupantForm, name: e.target.value })}
+                  />
+                  <input
+                    className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    placeholder={t('registry.occupantPhone')}
+                    value={occupantForm.phone}
+                    onChange={(e) => setOccupantForm({ ...occupantForm, phone: e.target.value })}
+                  />
+                  <input
+                    className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                    placeholder={t('registry.occupantEmail')}
+                    type="email"
+                    value={occupantForm.email}
+                    onChange={(e) => setOccupantForm({ ...occupantForm, email: e.target.value })}
+                  />
+                  <label className="text-sm text-white/60">
+                    {t('registry.occupantUntil')}
+                    <input
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                      type="date"
+                      value={occupantForm.until}
+                      onChange={(e) => setOccupantForm({ ...occupantForm, until: e.target.value })}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={occupancySaving}
+                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2"
+                  >
+                    {occupancySaving ? t('common.saving') : t('common.save')}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* Информация о жильцах */}
+            <>
                 {/* Период аренды */}
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
                   <h2 className="text-lg font-semibold text-emerald-400 mb-4">{t('account.stayPeriod')}</h2>
@@ -1306,6 +1555,17 @@ export default function AccountPage() {
                         />
                         {t('account.child18')}
                       </label>
+                      <label className="flex items-center gap-2 text-sm text-white/70 sm:col-span-1">
+                        <input
+                          type="checkbox"
+                          checked={guestForm.is_permanent}
+                          onChange={(e) =>
+                            setGuestForm({ ...guestForm, is_permanent: e.target.checked })
+                          }
+                          className="w-4 h-4 accent-emerald-500"
+                        />
+                        {t('registry.resident')}
+                      </label>
                       <input
                         type="date"
                         className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
@@ -1363,6 +1623,7 @@ export default function AccountPage() {
                             <th className="py-2 px-3">{t('account.lastName')}</th>
                             <th className="py-2 px-3">{t('account.birthYearShort')}</th>
                             <th className="py-2 px-3">{t('account.colType')}</th>
+                            <th className="py-2 px-3">{t('registry.resident')}</th>
                             <th className="py-2 px-3">{t('account.checkIn')}</th>
                             <th className="py-2 px-3">{t('account.checkOut')}</th>
                             <th className="py-2 px-3"></th>
@@ -1386,6 +1647,9 @@ export default function AccountPage() {
                                 ) : (
                                   <span className="text-emerald-300">{t('account.adult')}</span>
                                 )}
+                              </td>
+                              <td className="py-2 px-3 text-white/60 text-xs">
+                                {g.is_permanent ? t('common.yes') : t('common.no')}
                               </td>
                               <td className="py-2 px-3 text-white/50 text-xs">
                                 {g.check_in
@@ -1413,16 +1677,59 @@ export default function AccountPage() {
                   )}
                 </div>
               </>
-            )}
 
             {/* Домашние животные — показывается всегда */}
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
               <h2 className="text-lg font-semibold text-emerald-400 mb-2">
-                {t('account.pets')} 🐾
+                {t('registry.petsTitle')} 🐾
               </h2>
               <p className="text-sm text-white/50 mb-4">
-                {t('account.petsHint')}
+                {t('registry.petsHintChip')}
               </p>
+              <form onSubmit={handleAddPet} className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <select
+                  className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                  value={petForm.species}
+                  onChange={(e) => setPetForm({ ...petForm, species: e.target.value })}
+                >
+                  <option value="dog">{t('registry.dog')}</option>
+                  <option value="cat">{t('registry.cat')}</option>
+                  <option value="other">{t('registry.otherPet')}</option>
+                </select>
+                <input className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                  placeholder={t('registry.petName')} value={petForm.name}
+                  onChange={(e) => setPetForm({ ...petForm, name: e.target.value })} />
+                <input className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                  placeholder={t('registry.chip')} value={petForm.chip_no}
+                  onChange={(e) => setPetForm({ ...petForm, chip_no: e.target.value })} />
+                <input className="rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
+                  placeholder={t('registry.passport')} value={petForm.passport_no}
+                  onChange={(e) => setPetForm({ ...petForm, passport_no: e.target.value })} />
+                <button type="submit" disabled={petSaving}
+                  className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {t('registry.addPet')}
+                </button>
+              </form>
+              {pets.length > 0 && (
+                <div className="mb-4 space-y-2">
+                  {pets.map((pet) => (
+                    <div key={pet.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-sm">
+                      <div>
+                        <div className="text-white">
+                          {pet.species === 'dog' ? t('registry.dog') : pet.species === 'cat' ? t('registry.cat') : t('registry.otherPet')}
+                          {pet.name ? ` · ${pet.name}` : ''}
+                        </div>
+                        <div className="text-xs text-white/45">
+                          {pet.chip_no ? `${t('registry.chip')}: ${pet.chip_no}` : ''}
+                          {pet.passport_no ? ` · ${t('registry.passport')}: ${pet.passport_no}` : ''}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-red-400">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-sm text-white/50 mb-2">{t('account.petsHint')}</p>
               <textarea
                 className="w-full rounded-lg border border-white/10 bg-[#070b0a] px-3 py-2 text-sm text-white"
                 placeholder={t('account.petsPh')}
@@ -1931,10 +2238,8 @@ export default function AccountPage() {
                     const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
                     const myVote = votesForPoll.find((v) => myPropertyIds.includes(v.property_id));
                     const open = isPollAcceptingVotes(poll);
-                    const decision = pollDecisionLabel(
-                      poll,
-                      tallyPoll(options, votesForPoll, apartmentShares).accepted
-                    );
+                    const tally = tallyFromAggregates(options, pollTallies);
+                    const decision = pollDecisionLabel(poll, tally.accepted);
                     const decisionLabel = labelPollDecision(decision, t);
                     return (
                       <div key={poll.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
@@ -1959,15 +2264,13 @@ export default function AccountPage() {
                         <PollDetails
                           poll={poll}
                           options={options}
-                          votes={votesForPoll}
-                          properties={apartmentShares}
+                          tally={tally}
                         />
                         <div className="mt-3">
                           <PollOptionBars
                             poll={poll}
                             options={options}
-                            votes={votesForPoll}
-                            properties={apartmentShares}
+                            tally={tally}
                             myOptionId={myVote?.option_id}
                             disabled={!open || votingPollId === poll.id}
                             onVote={open ? (optionId) => handleVote(poll, optionId) : undefined}
@@ -1990,15 +2293,8 @@ export default function AccountPage() {
       // ===========================================================
       case 'чат':
         return (
-          <div className="relative flex h-[calc(100dvh-7.5rem)] flex-col overflow-hidden bg-[#0b1210] md:h-[calc(100vh-8.5rem)] md:rounded-3xl md:border md:border-white/10">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-40"
-              style={{
-                backgroundImage: 'radial-gradient(rgba(52,211,153,0.09) 1px, transparent 1px)',
-                backgroundSize: '22px 22px',
-              }}
-            />
-            <div className="relative z-10 flex items-center gap-3 border-b border-white/8 bg-[#0b1210]/80 px-4 py-3 backdrop-blur-md">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0b1210] md:m-4 md:rounded-2xl md:border md:border-white/10">
+            <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300">
                 {t('common.uk')}
               </div>
@@ -2011,15 +2307,15 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <div ref={chatScrollRef} className="chat-scroll relative z-10 min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6">
+            <div ref={chatScrollRef} className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
               {chatMessages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 text-2xl">💬</div>
                   <p className="max-w-xs text-sm text-white/45">{t('account.chatEmpty')}</p>
                 </div>
               ) : (
-                <div className="mx-auto flex max-w-2xl flex-col">
-                  {chatMessages.map((m, i) => {
+                <div className="mx-auto flex w-full max-w-3xl flex-col">
+                {chatMessages.map((m, i) => {
                     const isOwner = m.sender === 'owner';
                     const prev = chatMessages[i - 1];
                     const next = chatMessages[i + 1];
@@ -2048,20 +2344,27 @@ export default function AccountPage() {
                       <div key={m.id}>
                         {dayLabel && (
                           <div className="my-4 flex justify-center">
-                            <span className="rounded-full bg-black/30 px-3 py-1 text-[11px] text-white/45 backdrop-blur">
+                            <span className="rounded-full bg-white/8 px-3 py-1 text-[11px] text-white/45">
                               {dayLabel}
                             </span>
                           </div>
                         )}
-                        <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} ${tight ? 'mt-0.5' : 'mt-2.5'}`}>
+                        <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} ${tight ? 'mt-0.5' : 'mt-2'}`}>
                           <div
-                            className={`max-w-[min(78%,28rem)] px-3.5 py-2 text-[15px] leading-snug shadow-sm ${
+                            className={`inline-flex max-w-[85%] flex-col px-3.5 py-2 text-[15px] leading-snug ${
                               isOwner
                                 ? `bg-emerald-600 text-white ${lastInGroup ? 'rounded-2xl rounded-br-md' : 'rounded-2xl'}`
-                                : `bg-[#1a2422] text-white ${lastInGroup ? 'rounded-2xl rounded-bl-md' : 'rounded-2xl'}`
+                                : `bg-[#1c2624] text-white ${lastInGroup ? 'rounded-2xl rounded-bl-md' : 'rounded-2xl'}`
                             }`}
                           >
-                            <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                            {m.photo_url && (
+                              <div className={m.message.trim() ? 'mb-2' : ''}>
+                                <ChatMedia url={m.photo_url} fileName={m.file_name} />
+                              </div>
+                            )}
+                            {m.message.trim() ? (
+                              <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                            ) : null}
                             {lastInGroup && (
                               <div className={`mt-1 flex items-center gap-1 text-[10px] ${isOwner ? 'justify-end text-emerald-100/70' : 'text-white/35'}`}>
                                 <span>
@@ -2088,11 +2391,46 @@ export default function AccountPage() {
 
             <form
               onSubmit={handleSendChat}
-              className="relative z-10 border-t border-white/8 bg-[#0b1210]/90 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:px-6"
+              className="shrink-0 border-t border-white/10 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4"
             >
-              <div className="mx-auto flex max-w-2xl items-end gap-2">
+              <div className="mx-auto w-full max-w-3xl">
+              {chatFile && (
+                <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
+                  <span className="min-w-0 flex-1 truncate">📎 {chatFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChatFile(null);
+                      if (chatFileRef.current) chatFileRef.current.value = '';
+                    }}
+                    className="shrink-0 text-xs text-white/50 hover:text-white"
+                  >
+                    {t('account.removeFile')}
+                  </button>
+                </div>
+              )}
+              <div className="flex items-end gap-2">
                 <input
-                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#141c1a] px-4 py-3 text-base text-white placeholder-white/35 outline-none transition focus:border-emerald-500/40 md:text-sm"
+                  ref={chatFileRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                  onChange={(e) => setChatFile(e.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => chatFileRef.current?.click()}
+                  disabled={chatSending}
+                  aria-label={t('account.attachFile')}
+                  title={t('account.attachFile')}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-[#1a2422] text-white hover:bg-white/10 disabled:opacity-40"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                  </svg>
+                </button>
+                <input
+                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-[#141c1a] px-4 py-2.5 text-base text-white placeholder-white/35 outline-none transition focus:border-emerald-500/40 md:text-sm"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   placeholder={t('account.chatPlaceholder')}
@@ -2100,12 +2438,13 @@ export default function AccountPage() {
                 />
                 <button
                   type="submit"
-                  disabled={chatSending || !chatInput.trim()}
+                  disabled={chatSending || (!chatInput.trim() && !chatFile)}
                   aria-label={t('common.send')}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-lg text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-lg text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {chatSending ? '…' : '↑'}
                 </button>
+              </div>
               </div>
             </form>
           </div>
@@ -2119,11 +2458,25 @@ export default function AccountPage() {
   // ===================================================================
   // ЭКРАН ВХОДА
   // ===================================================================
+  if (!authReady) {
+    return (
+      <div className="relative min-h-dvh bg-[#070b0a] text-white flex items-center justify-center px-4">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">
+          {t('common.loading')}
+        </div>
+      </div>
+    );
+  }
+
   if (!devEmail) {
     return (
       <LoginScreen
         email={emailInput}
         onEmailChange={setEmailInput}
+        password={passwordInput}
+        onPasswordChange={setPasswordInput}
+        loginError={loginError}
+        loginLoading={loginLoading}
         onSubmit={handleLogin}
       />
     );
@@ -2253,10 +2606,10 @@ export default function AccountPage() {
       {/* ===== ОСНОВНОЙ КОНТЕНТ ===== */}
       <main className={`min-w-0 flex-1 ${
         activeMenu === 'чат'
-          ? 'overflow-hidden pb-0 md:pb-0'
+          ? 'flex h-dvh flex-col overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
       }`}>
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#070b0a]/90 px-3 py-2.5 backdrop-blur md:px-6 md:py-4">
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold md:text-xl">
               {MENU_ITEMS.find((m) => m.key === activeMenu)?.icon}{' '}
@@ -2280,13 +2633,15 @@ export default function AccountPage() {
           </div>
         </div>
 
-        <div className={activeMenu === 'чат' ? 'p-0 md:p-6' : 'p-3 md:p-6'}>
+        <div className={activeMenu === 'чат' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'p-3 md:p-6'}>
           {properties.length > 1 && (
+            <div className={activeMenu === 'чат' ? 'shrink-0 px-4 pt-3' : undefined}>
             <ApartmentPicker
               properties={properties}
               selectedId={property?.id ?? null}
               onSelect={setSelectedPropertyId}
             />
+            </div>
           )}
           {loading && (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">
@@ -2295,7 +2650,7 @@ export default function AccountPage() {
           )}
 
           {error && (
-            <div className="mb-4 rounded-xl border border-red-800 bg-red-900/20 p-4 text-red-200">
+            <div className={`rounded-xl border border-red-800 bg-red-900/20 p-4 text-red-200 ${activeMenu === 'чат' ? 'mx-3 mt-3 md:mx-4 shrink-0' : 'mb-4'}`}>
               {error}
               <button
                 onClick={() => setError(null)}
@@ -2306,7 +2661,11 @@ export default function AccountPage() {
             </div>
           )}
 
-          {!loading && property && renderContent()}
+          {!loading && property && (
+            activeMenu === 'чат'
+              ? <div className="flex min-h-0 flex-1 flex-col">{renderContent()}</div>
+              : renderContent()
+          )}
 
           {!loading && !property && !error && (
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">

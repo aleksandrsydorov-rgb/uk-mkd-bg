@@ -31,6 +31,7 @@ export interface Database {
           body?: string | null;
           created_by?: string | null;
         };
+        Relationships: [];
       };
       apartment_guests: {
         Row: {
@@ -43,6 +44,7 @@ export interface Database {
           is_child: boolean;
           check_in: string | null;
           check_out: string | null;
+          is_permanent: boolean | null;
         };
         Insert: {
           id?: number;
@@ -54,6 +56,7 @@ export interface Database {
           is_child?: boolean;
           check_in?: string | null;
           check_out?: string | null;
+          is_permanent?: boolean | null;
         };
         Update: {
           id?: number;
@@ -65,7 +68,9 @@ export interface Database {
           is_child?: boolean;
           check_in?: string | null;
           check_out?: string | null;
+          is_permanent?: boolean | null;
         };
+        Relationships: [];
       };
       chat_messages: {
         Row: {
@@ -76,6 +81,8 @@ export interface Database {
           message: string;
           read_by_uk: boolean;
           read_by_owner: boolean;
+          photo_url: string | null;
+          file_name: string | null;
         };
         Insert: {
           id?: number;
@@ -85,6 +92,8 @@ export interface Database {
           message: string;
           read_by_uk?: boolean;
           read_by_owner?: boolean;
+          photo_url?: string | null;
+          file_name?: string | null;
         };
         Update: {
           id?: number;
@@ -94,7 +103,10 @@ export interface Database {
           message?: string;
           read_by_uk?: boolean;
           read_by_owner?: boolean;
+          photo_url?: string | null;
+          file_name?: string | null;
         };
+        Relationships: [];
       };
       meter_readings: {
         Row: {
@@ -127,6 +139,7 @@ export interface Database {
           submitted_by?: string | null;
           meter_serial_number?: string | null;
         };
+        Relationships: [];
       };
       n525_commands: {
         Row: {
@@ -150,6 +163,7 @@ export interface Database {
           user_id?: string | null;
           command_text?: string | null;
         };
+        Relationships: [];
       };
       owner_transfers: {
         Row: {
@@ -200,6 +214,7 @@ export interface Database {
           decided_by?: string | null;
           reject_reason?: string | null;
         };
+        Relationships: [];
       };
       poll_options: {
         Row: {
@@ -220,6 +235,7 @@ export interface Database {
           label?: string;
           sort_order?: number;
         };
+        Relationships: [];
       };
       poll_suggestions: {
         Row: {
@@ -249,6 +265,7 @@ export interface Database {
           body?: string | null;
           status?: string;
         };
+        Relationships: [];
       };
       poll_vote_history: {
         Row: {
@@ -275,6 +292,7 @@ export interface Database {
           property_id?: number;
           weight?: number | null;
         };
+        Relationships: [];
       };
       poll_votes: {
         Row: {
@@ -301,6 +319,7 @@ export interface Database {
           property_id?: number;
           weight?: number | null;
         };
+        Relationships: [];
       };
       polls: {
         Row: {
@@ -348,6 +367,7 @@ export interface Database {
           result?: string;
           result_option_id?: number | null;
         };
+        Relationships: [];
       };
       properties: {
         Row: {
@@ -367,6 +387,11 @@ export interface Database {
           pet_info: string | null;
           owner_type: string | null;
           company_name: string | null;
+          occupant_kind: string | null;
+          occupant_name: string | null;
+          occupant_phone: string | null;
+          occupant_email: string | null;
+          occupant_until: string | null;
         };
         Insert: {
           id?: number;
@@ -385,6 +410,11 @@ export interface Database {
           pet_info?: string | null;
           owner_type?: string | null;
           company_name?: string | null;
+          occupant_kind?: string | null;
+          occupant_name?: string | null;
+          occupant_phone?: string | null;
+          occupant_email?: string | null;
+          occupant_until?: string | null;
         };
         Update: {
           id?: number;
@@ -403,7 +433,13 @@ export interface Database {
           pet_info?: string | null;
           owner_type?: string | null;
           company_name?: string | null;
+          occupant_kind?: string | null;
+          occupant_name?: string | null;
+          occupant_phone?: string | null;
+          occupant_email?: string | null;
+          occupant_until?: string | null;
         };
+        Relationships: [];
       };
       requests: {
         Row: {
@@ -445,6 +481,7 @@ export interface Database {
           category?: string | null;
           photo_url?: string | null;
         };
+        Relationships: [];
       };
       staff: {
         Row: {
@@ -477,6 +514,7 @@ export interface Database {
           salary_eur?: number | null;
           active?: boolean | null;
         };
+        Relationships: [];
       };
       uk_expenses: {
         Row: {
@@ -515,6 +553,40 @@ export interface Database {
           approved_by?: string | null;
           approved_at?: string | null;
         };
+        Relationships: [];
+      };
+      apartment_pets: {
+        Row: {
+          id: number;
+          created_at: string;
+          property_id: number;
+          species: string;
+          name: string | null;
+          chip_no: string | null;
+          passport_no: string | null;
+          notes: string | null;
+        };
+        Insert: {
+          id?: number;
+          created_at?: string;
+          property_id: number;
+          species?: string;
+          name?: string | null;
+          chip_no?: string | null;
+          passport_no?: string | null;
+          notes?: string | null;
+        };
+        Update: {
+          id?: number;
+          created_at?: string;
+          property_id?: number;
+          species?: string;
+          name?: string | null;
+          chip_no?: string | null;
+          passport_no?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [];
       };
       building_settings: {
         Row: {
@@ -535,6 +607,7 @@ export interface Database {
           updated_at?: string;
           updated_by?: string | null;
         };
+        Relationships: [];
       };
       support_fee_ledger: {
         Row: {
@@ -573,10 +646,48 @@ export interface Database {
           debt_after?: number | null;
           overpayment_after?: number | null;
         };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      cast_poll_vote: {
+        Args: { p_poll_id: number; p_option_id: number };
+        Returns: {
+          poll_id: number;
+          status: string;
+          result: string | null;
+          result_option_id: number | null;
+          winner_option_id: number | null;
+          winner_weight: number;
+          total_building_weight: number;
+          accepted: boolean;
+        }[];
+      };
+      get_poll_tallies: {
+        Args: Record<string, never>;
+        Returns: {
+          poll_id: number;
+          option_id: number;
+          option_weight: number;
+          apartment_count: number;
+          total_building_weight: number;
+          percentage: number;
+        }[];
+      };
+      can_manage_support_fees: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      record_support_payment: {
+        Args: { p_property_id: number; p_amount: number; p_note: string | null };
+        Returns: Json;
+      };
+      charge_support_fee: {
+        Args: { p_property_id: number; p_period: string };
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

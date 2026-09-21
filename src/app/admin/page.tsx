@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef, useCallback, type ReactNode } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
@@ -21,25 +21,16 @@ import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTrans
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { resolveAccess } from '@/lib/access';
-import { clearSessionEmail, normalizeEmail, readSessionEmail } from '@/lib/session';
+import { normalizeEmail } from '@/lib/email';
 import { useRouter } from 'next/navigation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
-import {
-  labelCategory,
-  labelListing,
-  labelOccupancy,
-  labelPriority,
-  labelRequestStatus,
-  labelTransfer,
-} from '@/i18n/labels';
+import { labelCategory, labelListing, labelOccupancy, labelOccupantKind, labelPriority, labelRequestStatus, labelTransfer } from '@/i18n/labels';
 import {
   DEFAULT_SUPPORT_RATE,
   STAFF_ROLE_OPTIONS,
   annualSupportFee,
-  applySupportCharge,
-  applySupportPayment,
   canApproveUkExpenses,
   canRecordSupportPayments,
   canSetSupportRate,
@@ -49,6 +40,18 @@ import {
 import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { AdminReports } from '@/components/AdminReports';
+import { ChatMedia } from '@/components/ChatMedia';
+import { chatPreviewText, MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
+import {
+  buildRegistryPdfHtml,
+  dogChips,
+  downloadCsv,
+  householdNames,
+  householdPeople,
+  normalizeOccupantKind,
+  type ApartmentPet,
+} from '@/lib/registry';
+import { downloadHtmlAsPdf } from '@/lib/pdfDownload';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 type Request = Database['public']['Tables']['requests']['Row'];
@@ -82,6 +85,8 @@ interface ChatMessage {
   message: string;
   read_by_uk: boolean;
   read_by_owner: boolean;
+  photo_url?: string | null;
+  file_name?: string | null;
 }
 
 const UK_CHAT_SEEN_KEY = 'uk_chat_seen_v1';
@@ -129,6 +134,7 @@ interface ApartmentGuest {
   is_child: boolean;
   check_in: string | null;
   check_out: string | null;
+  is_permanent?: boolean | null;
 }
 
 type AdminSection =
@@ -163,6 +169,7 @@ const WATER_RATE = 3;
 export default function AdminPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
+  const [supabase] = useState(() => createBrowserClient());
   const MENU_ITEMS: { key: AdminSection; label: string; icon: string }[] = [
     { key: 'обзор', label: t('admin.overview'), icon: '📊' },
     { key: 'квартиры', label: t('admin.apartments'), icon: '🏠' },
@@ -187,6 +194,7 @@ export default function AdminPage() {
   const [staffRole, setStaffRole] = useState('');
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
   const [supportRateInput, setSupportRateInput] = useState(String(DEFAULT_SUPPORT_RATE));
   const [supportFeeMissing, setSupportFeeMissing] = useState(false);
@@ -213,6 +221,7 @@ export default function AdminPage() {
   const [ukExpenses, setUkExpenses] = useState<UkExpense[]>([]);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [allGuests, setAllGuests] = useState<ApartmentGuest[]>([]);
+  const [allPets, setAllPets] = useState<ApartmentPet[]>([]);
   const [allChatMessages, setAllChatMessages] = useState<ChatMessage[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
@@ -256,7 +265,9 @@ export default function AdminPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  const [chatFile, setChatFile] = useState<File | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatFileRef = useRef<HTMLInputElement>(null);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedChatRef = useRef<Property | null>(null);
   selectedChatRef.current = selectedChatProperty;
@@ -276,9 +287,12 @@ export default function AdminPage() {
     owner_type: 'физическое лицо',
     company_name: '',
     status: 'в собственности',
-    debt: '0',
-    overpayment: '0',
     occupancy_status: 'owner',
+    occupant_kind: 'owner',
+    occupant_name: '',
+    occupant_phone: '',
+    occupant_email: '',
+    occupant_until: '',
     pet_info: '',
   });
 
@@ -338,7 +352,7 @@ export default function AdminPage() {
     setError(null);
     try {
       const [
-        propsRes, reqsRes, annsRes, staffRes, expRes, metersRes, guestsRes, chatRes,
+        propsRes, reqsRes, annsRes, staffRes, expRes, metersRes, guestsRes, petsRes, chatRes,
         pollsRes, optRes, voteRes, histRes,
       ] = await Promise.all([
         supabase.from('properties').select('*').order('apartment_number', { ascending: true }),
@@ -348,6 +362,7 @@ export default function AdminPage() {
         supabase.from('uk_expenses').select('*').order('expense_date', { ascending: false }),
         supabase.from('meter_readings').select('*').order('reading_date', { ascending: false }),
         supabase.from('apartment_guests').select('*').order('created_at', { ascending: true }),
+        supabase.from('apartment_pets').select('*').order('created_at', { ascending: true }),
         supabase.from('chat_messages').select('*').order('created_at', { ascending: true }),
         supabase.from('polls').select('*').order('created_at', { ascending: false }),
         supabase.from('poll_options').select('*').order('sort_order', { ascending: true }),
@@ -368,6 +383,12 @@ export default function AdminPage() {
       }
       if (metersRes.error) throw metersRes.error;
       if (guestsRes.error) throw guestsRes.error;
+      if (petsRes.error) {
+        if (!isMissingRelation(petsRes.error, 'apartment_pets')) throw petsRes.error;
+        setAllPets([]);
+      } else {
+        setAllPets((petsRes.data as ApartmentPet[]) ?? []);
+      }
       if (chatRes.error) throw chatRes.error;
       if (pollsRes.error) {
         if (!isMissingRelation(pollsRes.error, 'polls')) throw pollsRes.error;
@@ -400,6 +421,7 @@ export default function AdminPage() {
       setStaff((staffRes.data as StaffMember[]) ?? []);
       setMeterReadings((metersRes.data as MeterReading[]) ?? []);
       setAllGuests((guestsRes.data as ApartmentGuest[]) ?? []);
+      if (!petsRes.error) setAllPets((petsRes.data as ApartmentPet[]) ?? []);
       setAllChatMessages((chatRes.data as ChatMessage[]) ?? []);
 
       const trRes = await supabase
@@ -450,13 +472,16 @@ export default function AdminPage() {
   useEffect(() => {
     let cancelled = false;
     async function gate() {
-      const email = readSessionEmail();
-      if (!email) {
-        router.replace('/account');
-        return;
-      }
       try {
-        const access = await resolveAccess(email);
+        const { data } = await supabase.auth.getUser();
+        const email = normalizeEmail(data.user?.email ?? '');
+
+        if (!email) {
+          router.replace('/account');
+          return;
+        }
+
+        const access = await resolveAccess(email, supabase);
         if (cancelled) return;
         if (!access.isStaff) {
           router.replace('/account');
@@ -471,6 +496,8 @@ export default function AdminPage() {
           setError(e?.message ?? 'Нет доступа');
           router.replace('/account');
         }
+      } finally {
+        if (!cancelled) setAuthReady(true);
       }
     }
     gate();
@@ -478,6 +505,20 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [router]);
+
+  async function handleLogout() {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // logout UI должен продолжиться
+    } finally {
+      setSessionEmail('');
+      setStaffRole('');
+      setHasCabinet(false);
+      setAllowed(false);
+      router.replace('/account');
+    }
+  }
 
   useEffect(() => {
     if (allowed) loadAll();
@@ -596,6 +637,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!selectedChatProperty) return;
+    setChatFile(null);
+    if (chatFileRef.current) chatFileRef.current.value = '';
     markUkChatSeen(selectedChatProperty.id);
     let cancelled = false;
     (async () => {
@@ -612,26 +655,52 @@ export default function AdminPage() {
     e.preventDefault();
     if (!selectedChatProperty) return;
     const msg = chatInput.trim();
-    if (!msg) return;
+    if (!msg && !chatFile) return;
+    if (chatFile && chatFile.size > MAX_CHAT_FILE_BYTES) {
+      setError(t('account.fileTooBig'));
+      return;
+    }
     setChatSending(true);
     try {
       markUkChatSeen(selectedChatProperty.id);
+      let photoUrl: string | null = null;
+      if (chatFile) {
+        const ext = chatFile.name.split('.').pop()?.toLowerCase() || 'bin';
+        const filePath = `chat/${selectedChatProperty.id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from('request-photos')
+          .upload(filePath, chatFile, { upsert: true });
+        if (uploadErr) throw uploadErr;
+        photoUrl = supabase.storage.from('request-photos').getPublicUrl(uploadData.path).data.publicUrl;
+      }
+      const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
+        property_id: selectedChatProperty.id,
+        sender: 'uk',
+        message: msg,
+        read_by_uk: true,
+      };
+      if (photoUrl) {
+        payload.photo_url = photoUrl;
+        payload.file_name = chatFile?.name ?? null;
+      }
       const { data: inserted, error: insertErr } = await supabase
         .from('chat_messages')
-        .insert({
-          property_id: selectedChatProperty.id,
-          sender: 'uk',
-          message: msg,
-          read_by_uk: true,
-        })
+        .insert(payload)
         .select('*')
         .single();
-      if (insertErr) throw insertErr;
+      if (insertErr) {
+        const hint = insertErr.message?.includes('photo_url') || insertErr.message?.includes('file_name')
+          ? t('err.chatFileSql')
+          : insertErr.message;
+        throw new Error(hint);
+      }
       const row = inserted as ChatMessage;
       markUkChatSeen(selectedChatProperty.id, row.created_at);
       setChatMessages((prev) => [...prev, row]);
       setAllChatMessages((prev) => [...prev, row]);
       setChatInput('');
+      setChatFile(null);
+      if (chatFileRef.current) chatFileRef.current.value = '';
     } catch (e: any) {
       setError(e?.message ?? t('err.sendShort'));
     } finally {
@@ -720,6 +789,10 @@ export default function AdminPage() {
     return allGuests.filter((g) => g.property_id === propId);
   }
 
+  function petsForProperty(propId: number) {
+    return allPets.filter((p) => p.property_id === propId);
+  }
+
   function requestsForProperty(propId: number) {
     return requests.filter((r) => r.property_id === propId);
   }
@@ -757,6 +830,58 @@ export default function AdminPage() {
       case 'rented': return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
       default: return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
     }
+  }
+
+  async function exportRegistry(format: 'csv' | 'pdf') {
+    const rows = [...properties].sort((a, b) =>
+      String(a.apartment_number).localeCompare(String(b.apartment_number), undefined, { numeric: true }),
+    );
+    const headers = [
+      t('form.colApt'),
+      t('form.colFloor'),
+      t('form.colArea'),
+      t('form.colOwner'),
+      t('registry.colOccupant'),
+      t('registry.occupantKind'),
+      t('registry.colPeople'),
+      t('registry.household'),
+      t('registry.colDogs'),
+    ];
+    const data = rows.map((p) => {
+      const guests = guestsForProperty(p.id);
+      const pets = petsForProperty(p.id);
+      const kind = normalizeOccupantKind(p.occupant_kind);
+      const occupant =
+        kind === 'owner'
+          ? (p.owner_name ?? '')
+          : (p.occupant_name || p.owner_name || '');
+      return [
+        String(p.apartment_number ?? ''),
+        String(p.floor ?? ''),
+        p.area_sqm != null ? String(p.area_sqm) : '',
+        p.owner_name ?? '',
+        occupant,
+        labelOccupantKind(kind, t),
+        String(householdPeople(guests).length),
+        householdNames(guests),
+        dogChips(pets) || (p.pet_info ?? ''),
+      ];
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === 'csv') {
+      downloadCsv(`kniga-zues-${stamp}.csv`, [headers, ...data]);
+      return;
+    }
+    await downloadHtmlAsPdf(
+      `kniga-zues-${stamp}.pdf`,
+      buildRegistryPdfHtml({
+        title: t('registry.book'),
+        generated: `${t('admin.pdfGenerated')}: ${new Date().toLocaleString(dateLocale)}`,
+        hint: t('registry.exportHint'),
+        headers,
+        rows: data,
+      }),
+    );
   }
 
   // ---------- ФИЛЬТРАЦИЯ КВАРТИР ----------
@@ -831,10 +956,11 @@ export default function AdminPage() {
 
     // Питомцы
     if (aptPetsFilter !== '') {
+      const propsWithPets = new Set(allPets.map((x) => x.property_id));
       if (aptPetsFilter === 'has_pets') {
-        result = result.filter((p) => p.pet_info && p.pet_info.trim() !== '');
+        result = result.filter((p) => (p.pet_info && p.pet_info.trim() !== '') || propsWithPets.has(p.id));
       } else {
-        result = result.filter((p) => !p.pet_info || p.pet_info.trim() === '');
+        result = result.filter((p) => (!p.pet_info || p.pet_info.trim() === '') && !propsWithPets.has(p.id));
       }
     }
 
@@ -865,7 +991,7 @@ export default function AdminPage() {
 
     return result;
   }, [properties, aptSearch, aptFloorFilter, aptStatusFilter, aptOccupancyFilter,
-      aptOwnerTypeFilter, aptDebtFilter, aptGuestsFilter, aptPetsFilter, aptSort, allGuests]);
+      aptOwnerTypeFilter, aptDebtFilter, aptGuestsFilter, aptPetsFilter, aptSort, allGuests, allPets]);
 
   // ---------- ФИЛЬТРАЦИЯ ЗАЯВОК ----------
   const filteredRequests = useMemo(() => {
@@ -920,9 +1046,12 @@ export default function AdminPage() {
       owner_type: p.owner_type ?? 'физическое лицо',
       company_name: p.company_name ?? '',
       status: listingStatus(p.status),
-      debt: String(p.debt ?? 0),
-      overpayment: String(p.overpayment ?? 0),
       occupancy_status: p.occupancy_status ?? 'owner',
+      occupant_kind: normalizeOccupantKind(p.occupant_kind),
+      occupant_name: p.occupant_name ?? '',
+      occupant_phone: p.occupant_phone ?? '',
+      occupant_email: p.occupant_email ?? '',
+      occupant_until: p.occupant_until ? String(p.occupant_until).slice(0, 10) : '',
       pet_info: p.pet_info ?? '',
     });
     setShowPropForm(true);
@@ -933,7 +1062,9 @@ export default function AdminPage() {
     setPropForm({
       apartment_number: '', floor: '', area_sqm: '', owner_name: '', owner_email: '',
       owner_phone: '', owner_type: 'физическое лицо', company_name: '', status: 'в собственности',
-      debt: '0', overpayment: '0', occupancy_status: 'owner', pet_info: '',
+      occupancy_status: 'owner',
+      occupant_kind: 'owner', occupant_name: '', occupant_phone: '', occupant_email: '', occupant_until: '',
+      pet_info: '',
     });
     setShowPropForm(true);
   }
@@ -951,9 +1082,12 @@ export default function AdminPage() {
       owner_type: propForm.owner_type,
       company_name: propForm.company_name.trim() || null,
       status: propForm.status,
-      debt: Number(propForm.debt) || 0,
-      overpayment: Number(propForm.overpayment) || 0,
       occupancy_status: propForm.occupancy_status,
+      occupant_kind: propForm.occupant_kind,
+      occupant_name: propForm.occupant_name.trim() || null,
+      occupant_phone: propForm.occupant_phone.trim() || null,
+      occupant_email: propForm.occupant_email.trim() || null,
+      occupant_until: propForm.occupant_until || null,
       pet_info: propForm.pet_info.trim() || null,
     };
     try {
@@ -967,7 +1101,12 @@ export default function AdminPage() {
       setShowPropForm(false);
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка сохранения');
+      const msg = e?.message ?? t('err.save');
+      setError(
+        msg.includes('occupant_kind') || msg.includes('occupant_name')
+          ? t('err.registrySql')
+          : msg,
+      );
     }
   }
 
@@ -1182,32 +1321,6 @@ export default function AdminPage() {
     }
   }
 
-  async function persistSupportBalances(
-    property: Property,
-    kind: 'payment' | 'charge',
-    amount: number,
-    next: { debt: number; overpayment: number },
-    period: string | null,
-    note: string | null,
-  ) {
-    const { error: ledErr } = await supabase.from('support_fee_ledger').insert({
-      property_id: property.id,
-      kind,
-      amount,
-      period,
-      note,
-      recorded_by: sessionEmail,
-      debt_after: next.debt,
-      overpayment_after: next.overpayment,
-    });
-    if (ledErr) throw ledErr;
-    const { error: propErr } = await supabase
-      .from('properties')
-      .update({ debt: next.debt, overpayment: next.overpayment })
-      .eq('id', property.id);
-    if (propErr) throw propErr;
-  }
-
   async function handleSaveSupportRate(e: React.FormEvent) {
     e.preventDefault();
     if (!canSetSupportRate(staffRole)) {
@@ -1256,17 +1369,28 @@ export default function AdminPage() {
       setError(t('err.pickApt'));
       return;
     }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Сумма должна быть больше нуля');
+      return;
+    }
     setPaySaving(true);
     setError(null);
     try {
-      const next = applySupportPayment(Number(property.debt ?? 0), Number(property.overpayment ?? 0), amount);
-      await persistSupportBalances(property, 'payment', amount, next, null, payNote.trim() || 'Оплата таксы поддержки');
+      const { error } = await supabase.rpc('record_support_payment', {
+        p_property_id: property.id,
+        p_amount: amount,
+        p_note: payNote.trim() || null,
+      });
+      if (error) throw error;
       setPayAmount('');
       setPayNote('');
       await loadAll();
-    } catch (err: any) {
-      const msg = err?.message ?? '';
-      if (isMissingRelation(err, 'support_fee_ledger')) {
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message ?? '')
+          : '';
+      if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
         setError('Выполните supabase/support_fee.sql в SQL Editor.');
       } else {
@@ -1277,18 +1401,12 @@ export default function AdminPage() {
     }
   }
 
-  async function chargeSupportForProperty(property: Property, year: string) {
-    const amount = annualSupportFee(property.area_sqm, supportRate);
-    if (amount <= 0) return;
-    const next = applySupportCharge(Number(property.debt ?? 0), Number(property.overpayment ?? 0), amount);
-    await persistSupportBalances(
-      property,
-      'charge',
-      amount,
-      next,
-      year,
-      `Начисление таксы за ${year}`,
-    );
+  async function chargeSupportForProperty(propertyId: number, year: string) {
+    const { error } = await supabase.rpc('charge_support_fee', {
+      p_property_id: propertyId,
+      p_period: year,
+    });
+    if (error) throw error;
   }
 
   async function handleChargeSupport(propertyIds: number[]) {
@@ -1317,22 +1435,24 @@ export default function AdminPage() {
     try {
       for (const property of targets) {
         try {
-          await chargeSupportForProperty(property, year);
-        } catch (err: any) {
-          const msg = err?.message ?? '';
-          if (msg.includes('support_fee_ledger_charge_period') || msg.includes('duplicate')) {
+          await chargeSupportForProperty(property.id, year);
+        } catch (err: unknown) {
+          const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code ?? '') : '';
+          const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
+          if (code === '23505' || msg.includes('support_fee_ledger_charge_period') || msg.includes('duplicate')) {
             continue;
           }
           throw err;
         }
       }
       await loadAll();
-    } catch (err: any) {
-      if (isMissingRelation(err, 'support_fee_ledger')) {
+    } catch (err: unknown) {
+      if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
         setError('Выполните supabase/support_fee.sql в SQL Editor.');
       } else {
-        setError(err?.message ?? 'Не удалось начислить таксу');
+        const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
+        setError(msg || 'Не удалось начислить таксу');
       }
     } finally {
       setChargeSaving(false);
@@ -1760,6 +1880,7 @@ export default function AdminPage() {
                 <span className="text-sm text-white/50">
                   {t('admin.shownOf', { n: filteredProperties.length, total: properties.length })}
                 </span>
+                <p className="mt-1 text-xs text-white/35">{t('registry.exportHint')}</p>
               </div>
               <div className="flex gap-2">
                 {aptActiveFiltersCount > 0 && (
@@ -1771,6 +1892,14 @@ export default function AdminPage() {
                 <button onClick={startNewProp}
                   className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                   {t('admin.addPlus')}
+                </button>
+                <button type="button" onClick={() => exportRegistry('csv')}
+                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                  {t('registry.exportCsv')}
+                </button>
+                <button type="button" onClick={() => exportRegistry('pdf')}
+                  className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/80 hover:bg-white/10">
+                  {t('registry.exportPdf')}
                 </button>
               </div>
             </div>
@@ -1845,13 +1974,36 @@ export default function AdminPage() {
                     <option value="standby">{t('status.occStandby')}</option>
                     <option value="rented">{t('status.occRented')}</option>
                   </select>
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
-                    placeholder={t('admin.phDebt')} type="number" value={propForm.debt}
-                    onChange={(e) => setPropForm({ ...propForm, debt: e.target.value })} />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
-                    placeholder={t('admin.phOver')} type="number" value={propForm.overpayment}
-                    onChange={(e) => setPropForm({ ...propForm, overpayment: e.target.value })} />
+                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    value={propForm.occupant_kind}
+                    onChange={(e) => setPropForm({ ...propForm, occupant_kind: e.target.value })}>
+                    <option value="owner">{t('registry.occupantOwner')}</option>
+                    <option value="tenant">{t('registry.occupantTenant')}</option>
+                    <option value="user">{t('registry.occupantUser')}</option>
+                  </select>
+                  {(propForm.occupant_kind === 'tenant' || propForm.occupant_kind === 'user') && (
+                    <>
+                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        placeholder={t('registry.occupantName')} value={propForm.occupant_name}
+                        onChange={(e) => setPropForm({ ...propForm, occupant_name: e.target.value })} />
+                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        placeholder={t('registry.occupantPhone')} value={propForm.occupant_phone}
+                        onChange={(e) => setPropForm({ ...propForm, occupant_phone: e.target.value })} />
+                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        placeholder={t('registry.occupantEmail')} type="email" value={propForm.occupant_email}
+                        onChange={(e) => setPropForm({ ...propForm, occupant_email: e.target.value })} />
+                      <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                        type="date" value={propForm.occupant_until}
+                        onChange={(e) => setPropForm({ ...propForm, occupant_until: e.target.value })}
+                        title={t('registry.occupantUntil')} />
+                    </>
+                  )}
                 </div>
+                {editingProp ? (
+                  <p className="text-xs text-white/50">
+                    {t('admin.debt')}: {Number(editingProp.debt ?? 0).toFixed(2)} € · {t('admin.overpay')}: {Number(editingProp.overpayment ?? 0).toFixed(2)} €
+                  </p>
+                ) : null}
                 <input className="w-full rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                   placeholder={t('account.pets')} value={propForm.pet_info}
                   onChange={(e) => setPropForm({ ...propForm, pet_info: e.target.value })} />
@@ -2104,12 +2256,14 @@ export default function AdminPage() {
                 requests={requestsForProperty(detailProperty.id)}
                 meterReadings={metersForProperty(detailProperty.id)}
                 guests={guestsForProperty(detailProperty.id)}
+                pets={petsForProperty(detailProperty.id)}
                 chatMessages={chatForProperty(detailProperty.id)}
                 chatSeenAt={ukChatSeen[String(detailProperty.id)]}
                 supportRate={supportRate}
                 onClose={() => setDetailProperty(null)}
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
                 onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); setActiveMenu('чат'); }}
+                onChanged={loadAll}
                 onTakePayment={() => {
                   setPayPropertyId(detailProperty.id);
                   const debt = Number(detailProperty.debt ?? 0);
@@ -2687,15 +2841,14 @@ export default function AdminPage() {
                   <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                     placeholder="Имя" value={staffForm.name}
                     onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required />
-                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
-                    list="staff-roles"
-                    placeholder="Должность" value={staffForm.role}
-                    onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required />
-                  <datalist id="staff-roles">
+                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    value={staffForm.role}
+                    onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required>
+                    <option value="" disabled>Должность</option>
                     {STAFF_ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role} />
+                      <option key={role.value} value={role.value}>{role.label}</option>
                     ))}
-                  </datalist>
+                  </select>
                   <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
                     placeholder="Email для входа" type="email" value={staffForm.email}
                     onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
@@ -3078,7 +3231,7 @@ export default function AdminPage() {
                           <div className="text-xs text-white/40 truncate">{item.property.owner_name}</div>
                           {item.lastMessage && (
                             <div className="text-xs text-white/30 truncate mt-1">
-                              {item.lastMessage.sender === 'owner' ? '' : `${t('common.uk')}: `}{item.lastMessage.message}
+                              {item.lastMessage.sender === 'owner' ? '' : `${t('common.uk')}: `}{chatPreviewText(item.lastMessage.message, item.lastMessage.file_name, item.lastMessage.photo_url)}
                             </div>
                           )}
                         </div>
@@ -3139,11 +3292,18 @@ export default function AdminPage() {
                         const isUk = m.sender === 'uk';
                         return (
                           <div key={m.id} className={`flex ${isUk ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm md:max-w-[75%] ${
+                            <div className={`w-fit max-w-[85%] rounded-2xl px-4 py-2.5 text-sm md:max-w-[75%] ${
                               isUk ? 'bg-teal-600 text-gray-50 rounded-br-sm'
                                    : 'bg-white/10 text-white rounded-bl-sm border border-white/15'
                             }`}>
-                              <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                              {m.photo_url && (
+                                <div className={m.message.trim() ? 'mb-2' : ''}>
+                                  <ChatMedia url={m.photo_url} fileName={m.file_name} />
+                                </div>
+                              )}
+                              {m.message.trim() ? (
+                                <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                              ) : null}
                               <div className={`mt-1 text-[10px] ${isUk ? 'text-teal-200/70' : 'text-white/50'}`}>
                                 {new Date(m.created_at).toLocaleString(dateLocale,
                                   { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -3158,14 +3318,48 @@ export default function AdminPage() {
                     )}
                   </div>
                   <form onSubmit={handleSendChat}
-                    className="flex items-center gap-2 border-t border-white/10 bg-white/[0.05] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3">
+                    className="border-t border-white/10 bg-white/[0.05] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3">
+                    {chatFile && (
+                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white/80">
+                        <span className="min-w-0 flex-1 truncate">📎 {chatFile.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChatFile(null);
+                            if (chatFileRef.current) chatFileRef.current.value = '';
+                          }}
+                          className="shrink-0 text-xs text-white/50 hover:text-white"
+                        >
+                          {t('account.removeFile')}
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                    <input
+                      ref={chatFileRef}
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                      onChange={(e) => setChatFile(e.target.files?.[0] ?? null)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => chatFileRef.current?.click()}
+                      disabled={chatSending}
+                      aria-label={t('account.attachFile')}
+                      title={t('account.attachFile')}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#101816] text-white/70 hover:bg-white/10 disabled:opacity-40"
+                    >
+                      📎
+                    </button>
                     <input className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101816] px-4 py-2.5 text-base text-white placeholder-white/40 focus:outline-none focus:border-teal-500/50 md:text-sm"
                       value={chatInput} onChange={(e) => setChatInput(e.target.value)}
                       placeholder={t('account.chatPlaceholder')} disabled={chatSending} />
-                    <button type="submit" disabled={chatSending || !chatInput.trim()}
+                    <button type="submit" disabled={chatSending || (!chatInput.trim() && !chatFile)}
                       className="shrink-0 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed">
                       {chatSending ? '...' : t('common.send')}
                     </button>
+                    </div>
                   </form>
                 </>
               ) : (
@@ -3396,6 +3590,14 @@ export default function AdminPage() {
     }
   }
 
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-[#070b0a] text-white flex items-center justify-center">
+        <div className="text-lg text-white/50">{t('common.loading')}</div>
+      </div>
+    );
+  }
+
   if (!allowed || loading) {
     return (
       <div className="min-h-screen bg-[#070b0a] text-white flex items-center justify-center">
@@ -3577,8 +3779,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearSessionEmail();
-                  router.replace('/account');
+                  void handleLogout();
                 }}
                 className="min-h-11 w-full rounded-xl border border-white/10 bg-white/10 px-2 text-sm"
               >
@@ -3597,8 +3798,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearSessionEmail();
-                  router.replace('/account');
+                  void handleLogout();
                 }}
                 className="p-1.5 rounded-lg bg-white/10 text-xs"
                 title={t('common.logout')}
@@ -3627,8 +3827,7 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => {
-                clearSessionEmail();
-                router.replace('/account');
+                void handleLogout();
               }}
               className="min-h-10 rounded-lg border border-white/15 px-3 text-sm text-white/80 md:hidden"
             >
@@ -3748,12 +3947,13 @@ function Metric({
 // МОДАЛЬНОЕ ОКНО — ДЕТАЛЬНЫЙ ПРОСМОТР ВСЕХ ДАННЫХ КВАРТИРЫ
 // =====================================================================
 function ApartmentDetailModal({
-  property, requests, meterReadings, guests, chatMessages, chatSeenAt, supportRate, onClose, onEdit, onOpenChat, onTakePayment,
+  property, requests, meterReadings, guests, pets, chatMessages, chatSeenAt, supportRate, onClose, onEdit, onOpenChat, onTakePayment, onChanged,
 }: {
   property: Property;
   requests: Request[];
   meterReadings: MeterReading[];
   guests: ApartmentGuest[];
+  pets: ApartmentPet[];
   chatMessages: ChatMessage[];
   chatSeenAt?: string;
   supportRate: number;
@@ -3761,9 +3961,23 @@ function ApartmentDetailModal({
   onEdit: () => void;
   onOpenChat: () => void;
   onTakePayment: () => void;
+  onChanged: () => Promise<void> | void;
 }) {
   const { t, dateLocale } = useI18n();
+  const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
+  const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
+  const [petSaving, setPetSaving] = useState(false);
+  const [guestForm, setGuestForm] = useState({
+    first_name: '',
+    last_name: '',
+    birth_year: '',
+    is_child: false,
+    is_permanent: true,
+    check_in: '',
+    check_out: '',
+  });
+  const [guestSaving, setGuestSaving] = useState(false);
 
   const annualFee = annualSupportFee(property.area_sqm, supportRate);
   const monthlyFee = monthlySupportFee(property.area_sqm, supportRate);
@@ -3773,6 +3987,88 @@ function ApartmentDetailModal({
     if (kind === 'electricity_day') return t('form.elDayShort');
     if (kind === 'electricity_night') return t('form.elNightShort');
     return t('account.water');
+  }
+
+  async function handleAddPet(e: React.FormEvent) {
+    e.preventDefault();
+    setPetSaving(true);
+    try {
+      const { error } = await supabase.from('apartment_pets').insert({
+        property_id: property.id,
+        species: petForm.species,
+        name: petForm.name.trim() || null,
+        chip_no: petForm.chip_no.trim() || null,
+        passport_no: petForm.passport_no.trim() || null,
+      });
+      if (error) throw error;
+      setPetForm({ species: 'dog', name: '', chip_no: '', passport_no: '' });
+      await onChanged();
+    } catch (err: any) {
+      alert(err?.message?.includes('apartment_pets') ? t('err.registrySql') : (err?.message ?? t('err.save')));
+    } finally {
+      setPetSaving(false);
+    }
+  }
+
+  async function handleRemovePet(id: number) {
+    if (!confirm(t('confirm.removePet'))) return;
+    const { error } = await supabase.from('apartment_pets').delete().eq('id', id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    await onChanged();
+  }
+
+  async function handleAddGuest(e: React.FormEvent) {
+    e.preventDefault();
+    const fn = guestForm.first_name.trim();
+    const ln = guestForm.last_name.trim();
+    if (!fn || !ln) return;
+    setGuestSaving(true);
+    try {
+      const payload = {
+        property_id: property.id,
+        first_name: fn,
+        last_name: ln,
+        birth_year: guestForm.birth_year ? Number(guestForm.birth_year) : null,
+        is_child: guestForm.is_child,
+        is_permanent: guestForm.is_permanent,
+        check_in: guestForm.check_in || null,
+        check_out: guestForm.check_out || null,
+      };
+      let { error } = await supabase.from('apartment_guests').insert(payload);
+      if (error && (error.message.includes('is_permanent') || error.message.includes('schema cache'))) {
+        const { is_permanent: _ignored, ...legacy } = payload;
+        const retry = await supabase.from('apartment_guests').insert(legacy);
+        error = retry.error;
+      }
+      if (error) throw error;
+      setGuestForm({
+        first_name: '',
+        last_name: '',
+        birth_year: '',
+        is_child: false,
+        is_permanent: true,
+        check_in: guestForm.check_in,
+        check_out: guestForm.check_out,
+      });
+      await onChanged();
+    } catch (err: any) {
+      alert(err?.message ?? t('err.addGuest'));
+    } finally {
+      setGuestSaving(false);
+    }
+  }
+
+  async function handleRemoveGuest(id: number) {
+    if (!confirm(t('confirm.removeGuest'))) return;
+    const { error } = await supabase.from('apartment_guests').delete().eq('id', id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    await onChanged();
   }
 
   return (
@@ -3817,7 +4113,7 @@ function ApartmentDetailModal({
             { key: 'финансы', label: 'Финансы', count: null },
             { key: 'счётчики', label: 'Счётчики', count: meterReadings.length },
             { key: 'заявки', label: 'Заявки', count: requests.length },
-            { key: 'жильцы', label: 'Жильцы', count: guests.length },
+            { key: 'жильцы', label: t('registry.household'), count: guests.length + pets.length },
             { key: 'чат', label: 'Чат', count: chatMessages.length },
           ].map((tab) => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
@@ -3851,6 +4147,15 @@ function ApartmentDetailModal({
                 <InfoRow label="Email" value={property.owner_email ?? '—'} />
                 <InfoRow label="Телефон" value={property.owner_phone ?? '—'} />
                 {property.company_name && <InfoRow label="Компания" value={property.company_name} />}
+                <InfoRow label={t('registry.occupantKind')} value={labelOccupantKind(property.occupant_kind, t)} />
+                {normalizeOccupantKind(property.occupant_kind) !== 'owner' && (
+                  <>
+                    <InfoRow label={t('registry.occupantName')} value={property.occupant_name ?? '—'} />
+                    <InfoRow label={t('registry.occupantPhone')} value={property.occupant_phone ?? '—'} />
+                    <InfoRow label={t('registry.occupantEmail')} value={property.occupant_email ?? '—'} />
+                    <InfoRow label={t('registry.occupantUntil')} value={property.occupant_until ? String(property.occupant_until).slice(0, 10) : '—'} />
+                  </>
+                )}
               </div>
               <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-4">
                 <div className="text-white/50 text-xs mb-2">Режим проживания</div>
@@ -3994,20 +4299,90 @@ function ApartmentDetailModal({
 
           {/* ЖИЛЬЦЫ */}
           {activeTab === 'жильцы' && (
-            <div>
+            <div className="space-y-6">
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-emerald-300">{t('registry.household')}</h4>
+                <p className="mb-3 text-xs text-white/40">{t('registry.householdHint')}</p>
+                <form onSubmit={handleAddGuest} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <input
+                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    placeholder={t('account.firstName')}
+                    value={guestForm.first_name}
+                    onChange={(e) => setGuestForm({ ...guestForm, first_name: e.target.value })}
+                    required
+                  />
+                  <input
+                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    placeholder={t('account.lastName')}
+                    value={guestForm.last_name}
+                    onChange={(e) => setGuestForm({ ...guestForm, last_name: e.target.value })}
+                    required
+                  />
+                  <input
+                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    placeholder={t('account.birthYear')}
+                    type="number"
+                    min="1900"
+                    max={new Date().getFullYear()}
+                    value={guestForm.birth_year}
+                    onChange={(e) => setGuestForm({ ...guestForm, birth_year: e.target.value })}
+                  />
+                  <label className="flex items-center gap-2 text-sm text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={guestForm.is_child}
+                      onChange={(e) => setGuestForm({ ...guestForm, is_child: e.target.checked })}
+                      className="h-4 w-4 accent-emerald-500"
+                    />
+                    {t('account.child18')}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={guestForm.is_permanent}
+                      onChange={(e) => setGuestForm({ ...guestForm, is_permanent: e.target.checked })}
+                      className="h-4 w-4 accent-emerald-500"
+                    />
+                    {t('registry.resident')}
+                  </label>
+                  <input
+                    type="date"
+                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    value={guestForm.check_in}
+                    onChange={(e) => setGuestForm({ ...guestForm, check_in: e.target.value })}
+                    title={t('account.checkIn')}
+                  />
+                  <input
+                    type="date"
+                    className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    value={guestForm.check_out}
+                    onChange={(e) => setGuestForm({ ...guestForm, check_out: e.target.value })}
+                    title={t('account.checkOut')}
+                  />
+                  <button
+                    type="submit"
+                    disabled={guestSaving}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+                  >
+                    {guestSaving ? t('account.adding') : t('account.addGuestPlus')}
+                  </button>
+                </form>
               {guests.length === 0 ? (
-                <div className="text-sm text-white/40">Жильцы не зарегистрированы.</div>
+                <div className="text-sm text-white/40">{t('account.noGuests')}</div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-white/50 border-b border-white/10">
                       <th className="py-2 px-3">№</th>
-                      <th className="py-2 px-3">Имя</th>
-                      <th className="py-2 px-3">Фамилия</th>
-                      <th className="py-2 px-3">Год рожд.</th>
-                      <th className="py-2 px-3">Тип</th>
-                      <th className="py-2 px-3">Заезд</th>
-                      <th className="py-2 px-3">Отъезд</th>
+                      <th className="py-2 px-3">{t('account.firstName')}</th>
+                      <th className="py-2 px-3">{t('account.lastName')}</th>
+                      <th className="py-2 px-3">{t('account.birthYearShort')}</th>
+                      <th className="py-2 px-3">{t('account.colType')}</th>
+                      <th className="py-2 px-3">{t('registry.resident')}</th>
+                      <th className="py-2 px-3">{t('account.checkIn')}</th>
+                      <th className="py-2 px-3">{t('account.checkOut')}</th>
+                      <th className="py-2 px-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -4018,8 +4393,11 @@ function ApartmentDetailModal({
                         <td className="py-2 px-3 text-white">{g.last_name}</td>
                         <td className="py-2 px-3 text-white/70">{g.birth_year ?? '—'}</td>
                         <td className="py-2 px-3">
-                          {g.is_child ? <span className="text-yellow-300">Ребёнок</span>
-                                     : <span className="text-emerald-300">Взрослый</span>}
+                          {g.is_child ? <span className="text-yellow-300">{t('account.child')}</span>
+                                     : <span className="text-emerald-300">{t('account.adult')}</span>}
+                        </td>
+                        <td className="py-2 px-3 text-white/60 text-xs">
+                          {g.is_permanent ? t('common.yes') : t('common.no')}
                         </td>
                         <td className="py-2 px-3 text-white/50 text-xs">
                           {g.check_in ? new Date(g.check_in).toLocaleDateString(dateLocale) : '—'}
@@ -4027,11 +4405,64 @@ function ApartmentDetailModal({
                         <td className="py-2 px-3 text-white/50 text-xs">
                           {g.check_out ? new Date(g.check_out).toLocaleDateString(dateLocale) : '—'}
                         </td>
+                        <td className="py-2 px-3">
+                          <button type="button" onClick={() => handleRemoveGuest(g.id)} className="text-xs text-red-400">
+                            ✕
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
+              </div>
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-emerald-300">{t('registry.petsTitle')}</h4>
+                <p className="mb-3 text-xs text-white/40">{t('registry.petsHintChip')}</p>
+                <form onSubmit={handleAddPet} className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <select className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    value={petForm.species} onChange={(e) => setPetForm({ ...petForm, species: e.target.value })}>
+                    <option value="dog">{t('registry.dog')}</option>
+                    <option value="cat">{t('registry.cat')}</option>
+                    <option value="other">{t('registry.otherPet')}</option>
+                  </select>
+                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    placeholder={t('registry.petName')} value={petForm.name}
+                    onChange={(e) => setPetForm({ ...petForm, name: e.target.value })} />
+                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    placeholder={t('registry.chip')} value={petForm.chip_no}
+                    onChange={(e) => setPetForm({ ...petForm, chip_no: e.target.value })} />
+                  <input className="rounded-lg border border-white/10 bg-[#101816] px-3 py-2 text-sm text-white"
+                    placeholder={t('registry.passport')} value={petForm.passport_no}
+                    onChange={(e) => setPetForm({ ...petForm, passport_no: e.target.value })} />
+                  <button type="submit" disabled={petSaving}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50">
+                    {t('registry.addPet')}
+                  </button>
+                </form>
+                {pets.length === 0 ? (
+                  <div className="text-sm text-white/40">—</div>
+                ) : (
+                  <div className="space-y-2">
+                    {pets.map((pet) => (
+                      <div key={pet.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-sm">
+                        <div>
+                          <div className="text-white">
+                            {pet.species === 'dog' ? t('registry.dog') : pet.species === 'cat' ? t('registry.cat') : t('registry.otherPet')}
+                            {pet.name ? ` · ${pet.name}` : ''}
+                          </div>
+                          <div className="text-xs text-white/45">
+                            {pet.chip_no ? `${t('registry.chip')}: ${pet.chip_no}` : ''}
+                            {pet.passport_no ? ` · ${t('registry.passport')}: ${pet.passport_no}` : ''}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-red-400">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -4051,7 +4482,14 @@ function ApartmentDetailModal({
                         <div className="text-xs text-white/50 mb-1">
                           {isOwner ? 'Жилец' : 'УК'}
                         </div>
-                        <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                        {m.photo_url && (
+                          <div className={m.message.trim() ? 'mb-2' : ''}>
+                            <ChatMedia url={m.photo_url} fileName={m.file_name} />
+                          </div>
+                        )}
+                        {m.message.trim() ? (
+                          <div className="whitespace-pre-wrap break-words">{m.message}</div>
+                        ) : null}
                         <div className="text-[10px] text-white/40 mt-1">
                           {new Date(m.created_at).toLocaleString(dateLocale)}
                           {isOwner && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (

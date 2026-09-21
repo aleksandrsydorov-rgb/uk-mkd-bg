@@ -8,13 +8,22 @@ import { useI18n } from '@/i18n/I18nProvider';
 export function LoginScreen({
   email,
   onEmailChange,
+  password,
+  onPasswordChange,
+  loginError,
+  loginLoading,
   onSubmit,
 }: {
   email: string;
   onEmailChange: (value: string) => void;
+  password: string;
+  onPasswordChange: (value: string) => void;
+  loginError?: string;
+  loginLoading?: boolean;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   const { t } = useI18n();
+
   return (
     <div className="relative min-h-dvh bg-[#070b0a] text-white flex items-center justify-center px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
@@ -42,12 +51,28 @@ export function LoginScreen({
                 autoComplete="email"
               />
             </div>
+            <div>
+              <label className="text-sm text-white/70">Password</label>
+              <input
+                className="mt-2 w-full rounded-xl border border-white/10 bg-[#070b0a] px-3 py-3 text-base text-white"
+                value={password}
+                onChange={(e) => onPasswordChange(e.target.value)}
+                type="password"
+                autoComplete="current-password"
+              />
+            </div>
             <button
               type="submit"
-              className="w-full min-h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white"
+              disabled={loginLoading}
+              className="w-full min-h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 font-semibold text-white disabled:opacity-50"
             >
-              {t('common.login')}
+              {loginLoading ? 'Signing in...' : t('common.login')}
             </button>
+            {loginError ? (
+              <div className="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-200">
+                {loginError}
+              </div>
+            ) : null}
             <p className="text-xs text-white/40">
               {t('login.hint')}
             </p>

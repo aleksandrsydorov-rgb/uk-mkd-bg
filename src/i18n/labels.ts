@@ -12,6 +12,12 @@ export function labelOccupancy(raw: string | null | undefined, t: Translate) {
   return t('status.occOwner');
 }
 
+export function labelOccupantKind(raw: string | null | undefined, t: Translate) {
+  if (raw === 'tenant') return t('registry.occupantTenant');
+  if (raw === 'user') return t('registry.occupantUser');
+  return t('registry.occupantOwner');
+}
+
 export function labelRequestStatus(raw: string | null | undefined, t: Translate) {
   if (raw === 'в работе') return t('status.reqWork');
   if (raw === 'выполнена') return t('status.reqDone');

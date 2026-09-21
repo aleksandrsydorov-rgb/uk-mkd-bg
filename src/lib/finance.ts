@@ -86,9 +86,8 @@ export function canApproveUkExpenses(role?: string | null) {
 }
 
 export const STAFF_ROLE_OPTIONS = [
-  'Администратор',
-  'Бухгалтер',
-  'Управляющий',
-  'Техник',
-  'Охрана',
+  { value: 'администрация', label: 'Администратор' },
+  { value: 'бухгалтер', label: 'Бухгалтер' },
+  { value: 'инженер', label: 'Инженер' },
+  { value: 'уборщик', label: 'Уборщик' },
 ] as const;

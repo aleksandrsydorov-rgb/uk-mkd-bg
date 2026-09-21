@@ -21,7 +21,7 @@ import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTrans
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { resolveAccess } from '@/lib/access';
-import { clearSessionEmail, normalizeEmail } from '@/lib/session';
+import { normalizeEmail } from '@/lib/email';
 import { useRouter } from 'next/navigation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -512,7 +512,6 @@ export default function AdminPage() {
     } catch {
       // logout UI должен продолжиться
     } finally {
-      clearSessionEmail();
       setSessionEmail('');
       setStaffRole('');
       setHasCabinet(false);

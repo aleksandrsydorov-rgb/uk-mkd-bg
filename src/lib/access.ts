@@ -1,4 +1,4 @@
-import { escapeIlike, normalizeEmail } from '@/lib/session';
+import { escapeIlike, normalizeEmail } from '@/lib/email';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 

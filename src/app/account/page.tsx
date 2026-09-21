@@ -34,7 +34,7 @@ import {
   labelTransfer,
 } from '@/i18n/labels';
 import { resolveAccess } from '@/lib/access';
-import { clearSessionEmail, normalizeEmail } from '@/lib/session';
+import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
@@ -276,7 +276,6 @@ export default function AccountPage() {
         setLoginError('No email on authenticated user');
         return;
       }
-      clearSessionEmail();
       setEmailInput(authenticatedEmail);
       setDevEmail(authenticatedEmail);
       setPasswordInput('');
@@ -293,7 +292,6 @@ export default function AccountPage() {
     } catch {
       // Local session is still cleared below.
     } finally {
-      clearSessionEmail();
       setDevEmail('');
       setEmailInput('');
       setPasswordInput('');

@@ -37,3 +37,21 @@ grant execute on function public.is_staff() to authenticated;
 revoke all on function public.owns_property(bigint) from public;
 revoke execute on function public.owns_property(bigint) from anon;
 grant execute on function public.owns_property(bigint) to authenticated;
+
+create or replace function public.is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.properties as p
+    where lower(btrim(p.owner_email)) = lower(btrim(auth.email()))
+  );
+$$;
+
+revoke all on function public.is_owner() from public;
+revoke execute on function public.is_owner() from anon;
+grant execute on function public.is_owner() to authenticated;

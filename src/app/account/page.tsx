@@ -285,26 +285,35 @@ export default function AccountPage() {
     setDevEmail(next);
   }
 
-  function handleLogout() {
-    clearSessionEmail();
-    setDevEmail('');
-    setIsStaff(false);
-    setProperties([]);
-    setSelectedPropertyId(null);
-    setRequests([]);
-    setAnnouncements([]);
-    setUkExpenses([]);
-    setPolls([]);
-    setPollOptions([]);
-    setPollVotes([]);
-    setApartmentShares([]);
-    setTransfers([]);
-    setGuests([]);
-    setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
-    setChatMessages([]);
-    setUnreadChatCount(0);
-    setError(null);
-    setEmailInput('');
+  async function handleLogout() {
+    try {
+      const client = createClient();
+      await client.auth.signOut();
+    } catch {
+      // Local session is still cleared below.
+    } finally {
+      clearSessionEmail();
+      setDevEmail('');
+      setEmailInput('');
+      setPasswordInput('');
+      setLoginError('');
+      setIsStaff(false);
+      setProperties([]);
+      setSelectedPropertyId(null);
+      setRequests([]);
+      setAnnouncements([]);
+      setUkExpenses([]);
+      setPolls([]);
+      setPollOptions([]);
+      setPollVotes([]);
+      setApartmentShares([]);
+      setTransfers([]);
+      setGuests([]);
+      setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
+      setChatMessages([]);
+      setUnreadChatCount(0);
+      setError(null);
+    }
   }
 
   // ===================================================================

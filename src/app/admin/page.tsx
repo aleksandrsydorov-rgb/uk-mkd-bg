@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef, useCallback, type ReactNode } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
@@ -172,6 +171,7 @@ const WATER_RATE = 3;
 export default function AdminPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
+  const [supabase] = useState(() => createBrowserClient());
   const MENU_ITEMS: { key: AdminSection; label: string; icon: string }[] = [
     { key: 'обзор', label: t('admin.overview'), icon: '📊' },
     { key: 'квартиры', label: t('admin.apartments'), icon: '🏠' },
@@ -485,8 +485,7 @@ export default function AdminPage() {
         }
 
         if (!email) {
-          const authClient = createBrowserClient();
-          const { data } = await authClient.auth.getUser();
+          const { data } = await supabase.auth.getUser();
           email = normalizeEmail(data.user?.email ?? '');
         }
 
@@ -522,8 +521,7 @@ export default function AdminPage() {
 
   async function handleLogout() {
     try {
-      const authClient = createBrowserClient();
-      await authClient.auth.signOut();
+      await supabase.auth.signOut();
     } catch {
       // logout UI должен продолжиться
     } finally {
@@ -689,7 +687,7 @@ export default function AdminPage() {
         if (uploadErr) throw uploadErr;
         photoUrl = supabase.storage.from('request-photos').getPublicUrl(uploadData.path).data.publicUrl;
       }
-      const payload: Record<string, unknown> = {
+      const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
         property_id: selectedChatProperty.id,
         sender: 'uk',
         message: msg,
@@ -4005,6 +4003,7 @@ function ApartmentDetailModal({
   onChanged: () => Promise<void> | void;
 }) {
   const { t, dateLocale } = useI18n();
+  const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
   const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
   const [petSaving, setPetSaving] = useState(false);

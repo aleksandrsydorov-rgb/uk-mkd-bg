@@ -43,6 +43,7 @@ export interface Database {
           is_child: boolean;
           check_in: string | null;
           check_out: string | null;
+          is_permanent: boolean | null;
         };
         Insert: {
           id?: number;
@@ -54,6 +55,7 @@ export interface Database {
           is_child?: boolean;
           check_in?: string | null;
           check_out?: string | null;
+          is_permanent?: boolean | null;
         };
         Update: {
           id?: number;
@@ -65,6 +67,7 @@ export interface Database {
           is_child?: boolean;
           check_in?: string | null;
           check_out?: string | null;
+          is_permanent?: boolean | null;
         };
       };
       chat_messages: {
@@ -76,6 +79,8 @@ export interface Database {
           message: string;
           read_by_uk: boolean;
           read_by_owner: boolean;
+          photo_url: string | null;
+          file_name: string | null;
         };
         Insert: {
           id?: number;
@@ -85,6 +90,8 @@ export interface Database {
           message: string;
           read_by_uk?: boolean;
           read_by_owner?: boolean;
+          photo_url?: string | null;
+          file_name?: string | null;
         };
         Update: {
           id?: number;
@@ -94,6 +101,8 @@ export interface Database {
           message?: string;
           read_by_uk?: boolean;
           read_by_owner?: boolean;
+          photo_url?: string | null;
+          file_name?: string | null;
         };
       };
       meter_readings: {
@@ -367,6 +376,11 @@ export interface Database {
           pet_info: string | null;
           owner_type: string | null;
           company_name: string | null;
+          occupant_kind: string | null;
+          occupant_name: string | null;
+          occupant_phone: string | null;
+          occupant_email: string | null;
+          occupant_until: string | null;
         };
         Insert: {
           id?: number;
@@ -385,6 +399,11 @@ export interface Database {
           pet_info?: string | null;
           owner_type?: string | null;
           company_name?: string | null;
+          occupant_kind?: string | null;
+          occupant_name?: string | null;
+          occupant_phone?: string | null;
+          occupant_email?: string | null;
+          occupant_until?: string | null;
         };
         Update: {
           id?: number;
@@ -403,6 +422,11 @@ export interface Database {
           pet_info?: string | null;
           owner_type?: string | null;
           company_name?: string | null;
+          occupant_kind?: string | null;
+          occupant_name?: string | null;
+          occupant_phone?: string | null;
+          occupant_email?: string | null;
+          occupant_until?: string | null;
         };
       };
       requests: {
@@ -514,6 +538,38 @@ export interface Database {
           photo_urls?: string[] | null;
           approved_by?: string | null;
           approved_at?: string | null;
+        };
+      };
+      apartment_pets: {
+        Row: {
+          id: number;
+          created_at: string;
+          property_id: number;
+          species: string;
+          name: string | null;
+          chip_no: string | null;
+          passport_no: string | null;
+          notes: string | null;
+        };
+        Insert: {
+          id?: number;
+          created_at?: string;
+          property_id: number;
+          species?: string;
+          name?: string | null;
+          chip_no?: string | null;
+          passport_no?: string | null;
+          notes?: string | null;
+        };
+        Update: {
+          id?: number;
+          created_at?: string;
+          property_id?: number;
+          species?: string;
+          name?: string | null;
+          chip_no?: string | null;
+          passport_no?: string | null;
+          notes?: string | null;
         };
       };
       building_settings: {

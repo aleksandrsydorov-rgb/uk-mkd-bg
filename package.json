@@ -10,7 +10,7 @@
     "schema:pull": "node scripts/fetch-schema.mjs"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.4",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.112.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

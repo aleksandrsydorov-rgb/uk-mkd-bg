@@ -31,8 +31,6 @@ import {
   DEFAULT_SUPPORT_RATE,
   STAFF_ROLE_OPTIONS,
   annualSupportFee,
-  applySupportCharge,
-  applySupportPayment,
   canApproveUkExpenses,
   canRecordSupportPayments,
   canSetSupportRate,
@@ -1339,32 +1337,6 @@ export default function AdminPage() {
     }
   }
 
-  async function persistSupportBalances(
-    property: Property,
-    kind: 'payment' | 'charge',
-    amount: number,
-    next: { debt: number; overpayment: number },
-    period: string | null,
-    note: string | null,
-  ) {
-    const { error: ledErr } = await supabase.from('support_fee_ledger').insert({
-      property_id: property.id,
-      kind,
-      amount,
-      period,
-      note,
-      recorded_by: sessionEmail,
-      debt_after: next.debt,
-      overpayment_after: next.overpayment,
-    });
-    if (ledErr) throw ledErr;
-    const { error: propErr } = await supabase
-      .from('properties')
-      .update({ debt: next.debt, overpayment: next.overpayment })
-      .eq('id', property.id);
-    if (propErr) throw propErr;
-  }
-
   async function handleSaveSupportRate(e: React.FormEvent) {
     e.preventDefault();
     if (!canSetSupportRate(staffRole)) {
@@ -1413,17 +1385,28 @@ export default function AdminPage() {
       setError(t('err.pickApt'));
       return;
     }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Сумма должна быть больше нуля');
+      return;
+    }
     setPaySaving(true);
     setError(null);
     try {
-      const next = applySupportPayment(Number(property.debt ?? 0), Number(property.overpayment ?? 0), amount);
-      await persistSupportBalances(property, 'payment', amount, next, null, payNote.trim() || 'Оплата таксы поддержки');
+      const { error } = await supabase.rpc('record_support_payment', {
+        p_property_id: property.id,
+        p_amount: amount,
+        p_note: payNote.trim() || null,
+      });
+      if (error) throw error;
       setPayAmount('');
       setPayNote('');
       await loadAll();
-    } catch (err: any) {
-      const msg = err?.message ?? '';
-      if (isMissingRelation(err, 'support_fee_ledger')) {
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message ?? '')
+          : '';
+      if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
         setError('Выполните supabase/support_fee.sql в SQL Editor.');
       } else {
@@ -1434,18 +1417,12 @@ export default function AdminPage() {
     }
   }
 
-  async function chargeSupportForProperty(property: Property, year: string) {
-    const amount = annualSupportFee(property.area_sqm, supportRate);
-    if (amount <= 0) return;
-    const next = applySupportCharge(Number(property.debt ?? 0), Number(property.overpayment ?? 0), amount);
-    await persistSupportBalances(
-      property,
-      'charge',
-      amount,
-      next,
-      year,
-      `Начисление таксы за ${year}`,
-    );
+  async function chargeSupportForProperty(propertyId: number, year: string) {
+    const { error } = await supabase.rpc('charge_support_fee', {
+      p_property_id: propertyId,
+      p_period: year,
+    });
+    if (error) throw error;
   }
 
   async function handleChargeSupport(propertyIds: number[]) {
@@ -1474,22 +1451,24 @@ export default function AdminPage() {
     try {
       for (const property of targets) {
         try {
-          await chargeSupportForProperty(property, year);
-        } catch (err: any) {
-          const msg = err?.message ?? '';
-          if (msg.includes('support_fee_ledger_charge_period') || msg.includes('duplicate')) {
+          await chargeSupportForProperty(property.id, year);
+        } catch (err: unknown) {
+          const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code ?? '') : '';
+          const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
+          if (code === '23505' || msg.includes('support_fee_ledger_charge_period') || msg.includes('duplicate')) {
             continue;
           }
           throw err;
         }
       }
       await loadAll();
-    } catch (err: any) {
-      if (isMissingRelation(err, 'support_fee_ledger')) {
+    } catch (err: unknown) {
+      if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
         setError('Выполните supabase/support_fee.sql в SQL Editor.');
       } else {
-        setError(err?.message ?? 'Не удалось начислить таксу');
+        const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
+        setError(msg || 'Не удалось начислить таксу');
       }
     } finally {
       setChargeSaving(false);

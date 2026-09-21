@@ -675,6 +675,18 @@ export interface Database {
           percentage: number;
         }[];
       };
+      can_manage_support_fees: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      record_support_payment: {
+        Args: { p_property_id: number; p_amount: number; p_note: string | null };
+        Returns: Json;
+      };
+      charge_support_fee: {
+        Args: { p_property_id: number; p_period: string };
+        Returns: Json;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

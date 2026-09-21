@@ -31,6 +31,7 @@ export interface Database {
           body?: string | null;
           created_by?: string | null;
         };
+        Relationships: [];
       };
       apartment_guests: {
         Row: {
@@ -69,6 +70,7 @@ export interface Database {
           check_out?: string | null;
           is_permanent?: boolean | null;
         };
+        Relationships: [];
       };
       chat_messages: {
         Row: {
@@ -104,6 +106,7 @@ export interface Database {
           photo_url?: string | null;
           file_name?: string | null;
         };
+        Relationships: [];
       };
       meter_readings: {
         Row: {
@@ -136,6 +139,7 @@ export interface Database {
           submitted_by?: string | null;
           meter_serial_number?: string | null;
         };
+        Relationships: [];
       };
       n525_commands: {
         Row: {
@@ -159,6 +163,7 @@ export interface Database {
           user_id?: string | null;
           command_text?: string | null;
         };
+        Relationships: [];
       };
       owner_transfers: {
         Row: {
@@ -209,6 +214,7 @@ export interface Database {
           decided_by?: string | null;
           reject_reason?: string | null;
         };
+        Relationships: [];
       };
       poll_options: {
         Row: {
@@ -229,6 +235,7 @@ export interface Database {
           label?: string;
           sort_order?: number;
         };
+        Relationships: [];
       };
       poll_suggestions: {
         Row: {
@@ -258,6 +265,7 @@ export interface Database {
           body?: string | null;
           status?: string;
         };
+        Relationships: [];
       };
       poll_vote_history: {
         Row: {
@@ -284,6 +292,7 @@ export interface Database {
           property_id?: number;
           weight?: number | null;
         };
+        Relationships: [];
       };
       poll_votes: {
         Row: {
@@ -310,6 +319,7 @@ export interface Database {
           property_id?: number;
           weight?: number | null;
         };
+        Relationships: [];
       };
       polls: {
         Row: {
@@ -357,6 +367,7 @@ export interface Database {
           result?: string;
           result_option_id?: number | null;
         };
+        Relationships: [];
       };
       properties: {
         Row: {
@@ -428,6 +439,7 @@ export interface Database {
           occupant_email?: string | null;
           occupant_until?: string | null;
         };
+        Relationships: [];
       };
       requests: {
         Row: {
@@ -469,6 +481,7 @@ export interface Database {
           category?: string | null;
           photo_url?: string | null;
         };
+        Relationships: [];
       };
       staff: {
         Row: {
@@ -501,6 +514,7 @@ export interface Database {
           salary_eur?: number | null;
           active?: boolean | null;
         };
+        Relationships: [];
       };
       uk_expenses: {
         Row: {
@@ -539,6 +553,7 @@ export interface Database {
           approved_by?: string | null;
           approved_at?: string | null;
         };
+        Relationships: [];
       };
       apartment_pets: {
         Row: {
@@ -571,6 +586,7 @@ export interface Database {
           passport_no?: string | null;
           notes?: string | null;
         };
+        Relationships: [];
       };
       building_settings: {
         Row: {
@@ -591,6 +607,7 @@ export interface Database {
           updated_at?: string;
           updated_by?: string | null;
         };
+        Relationships: [];
       };
       support_fee_ledger: {
         Row: {
@@ -629,6 +646,7 @@ export interface Database {
           debt_after?: number | null;
           overpayment_after?: number | null;
         };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

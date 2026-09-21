@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
@@ -120,6 +119,7 @@ const WATER_RATE = 3;
 export default function AccountPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
+  const [supabase] = useState(() => createClient());
   const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = [
     { key: 'квартира', label: t('account.apt'), icon: '🏠' },
     { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
@@ -246,8 +246,7 @@ export default function AccountPage() {
           }
         }
 
-        const client = createClient();
-        const { data } = await client.auth.getUser();
+        const { data } = await supabase.auth.getUser();
         const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
         if (authenticatedEmail && !cancelled) {
           setDevEmail(authenticatedEmail);
@@ -279,8 +278,7 @@ export default function AccountPage() {
     setLoginLoading(true);
     setLoginError('');
     try {
-      const client = createClient();
-      const { data, error } = await client.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password: passwordInput,
       });
@@ -314,8 +312,7 @@ export default function AccountPage() {
 
   async function handleLogout() {
     try {
-      const client = createClient();
-      await client.auth.signOut();
+      await supabase.auth.signOut();
     } catch {
       // Local session is still cleared below.
     } finally {
@@ -621,7 +618,7 @@ export default function AccountPage() {
       await markOwnerMessagesRead(property.id);
       let photoUrl: string | null = null;
       if (chatFile) photoUrl = await uploadPhotoIfAny(chatFile, 'chat');
-      const payload: Record<string, unknown> = {
+      const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
         property_id: property.id,
         sender: 'owner',
         message: msg,

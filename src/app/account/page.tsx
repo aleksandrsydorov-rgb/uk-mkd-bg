@@ -349,7 +349,7 @@ export default function AccountPage() {
       setLoading(true);
       setError(null);
       try {
-        const access = await resolveAccess(devEmail);
+        const access = await resolveAccess(devEmail, supabase);
         setIsStaff(access.isStaff);
         if (!access.isOwner) {
           setProperties([]);

@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabaseClient';
 import { escapeIlike, normalizeEmail } from '@/lib/session';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 
 export type Property = Database['public']['Tables']['properties']['Row'];
@@ -27,7 +27,10 @@ function isMissingColumn(error: { message?: string } | null | undefined, column:
   return msg.includes(column) || msg.includes('schema cache') || msg.includes('Could not find');
 }
 
-export async function resolveAccess(emailRaw: string): Promise<AccessProfile> {
+export async function resolveAccess(
+  emailRaw: string,
+  supabase: SupabaseClient<Database>,
+): Promise<AccessProfile> {
   const email = normalizeEmail(emailRaw);
   const pattern = escapeIlike(email);
 

@@ -494,7 +494,7 @@ export default function AdminPage() {
           return;
         }
 
-        const access = await resolveAccess(email);
+        const access = await resolveAccess(email, supabase);
         if (cancelled) return;
         if (!access.isStaff) {
           router.replace('/account');

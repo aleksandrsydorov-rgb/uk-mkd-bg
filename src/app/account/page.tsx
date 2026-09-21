@@ -137,6 +137,7 @@ export default function AccountPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
 
   // ---------- ОСНОВНЫЕ ДАННЫЕ ----------
@@ -230,11 +231,37 @@ export default function AccountPage() {
   // DEV-ЛОГИН
   // ===================================================================
   useEffect(() => {
-    const saved = readSessionEmail();
-    if (saved) {
-      setDevEmail(saved);
-      setEmailInput(saved);
+    let cancelled = false;
+
+    async function restoreUser() {
+      try {
+        if (process.env.NODE_ENV === 'development') {
+          const saved = readSessionEmail();
+          if (saved) {
+            if (!cancelled) {
+              setDevEmail(saved);
+              setEmailInput(saved);
+            }
+            return;
+          }
+        }
+
+        const client = createClient();
+        const { data } = await client.auth.getUser();
+        const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
+        if (authenticatedEmail && !cancelled) {
+          setDevEmail(authenticatedEmail);
+          setEmailInput(authenticatedEmail);
+        }
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
     }
+
+    void restoreUser();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -266,7 +293,7 @@ export default function AccountPage() {
         setLoginError('No email on authenticated user');
         return;
       }
-      writeSessionEmail(authenticatedEmail);
+      clearSessionEmail();
       setEmailInput(authenticatedEmail);
       setDevEmail(authenticatedEmail);
       setPasswordInput('');
@@ -2474,6 +2501,16 @@ export default function AccountPage() {
   // ===================================================================
   // ЭКРАН ВХОДА
   // ===================================================================
+  if (!authReady) {
+    return (
+      <div className="relative min-h-dvh bg-[#070b0a] text-white flex items-center justify-center px-4">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">
+          {t('common.loading')}
+        </div>
+      </div>
+    );
+  }
+
   if (!devEmail) {
     return (
       <LoginScreen

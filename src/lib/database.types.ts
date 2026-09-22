@@ -648,6 +648,233 @@ export interface Database {
         };
         Relationships: [];
       };
+      water_meters: {
+        Row: {
+          id: string;
+          property_id: number;
+          meter_number: string;
+          initial_reading: number;
+          installed_at: string;
+          retired_at: string | null;
+          replacement_reason: string | null;
+          assigned_by_email: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          meter_number: string;
+          initial_reading: number;
+          installed_at?: string;
+          retired_at?: string | null;
+          replacement_reason?: string | null;
+          assigned_by_email?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          meter_number?: string;
+          initial_reading?: number;
+          installed_at?: string;
+          retired_at?: string | null;
+          replacement_reason?: string | null;
+          assigned_by_email?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      water_tariffs: {
+        Row: {
+          id: string;
+          price_eur_per_m3: number;
+          valid_from: string;
+          note: string | null;
+          created_by_email: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          price_eur_per_m3: number;
+          valid_from: string;
+          note?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          price_eur_per_m3?: number;
+          valid_from?: string;
+          note?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      water_readings: {
+        Row: {
+          id: string;
+          property_id: number;
+          meter_id: string;
+          reading_date: string;
+          previous_value: number;
+          current_value: number;
+          tariff_id: string;
+          tariff_eur_per_m3: number;
+          consumption_m3: number;
+          charge_amount_eur: number;
+          submitted_by_email: string | null;
+          submitted_via: string;
+          idempotency_key: string;
+          status: string;
+          reversed_at: string | null;
+          reversed_by_email: string | null;
+          reversal_reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          meter_id: string;
+          reading_date: string;
+          previous_value: number;
+          current_value: number;
+          tariff_id: string;
+          tariff_eur_per_m3: number;
+          submitted_by_email?: string | null;
+          submitted_via: string;
+          idempotency_key: string;
+          status?: string;
+          reversed_at?: string | null;
+          reversed_by_email?: string | null;
+          reversal_reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          meter_id?: string;
+          reading_date?: string;
+          previous_value?: number;
+          current_value?: number;
+          tariff_id?: string;
+          tariff_eur_per_m3?: number;
+          submitted_by_email?: string | null;
+          submitted_via?: string;
+          idempotency_key?: string;
+          status?: string;
+          reversed_at?: string | null;
+          reversed_by_email?: string | null;
+          reversal_reason?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      water_ledger: {
+        Row: {
+          id: string;
+          property_id: number;
+          reading_id: string | null;
+          kind: string;
+          amount_eur: number;
+          note: string | null;
+          recorded_by_email: string | null;
+          idempotency_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          reading_id?: string | null;
+          kind: string;
+          amount_eur: number;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          reading_id?: string | null;
+          kind?: string;
+          amount_eur?: number;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      capital_repair_assessments: {
+        Row: {
+          id: string;
+          title: string;
+          description: string | null;
+          decision_date: string | null;
+          due_date: string | null;
+          status: string;
+          created_by_email: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          description?: string | null;
+          decision_date?: string | null;
+          due_date?: string | null;
+          status?: string;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          description?: string | null;
+          decision_date?: string | null;
+          due_date?: string | null;
+          status?: string;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      capital_repair_ledger: {
+        Row: {
+          id: string;
+          property_id: number;
+          assessment_id: string | null;
+          kind: string;
+          amount_eur: number;
+          note: string | null;
+          recorded_by_email: string | null;
+          idempotency_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          assessment_id?: string | null;
+          kind: string;
+          amount_eur: number;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          assessment_id?: string | null;
+          kind?: string;
+          amount_eur?: number;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -686,6 +913,47 @@ export interface Database {
       charge_support_fee: {
         Args: { p_property_id: number; p_period: string };
         Returns: Json;
+      };
+      submit_water_reading: {
+        Args: {
+          p_property_id: number;
+          p_current_value: number;
+          p_reading_date: string;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          reading_id: string;
+          property_id: number;
+          meter_id: string;
+          meter_number: string;
+          reading_date: string;
+          previous_value: number;
+          current_value: number;
+          consumption_m3: number;
+          tariff_eur_per_m3: number;
+          charge_amount_eur: number;
+          charge_created: boolean;
+        }[];
+      };
+      get_water_balance: {
+        Args: { p_property_id: number };
+        Returns: {
+          charged_eur: number;
+          paid_eur: number;
+          adjustments_debit_eur: number;
+          adjustments_credit_eur: number;
+          balance_eur: number;
+        }[];
+      };
+      get_capital_repair_balance: {
+        Args: { p_property_id: number };
+        Returns: {
+          charged_eur: number;
+          paid_eur: number;
+          adjustments_debit_eur: number;
+          adjustments_credit_eur: number;
+          balance_eur: number;
+        }[];
       };
     };
     Enums: Record<string, never>;

@@ -36,6 +36,7 @@ import {
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
+import { OwnerUtilities } from '@/components/account/OwnerUtilities';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { ChatMedia } from '@/components/ChatMedia';
@@ -1926,6 +1927,15 @@ export default function AccountPage() {
                 </div>
               </div>
             )}
+
+            {property && (
+              <OwnerUtilities
+                key={`finance-${property.id}`}
+                supabase={supabase}
+                propertyId={property.id}
+                variant="finance"
+              />
+            )}
           </div>
         );
       }
@@ -2037,15 +2047,24 @@ export default function AccountPage() {
       // ===========================================================
       case 'счётчики':
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <h2 className="text-lg font-semibold text-accent mb-4">
-              {t('account.metersTitle')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
-            </h2>
-            <div className="grid gap-4 md:grid-cols-3">
-              {renderMeterBlock(t('account.elDayFull'), t('account.kwh'), meterReadings.electricity_day)}
-              {renderMeterBlock(t('account.elNightFull'), t('account.kwh'), meterReadings.electricity_night)}
-              {renderMeterBlock(t('account.water'), t('account.m3'), meterReadings.cold_water)}
+          <div className="space-y-4">
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+              <h2 className="text-lg font-semibold text-accent mb-4">
+                {t('account.metersTitle')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {renderMeterBlock(t('account.elDayFull'), t('account.kwh'), meterReadings.electricity_day)}
+                {renderMeterBlock(t('account.elNightFull'), t('account.kwh'), meterReadings.electricity_night)}
+              </div>
             </div>
+            {property && (
+              <OwnerUtilities
+                key={`meters-${property.id}`}
+                supabase={supabase}
+                propertyId={property.id}
+                variant="meters"
+              />
+            )}
           </div>
         );
 

@@ -471,7 +471,15 @@ export default function HomePage() {
         )}
       </header>
 
-      <section className="relative mx-auto max-w-[1440px] px-4 pb-6 pt-8 sm:px-8 lg:pb-8 lg:pt-[7px]">
+      <div className="home-dev-notice" role="status">
+        <svg viewBox="0 0 24 24" className="home-dev-notice-icon" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.25" />
+          <path d="M12 10.6V16.2M12 7.7h.01" strokeLinecap="round" />
+        </svg>
+        <p>{t('home.devNotice')}</p>
+      </div>
+
+      <section className="relative mx-auto max-w-[1440px] px-4 pb-6 pt-8 sm:px-8 lg:pb-6 lg:pt-[7px]">
         <div className="home-hero-desktop-grid relative z-10 grid gap-8 lg:gap-0">
           <div className="home-hero-panel">
             <div>

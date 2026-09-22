@@ -154,6 +154,8 @@ export const ru = {
     footerEmailNote: 'Мы всегда на связи',
     footerCopy: '© {year} AMADEUS 11. Все права защищены.',
     footerTop: 'Наверх',
+    devNotice:
+      'Сайт находится в стадии разработки. Некоторые разделы, данные и функции могут быть тестовыми или временно недоступны.',
     tagStatus: 'Статус',
   },
   account: {
@@ -770,6 +772,8 @@ export const en: Messages = {
     footerEmailNote: "We're always in touch",
     footerCopy: '© {year} AMADEUS 11. All rights reserved.',
     footerTop: 'Back to top',
+    devNotice:
+      'This website is currently under development. Some sections, information and features may be for testing purposes or temporarily unavailable.',
     tagStatus: 'Status',
   },
   account: {
@@ -1386,6 +1390,8 @@ export const bg: Messages = {
     footerEmailNote: 'Винаги сме на връзка',
     footerCopy: '© {year} AMADEUS 11. Всички права запазени.',
     footerTop: 'Нагоре',
+    devNotice:
+      'Сайтът е в процес на разработка. Някои раздели, данни и функционалности могат да бъдат тестови или временно недостъпни.',
     tagStatus: 'Статус',
   },
   account: {

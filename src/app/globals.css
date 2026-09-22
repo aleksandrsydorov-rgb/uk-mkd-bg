@@ -185,6 +185,42 @@ table tbody tr:hover {
   z-index: 1;
 }
 
+.home-dev-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 14px;
+  background: rgba(181, 138, 90, 0.12);
+  border-bottom: 1px solid rgba(181, 138, 90, 0.18);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+  color: #58686e;
+}
+
+.home-dev-notice p {
+  max-width: 920px;
+}
+
+.home-dev-notice-icon {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  color: #b58a5a;
+}
+
+@media (min-width: 1024px) {
+  .home-dev-notice {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+}
+
 .home-hero-panel {
   display: flex;
   flex-direction: column;
@@ -424,7 +460,7 @@ table tbody tr:hover {
   position: relative;
   overflow: hidden;
   background-color: #f3eee6;
-  padding: 32px 0 64px;
+  padding: 32px 0 32px;
 }
 
 .home-infra-inner {
@@ -556,7 +592,7 @@ table tbody tr:hover {
 
 @media (min-width: 1024px) {
   .home-infra {
-    padding: 24px 0 76px;
+    padding: 24px 0 24px;
   }
 
   .home-infra-title {
@@ -639,7 +675,7 @@ table tbody tr:hover {
   position: relative;
   overflow: hidden;
   background-color: #f3eee6;
-  padding: 32px 0 64px;
+  padding: 32px 0 32px;
 }
 
 .home-loc-inner {
@@ -836,7 +872,7 @@ table tbody tr:hover {
 
 @media (min-width: 1024px) {
   .home-loc {
-    padding: 24px 0 88px;
+    padding: 24px 0 24px;
   }
 
   .home-loc-title {
@@ -915,7 +951,7 @@ table tbody tr:hover {
   position: relative;
   overflow: hidden;
   background: #f3eee6;
-  padding: 32px 0 72px;
+  padding: 32px 0 32px;
 }
 
 .home-res-inner {
@@ -1235,7 +1271,7 @@ table tbody tr:hover {
 
 @media (min-width: 1024px) {
   .home-res {
-    padding: 24px 0 80px;
+    padding: 24px 0 24px;
   }
 
   .home-res-title {

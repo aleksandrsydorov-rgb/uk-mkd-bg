@@ -312,6 +312,7 @@ export default function AccountPage() {
       setChatMessages([]);
       setUnreadChatCount(0);
       setError(null);
+      router.replace('/');
     }
   }
 

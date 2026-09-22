@@ -516,7 +516,7 @@ export default function AdminPage() {
       setStaffRole('');
       setHasCabinet(false);
       setAllowed(false);
-      router.replace('/account');
+      router.replace('/');
     }
   }
 

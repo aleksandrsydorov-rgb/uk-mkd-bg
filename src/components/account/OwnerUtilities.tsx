@@ -24,6 +24,7 @@ import {
 } from '@/lib/utilities';
 
 type Variant = 'finance' | 'meters';
+export type FinanceTab = 'support' | 'water' | 'capital';
 
 function ledgerKindLabel(kind: string, t: (key: 'account.utilCharge' | 'account.utilPayment' | 'account.utilAdjDebit' | 'account.utilAdjCredit') => string) {
   if (kind === 'charge') return t('account.utilCharge');
@@ -93,10 +94,20 @@ export function OwnerUtilities({
   supabase,
   propertyId,
   variant,
+  currentTariff,
+  financeTab = 'support',
+  onSelectFinanceTab,
+  supportDebt = 0,
+  supportOver = 0,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
   variant: Variant;
+  currentTariff?: WaterTariff | null;
+  financeTab?: FinanceTab;
+  onSelectFinanceTab?: (tab: FinanceTab) => void;
+  supportDebt?: number;
+  supportOver?: number;
 }) {
   const { t, dateLocale } = useI18n();
   const [waterLoading, setWaterLoading] = useState(true);
@@ -133,7 +144,9 @@ export function OwnerUtilities({
           .eq('property_id', propertyId)
           .is('retired_at', null)
           .maybeSingle(),
-        supabase.from('water_tariffs').select('*').order('valid_from', { ascending: false }).limit(1),
+        currentTariff !== undefined
+          ? Promise.resolve({ data: currentTariff ? [currentTariff] : [], error: null })
+          : supabase.from('water_tariffs').select('*').order('valid_from', { ascending: false }).limit(1),
         supabase
           .from('water_readings')
           .select('*')
@@ -174,7 +187,7 @@ export function OwnerUtilities({
     } finally {
       setWaterLoading(false);
     }
-  }, [propertyId, supabase]);
+  }, [propertyId, supabase, currentTariff]);
 
   const loadCapital = useCallback(async () => {
     setCapitalLoading(true);
@@ -337,7 +350,7 @@ export function OwnerUtilities({
           <div className="rounded-xl bg-background px-3 py-3">
             <div className="text-[11px] text-muted">{t('account.utilTariff')}</div>
             <div className="mt-1 text-lg font-semibold text-foreground">
-              {tariff ? Number(tariff.price_eur_per_m3).toFixed(4) : '—'}
+              {tariff ? Number(tariff.price_eur_per_m3).toFixed(2) : '—'}
             </div>
             <div className="mt-0.5 text-[11px] text-muted">{t('account.perM3')}</div>
           </div>
@@ -356,7 +369,7 @@ export function OwnerUtilities({
         </div>
       )}
 
-      {meter && (
+      {meter && variant === 'meters' && (
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
           <p className="text-sm font-medium text-foreground">{t('account.utilSubmitTitle')}</p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -464,50 +477,150 @@ export function OwnerUtilities({
     return waterCard;
   }
 
+  const cardBtn =
+    'rounded-[14px] border bg-surface px-4 py-4 text-left shadow-card transition';
+  const cardActive = 'border-accent/30 bg-accent-bg';
+  const cardIdle = 'border-border hover:bg-hover';
+
   return (
     <div className="space-y-4">
       <div className="grid gap-2 sm:grid-cols-3">
-        <div className="rounded-[14px] border border-border bg-surface px-4 py-4 shadow-card">
-          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.supportFee')}</p>
-          <p className="mt-1 text-xs text-secondary">{t('account.utilSupportHint')}</p>
-        </div>
-        <div className="rounded-[14px] border border-border bg-surface px-4 py-4 shadow-card">
-          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.utilWater')}</p>
+        <button
+          type="button"
+          onClick={() => onSelectFinanceTab?.('support')}
+          className={`${cardBtn} ${financeTab === 'support' ? cardActive : cardIdle}`}
+        >
+          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabSupport')}</p>
+          <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+            {formatEur(supportDebt > 0 ? supportDebt : supportOver)}
+          </div>
+          <p className="mt-1 text-xs text-secondary">
+            {supportDebt > 0 ? t('account.hasDebt') : supportOver > 0 ? t('account.hasOver') : t('account.noDebt')}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectFinanceTab?.('water')}
+          className={`${cardBtn} ${financeTab === 'water' ? cardActive : cardIdle}`}
+        >
+          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabWater')}</p>
           <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
-        </div>
-        <div className="rounded-[14px] border border-border bg-surface px-4 py-4 shadow-card">
-          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.utilCapital')}</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectFinanceTab?.('capital')}
+          className={`${cardBtn} ${financeTab === 'capital' ? cardActive : cardIdle}`}
+        >
+          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabCapital')}</p>
           <BalanceBadge balance={Number(capitalBalance.balance_eur)} loading={capitalLoading} />
-        </div>
+        </button>
       </div>
 
-      {waterCard}
+      {financeTab === 'water' && (
+        <>
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.financeTabWater')}</p>
+                <p className="mt-1 text-sm text-secondary">
+                  {t('account.utilTariff')}: {tariff ? `${Number(tariff.price_eur_per_m3).toFixed(2)} ${t('account.perM3')}` : '—'}
+                </p>
+              </div>
+              <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-xl bg-background px-3 py-3">
+                <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
+                <div className="mt-1 text-lg font-semibold">{formatEur(Number(waterBalance.charged_eur))}</div>
+              </div>
+              <div className="rounded-xl bg-background px-3 py-3">
+                <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
+                <div className="mt-1 text-lg font-semibold">{formatEur(Number(waterBalance.paid_eur))}</div>
+              </div>
+              <div className="rounded-xl bg-background px-3 py-3">
+                <div className="text-[11px] text-muted">{t('account.debt')}</div>
+                <div className={`mt-1 text-lg font-semibold ${waterBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
+                  {formatEur(Math.max(0, Number(waterBalance.balance_eur)))}
+                </div>
+              </div>
+              <div className="rounded-xl bg-background px-3 py-3">
+                <div className="text-[11px] text-muted">{t('account.overpay')}</div>
+                <div className={`mt-1 text-lg font-semibold ${waterBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
+                  {formatEur(Math.max(0, -Number(waterBalance.balance_eur)))}
+                </div>
+              </div>
+            </div>
+          </div>
 
-      <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilWaterOps')}</p>
-        <div className="mt-3">
-          {waterLoading ? (
-            <p className="text-sm text-muted">{t('common.loading')}</p>
-          ) : (
-            <LedgerList
-              rows={waterLedger}
-              empty={t('account.utilNoWaterLedger')}
-              dateLocale={dateLocale}
-            />
-          )}
-        </div>
-      </div>
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilWaterOps')}</p>
+            <div className="mt-3">
+              {waterLoading ? (
+                <p className="text-sm text-muted">{t('common.loading')}</p>
+              ) : (
+                <LedgerList
+                  rows={waterLedger}
+                  empty={t('account.utilNoWaterLedger')}
+                  dateLocale={dateLocale}
+                />
+              )}
+            </div>
+          </div>
 
-      <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+            <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.utilHistory')}</p>
+            {waterLoading ? (
+              <p className="text-sm text-muted">{t('common.loading')}</p>
+            ) : readings.length === 0 ? (
+              <p className="text-sm text-secondary">{t('account.utilNoReadings')}</p>
+            ) : (
+              <div className="-mx-1 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-[11px] uppercase tracking-wider text-muted">
+                    <tr>
+                      <th className="px-2 py-1 font-medium">{t('account.utilColDate')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.consumption')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.utilCharged')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {readings.map((row) => (
+                      <tr key={row.id} className={row.status === 'reversed' ? 'text-muted' : 'text-secondary'}>
+                        <td className="whitespace-nowrap px-2 py-1.5">
+                          {new Date(row.reading_date).toLocaleDateString(dateLocale)}
+                          {row.status === 'reversed' ? ` · ${t('account.utilReversed')}` : ''}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3))} {t('account.m3')}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatEur(Number(row.charge_amount_eur))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {financeTab === 'capital' && (
+        <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilCapital')}</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.financeTabCapital')}</p>
             <p className="mt-1 text-sm text-secondary">{t('account.utilCapitalHint')}</p>
           </div>
           <BalanceBadge balance={Number(capitalBalance.balance_eur)} loading={capitalLoading} />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl bg-background px-3 py-3">
+            <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
+            <div className="mt-1 text-lg font-semibold">{formatEur(Number(capitalBalance.charged_eur))}</div>
+          </div>
+          <div className="rounded-xl bg-background px-3 py-3">
+            <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
+            <div className="mt-1 text-lg font-semibold">{formatEur(Number(capitalBalance.paid_eur))}</div>
+          </div>
           <div className="rounded-xl bg-background px-3 py-3">
             <div className="text-[11px] text-muted">{t('account.debt')}</div>
             <div className={`mt-1 text-lg font-semibold ${capitalBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
@@ -566,6 +679,7 @@ export function OwnerUtilities({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

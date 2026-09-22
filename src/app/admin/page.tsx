@@ -41,6 +41,9 @@ import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrl
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { AdminReports } from '@/components/AdminReports';
 import { ChatMedia } from '@/components/ChatMedia';
+import { AdminWater } from '@/components/admin/AdminWater';
+import { AdminCapital } from '@/components/admin/AdminCapital';
+import { canSeeCapitalAdmin, canSeeWaterAdmin } from '@/lib/utilities';
 import { chatPreviewText, MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import {
   buildRegistryPdfHtml,
@@ -143,8 +146,10 @@ type AdminSection =
   | 'смены'
   | 'заявки'
   | 'счётчики'
+  | 'вода'
   | 'персонал'
   | 'такса'
+  | 'капремонт'
   | 'расходы'
   | 'опросы'
   | 'объявления'
@@ -164,7 +169,6 @@ function expenseYearOf(dateStr: string) {
 
 const DAY_RATE = 0.14;
 const NIGHT_RATE = 0.09;
-const WATER_RATE = 3;
 
 export default function AdminPage() {
   const router = useRouter();
@@ -176,22 +180,40 @@ export default function AdminPage() {
     { key: 'смены', label: t('admin.transfers'), icon: '🔁' },
     { key: 'заявки', label: t('admin.requests'), icon: '📋' },
     { key: 'счётчики', label: t('admin.meters'), icon: '⚡' },
+    { key: 'вода', label: t('admin.water'), icon: '💧' },
     { key: 'персонал', label: t('admin.staff'), icon: '👷' },
     { key: 'такса', label: t('admin.fee'), icon: '💶' },
+    { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
     { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
     { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
     { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
     { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
     { key: 'чат', label: t('admin.chat'), icon: '💬' },
   ];
-  const MENU_GROUPS: { id: string; label: string; icon: string; items: AdminSection[] }[] = [
-    { id: 'house', label: t('admin.house'), icon: '🏠', items: ['квартиры', 'смены', 'счётчики', 'персонал'] },
-    { id: 'finance', label: t('admin.menuFinance'), icon: '💶', items: ['такса', 'расходы', 'отчётность'] },
-    { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'опросы', 'объявления'] },
-  ];
   const TOP_MENU: AdminSection[] = ['обзор', 'чат'];
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
+  const showWater = canSeeWaterAdmin(staffRole);
+  const showCapital = canSeeCapitalAdmin(staffRole);
+  const MENU_GROUPS: { id: string; label: string; icon: string; items: AdminSection[] }[] = [
+    {
+      id: 'house',
+      label: t('admin.house'),
+      icon: '🏠',
+      items: showWater
+        ? ['квартиры', 'смены', 'счётчики', 'вода', 'персонал']
+        : ['квартиры', 'смены', 'счётчики', 'персонал'],
+    },
+    {
+      id: 'finance',
+      label: t('admin.menuFinance'),
+      icon: '💶',
+      items: showCapital
+        ? ['такса', 'капремонт', 'расходы', 'отчётность']
+        : ['такса', 'расходы', 'отчётность'],
+    },
+    { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'опросы', 'объявления'] },
+  ];
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [authReady, setAuthReady] = useState(false);
@@ -2467,6 +2489,24 @@ export default function AdminPage() {
       // =============================================================
       // СЧЁТЧИКИ
       // =============================================================
+      case 'вода':
+        return (
+          <AdminWater
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+          />
+        );
+
+      case 'капремонт':
+        return (
+          <AdminCapital
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+          />
+        );
+
       case 'счётчики':
         return (
           <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
@@ -3966,6 +4006,7 @@ function ApartmentDetailModal({
   const { t, dateLocale } = useI18n();
   const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
+  const [waterTariffPrice, setWaterTariffPrice] = useState<number | null>(null);
   const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
   const [petSaving, setPetSaving] = useState(false);
   const [guestForm, setGuestForm] = useState({
@@ -3982,6 +4023,26 @@ function ApartmentDetailModal({
   const annualFee = annualSupportFee(property.area_sqm, supportRate);
   const monthlyFee = monthlySupportFee(property.area_sqm, supportRate);
   const unreadChats = chatMessages.filter((m) => isNewOwnerMessage(m, chatMessages, chatSeenAt)).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from('water_tariffs')
+        .select('price_eur_per_m3')
+        .order('valid_from', { ascending: false })
+        .limit(1);
+      if (cancelled) return;
+      if (error || !data?.[0]) {
+        setWaterTariffPrice(null);
+        return;
+      }
+      setWaterTariffPrice(Number(data[0].price_eur_per_m3));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   function meterTypeLabel(kind: string) {
     if (kind === 'electricity_day') return t('form.elDayShort');
@@ -4217,7 +4278,7 @@ function ApartmentDetailModal({
                 <div className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
                   <div>Э/э день: {DAY_RATE} €/кВтч</div>
                   <div>Э/э ночь: {NIGHT_RATE} €/кВтч</div>
-                  <div>Вода: {WATER_RATE} €/м³</div>
+                  <div>Вода: {waterTariffPrice == null || Number.isNaN(waterTariffPrice) ? '—' : `${waterTariffPrice.toFixed(2)} €/м³`}</div>
                   <div>Такса: {supportRate} €/м²·год</div>
                 </div>
                 <button

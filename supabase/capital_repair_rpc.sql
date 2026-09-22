@@ -15,7 +15,7 @@
 create or replace function public.create_capital_repair_assessment(
   p_title text,
   p_description text default null,
-  p_decision_date date default current_date,
+  p_decision_date date default ((now() at time zone 'Europe/Sofia')::date),
   p_due_date date default null
 )
 returns setof public.capital_repair_assessments
@@ -47,7 +47,7 @@ begin
     raise exception 'Decision date is required.';
   end if;
 
-  if p_decision_date > current_date then
+  if p_decision_date > (now() at time zone 'Europe/Sofia')::date then
     raise exception 'Decision date cannot be in the future.';
   end if;
 

@@ -36,7 +36,8 @@ import {
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
-import { OwnerUtilities } from '@/components/account/OwnerUtilities';
+import { OwnerUtilities, type FinanceTab } from '@/components/account/OwnerUtilities';
+import type { WaterTariff } from '@/lib/utilities';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { ChatMedia } from '@/components/ChatMedia';
@@ -114,7 +115,6 @@ function expenseYearOf(dateStr: string) {
 
 const DAY_RATE = 0.14;
 const NIGHT_RATE = 0.09;
-const WATER_RATE = 3;
 
 export default function AccountPage() {
   const router = useRouter();
@@ -152,6 +152,7 @@ export default function AccountPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [ukExpenses, setUkExpenses] = useState<UkExpense[]>([]);
   const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
+  const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
@@ -206,6 +207,7 @@ export default function AccountPage() {
   const [expenseYearFilter, setExpenseYearFilter] = useState<number | 'all'>(
     new Date().getFullYear()
   );
+  const [financeTab, setFinanceTab] = useState<FinanceTab>('support');
 
   // ---------- ФОРМА ЗАЯВКИ ----------
   const [subject, setSubject] = useState('');
@@ -428,6 +430,18 @@ export default function AccountPage() {
           setSupportRate(rate > 0 ? rate : DEFAULT_SUPPORT_RATE);
         }
 
+        const waterTariffRes = await supabase
+          .from('water_tariffs')
+          .select('*')
+          .order('valid_from', { ascending: false })
+          .limit(1);
+        if (waterTariffRes.error) {
+          if (!isMissingRelation(waterTariffRes.error, 'water_tariffs')) throw waterTariffRes.error;
+          setWaterTariff(null);
+        } else {
+          setWaterTariff(((waterTariffRes.data as WaterTariff[] | null) ?? [])[0] ?? null);
+        }
+
         const ledRes = await supabase
           .from('support_fee_ledger')
           .select('*')
@@ -448,6 +462,22 @@ export default function AccountPage() {
     }
     load();
   }, [devEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    try {
+      const fromQuery = new URL(window.location.href).searchParams.get('financeTab');
+      if (fromQuery === 'support' || fromQuery === 'water' || fromQuery === 'capital') {
+        setFinanceTab(fromQuery);
+        return;
+      }
+      const stored = sessionStorage.getItem('amadeus-finance-tab');
+      if (stored === 'support' || stored === 'water' || stored === 'capital') {
+        setFinanceTab(stored);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     async function loadPropertyScoped() {
@@ -951,6 +981,19 @@ export default function AccountPage() {
     }
   }
 
+  function selectFinanceTab(tab: FinanceTab) {
+    setFinanceTab(tab);
+    try {
+      sessionStorage.setItem('amadeus-finance-tab', tab);
+      const url = new URL(window.location.href);
+      if (tab === 'support') url.searchParams.delete('financeTab');
+      else url.searchParams.set('financeTab', tab);
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function refreshPolls() {
     const [pollsRes, optRes, voteRes, tallyRes] = await Promise.all([
       supabase.from('polls').select('*').order('created_at', { ascending: false }),
@@ -967,6 +1010,8 @@ export default function AccountPage() {
   async function handleVote(poll: Poll, optionId: number) {
     if (properties.length === 0) return;
     if (!isPollAcceptingVotes(poll)) return;
+    const ownedIds = new Set(properties.map((p) => p.id));
+    if (pollVotes.some((v) => v.poll_id === poll.id && ownedIds.has(v.property_id))) return;
     setVotingPollId(poll.id);
     setError(null);
     try {
@@ -981,7 +1026,16 @@ export default function AccountPage() {
         e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
           ? (e as { message: string }).message
           : t('err.vote');
-      setError(message);
+      const lower = message.toLowerCase();
+      if (
+        lower.includes('already voted')
+        || lower.includes('duplicate key')
+        || lower.includes('poll_votes_poll_id_property_id')
+      ) {
+        setError(t('err.voteAlready'));
+      } else {
+        setError(message);
+      }
     } finally {
       setVotingPollId(null);
     }
@@ -1752,14 +1806,15 @@ export default function AccountPage() {
       // ФИНАНСЫ
       // ===========================================================
       case 'финансы': {
-        const totalDebt = properties.reduce((s, p) => s + Number(p.debt ?? 0), 0);
-        const totalOver = properties.reduce((s, p) => s + Number(p.overpayment ?? 0), 0);
-        const monthlyFee = monthlySupportFee(
-          properties.reduce((s, p) => s + Number(p.area_sqm ?? 0), 0),
-          supportRate,
-        );
-        const balanceLabel = totalDebt > 0 ? t('account.toPay') : totalOver > 0 ? t('account.overpay') : t('account.balance');
+        const totalDebt = Number(property?.debt ?? 0);
+        const totalOver = Number(property?.overpayment ?? 0);
+        const supportArea = Number(property?.area_sqm ?? 0);
+        const monthlyFee = monthlySupportFee(supportArea, supportRate);
+        const annualFee = annualSupportFee(supportArea, supportRate);
         const balanceValue = totalDebt > 0 ? totalDebt : totalOver;
+        const propertyLedger = property
+          ? supportLedger.filter((row) => row.property_id === property.id)
+          : supportLedger;
         return (
           <div className="space-y-4">
             {properties.length > 1 && (
@@ -1768,13 +1823,82 @@ export default function AccountPage() {
               </div>
             )}
 
+            {properties.length > 1 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {properties.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedPropertyId(p.id)}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      p.id === property?.id
+                        ? 'border-accent/30 bg-accent-bg'
+                        : 'border-border bg-surface hover:bg-surface'
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-medium text-foreground">№ {p.apartment_number}</span>
+                      <span className="text-xs text-muted">{Number(p.area_sqm ?? 0)} {t('common.sqm')}</span>
+                    </div>
+                    <div className="mt-2 flex gap-4 text-sm">
+                      <span className={Number(p.debt ?? 0) > 0 ? 'text-warning' : 'text-secondary'}>
+                        {t('account.debtAmt', { n: Number(p.debt ?? 0).toFixed(2) })}
+                      </span>
+                      <span className={Number(p.overpayment ?? 0) > 0 ? 'text-success' : 'text-muted'}>
+                        +{Number(p.overpayment ?? 0).toFixed(2)} €
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="-mx-1 overflow-x-auto pb-1">
+              <div className="flex min-w-min gap-2 px-1">
+                {([
+                  ['support', t('account.financeTabSupport')],
+                  ['water', t('account.financeTabWater')],
+                  ['capital', t('account.financeTabCapital')],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => selectFinanceTab(id)}
+                    className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap ${
+                      financeTab === id
+                        ? 'border-accent/25 bg-accent-bg text-accent'
+                        : 'border-border bg-surface text-secondary hover:bg-hover'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {property && (
+              <OwnerUtilities
+                key={`finance-${property.id}`}
+                supabase={supabase}
+                propertyId={property.id}
+                variant="finance"
+                currentTariff={waterTariff}
+                financeTab={financeTab}
+                onSelectFinanceTab={selectFinanceTab}
+                supportDebt={totalDebt}
+                supportOver={totalOver}
+              />
+            )}
+
+            {financeTab === 'support' && (
+              <>
             <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card">
               <div className="relative px-5 pb-5 pt-5 md:px-6 md:pt-6">
                 <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-bg blur-3xl" />
                 <div className="relative flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
-                      {t('account.toPay')}
+                      {t('account.financeTabSupport')}
                     </p>
                     <div className={`mt-1 text-3xl font-semibold tracking-tight md:text-4xl ${
                       totalDebt > 0 ? debtColor : 'text-muted'
@@ -1814,10 +1938,10 @@ export default function AccountPage() {
                   <div className="rounded-xl bg-surface px-3 py-3">
                     <div className="text-[11px] text-muted">{t('account.feeYear')}</div>
                     <div className="mt-1 text-lg font-semibold text-foreground">
-                      {annualSupportFeeEur.toFixed(0)} €
+                      {annualFee.toFixed(0)} €
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted">
-                      {myVoteWeight.toFixed(1)} м² × {supportRate} €
+                      {supportArea.toFixed(1)} м² × {supportRate} €
                     </div>
                   </div>
                   <div className="rounded-xl bg-surface px-3 py-3">
@@ -1848,41 +1972,11 @@ export default function AccountPage() {
               </div>
             </div>
 
-            {properties.length > 1 && (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {properties.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setSelectedPropertyId(p.id)}
-                    className={`rounded-2xl border px-4 py-3 text-left transition ${
-                      p.id === property?.id
-                        ? 'border-accent/30 bg-accent-bg'
-                        : 'border-border bg-surface hover:bg-surface'
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-medium text-foreground">№ {p.apartment_number}</span>
-                      <span className="text-xs text-muted">{Number(p.area_sqm ?? 0)} {t('common.sqm')}</span>
-                    </div>
-                    <div className="mt-2 flex gap-4 text-sm">
-                      <span className={Number(p.debt ?? 0) > 0 ? 'text-warning' : 'text-secondary'}>
-                        {t('account.debtAmt', { n: Number(p.debt ?? 0).toFixed(2) })}
-                      </span>
-                      <span className={Number(p.overpayment ?? 0) > 0 ? 'text-success' : 'text-muted'}>
-                        +{Number(p.overpayment ?? 0).toFixed(2)} €
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
             <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                 {t('account.houseTariffs')}
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.elDay')}</div>
                   <div className="mt-1 text-lg font-semibold text-foreground">{DAY_RATE}</div>
@@ -1894,11 +1988,6 @@ export default function AccountPage() {
                   <div className="text-[11px] text-muted">{t('account.perKwh')}</div>
                 </div>
                 <div className="rounded-xl bg-surface px-3 py-3">
-                  <div className="text-[11px] text-muted">{t('account.water')}</div>
-                  <div className="mt-1 text-lg font-semibold text-foreground">{WATER_RATE}</div>
-                  <div className="text-[11px] text-muted">{t('account.perM3')}</div>
-                </div>
-                <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.supportFee')}</div>
                   <div className="mt-1 text-lg font-semibold text-foreground">{supportRate}</div>
                   <div className="text-[11px] text-muted">{t('account.perSqmYear')}</div>
@@ -1906,17 +1995,16 @@ export default function AccountPage() {
               </div>
             </div>
 
-            {supportLedger.length > 0 && (
+            {propertyLedger.length > 0 ? (
               <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                   {t('account.feePayments')}
                 </p>
                 <div className="mt-3 space-y-2">
-                  {supportLedger.slice(0, 8).map((row) => (
+                  {propertyLedger.slice(0, 8).map((row) => (
                     <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
                       <span className="text-secondary">
                         {new Date(row.created_at).toLocaleDateString(dateLocale)}
-                        {properties.length > 1 ? ` · ${t('picker.apt', { n: properties.find((p) => p.id === row.property_id)?.apartment_number ?? '' })}` : ''}
                       </span>
                       <span className={row.kind === 'payment' ? 'text-accent' : 'text-warning'}>
                         {row.kind === 'payment' ? '+' : `${t('account.charge')} `}
@@ -1926,15 +2014,12 @@ export default function AccountPage() {
                   ))}
                 </div>
               </div>
+            ) : (
+              <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+                <p className="text-sm text-secondary">{t('account.feePaymentsEmpty')}</p>
+              </div>
             )}
-
-            {property && (
-              <OwnerUtilities
-                key={`finance-${property.id}`}
-                supabase={supabase}
-                propertyId={property.id}
-                variant="finance"
-              />
+              </>
             )}
           </div>
         );
@@ -2063,6 +2148,7 @@ export default function AccountPage() {
                 supabase={supabase}
                 propertyId={property.id}
                 variant="meters"
+                currentTariff={waterTariff}
               />
             )}
           </div>
@@ -2290,12 +2376,12 @@ export default function AccountPage() {
                             options={options}
                             tally={tally}
                             myOptionId={myVote?.option_id}
-                            disabled={!open || votingPollId === poll.id}
-                            onVote={open ? (optionId) => handleVote(poll, optionId) : undefined}
+                            disabled={!open || Boolean(myVote) || votingPollId === poll.id}
+                            onVote={open && !myVote ? (optionId) => handleVote(poll, optionId) : undefined}
                           />
                         </div>
                         <div className="mt-2 text-xs text-muted">
-                          {myVote ? t('account.voteSaved') : open ? t('account.notVotedYet') : ''}
+                          {myVote ? t('account.voteLocked') : open ? t('account.notVotedYet') : ''}
                         </div>
                       </div>
                     );

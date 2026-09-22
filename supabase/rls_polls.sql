@@ -110,20 +110,33 @@ begin
       using errcode = '42501';
   end if;
 
-  insert into public.poll_votes (poll_id, option_id, property_id, weight)
-  select
-    p_poll_id,
-    p_option_id,
-    p.id,
-    case
-      when p.area_sqm is not null and p.area_sqm > 0 then p.area_sqm
-      else 0
-    end
-  from public.properties as p
-  where lower(btrim(p.owner_email)) = lower(btrim(v_email))
-  on conflict on constraint poll_votes_poll_id_property_id_key do update
-    set option_id = excluded.option_id,
-        weight = excluded.weight;
+  if exists (
+    select 1
+    from public.poll_votes as v
+    join public.properties as p
+      on p.id = v.property_id
+    where v.poll_id = p_poll_id
+      and lower(btrim(p.owner_email)) = lower(btrim(v_email))
+  ) then
+    raise exception 'You have already voted in this poll.';
+  end if;
+
+  begin
+    insert into public.poll_votes (poll_id, option_id, property_id, weight)
+    select
+      p_poll_id,
+      p_option_id,
+      p.id,
+      case
+        when p.area_sqm is not null and p.area_sqm > 0 then p.area_sqm
+        else 0
+      end
+    from public.properties as p
+    where lower(btrim(p.owner_email)) = lower(btrim(v_email));
+  exception
+    when unique_violation then
+      raise exception 'You have already voted in this poll.';
+  end;
 
   insert into public.poll_vote_history (poll_id, option_id, property_id, weight)
   select

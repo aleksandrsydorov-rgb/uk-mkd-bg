@@ -914,6 +914,48 @@ export interface Database {
         Args: { p_property_id: number; p_period: string };
         Returns: Json;
       };
+      assign_water_meter: {
+        Args: {
+          p_property_id: number;
+          p_meter_number: string;
+          p_initial_reading: number;
+          p_installed_at: string;
+        };
+        Returns: Database['public']['Tables']['water_meters']['Row'][];
+      };
+      replace_water_meter: {
+        Args: {
+          p_property_id: number;
+          p_new_meter_number: string;
+          p_new_initial_reading: number;
+          p_reason: string;
+          p_installed_at: string;
+        };
+        Returns: Database['public']['Tables']['water_meters']['Row'][];
+      };
+      set_water_tariff: {
+        Args: {
+          p_price_eur_per_m3: number;
+          p_valid_from: string;
+          p_note: string | null;
+        };
+        Returns: Database['public']['Tables']['water_tariffs']['Row'][];
+      };
+      record_water_payment: {
+        Args: {
+          p_property_id: number;
+          p_amount_eur: number;
+          p_note: string | null;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          ledger_id: string;
+          property_id: number;
+          amount_eur: number;
+          note: string | null;
+          created_at: string;
+        }[];
+      };
       submit_water_reading: {
         Args: {
           p_property_id: number;
@@ -933,6 +975,47 @@ export interface Database {
           tariff_eur_per_m3: number;
           charge_amount_eur: number;
           charge_created: boolean;
+        }[];
+      };
+      create_capital_repair_assessment: {
+        Args: {
+          p_title: string;
+          p_description: string | null;
+          p_decision_date: string;
+          p_due_date: string | null;
+        };
+        Returns: Database['public']['Tables']['capital_repair_assessments']['Row'][];
+      };
+      charge_capital_repair: {
+        Args: {
+          p_property_id: number;
+          p_assessment_id: string;
+          p_amount_eur: number;
+          p_note: string | null;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          ledger_id: string;
+          property_id: number;
+          assessment_id: string;
+          amount_eur: number;
+          note: string | null;
+          created_at: string;
+        }[];
+      };
+      record_capital_repair_payment: {
+        Args: {
+          p_property_id: number;
+          p_amount_eur: number;
+          p_note: string | null;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          ledger_id: string;
+          property_id: number;
+          amount_eur: number;
+          note: string | null;
+          created_at: string;
         }[];
       };
       get_water_balance: {

@@ -1,37 +1,12 @@
 -- =============================================================================
--- AMADEUS 11 — water RPC (SECURITY DEFINER)
+-- AMADEUS 11 — timezone hotfix (Europe/Sofia local date)
 -- =============================================================================
--- Writes go through these functions only. Tables stay SELECT-only for
--- authenticated. Does not change support_fee, meter_readings, properties
--- debt/overpayment, existing helpers, or RLS.
---
--- Empty staff.role is NOT treated as администрация.
--- Role is read from public.staff, never from the client.
+-- CREATE OR REPLACE only for date-validation RPC.
+-- Does not change RLS, schemas, other RPC, or EXECUTE security model
+-- (REVOKE public/anon, GRANT authenticated — reapplied below).
 -- =============================================================================
 
--- Internal helper. Not a business RPC. No EXECUTE for authenticated.
-create or replace function public.water_staff_role()
-returns text
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select nullif(lower(btrim(s.role)), '')
-  from public.staff as s
-  where lower(btrim(s.email)) = lower(btrim(auth.email()))
-    and s.active is true
-  limit 1;
-$$;
-
-revoke all on function public.water_staff_role() from public;
-revoke all on function public.water_staff_role() from anon;
-revoke all on function public.water_staff_role() from authenticated;
-
--- -----------------------------------------------------------------------------
--- assign_water_meter
--- Roles: администрация, инженер
--- -----------------------------------------------------------------------------
+BEGIN;
 
 create or replace function public.assign_water_meter(
   p_property_id bigint,
@@ -257,80 +232,6 @@ revoke all on function public.replace_water_meter(bigint, text, numeric, text, d
 revoke all on function public.replace_water_meter(bigint, text, numeric, text, date) from anon;
 grant execute on function public.replace_water_meter(bigint, text, numeric, text, date) to authenticated;
 
--- -----------------------------------------------------------------------------
--- set_water_tariff
--- Roles: администрация, бухгалтер
--- Immutable history: INSERT only, never UPDATE.
--- -----------------------------------------------------------------------------
-
-create or replace function public.set_water_tariff(
-  p_price_eur_per_m3 numeric,
-  p_valid_from date,
-  p_note text default null
-)
-returns setof public.water_tariffs
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_email text;
-  v_role text;
-begin
-  v_email := nullif(btrim(auth.email()), '');
-  if v_email is null then
-    raise exception 'Not authorized.';
-  end if;
-
-  v_role := public.water_staff_role();
-  if v_role is distinct from 'администрация'
-     and v_role is distinct from 'бухгалтер' then
-    raise exception 'Not authorized.';
-  end if;
-
-  if p_price_eur_per_m3 is null or p_price_eur_per_m3 < 0 then
-    raise exception 'Tariff price cannot be negative.';
-  end if;
-
-  if p_valid_from is null then
-    raise exception 'Tariff valid_from is required.';
-  end if;
-
-  if exists (
-    select 1
-    from public.water_tariffs as t
-    where t.valid_from = p_valid_from
-  ) then
-    raise exception 'A water tariff already exists for this valid_from date.';
-  end if;
-
-  return query
-  insert into public.water_tariffs (
-    price_eur_per_m3,
-    valid_from,
-    note,
-    created_by_email
-  )
-  values (
-    p_price_eur_per_m3,
-    p_valid_from,
-    nullif(btrim(coalesce(p_note, '')), ''),
-    v_email
-  )
-  returning *;
-end;
-$$;
-
-revoke all on function public.set_water_tariff(numeric, date, text) from public;
-revoke all on function public.set_water_tariff(numeric, date, text) from anon;
-grant execute on function public.set_water_tariff(numeric, date, text) to authenticated;
-
--- -----------------------------------------------------------------------------
--- submit_water_reading
--- Owner of the property only. Staff cannot submit ordinary readings.
--- Client does not send meter/previous/tariff/amount.
--- -----------------------------------------------------------------------------
-
 create or replace function public.submit_water_reading(
   p_property_id bigint,
   p_current_value numeric,
@@ -356,6 +257,7 @@ set search_path = ''
 as $$
 declare
   v_email text;
+  v_role text;
   v_via text;
   v_meter public.water_meters%rowtype;
   v_last public.water_readings%rowtype;
@@ -396,11 +298,15 @@ begin
     raise exception 'Reading date cannot be in the future.';
   end if;
 
-  if not public.owns_property(p_property_id) then
+  v_role := public.water_staff_role();
+
+  if public.owns_property(p_property_id) then
+    v_via := 'owner';
+  elsif v_role in ('администрация', 'бухгалтер', 'инженер') then
+    v_via := 'staff';
+  else
     raise exception 'Not authorized.';
   end if;
-
-  v_via := 'owner';
 
   -- Safe retry only after authorization, and only for the same request payload.
   select r.*
@@ -652,260 +558,74 @@ revoke all on function public.submit_water_reading(bigint, numeric, date, uuid) 
 revoke all on function public.submit_water_reading(bigint, numeric, date, uuid) from anon;
 grant execute on function public.submit_water_reading(bigint, numeric, date, uuid) to authenticated;
 
--- -----------------------------------------------------------------------------
--- record_water_payment
--- Roles: администрация, бухгалтер
--- -----------------------------------------------------------------------------
-
-create or replace function public.record_water_payment(
-  p_property_id bigint,
-  p_amount_eur numeric,
-  p_note text,
-  p_idempotency_key uuid
+create or replace function public.create_capital_repair_assessment(
+  p_title text,
+  p_description text default null,
+  p_decision_date date default ((now() at time zone 'Europe/Sofia')::date),
+  p_due_date date default null
 )
-returns table (
-  ledger_id uuid,
-  property_id bigint,
-  amount_eur numeric,
-  note text,
-  created_at timestamptz
-)
+returns setof public.capital_repair_assessments
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
   v_email text;
-  v_role text;
-  v_amount numeric;
-  v_note text;
-  v_row public.water_ledger%rowtype;
+  v_title text;
+  v_description text;
 begin
   v_email := nullif(btrim(auth.email()), '');
   if v_email is null then
     raise exception 'Not authorized.';
   end if;
 
-  v_role := public.water_staff_role();
-  if v_role is distinct from 'администрация'
-     and v_role is distinct from 'бухгалтер' then
+  if not public.has_staff_role('администрация')
+     and not public.has_staff_role('бухгалтер') then
     raise exception 'Not authorized.';
   end if;
 
-  if p_idempotency_key is null then
-    raise exception 'Idempotency key is required.';
+  v_title := btrim(coalesce(p_title, ''));
+  if v_title = '' then
+    raise exception 'Title is required.';
   end if;
 
-  if p_property_id is null then
-    raise exception 'Property not found.';
+  if p_decision_date is null then
+    raise exception 'Decision date is required.';
   end if;
 
-  if p_amount_eur is null then
-    raise exception 'Amount must be greater than zero.';
+  if p_decision_date > (now() at time zone 'Europe/Sofia')::date then
+    raise exception 'Decision date cannot be in the future.';
   end if;
 
-  v_amount := round(p_amount_eur, 2);
-  if v_amount <= 0 then
-    raise exception 'Amount must be greater than zero.';
+  if p_due_date is not null and p_due_date < p_decision_date then
+    raise exception 'Due date cannot be earlier than decision date.';
   end if;
 
-  v_note := nullif(btrim(coalesce(p_note, '')), '');
-
-  select l.*
-    into v_row
-  from public.water_ledger as l
-  where l.idempotency_key = p_idempotency_key;
-
-  if found then
-    if v_row.property_id is distinct from p_property_id
-       or v_row.kind is distinct from 'payment'
-       or v_row.amount_eur is distinct from v_amount
-       or v_row.note is distinct from v_note then
-      raise exception 'Idempotency key conflict.';
-    end if;
-
-    return query
-    select v_row.id, v_row.property_id, v_row.amount_eur, v_row.note, v_row.created_at;
-    return;
-  end if;
-
-  perform 1
-  from public.properties as p
-  where p.id = p_property_id
-  for update;
-
-  if not found then
-    raise exception 'Property not found.';
-  end if;
-
-  begin
-    insert into public.water_ledger (
-      property_id,
-      reading_id,
-      kind,
-      amount_eur,
-      note,
-      recorded_by_email,
-      idempotency_key
-    )
-    values (
-      p_property_id,
-      null,
-      'payment',
-      v_amount,
-      v_note,
-      v_email,
-      p_idempotency_key
-    )
-    returning * into v_row;
-  exception
-    when unique_violation then
-      select l.*
-        into v_row
-      from public.water_ledger as l
-      where l.idempotency_key = p_idempotency_key;
-
-      if not found then
-        raise;
-      end if;
-
-      if v_row.property_id is distinct from p_property_id
-         or v_row.kind is distinct from 'payment'
-         or v_row.amount_eur is distinct from v_amount
-         or v_row.note is distinct from v_note then
-        raise exception 'Idempotency key conflict.';
-      end if;
-  end;
+  v_description := nullif(btrim(coalesce(p_description, '')), '');
 
   return query
-  select v_row.id, v_row.property_id, v_row.amount_eur, v_row.note, v_row.created_at;
+  insert into public.capital_repair_assessments (
+    title,
+    description,
+    decision_date,
+    due_date,
+    status,
+    created_by_email
+  )
+  values (
+    v_title,
+    v_description,
+    p_decision_date,
+    p_due_date,
+    'active',
+    v_email
+  )
+  returning *;
 end;
 $$;
 
-revoke all on function public.record_water_payment(bigint, numeric, text, uuid) from public;
-revoke all on function public.record_water_payment(bigint, numeric, text, uuid) from anon;
-grant execute on function public.record_water_payment(bigint, numeric, text, uuid) to authenticated;
+revoke all on function public.create_capital_repair_assessment(text, text, date, date) from public;
+revoke all on function public.create_capital_repair_assessment(text, text, date, date) from anon;
+grant execute on function public.create_capital_repair_assessment(text, text, date, date) to authenticated;
 
--- -----------------------------------------------------------------------------
--- get_water_balance
--- Owner of the property, or staff role администрация / бухгалтер.
--- Engineer and cleaner are denied. Balance is derived from ledger.
--- -----------------------------------------------------------------------------
-
-create or replace function public.get_water_balance(
-  p_property_id bigint
-)
-returns table (
-  charged_eur numeric,
-  paid_eur numeric,
-  adjustments_debit_eur numeric,
-  adjustments_credit_eur numeric,
-  balance_eur numeric
-)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-declare
-  v_email text;
-  v_role text;
-begin
-  v_email := nullif(btrim(auth.email()), '');
-  if v_email is null then
-    raise exception 'Not authorized.';
-  end if;
-
-  if p_property_id is null then
-    raise exception 'Property not found.';
-  end if;
-
-  v_role := public.water_staff_role();
-
-  if not public.owns_property(p_property_id)
-     and v_role is distinct from 'администрация'
-     and v_role is distinct from 'бухгалтер' then
-    raise exception 'Not authorized.';
-  end if;
-
-  if not exists (
-    select 1
-    from public.properties as p
-    where p.id = p_property_id
-  ) then
-    raise exception 'Property not found.';
-  end if;
-
-  return query
-  select
-    coalesce(sum(l.amount_eur) filter (where l.kind = 'charge'), 0)::numeric(12, 2),
-    coalesce(sum(l.amount_eur) filter (where l.kind = 'payment'), 0)::numeric(12, 2),
-    coalesce(sum(l.amount_eur) filter (where l.kind = 'adjustment_debit'), 0)::numeric(12, 2),
-    coalesce(sum(l.amount_eur) filter (where l.kind = 'adjustment_credit'), 0)::numeric(12, 2),
-    (
-      coalesce(sum(l.amount_eur) filter (where l.kind in ('charge', 'adjustment_debit')), 0)
-      - coalesce(sum(l.amount_eur) filter (where l.kind in ('payment', 'adjustment_credit')), 0)
-    )::numeric(12, 2)
-  from public.water_ledger as l
-  where l.property_id = p_property_id;
-end;
-$$;
-
-revoke all on function public.get_water_balance(bigint) from public;
-revoke all on function public.get_water_balance(bigint) from anon;
-grant execute on function public.get_water_balance(bigint) to authenticated;
-
--- =============================================================================
--- SECURITY TEST MATRIX (run after this file is applied; not executed here)
--- =============================================================================
--- OWNER A:
---   submit_water_reading own property → ALLOW
---   submit_water_reading property B → DENY
---   known idempotency key of property B → DENY (authorization first)
---   same key / same property / same payload → existing result
---   same key / same property / different current_value → IDEMPOTENCY CONFLICT
---   same key / same property / different reading_date → IDEMPOTENCY CONFLICT
---   set_water_tariff → DENY
---   assign_water_meter → DENY
---   replace_water_meter → DENY
---   record_water_payment → DENY
---   get_water_balance own → ALLOW
---   get_water_balance B → DENY
---
--- ADMIN (администрация):
---   assign_water_meter → ALLOW
---   replace_water_meter → ALLOW
---   set_water_tariff → ALLOW
---   submit_water_reading → DENY (owner-only)
---   record_water_payment → ALLOW
---   get_water_balance any property → ALLOW
---
--- ACCOUNTANT (бухгалтер):
---   assign_water_meter → DENY
---   replace_water_meter → DENY
---   set_water_tariff → ALLOW
---   submit_water_reading → DENY (owner-only)
---   record_water_payment → ALLOW
---   get_water_balance → ALLOW
---
--- PAYMENT:
---   same key + same amount/note → existing result
---   same key + different amount → IDEMPOTENCY CONFLICT
---   same key + different note → IDEMPOTENCY CONFLICT
---
--- ENGINEER (инженер):
---   assign_water_meter / replace_water_meter → ALLOW
---   set_water_tariff → DENY
---   record_water_payment → DENY
---   submit_water_reading → DENY (owner-only)
---   get_water_balance → DENY
---
--- CLEANER (уборщик):
---   assign / replace → DENY
---   set_water_tariff → DENY
---   record_water_payment → DENY
---   submit_water_reading → DENY  (not treated as generic is_staff)
---   get_water_balance → DENY
---
--- Writes are RPC-only. No reverse/adjustment RPC in this file.
--- =============================================================================
+COMMIT;

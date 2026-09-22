@@ -150,7 +150,14 @@ export function PollOptionBars({
         );
         if (!onVote) {
           return (
-            <div key={row.option.id} className="rounded-lg border border-border bg-surface px-3 py-2">
+            <div
+              key={row.option.id}
+              className={`rounded-lg border px-3 py-2 ${
+                selected
+                  ? 'border-accent/30 bg-accent-bg text-accent'
+                  : 'border-border bg-surface'
+              }`}
+            >
               {inner}
             </div>
           );

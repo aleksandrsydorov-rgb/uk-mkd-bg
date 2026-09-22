@@ -76,3 +76,68 @@ export function mapSubmitWaterError(message: string): 'noMeter' | 'lower' | 'dat
   if (msg.includes('idempotency key conflict')) return 'conflict';
   return 'generic';
 }
+
+export const STAFF_ROLE_ADMIN = 'администрация';
+export const STAFF_ROLE_ACCOUNTANT = 'бухгалтер';
+export const STAFF_ROLE_ENGINEER = 'инженер';
+export const STAFF_ROLE_CLEANER = 'уборщик';
+
+export function exactStaffRole(role?: string | null) {
+  return (role ?? '').trim().toLowerCase();
+}
+
+export function canSeeWaterAdmin(role?: string | null) {
+  const r = exactStaffRole(role);
+  return r === STAFF_ROLE_ADMIN || r === STAFF_ROLE_ACCOUNTANT || r === STAFF_ROLE_ENGINEER;
+}
+
+export function canAssignWaterMeter(role?: string | null) {
+  const r = exactStaffRole(role);
+  return r === STAFF_ROLE_ADMIN || r === STAFF_ROLE_ENGINEER;
+}
+
+export function canManageWaterTariff(role?: string | null) {
+  const r = exactStaffRole(role);
+  return r === STAFF_ROLE_ADMIN || r === STAFF_ROLE_ACCOUNTANT;
+}
+
+export function canManageWaterFinance(role?: string | null) {
+  const r = exactStaffRole(role);
+  return r === STAFF_ROLE_ADMIN || r === STAFF_ROLE_ACCOUNTANT;
+}
+
+export function canSeeCapitalAdmin(role?: string | null) {
+  return canManageWaterFinance(role);
+}
+
+export type AdminRpcErrorKey =
+  | 'admin.errMeterAssigned'
+  | 'admin.errMeterInUse'
+  | 'admin.errNoMeter'
+  | 'admin.errReadingLower'
+  | 'admin.errTariffDate'
+  | 'admin.errCapitalDup'
+  | 'admin.errIdempotency'
+  | 'admin.errNoAccess'
+  | 'admin.errGeneric';
+
+export function mapAdminRpcError(message: string): AdminRpcErrorKey {
+  const msg = message.toLowerCase();
+  if (msg.includes('active water meter is already assigned')) return 'admin.errMeterAssigned';
+  if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
+  if (msg.includes('no active water meter')) return 'admin.errNoMeter';
+  if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
+  if (msg.includes('tariff already exists') || msg.includes('already exists for this valid_from')) {
+    return 'admin.errTariffDate';
+  }
+  if (msg.includes('capital repair charge already exists') || msg.includes('charge already exists')) {
+    return 'admin.errCapitalDup';
+  }
+  if (msg.includes('idempotency key conflict')) return 'admin.errIdempotency';
+  if (msg.includes('not authorized') || msg.includes('permission denied')) return 'admin.errNoAccess';
+  return 'admin.errGeneric';
+}
+
+export function currentWaterTariff(tariffs: WaterTariff[], asOf = todayIsoDate()): WaterTariff | null {
+  return tariffs.find((row) => row.valid_from <= asOf) ?? null;
+}

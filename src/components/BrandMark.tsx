@@ -8,29 +8,41 @@ export function BrandMark({
   href = '/',
   compact = false,
   showTagline = true,
+  prominent = false,
 }: {
   href?: string;
   compact?: boolean;
   showTagline?: boolean;
+  prominent?: boolean;
 }) {
   const { t } = useI18n();
+  const markBox = prominent
+    ? 'h-11 px-1.5'
+    : compact
+      ? 'h-8 px-1'
+      : 'h-9 px-1.5';
+  const markImg = prominent ? 'h-9' : compact ? 'h-7' : 'h-8';
+  const nameClass = prominent
+    ? 'text-base font-bold tracking-[0.06em] sm:text-lg'
+    : compact
+      ? 'text-sm'
+      : 'text-base sm:text-lg';
+
   return (
     <Link href={href} className="flex min-w-0 items-center gap-2.5">
       <span
-        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ${
-          compact ? 'h-8 px-1' : 'h-9 px-1.5'
-        }`}
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ${markBox}`}
       >
         <Image
           src="/brand/amadeus11-mark.png"
           alt=""
           width={580}
           height={350}
-          className={`w-auto object-contain ${compact ? 'h-7' : 'h-8'}`}
+          className={`w-auto object-contain ${markImg}`}
         />
       </span>
       <span className="min-w-0">
-        <span className={`block truncate font-bold tracking-[0.02em] text-foreground ${compact ? 'text-sm' : 'text-base sm:text-lg'}`}>
+        <span className={`block truncate font-bold tracking-[0.02em] text-foreground ${nameClass}`}>
           {t('brand.name')}
         </span>
         {showTagline && !compact && (

@@ -3,8 +3,32 @@
 import { LOCALES, LOCALE_META, type Locale } from '@/i18n/config';
 import { useI18n } from '@/i18n/I18nProvider';
 
-export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
+export function LanguageSwitcher({
+  compact = false,
+  variant = 'pills',
+}: {
+  compact?: boolean;
+  variant?: 'pills' | 'plain';
+}) {
   const { locale, setLocale, t } = useI18n();
+
+  if (variant === 'plain') {
+    return (
+      <div className="home-foot-langs" role="group" aria-label={t('common.language')}>
+        {LOCALES.map((code: Locale) => (
+          <button
+            key={code}
+            type="button"
+            onClick={() => setLocale(code)}
+            className={`home-foot-lang${locale === code ? ' is-active' : ''}`}
+            title={LOCALE_META[code].native}
+          >
+            {LOCALE_META[code].short}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className={`inline-flex rounded-full bg-surface-secondary p-0.5 ${compact ? '' : ''}`} role="group" aria-label={t('common.language')}>

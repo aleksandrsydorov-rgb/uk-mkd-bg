@@ -14,6 +14,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import type { ApartmentPet } from '@/lib/registry';
 import { householdPeople } from '@/lib/registry';
 import {
+  displayedPropertyOwners,
   formatIdealPartsPercent,
   registryPersonLabel,
   type PropertyAbsencePeriod,
@@ -101,8 +102,9 @@ export function OwnerApartment({
   const users = people.filter((p) => p.relation_type === 'user_of_property');
   const bookHousehold = people.filter((p) => p.relation_type === 'household_member');
   const occupants = people.filter((p) => p.relation_type === 'occupant');
-  const household = householdPeople(guests);
-  const guestOccupants = guests.filter((g) => g.is_permanent === false);
+  const ownerModeGuests = occupancyStatus === 'owner';
+  const household = ownerModeGuests ? guests : householdPeople(guests);
+  const guestOccupants = ownerModeGuests ? [] : guests.filter((g) => g.is_permanent === false);
 
   const ideal = formatIdealPartsPercent(property.ideal_parts_percent, locale);
   const listing = listingStatus(property.status);
@@ -112,18 +114,21 @@ export function OwnerApartment({
   const idealNote = (property.ideal_parts_note ?? '').trim();
   const agreement = (property.owner_user_management_agreement ?? '').trim();
 
+  const displayedOwners = displayedPropertyOwners(property, people);
   const personItems: PersonItem[] = [];
   if (owners.length === 0 && users.length === 0) {
-    personItems.push({
-      key: 'portal-owner',
-      name: property.owner_name || t('account.ownerUnknown'),
-      role: t('book.owner'),
-      lines: [
-        property.owner_type ? labelOwnerType(property.owner_type, t) : '',
-        property.company_name || '',
-        property.owner_email || '',
-      ].filter(Boolean),
-    });
+    for (const o of displayedOwners) {
+      personItems.push({
+        key: o.key,
+        name: o.name || t('account.occOwnerNameMissing'),
+        role: t('book.owner'),
+        lines: [
+          property.owner_type ? labelOwnerType(property.owner_type, t) : '',
+          property.company_name || '',
+          o.email || '',
+        ].filter(Boolean),
+      });
+    }
     if (property.occupant_kind && property.occupant_kind !== 'owner') {
       personItems.push({
         key: 'portal-user',
@@ -138,16 +143,17 @@ export function OwnerApartment({
       });
     }
   } else {
-    for (const p of owners) {
+    for (const o of displayedOwners) {
+      const src = owners.find((p) => o.key === `reg-owner-${p.id}`);
       personItems.push({
-        key: `o-${p.id}`,
-        name: registryPersonLabel(p),
+        key: o.key,
+        name: o.name || t('account.occOwnerNameMissing'),
         role: labelRegistryRelation('owner', t),
         lines: [
-          p.entity_kind === 'legal_entity' || p.entity_kind === 'sole_trader'
-            ? `${t('book.eik')}: ${p.eik_bulstat || '—'}`
+          src && (src.entity_kind === 'legal_entity' || src.entity_kind === 'sole_trader')
+            ? `${t('book.eik')}: ${src.eik_bulstat || '—'}`
             : '',
-          p.email || '',
+          o.email || '',
         ].filter(Boolean),
       });
     }

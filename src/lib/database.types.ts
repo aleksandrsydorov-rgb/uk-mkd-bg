@@ -1174,6 +1174,19 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      update_apartment_guest: {
+        Args: {
+          p_guest_id: number;
+          p_first_name: string;
+          p_last_name: string;
+          p_birth_year?: number | null;
+          p_is_child?: boolean;
+          p_is_permanent?: boolean;
+          p_check_in?: string | null;
+          p_check_out?: string | null;
+        };
+        Returns: Database['public']['Tables']['apartment_guests']['Row'];
+      };
       cast_poll_vote: {
         Args: { p_poll_id: number; p_option_id: number };
         Returns: {

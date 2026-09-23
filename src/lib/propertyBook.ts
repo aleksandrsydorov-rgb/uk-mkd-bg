@@ -86,11 +86,46 @@ export function parseIdealPartsSource(raw: string | null | undefined): IdealPart
   return null;
 }
 
-export function registryPersonLabel(person: PropertyRegistryPerson): string {
+export function registryPersonDisplayName(person: PropertyRegistryPerson): string {
   if (person.entity_kind === 'legal_entity' || person.entity_kind === 'sole_trader') {
-    return (person.entity_name ?? '').trim() || '—';
+    return (person.entity_name ?? '').trim();
   }
-  return [person.first_name, person.middle_name, person.last_name].filter(Boolean).join(' ').trim() || '—';
+  return [person.first_name, person.middle_name, person.last_name].filter(Boolean).join(' ').trim();
+}
+
+export function registryPersonLabel(person: PropertyRegistryPerson): string {
+  return registryPersonDisplayName(person) || '—';
+}
+
+export type DisplayedOwner = {
+  key: string;
+  name: string | null;
+  email: string | null;
+};
+
+export function displayedPropertyOwners(
+  property: { owner_name: string | null; owner_email: string | null },
+  people: PropertyRegistryPerson[],
+): DisplayedOwner[] {
+  const owners = people.filter((p) => p.relation_type === 'owner');
+  if (owners.length > 0) {
+    const portalName = (property.owner_name ?? '').trim();
+    return owners.map((p) => {
+      const fromRegistry = registryPersonDisplayName(p);
+      return {
+        key: `reg-owner-${p.id}`,
+        name: fromRegistry || (owners.length === 1 ? portalName || null : null),
+        email: (p.email ?? property.owner_email ?? '').trim() || null,
+      };
+    });
+  }
+  return [
+    {
+      key: 'property-owner',
+      name: (property.owner_name ?? '').trim() || null,
+      email: (property.owner_email ?? '').trim() || null,
+    },
+  ];
 }
 
 export function isActiveOccupant(person: PropertyRegistryPerson): boolean {

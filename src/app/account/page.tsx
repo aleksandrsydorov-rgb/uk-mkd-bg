@@ -39,6 +39,7 @@ import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type Support
 import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
 import { OwnerOverview } from '@/components/account/OwnerOverview';
 import { OwnerApartment } from '@/components/account/OwnerApartment';
+import { OwnerOccupancy, type OccupancySavePayload, type GuestInsertPayload, type PetInsertPayload } from '@/components/account/OwnerOccupancy';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
@@ -211,6 +212,7 @@ export default function AccountPage() {
     is_permanent: true,
   });
   const [pets, setPets] = useState<ApartmentPet[]>([]);
+  const [petsLoadFailed, setPetsLoadFailed] = useState(false);
   const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
   const [petSaving, setPetSaving] = useState(false);
   const [petInfo, setPetInfo] = useState<string>('');
@@ -609,9 +611,15 @@ export default function AccountPage() {
           .eq('property_id', property.id)
           .order('created_at', { ascending: true });
         if (petsRes.error) {
-          if (!isMissingRelation(petsRes.error, 'apartment_pets')) throw petsRes.error;
-          setPets([]);
+          if (!isMissingRelation(petsRes.error, 'apartment_pets')) {
+            setPetsLoadFailed(true);
+            setPets([]);
+          } else {
+            setPetsLoadFailed(false);
+            setPets([]);
+          }
         } else {
+          setPetsLoadFailed(false);
           setPets((petsRes.data as ApartmentPet[]) ?? []);
         }
 
@@ -865,23 +873,60 @@ export default function AccountPage() {
     }
   }
 
-  async function handleUpdateOccupancy(status: OccupancyStatus) {
-    if (!property) return;
+  async function handleSaveOccupancy(payload: OccupancySavePayload) {
+    if (!property) throw new Error(t('err.status'));
     setOccupancySaving(true);
     try {
       const { error: updErr } = await supabase
         .from('properties')
-        .update({ occupancy_status: status })
+        .update({
+          occupancy_status: payload.occupancy_status,
+          occupant_kind: payload.occupant_kind,
+          occupant_name: payload.occupant_name,
+          occupant_phone: payload.occupant_phone,
+          occupant_email: payload.occupant_email,
+          occupant_until: payload.occupant_until,
+        })
         .eq('id', property.id);
-      if (updErr) throw updErr;
+      if (updErr) {
+        const msg = updErr.message ?? '';
+        throw new Error(msg.includes('occupant_') || msg.includes('occupancy_status') ? t('err.registrySql') : msg);
+      }
       setProperties((prev) =>
-        prev.map((p) => (p.id === property.id ? { ...p, occupancy_status: status } : p))
+        prev.map((p) =>
+          p.id === property.id
+            ? {
+                ...p,
+                occupancy_status: payload.occupancy_status,
+                occupant_kind: payload.occupant_kind,
+                occupant_name: payload.occupant_name,
+                occupant_phone: payload.occupant_phone,
+                occupant_email: payload.occupant_email,
+                occupant_until: payload.occupant_until,
+              }
+            : p,
+        ),
       );
-    } catch (e: any) {
-      setError(e?.message ?? t('err.status'));
+      setOccupantForm({
+        name: payload.occupant_name ?? '',
+        phone: payload.occupant_phone ?? '',
+        email: payload.occupant_email ?? '',
+        until: payload.occupant_until ? String(payload.occupant_until).slice(0, 10) : '',
+      });
     } finally {
       setOccupancySaving(false);
     }
+  }
+
+  async function handleUpdateOccupancy(status: OccupancyStatus) {
+    await handleSaveOccupancy({
+      occupancy_status: status,
+      occupant_kind: occupantKind,
+      occupant_name: occupantForm.name.trim() || null,
+      occupant_phone: occupantForm.phone.trim() || null,
+      occupant_email: occupantForm.email.trim() || null,
+      occupant_until: occupantForm.until || null,
+    });
   }
 
   async function handleUpdateListing(next: 'в собственности' | 'на продаже') {
@@ -943,102 +988,104 @@ export default function AccountPage() {
     }
   }
 
-  async function handleAddGuest(e: React.FormEvent) {
-    e.preventDefault();
-    if (!property) return;
-    const fn = guestForm.first_name.trim();
-    const ln = guestForm.last_name.trim();
-    if (!fn || !ln) return;
+  async function handleAddGuest(payload: GuestInsertPayload) {
+    if (!property) throw new Error(t('err.addGuest'));
+    const fn = payload.first_name.trim();
+    const ln = payload.last_name.trim();
+    if (!fn || !ln) throw new Error(t('err.addGuest'));
     setGuestAdding(true);
     try {
-      const payload = {
+      const row = {
         property_id: property.id,
         first_name: fn,
         last_name: ln,
-        birth_year: guestForm.birth_year ? Number(guestForm.birth_year) : null,
-        is_child: guestForm.is_child,
-        is_permanent: guestForm.is_permanent,
-        check_in: guestForm.check_in || null,
-        check_out: guestForm.check_out || null,
+        birth_year: payload.birth_year,
+        is_child: payload.is_child,
+        is_permanent: payload.is_permanent,
+        check_in: payload.check_in,
+        check_out: payload.check_out,
       };
       let { data: inserted, error: insErr } = await supabase
         .from('apartment_guests')
-        .insert(payload)
+        .insert(row)
         .select('*')
         .single();
       if (insErr && (insErr.message.includes('is_permanent') || insErr.message.includes('schema cache'))) {
-        const { is_permanent: _ignored, ...legacy } = payload;
+        const { is_permanent: _ignored, ...legacy } = row;
         const retry = await supabase.from('apartment_guests').insert(legacy).select('*').single();
         inserted = retry.data;
         insErr = retry.error;
       }
       if (insErr) throw insErr;
       setGuests((prev) => [...prev, inserted as ApartmentGuest]);
-      setGuestForm({
-        first_name: '',
-        last_name: '',
-        birth_year: '',
-        is_child: false,
-        check_in: guestForm.check_in,
-        check_out: guestForm.check_out,
-        is_permanent: true,
+    } finally {
+      setGuestAdding(false);
+    }
+  }
+
+  async function handleUpdateGuest(id: number, payload: GuestInsertPayload) {
+    const fn = payload.first_name.trim();
+    const ln = payload.last_name.trim();
+    if (!fn || !ln) throw new Error(t('err.updateGuest'));
+    setGuestAdding(true);
+    try {
+      const { data, error } = await supabase.rpc('update_apartment_guest', {
+        p_guest_id: id,
+        p_first_name: fn,
+        p_last_name: ln,
+        p_birth_year: payload.birth_year,
+        p_is_child: payload.is_child,
+        p_is_permanent: payload.is_permanent,
+        p_check_in: payload.check_in,
+        p_check_out: payload.is_permanent ? null : payload.check_out,
       });
-    } catch (e: any) {
-      setError(e?.message ?? t('err.addGuest'));
+      if (error) throw new Error(error.message || t('err.updateGuest'));
+      const row = (Array.isArray(data) ? data[0] : data) as ApartmentGuest | null;
+      if (!row) throw new Error(t('err.updateGuest'));
+      setGuests((prev) => prev.map((g) => (g.id === id ? { ...g, ...row } : g)));
     } finally {
       setGuestAdding(false);
     }
   }
 
   async function handleRemoveGuest(id: number) {
-    if (!confirm(t('confirm.removeGuest'))) return;
-    try {
-      const { error: delErr } = await supabase.from('apartment_guests').delete().eq('id', id);
-      if (delErr) throw delErr;
-      setGuests((prev) => prev.filter((g) => g.id !== id));
-    } catch (e: any) {
-      setError(e?.message ?? t('err.removeGuest'));
-    }
+    const { error: delErr } = await supabase.from('apartment_guests').delete().eq('id', id);
+    if (delErr) throw delErr;
+    setGuests((prev) => prev.filter((g) => g.id !== id));
   }
 
-  async function handleAddPet(e: React.FormEvent) {
-    e.preventDefault();
-    if (!property) return;
+  async function handleAddPet(payload: PetInsertPayload) {
+    if (!property) throw new Error(t('err.save'));
     setPetSaving(true);
-    setError(null);
     try {
-      const { data, error } = await supabase
-        .from('apartment_pets')
-        .insert({
-          property_id: property.id,
-          species: petForm.species,
-          name: petForm.name.trim() || null,
-          chip_no: petForm.chip_no.trim() || null,
-          passport_no: petForm.passport_no.trim() || null,
-        })
-        .select('*')
-        .single();
+      const full = {
+        property_id: property.id,
+        species: payload.species,
+        name: payload.name,
+        chip_no: payload.chip_no,
+        passport_no: payload.passport_no,
+        is_taken_to_public_places: payload.is_taken_to_public_places,
+      };
+      let { data, error } = await supabase.from('apartment_pets').insert(full).select('*').single();
+      if (error && (error.message.includes('is_taken_to_public_places') || error.message.includes('schema cache'))) {
+        const { is_taken_to_public_places: _ignored, ...legacy } = full;
+        const retry = await supabase.from('apartment_pets').insert(legacy).select('*').single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) {
         throw new Error(error.message.includes('apartment_pets') ? t('err.registrySql') : error.message);
       }
       setPets((prev) => [...prev, data as ApartmentPet]);
-      setPetForm({ species: 'dog', name: '', chip_no: '', passport_no: '' });
-    } catch (e: any) {
-      setError(e?.message ?? t('err.save'));
     } finally {
       setPetSaving(false);
     }
   }
 
   async function handleRemovePet(id: number) {
-    if (!confirm(t('confirm.removePet'))) return;
-    try {
-      const { error } = await supabase.from('apartment_pets').delete().eq('id', id);
-      if (error) throw error;
-      setPets((prev) => prev.filter((p) => p.id !== id));
-    } catch (e: any) {
-      setError(e?.message ?? t('err.delete'));
-    }
+    const { error } = await supabase.from('apartment_pets').delete().eq('id', id);
+    if (error) throw error;
+    setPets((prev) => prev.filter((p) => p.id !== id));
   }
 
   async function handleSavePetInfo() {
@@ -1494,399 +1541,44 @@ export default function AccountPage() {
 
       case 'жильцы':
         return (
-          <div className="space-y-6">
-            {/* Статус проживания */}
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <h2 className="text-lg font-semibold text-accent mb-2">{t('account.occTitle')}</h2>
-              <p className="text-sm text-secondary mb-4">
-                {t('account.occLead', { n: String(property?.apartment_number ?? '') })}
-              </p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {/* Собственник */}
-                <button
-                  onClick={() => handleUpdateOccupancy('owner')}
-                  disabled={occupancySaving}
-                  className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
-                    occupancyStatus === 'owner'
-                      ? 'border-accent bg-accent-bg'
-                      : 'border-border bg-surface hover:border-border'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">🏠</div>
-                  <div className="text-sm font-medium text-foreground">{t('account.occOwner')}</div>
-                  <div className="text-xs text-muted mt-1">{t('account.occOwnerHint')}</div>
-                </button>
-
-                {/* В отъезде */}
-                <button
-                  onClick={() => handleUpdateOccupancy('standby')}
-                  disabled={occupancySaving}
-                  className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
-                    occupancyStatus === 'standby'
-                      ? 'border-warning bg-warning-bg'
-                      : 'border-border bg-surface hover:border-border'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">✈️</div>
-                  <div className="text-sm font-medium text-foreground">{t('account.occStandby')}</div>
-                  <div className="text-xs text-muted mt-1">{t('account.occStandbyHint')}</div>
-                </button>
-
-                {/* Арендаторы */}
-                <button
-                  onClick={() => handleUpdateOccupancy('rented')}
-                  disabled={occupancySaving}
-                  className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
-                    occupancyStatus === 'rented'
-                      ? 'border-accent bg-accent-bg'
-                      : 'border-border bg-surface hover:border-border'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">👥</div>
-                  <div className="text-sm font-medium text-foreground">{t('account.occRent')}</div>
-                  <div className="text-xs text-muted mt-1">{t('account.occRentHint')}</div>
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <h2 className="text-lg font-semibold text-accent mb-2">{t('registry.occupantKind')}</h2>
-              <p className="text-sm text-secondary mb-4">{t('registry.occupantLead')}</p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {(['owner', 'tenant', 'user'] as OccupantKind[]).map((kind) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    onClick={() => handleUpdateOccupantKind(kind)}
-                    disabled={occupancySaving}
-                    className={`rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${
-                      occupantKind === kind
-                        ? 'border-accent bg-accent-bg'
-                        : 'border-border bg-surface hover:border-border'
-                    }`}
-                  >
-                    <div className="text-sm font-medium text-foreground">{labelOccupantKind(kind, t)}</div>
-                  </button>
-                ))}
-              </div>
-              {occupantKind !== 'owner' && (
-                <form onSubmit={handleSaveOccupantDetails} className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <input
-                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('registry.occupantName')}
-                    value={occupantForm.name}
-                    onChange={(e) => setOccupantForm({ ...occupantForm, name: e.target.value })}
-                  />
-                  <input
-                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('registry.occupantPhone')}
-                    value={occupantForm.phone}
-                    onChange={(e) => setOccupantForm({ ...occupantForm, phone: e.target.value })}
-                  />
-                  <input
-                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('registry.occupantEmail')}
-                    type="email"
-                    value={occupantForm.email}
-                    onChange={(e) => setOccupantForm({ ...occupantForm, email: e.target.value })}
-                  />
-                  <label className="text-sm text-secondary">
-                    {t('registry.occupantUntil')}
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                      type="date"
-                      value={occupantForm.until}
-                      onChange={(e) => setOccupantForm({ ...occupantForm, until: e.target.value })}
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={occupancySaving}
-                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2"
-                  >
-                    {occupancySaving ? t('common.saving') : t('common.save')}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* Информация о жильцах */}
-            <>
-                {/* Период аренды */}
-                <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-                  <h2 className="text-lg font-semibold text-accent mb-4">{t('account.stayPeriod')}</h2>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="text-sm text-secondary mb-1 block">{t('account.checkIn')}</label>
-                      <input
-                        type="date"
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        value={guestForm.check_in}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, check_in: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-secondary mb-1 block">{t('account.checkOut')}</label>
-                      <input
-                        type="date"
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        value={guestForm.check_out}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, check_out: e.target.value })
-                        }
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted mt-2">
-                    {t('account.stayDatesHint')}
-                  </p>
-                </div>
-
-                {/* Форма добавления жильца */}
-                <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-                  <h2 className="text-lg font-semibold text-accent mb-4">
-                    {t('account.addGuest')}
-                  </h2>
-                  <form onSubmit={handleAddGuest} className="space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <input
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        placeholder={t('account.firstName')}
-                        value={guestForm.first_name}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, first_name: e.target.value })
-                        }
-                        required
-                      />
-                      <input
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        placeholder={t('account.lastName')}
-                        value={guestForm.last_name}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, last_name: e.target.value })
-                        }
-                        required
-                      />
-                      <input
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        placeholder={t('account.birthYear')}
-                        type="number"
-                        min="1900"
-                        max={new Date().getFullYear()}
-                        value={guestForm.birth_year}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, birth_year: e.target.value })
-                        }
-                      />
-                      <label className="flex items-center gap-2 text-sm text-secondary sm:col-span-1">
-                        <input
-                          type="checkbox"
-                          checked={guestForm.is_child}
-                          onChange={(e) =>
-                            setGuestForm({ ...guestForm, is_child: e.target.checked })
-                          }
-                          className="w-4 h-4 accent-accent"
-                        />
-                        {t('account.child18')}
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-secondary sm:col-span-1">
-                        <input
-                          type="checkbox"
-                          checked={guestForm.is_permanent}
-                          onChange={(e) =>
-                            setGuestForm({ ...guestForm, is_permanent: e.target.checked })
-                          }
-                          className="w-4 h-4 accent-accent"
-                        />
-                        {t('registry.resident')}
-                      </label>
-                      <input
-                        type="date"
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        value={guestForm.check_in}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, check_in: e.target.value })
-                        }
-                        title={t('account.checkIn')}
-                      />
-                      <input
-                        type="date"
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        value={guestForm.check_out}
-                        onChange={(e) =>
-                          setGuestForm({ ...guestForm, check_out: e.target.value })
-                        }
-                        title={t('account.checkOut')}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={guestAdding}
-                      className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
-                    >
-                      {guestAdding ? t('account.adding') : t('account.addGuestPlus')}
-                    </button>
-                  </form>
-                </div>
-
-                {/* Список жильцов */}
-                <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-accent">
-                      {t('account.guestsN', { n: guests.length })}
-                    </h2>
-                    {guests.length > 0 && (
-                      <button
-                        onClick={handleClearAllGuests}
-                        className="text-xs text-danger hover:text-danger"
-                      >
-                        {t('account.clearAll')}
-                      </button>
-                    )}
-                  </div>
-
-                  {guests.length === 0 ? (
-                    <div className="text-sm text-muted">{t('account.noGuests')}</div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-secondary border-b border-border">
-                            <th className="py-2 px-3">№</th>
-                            <th className="py-2 px-3">{t('account.firstName')}</th>
-                            <th className="py-2 px-3">{t('account.lastName')}</th>
-                            <th className="py-2 px-3">{t('account.birthYearShort')}</th>
-                            <th className="py-2 px-3">{t('account.colType')}</th>
-                            <th className="py-2 px-3">{t('registry.resident')}</th>
-                            <th className="py-2 px-3">{t('account.checkIn')}</th>
-                            <th className="py-2 px-3">{t('account.checkOut')}</th>
-                            <th className="py-2 px-3"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {guests.map((g, i) => (
-                            <tr
-                              key={g.id}
-                              className="border-b border-border hover:bg-surface"
-                            >
-                              <td className="py-2 px-3 text-muted">{i + 1}</td>
-                              <td className="py-2 px-3 text-foreground">{g.first_name}</td>
-                              <td className="py-2 px-3 text-foreground">{g.last_name}</td>
-                              <td className="py-2 px-3 text-secondary">
-                                {g.birth_year ?? '—'}
-                              </td>
-                              <td className="py-2 px-3">
-                                {g.is_child ? (
-                                  <span className="text-warning">{t('account.child')}</span>
-                                ) : (
-                                  <span className="text-accent">{t('account.adult')}</span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 text-secondary text-xs">
-                                {g.is_permanent ? t('common.yes') : t('common.no')}
-                              </td>
-                              <td className="py-2 px-3 text-secondary text-xs">
-                                {g.check_in
-                                  ? new Date(g.check_in).toLocaleDateString(dateLocale)
-                                  : '—'}
-                              </td>
-                              <td className="py-2 px-3 text-secondary text-xs">
-                                {g.check_out
-                                  ? new Date(g.check_out).toLocaleDateString(dateLocale)
-                                  : '—'}
-                              </td>
-                              <td className="py-2 px-3">
-                                <button
-                                  onClick={() => handleRemoveGuest(g.id)}
-                                  className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger"
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </>
-
-            {/* Домашние животные — показывается всегда */}
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <h2 className="text-lg font-semibold text-accent mb-2">
-                {t('registry.petsTitle')} 🐾
-              </h2>
-              <p className="text-sm text-secondary mb-4">
-                {t('registry.petsHintChip')}
-              </p>
-              <form onSubmit={handleAddPet} className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <select
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  value={petForm.species}
-                  onChange={(e) => setPetForm({ ...petForm, species: e.target.value })}
-                >
-                  <option value="dog">{t('registry.dog')}</option>
-                  <option value="cat">{t('registry.cat')}</option>
-                  <option value="other">{t('registry.otherPet')}</option>
-                </select>
-                <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  placeholder={t('registry.petName')} value={petForm.name}
-                  onChange={(e) => setPetForm({ ...petForm, name: e.target.value })} />
-                <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  placeholder={t('registry.chip')} value={petForm.chip_no}
-                  onChange={(e) => setPetForm({ ...petForm, chip_no: e.target.value })} />
-                <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  placeholder={t('registry.passport')} value={petForm.passport_no}
-                  onChange={(e) => setPetForm({ ...petForm, passport_no: e.target.value })} />
-                <button type="submit" disabled={petSaving}
-                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                  {t('registry.addPet')}
-                </button>
-              </form>
-              {pets.length > 0 && (
-                <div className="mb-4 space-y-2">
-                  {pets.map((pet) => (
-                    <div key={pet.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
-                      <div>
-                        <div className="text-foreground">
-                          {pet.species === 'dog' ? t('registry.dog') : pet.species === 'cat' ? t('registry.cat') : t('registry.otherPet')}
-                          {pet.name ? ` · ${pet.name}` : ''}
-                        </div>
-                        <div className="text-xs text-muted">
-                          {pet.chip_no ? `${t('registry.chip')}: ${pet.chip_no}` : ''}
-                          {pet.passport_no ? ` · ${t('registry.passport')}: ${pet.passport_no}` : ''}
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => handleRemovePet(pet.id)} className="text-xs text-danger">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-sm text-secondary mb-2">{t('account.petsHint')}</p>
-              <textarea
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder={t('account.petsPh')}
-                rows={3}
-                value={petInfo}
-                onChange={(e) => setPetInfo(e.target.value)}
-              />
-              <button
-                onClick={handleSavePetInfo}
-                disabled={occupancySaving}
-                className="mt-3 rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
-              >
-                {occupancySaving ? t('common.saving') : t('common.save')}
-              </button>
-            </div>
-          </div>
+          <OwnerOccupancy
+            apartmentNumber={String(property?.apartment_number ?? '')}
+            properties={properties}
+            selectedId={property?.id ?? null}
+            occupancyStatus={occupancyStatus}
+            occupantKind={occupantKind}
+            occupantName={property?.occupant_name ?? null}
+            occupantPhone={property?.occupant_phone ?? null}
+            occupantEmail={property?.occupant_email ?? null}
+            occupantUntil={property?.occupant_until ? String(property.occupant_until).slice(0, 10) : null}
+            ownerName={property?.owner_name ?? null}
+            ownerEmail={property?.owner_email ?? null}
+            registryPeople={registryPeople}
+            bookRequestOpen={requests.some(
+              (r) =>
+                r.property_id === property?.id &&
+                r.category === 'книга' &&
+                r.status !== 'выполнена' &&
+                r.status !== 'отклонена',
+            )}
+            guests={guests}
+            pets={pets}
+            occupancySaving={occupancySaving}
+            guestAdding={guestAdding}
+            petSaving={petSaving}
+            petsLoadFailed={petsLoadFailed}
+            onSelectProperty={setSelectedPropertyId}
+            onSaveStatus={handleSaveOccupancy}
+            onAddGuest={handleAddGuest}
+            onUpdateGuest={handleUpdateGuest}
+            onRemoveGuest={handleRemoveGuest}
+            onAddPet={handleAddPet}
+            onRemovePet={handleRemovePet}
+            onReportChange={handleReportBookChange}
+          />
         );
 
-      // ===========================================================
-      // ФИНАНСЫ
-      // ===========================================================
+
       case 'финансы': {
         const totalDebt = Number(property?.debt ?? 0);
         const totalOver = Number(property?.overpayment ?? 0);

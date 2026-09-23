@@ -391,7 +391,7 @@ export function OwnerUtilities({
             <div className="text-[11px] text-muted">
               {previousIsInitial ? t('account.utilInitial') : t('account.utilLastReading')}
             </div>
-            <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(previousDisplay, locale)} {t('account.m3')}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(lastCurrent ?? previousDisplay, locale)} {t('account.m3')}</div>
             <div className="mt-0.5 text-[11px] text-muted">
               {lastActive
                 ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)

@@ -133,7 +133,9 @@ export function AdminWater({
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
   const meterById = useMemo(() => new Map(meters.map((m) => [m.id, m])), [meters]);
   const tariff = currentWaterTariff(tariffs);
-  const lastReading = lastActiveReading(readings);
+  const lastReading = lastActiveReading(
+    activeMeter ? readings.filter((r) => r.meter_id === activeMeter.id) : readings,
+  );
 
   const loadTariffs = useCallback(async () => {
     if (!canSee) return;
@@ -492,6 +494,14 @@ export function AdminWater({
               <div className="text-[11px] text-muted">{t('admin.lastReading')}</div>
               <div className="mt-0.5 tabular-nums">
                 {lastReading ? formatM3(Number(lastReading.current_value), locale) : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-muted">{t('admin.prev')}</div>
+              <div className="mt-0.5 tabular-nums">
+                {lastReading
+                  ? formatM3(Number(lastReading.previous_value), locale)
+                  : formatM3(Number(activeMeter.initial_reading), locale)}
               </div>
             </div>
             <div>

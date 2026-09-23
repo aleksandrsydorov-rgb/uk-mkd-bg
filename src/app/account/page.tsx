@@ -40,6 +40,7 @@ import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/acc
 import { OwnerOverview } from '@/components/account/OwnerOverview';
 import { OwnerApartment } from '@/components/account/OwnerApartment';
 import { OwnerOccupancy, type OccupancySavePayload, type GuestInsertPayload, type PetInsertPayload } from '@/components/account/OwnerOccupancy';
+import { OwnerDocumentsDecisions } from '@/components/account/OwnerDocumentsDecisions';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
@@ -124,6 +125,7 @@ type MenuSection =
   | 'финансы'
   | 'расходы_ук'
   | 'счётчики'
+  | 'документы'
   | 'заявки'
   | 'сообщения'
   | 'опросы'
@@ -150,6 +152,7 @@ export default function AccountPage() {
     { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
     { key: 'финансы', label: t('account.finance'), icon: '💰' },
     { key: 'счётчики', label: t('account.meters'), icon: '⚡' },
+    { key: 'документы', label: t('account.docsMenu'), icon: '📁' },
     { key: 'заявки', label: t('account.requests'), icon: '📋' },
     { key: 'сообщения', label: t('account.announcements'), icon: '📢' },
     { key: 'расходы_ук', label: t('account.expenses'), icon: '🧾' },
@@ -1436,6 +1439,7 @@ export default function AccountPage() {
             onOpenPolls={() => setActiveMenu('опросы')}
             onOpenRequests={() => setActiveMenu('заявки')}
             onOpenChat={() => setActiveMenu('чат')}
+            onOpenDocuments={() => setActiveMenu('документы')}
           />
         );
       }
@@ -1994,6 +1998,9 @@ export default function AccountPage() {
       // ===========================================================
       // ЗАЯВКИ
       // ===========================================================
+      case 'документы':
+        return <OwnerDocumentsDecisions supabase={supabase} />;
+
       case 'заявки':
         return (
           <div className="space-y-6">

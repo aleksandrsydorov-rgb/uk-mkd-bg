@@ -1171,9 +1171,489 @@ export interface Database {
         };
         Relationships: [];
       };
+      building_documents: {
+        Row: {
+          id: string;
+          category: string;
+          title: string;
+          description: string | null;
+          document_date: string | null;
+          storage_path: string;
+          mime_type: string | null;
+          file_size: number | null;
+          status: string;
+          version: number;
+          supersedes_document_id: string | null;
+          created_by_email: string | null;
+          created_at: string;
+          published_at: string | null;
+          published_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          category: string;
+          title: string;
+          description?: string | null;
+          document_date?: string | null;
+          storage_path: string;
+          mime_type?: string | null;
+          file_size?: number | null;
+          status?: string;
+          version?: number;
+          supersedes_document_id?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+          published_at?: string | null;
+          published_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          category?: string;
+          title?: string;
+          description?: string | null;
+          document_date?: string | null;
+          storage_path?: string;
+          mime_type?: string | null;
+          file_size?: number | null;
+          status?: string;
+          version?: number;
+          supersedes_document_id?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+          published_at?: string | null;
+          published_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      general_meetings: {
+        Row: {
+          id: string;
+          title: string;
+          description: string | null;
+          meeting_date: string;
+          meeting_time: string | null;
+          location: string | null;
+          meeting_mode: string;
+          is_urgent: boolean;
+          status: string;
+          convoked_by: string | null;
+          invitation_posted_at: string | null;
+          minutes_completed_at: string | null;
+          minutes_notice_posted_at: string | null;
+          absentee_voting_enabled: boolean;
+          absentee_voting_deadline: string | null;
+          online_meeting_url: string | null;
+          represented_ideal_parts_percent: number | null;
+          quorum_stage: string | null;
+          signed_document_uploaded: boolean;
+          external_registry_ref: string | null;
+          created_by_email: string | null;
+          created_at: string;
+          updated_at: string;
+          published_at: string | null;
+          published_by_email: string | null;
+          cancelled_at: string | null;
+          cancelled_by_email: string | null;
+          cancellation_reason: string | null;
+          reschedule_reason: string | null;
+          rescheduled_from_meeting_id: string | null;
+          operational_phase: string;
+          registration_opened_at: string | null;
+          meeting_started_at: string | null;
+          meeting_ended_at: string | null;
+          meeting_can_proceed: boolean;
+          quorum_rule: string;
+          quorum_rule_note: string | null;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          description?: string | null;
+          meeting_date: string;
+          meeting_time?: string | null;
+          location?: string | null;
+          meeting_mode?: string;
+          is_urgent?: boolean;
+          status?: string;
+          convoked_by?: string | null;
+          invitation_posted_at?: string | null;
+          minutes_completed_at?: string | null;
+          minutes_notice_posted_at?: string | null;
+          absentee_voting_enabled?: boolean;
+          absentee_voting_deadline?: string | null;
+          online_meeting_url?: string | null;
+          represented_ideal_parts_percent?: number | null;
+          quorum_stage?: string | null;
+          signed_document_uploaded?: boolean;
+          external_registry_ref?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          published_at?: string | null;
+          published_by_email?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by_email?: string | null;
+          cancellation_reason?: string | null;
+          reschedule_reason?: string | null;
+          rescheduled_from_meeting_id?: string | null;
+          operational_phase?: string;
+          registration_opened_at?: string | null;
+          meeting_started_at?: string | null;
+          meeting_ended_at?: string | null;
+          meeting_can_proceed?: boolean;
+          quorum_rule?: string;
+          quorum_rule_note?: string | null;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          description?: string | null;
+          meeting_date?: string;
+          meeting_time?: string | null;
+          location?: string | null;
+          meeting_mode?: string;
+          is_urgent?: boolean;
+          status?: string;
+          convoked_by?: string | null;
+          invitation_posted_at?: string | null;
+          minutes_completed_at?: string | null;
+          minutes_notice_posted_at?: string | null;
+          absentee_voting_enabled?: boolean;
+          absentee_voting_deadline?: string | null;
+          online_meeting_url?: string | null;
+          represented_ideal_parts_percent?: number | null;
+          quorum_stage?: string | null;
+          signed_document_uploaded?: boolean;
+          external_registry_ref?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          published_at?: string | null;
+          published_by_email?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by_email?: string | null;
+          cancellation_reason?: string | null;
+          reschedule_reason?: string | null;
+          rescheduled_from_meeting_id?: string | null;
+          operational_phase?: string;
+          registration_opened_at?: string | null;
+          meeting_started_at?: string | null;
+          meeting_ended_at?: string | null;
+          meeting_can_proceed?: boolean;
+          quorum_rule?: string;
+          quorum_rule_note?: string | null;
+        };
+        Relationships: [];
+      };
+      general_meeting_agenda_items: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          position: number;
+          title: string;
+          description: string | null;
+          proposed_decision_text: string | null;
+          created_at: string;
+          decision_category: string | null;
+          majority_rule: string;
+          threshold_comparator: string;
+          required_percent: number | null;
+          denominator_basis: string;
+          legal_basis: string | null;
+          voting_status: string;
+          voting_opened_at: string | null;
+          voting_closed_at: string | null;
+          for_percent: number | null;
+          against_percent: number | null;
+          abstain_percent: number | null;
+          computed_threshold_status: string | null;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          position: number;
+          title: string;
+          description?: string | null;
+          proposed_decision_text?: string | null;
+          created_at?: string;
+          majority_rule?: string;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          position?: number;
+          title?: string;
+          description?: string | null;
+          proposed_decision_text?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      general_meeting_decisions: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          agenda_item_id: string | null;
+          decision_number: string;
+          title: string;
+          decision_text: string;
+          protocol_result: string;
+          execution_status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          agenda_item_id?: string | null;
+          decision_number: string;
+          title: string;
+          decision_text: string;
+          protocol_result: string;
+          execution_status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          agenda_item_id?: string | null;
+          decision_number?: string;
+          title?: string;
+          decision_text?: string;
+          protocol_result?: string;
+          execution_status?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      general_meeting_participants: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          property_id: number;
+          participant_name: string;
+          representation_type: string;
+          representative_name: string | null;
+          property_number_snapshot: string | null;
+          ideal_parts_percent_snapshot: number | null;
+          attendance_mode: string;
+          proxy_document_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          property_id: number;
+          participant_name: string;
+          representation_type: string;
+          representative_name?: string | null;
+          property_number_snapshot?: string | null;
+          ideal_parts_percent_snapshot?: number | null;
+          attendance_mode: string;
+          proxy_document_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          property_id?: number;
+          participant_name?: string;
+          representation_type?: string;
+          representative_name?: string | null;
+          property_number_snapshot?: string | null;
+          ideal_parts_percent_snapshot?: number | null;
+          attendance_mode?: string;
+          proxy_document_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      general_meeting_votes: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          decision_id: string;
+          property_id: number;
+          participant_id: string | null;
+          vote: string;
+          ideal_parts_percent_snapshot: number | null;
+          vote_method: string;
+          recorded_at: string;
+          recorded_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          decision_id: string;
+          property_id: number;
+          participant_id?: string | null;
+          vote: string;
+          ideal_parts_percent_snapshot?: number | null;
+          vote_method: string;
+          recorded_at?: string;
+          recorded_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          decision_id?: string;
+          property_id?: number;
+          participant_id?: string | null;
+          vote?: string;
+          ideal_parts_percent_snapshot?: number | null;
+          vote_method?: string;
+          recorded_at?: string;
+          recorded_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      general_meeting_files: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          document_id: string;
+          file_type: string;
+          title: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          document_id: string;
+          file_type: string;
+          title?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          document_id?: string;
+          file_type?: string;
+          title?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
+      publish_building_document: {
+        Args: { p_document_id: string };
+        Returns: Database['public']['Tables']['building_documents']['Row'];
+      };
+      archive_building_document: {
+        Args: { p_document_id: string };
+        Returns: Database['public']['Tables']['building_documents']['Row'];
+      };
+      publish_general_meeting: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      publish_general_meeting_minutes: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      refresh_meeting_represented_parts: {
+        Args: { p_meeting_id: string };
+        Returns: number;
+      };
+      cancel_general_meeting: {
+        Args: { p_meeting_id: string; p_reason: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      reschedule_general_meeting: {
+        Args: {
+          p_meeting_id: string;
+          p_meeting_date: string;
+          p_meeting_time: string | null;
+          p_location: string | null;
+          p_meeting_mode: string;
+          p_reason: string;
+        };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      calculate_general_meeting_quorum: {
+        Args: { p_meeting_id: string };
+        Returns: Json;
+      };
+      record_general_meeting_quorum_check: {
+        Args: { p_meeting_id: string; p_review_note?: string | null };
+        Returns: Json;
+      };
+      open_general_meeting_registration: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      advance_general_meeting_quorum_stage: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      declare_general_meeting_attendance: {
+        Args: { p_meeting_id: string; p_property_id: number; p_attendance_mode: string };
+        Returns: Database['public']['Tables']['general_meeting_participants']['Row'];
+      };
+      confirm_general_meeting_attendance: {
+        Args: { p_participant_id: string };
+        Returns: Database['public']['Tables']['general_meeting_participants']['Row'];
+      };
+      reject_general_meeting_attendance: {
+        Args: { p_participant_id: string; p_reason: string };
+        Returns: Database['public']['Tables']['general_meeting_participants']['Row'];
+      };
+      register_general_meeting_participant: {
+        Args: {
+          p_meeting_id: string;
+          p_property_id: number;
+          p_attendance_mode: string;
+          p_representation_type: string;
+          p_representative_name?: string | null;
+          p_confirm?: boolean;
+        };
+        Returns: Database['public']['Tables']['general_meeting_participants']['Row'];
+      };
+      mark_general_meeting_participant_left: {
+        Args: { p_participant_id: string; p_reason?: string | null };
+        Returns: Database['public']['Tables']['general_meeting_participants']['Row'];
+      };
+      start_general_meeting: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      open_general_meeting_vote: {
+        Args: { p_agenda_item_id: string };
+        Returns: Database['public']['Tables']['general_meeting_agenda_items']['Row'];
+      };
+      cast_general_meeting_vote: {
+        Args: { p_agenda_item_id: string; p_property_id: number; p_vote: string };
+        Returns: Database['public']['Tables']['general_meeting_votes']['Row'];
+      };
+      record_general_meeting_vote: {
+        Args: { p_agenda_item_id: string; p_property_id: number; p_vote: string };
+        Returns: Database['public']['Tables']['general_meeting_votes']['Row'];
+      };
+      close_general_meeting_vote: {
+        Args: { p_agenda_item_id: string };
+        Returns: Database['public']['Tables']['general_meeting_agenda_items']['Row'];
+      };
+      set_general_meeting_protocol_result: {
+        Args: { p_decision_id: string; p_protocol_result: string; p_override_reason?: string | null };
+        Returns: Database['public']['Tables']['general_meeting_decisions']['Row'];
+      };
+      finish_general_meeting: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      set_general_meeting_online_url: {
+        Args: { p_meeting_id: string; p_url: string };
+        Returns: undefined;
+      };
+      get_general_meeting_online_join_url: {
+        Args: { p_meeting_id: string };
+        Returns: string;
+      };
+      can_manage_building_governance: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
       update_apartment_guest: {
         Args: {
           p_guest_id: number;

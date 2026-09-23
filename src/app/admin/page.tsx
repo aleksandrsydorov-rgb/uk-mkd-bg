@@ -43,6 +43,7 @@ import { AdminReports } from '@/components/AdminReports';
 import { ChatMedia } from '@/components/ChatMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
+import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import {
   canSeeCapitalAdmin,
@@ -181,6 +182,7 @@ type AdminSection =
   | 'капремонт'
   | 'расходы'
   | 'опросы'
+  | 'документы'
   | 'объявления'
   | 'отчётность'
   | 'чат';
@@ -214,6 +216,7 @@ export default function AdminPage() {
     { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
     { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
     { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
+    { key: 'документы', label: t('admin.docsMenu'), icon: '📁' },
     { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
     { key: 'чат', label: t('admin.chat'), icon: '💬' },
   ];
@@ -245,7 +248,7 @@ export default function AdminPage() {
         'отчётность',
       ],
     },
-    { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'опросы', 'объявления'] },
+    { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'документы', 'опросы', 'объявления'] },
   ];
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
@@ -2718,6 +2721,16 @@ export default function AdminPage() {
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
+          />
+        );
+
+      case 'документы':
+        return (
+          <AdminDocumentsDecisions
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+            staffActive={staffActive}
           />
         );
 

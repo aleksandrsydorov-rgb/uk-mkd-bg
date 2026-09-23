@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isMissingRelation, isPollAcceptingVotes, type Poll, type PollVote } from '@/lib/polls';
+import { isUpcomingMeeting, type GeneralMeeting, type MeetingDecision } from '@/lib/buildingDocuments';
 import { displayElectricityMeterNumber, type ElectricityMeter } from '@/lib/electricity';
 import type { FinanceTab, MeterTab } from '@/components/account/OwnerUtilities';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
@@ -64,6 +65,7 @@ export function OwnerOverview({
   onOpenPolls,
   onOpenRequests,
   onOpenChat,
+  onOpenDocuments,
 }: {
   supabase: SupabaseClient<Database>;
   property: {
@@ -93,6 +95,7 @@ export function OwnerOverview({
   onOpenPolls: () => void;
   onOpenRequests: () => void;
   onOpenChat: () => void;
+  onOpenDocuments: () => void;
 }) {
   const { t, dateLocale, locale } = useI18n();
   const [extrasLoading, setExtrasLoading] = useState(true);
@@ -101,6 +104,8 @@ export function OwnerOverview({
   const [capitalBalance, setCapitalBalance] = useState<UtilityBalance>(emptyBalance());
   const [waterMeter, setWaterMeter] = useState<WaterMeter | null>(null);
   const [lastWater, setLastWater] = useState<WaterReading | null>(null);
+  const [upcomingMeeting, setUpcomingMeeting] = useState<GeneralMeeting | null>(null);
+  const [latestDecision, setLatestDecision] = useState<MeetingDecision | null>(null);
 
   const loadExtras = useCallback(async () => {
     setExtrasLoading(true);
@@ -109,6 +114,25 @@ export function OwnerOverview({
         Promise.resolve(supabase.rpc('get_capital_repair_balance', { p_property_id: property.id })).then((capRes) => {
           if (!capRes.error) setCapitalBalance(firstBalance(capRes.data as UtilityBalance[] | null));
           else setCapitalBalance(emptyBalance());
+        }),
+        Promise.resolve(supabase.from('general_meetings').select('*').order('meeting_date', { ascending: true })).then((res) => {
+          if (res.error) {
+            if (!isMissingRelation(res.error, 'general_meetings')) return;
+            setUpcomingMeeting(null);
+            return;
+          }
+          const rows = (res.data as GeneralMeeting[]) ?? [];
+          setUpcomingMeeting(rows.find((m) => isUpcomingMeeting(m)) ?? null);
+        }),
+        Promise.resolve(
+          supabase.from('general_meeting_decisions').select('*').eq('protocol_result', 'adopted').order('created_at', { ascending: false }).limit(1),
+        ).then((res) => {
+          if (res.error) {
+            if (!isMissingRelation(res.error, 'general_meeting_decisions')) return;
+            setLatestDecision(null);
+            return;
+          }
+          setLatestDecision(((res.data as MeetingDecision[]) ?? [])[0] ?? null);
         }),
       ];
       if (waterEnabled) {
@@ -272,6 +296,14 @@ export function OwnerOverview({
       onClick: onOpenChat,
     });
   }
+  if (upcomingMeeting) {
+    attention.push({
+      key: 'meeting',
+      title: t('docs.attentionMeeting'),
+      detail: new Date(upcomingMeeting.meeting_date).toLocaleDateString(dateLocale),
+      onClick: onOpenDocuments,
+    });
+  }
 
   const financeCount = 2 + (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
   const financeCols =
@@ -340,6 +372,43 @@ export function OwnerOverview({
       ) : (
         <p className="text-xs text-secondary">✓ {t('account.overviewOk')}</p>
       )}
+
+      {(upcomingMeeting || latestDecision) ? (
+        <section className="overflow-hidden rounded-xl border border-border bg-background">
+          <p className="px-3 pt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
+            {t('docs.overviewTitle')}
+          </p>
+          {upcomingMeeting ? (
+            <button
+              type="button"
+              onClick={onOpenDocuments}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">{t('docs.overviewUpcoming')}</span>
+                <span className="block text-xs text-secondary">
+                  {new Date(upcomingMeeting.meeting_date).toLocaleDateString(dateLocale)}
+                  {upcomingMeeting.meeting_time ? ` · ${upcomingMeeting.meeting_time.slice(0, 5)}` : ''}
+                </span>
+              </span>
+              <span className="text-muted">→</span>
+            </button>
+          ) : null}
+          {latestDecision ? (
+            <button
+              type="button"
+              onClick={onOpenDocuments}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">{t('docs.overviewLastDecision')}</span>
+                <span className="block text-xs text-secondary">{latestDecision.title}</span>
+              </span>
+              <span className="text-muted">→</span>
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       <section>
         <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.finance')}</p>

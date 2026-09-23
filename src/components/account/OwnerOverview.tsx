@@ -11,6 +11,7 @@ import type { FinanceTab, MeterTab } from '@/components/account/OwnerUtilities';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
 import type { SupportFeeAssessment } from '@/lib/supportFeeAnnual';
 import { formatEurAmount } from '@/lib/supportFeeAnnual';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import {
   balanceTone,
   emptyBalance,
@@ -313,10 +314,9 @@ export function OwnerOverview({
   const financeCols =
     financeCount >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : financeCount === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
   const meterCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
+  const kpiGrid = 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4';
   const kpiBtn =
     'group flex w-full min-h-[6.5rem] flex-col items-center justify-center rounded-xl border border-border bg-surface px-3 py-3 text-center transition hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40';
-  const meterBtn =
-    'group flex w-full min-h-[6.5rem] flex-col items-center justify-center rounded-xl border border-border/80 bg-background px-3 py-2.5 text-center transition hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40';
   const secondaryBtn =
     'group flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left transition hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40';
 
@@ -416,7 +416,7 @@ export function OwnerOverview({
 
       <section>
         <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.finance')}</p>
-        <div className={`grid gap-2 ${financeCols}`}>
+        <div className={financeCount >= 4 ? kpiGrid : `grid gap-2 ${financeCols}`}>
           <button type="button" onClick={() => onOpenFinance('support')} className={kpiBtn}>
             <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabSupport')}</p>
             <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(supportNet)}`}>
@@ -467,21 +467,21 @@ export function OwnerOverview({
       {meterCount > 0 && (
         <section>
           <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.meters')}</p>
-          <div className={`grid gap-2 ${meterCount > 1 ? 'sm:grid-cols-2' : ''}`}>
+          <div className={kpiGrid}>
             {waterEnabled && (
-              <button type="button" onClick={() => onOpenMeters('water')} className={meterBtn}>
+              <button type="button" onClick={() => onOpenMeters('water')} className={kpiBtn}>
                 <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.meterTabWater')}</p>
                 {extrasLoading ? (
-                  <p className="mt-1 text-sm text-muted">{t('common.loading')}</p>
+                  <p className="mt-0.5 text-sm text-muted">{t('common.loading')}</p>
                 ) : !waterMeter ? (
-                  <p className="mt-1 text-sm text-secondary">{t('account.utilNoMeter')}</p>
+                  <p className="mt-0.5 text-sm text-secondary">{t('account.meterUnassigned')}</p>
                 ) : (
                   <>
-                    <p className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
+                    <p className="mt-0.5 text-xl font-semibold tabular-nums text-foreground md:text-2xl">
                       {lastWater ? `${formatM3(Number(lastWater.current_value), locale)} ${t('account.m3')}` : '—'}
                     </p>
                     {lastWater ? (
-                      <p className="text-xs text-secondary">{new Date(lastWater.reading_date).toLocaleDateString(dateLocale)}</p>
+                      <p className="mt-0.5 text-xs text-secondary">{formatOwnerDate(lastWater.reading_date, dateLocale)}</p>
                     ) : null}
                     <p className="mt-0.5 text-[11px] text-muted">{waterMeter.meter_number}</p>
                   </>
@@ -489,20 +489,24 @@ export function OwnerOverview({
               </button>
             )}
             {electricityEnabled && (
-              <button type="button" onClick={() => onOpenMeters('electricity')} className={meterBtn}>
+              <button type="button" onClick={() => onOpenMeters('electricity')} className={kpiBtn}>
                 <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.meterTabElectricity')}</p>
                 {!electricMeter ? (
-                  <p className="mt-1 text-sm text-secondary">{t('account.elNoMeter')}</p>
+                  <p className="mt-0.5 text-sm text-secondary">{t('account.meterUnassigned')}</p>
                 ) : (
                   <>
-                    <p className="mt-0.5 text-sm font-semibold text-foreground">
-                      {t('account.elDayShort')} {electricLastDay != null ? `${formatKwh(electricLastDay, locale)} ${t('account.kwh')}` : '—'}
-                    </p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {t('account.elNightShort')} {electricLastNight != null ? `${formatKwh(electricLastNight, locale)} ${t('account.kwh')}` : '—'}
+                    <p className="mt-0.5 text-sm font-semibold tabular-nums leading-snug text-foreground">
+                      <span className="block">
+                        {t('account.elDayShort')}{' '}
+                        {electricLastDay != null ? `${formatKwh(electricLastDay, locale)} ${t('account.kwh')}` : '—'}
+                      </span>
+                      <span className="block">
+                        {t('account.elNightShort')}{' '}
+                        {electricLastNight != null ? `${formatKwh(electricLastNight, locale)} ${t('account.kwh')}` : '—'}
+                      </span>
                     </p>
                     {electricLastDate ? (
-                      <p className="text-xs text-secondary">{new Date(electricLastDate).toLocaleDateString(dateLocale)}</p>
+                      <p className="mt-0.5 text-xs text-secondary">{formatOwnerDate(electricLastDate, dateLocale)}</p>
                     ) : null}
                     <p className="mt-0.5 text-[11px] text-muted">{displayElectricityMeterNumber(electricMeter.meter_number)}</p>
                   </>

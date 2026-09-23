@@ -10,6 +10,7 @@ export interface ApartmentPet {
   chip_no: string | null;
   passport_no: string | null;
   notes: string | null;
+  is_taken_to_public_places?: boolean | null;
 }
 
 export function normalizeOccupantKind(raw: string | null | undefined): OccupantKind {

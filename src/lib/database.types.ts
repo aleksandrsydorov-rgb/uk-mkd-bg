@@ -40,6 +40,7 @@ export interface Database {
           property_id: number;
           first_name: string;
           last_name: string;
+          middle_name: string | null;
           birth_year: number | null;
           is_child: boolean;
           check_in: string | null;
@@ -52,6 +53,7 @@ export interface Database {
           property_id: number;
           first_name: string;
           last_name: string;
+          middle_name?: string | null;
           birth_year?: number | null;
           is_child?: boolean;
           check_in?: string | null;
@@ -64,6 +66,7 @@ export interface Database {
           property_id?: number;
           first_name?: string;
           last_name?: string;
+          middle_name?: string | null;
           birth_year?: number | null;
           is_child?: boolean;
           check_in?: string | null;
@@ -401,6 +404,12 @@ export interface Database {
           occupant_phone: string | null;
           occupant_email: string | null;
           occupant_until: string | null;
+          purpose: string | null;
+          ideal_parts_percent: number | null;
+          ideal_parts_source: string | null;
+          ideal_parts_note: string | null;
+          ideal_parts_meeting_ref: string | null;
+          owner_user_management_agreement: string | null;
         };
         Insert: {
           id?: number;
@@ -424,6 +433,12 @@ export interface Database {
           occupant_phone?: string | null;
           occupant_email?: string | null;
           occupant_until?: string | null;
+          purpose?: string | null;
+          ideal_parts_percent?: number | null;
+          ideal_parts_source?: string | null;
+          ideal_parts_note?: string | null;
+          ideal_parts_meeting_ref?: string | null;
+          owner_user_management_agreement?: string | null;
         };
         Update: {
           id?: number;
@@ -447,6 +462,12 @@ export interface Database {
           occupant_phone?: string | null;
           occupant_email?: string | null;
           occupant_until?: string | null;
+          purpose?: string | null;
+          ideal_parts_percent?: number | null;
+          ideal_parts_source?: string | null;
+          ideal_parts_note?: string | null;
+          ideal_parts_meeting_ref?: string | null;
+          owner_user_management_agreement?: string | null;
         };
         Relationships: [];
       };
@@ -574,6 +595,8 @@ export interface Database {
           chip_no: string | null;
           passport_no: string | null;
           notes: string | null;
+          is_taken_to_public_places: boolean | null;
+          updated_at?: string;
         };
         Insert: {
           id?: number;
@@ -584,6 +607,8 @@ export interface Database {
           chip_no?: string | null;
           passport_no?: string | null;
           notes?: string | null;
+          is_taken_to_public_places?: boolean | null;
+          updated_at?: string;
         };
         Update: {
           id?: number;
@@ -594,6 +619,98 @@ export interface Database {
           chip_no?: string | null;
           passport_no?: string | null;
           notes?: string | null;
+          is_taken_to_public_places?: boolean | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      property_registry_people: {
+        Row: {
+          id: number;
+          property_id: number;
+          relation_type: string;
+          entity_kind: string;
+          first_name: string | null;
+          middle_name: string | null;
+          last_name: string | null;
+          entity_name: string | null;
+          eik_bulstat: string | null;
+          email: string | null;
+          registered_at: string | null;
+          deregistered_at: string | null;
+          lives_on_property: boolean | null;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          property_id: number;
+          relation_type: string;
+          entity_kind?: string;
+          first_name?: string | null;
+          middle_name?: string | null;
+          last_name?: string | null;
+          entity_name?: string | null;
+          eik_bulstat?: string | null;
+          email?: string | null;
+          registered_at?: string | null;
+          deregistered_at?: string | null;
+          lives_on_property?: boolean | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          property_id?: number;
+          relation_type?: string;
+          entity_kind?: string;
+          first_name?: string | null;
+          middle_name?: string | null;
+          last_name?: string | null;
+          entity_name?: string | null;
+          eik_bulstat?: string | null;
+          email?: string | null;
+          registered_at?: string | null;
+          deregistered_at?: string | null;
+          lives_on_property?: boolean | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      property_absence_periods: {
+        Row: {
+          id: number;
+          property_id: number;
+          person_id: number | null;
+          from_date: string;
+          to_date: string | null;
+          note: string | null;
+          source: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          property_id: number;
+          person_id?: number | null;
+          from_date: string;
+          to_date?: string | null;
+          note?: string | null;
+          source?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          property_id?: number;
+          person_id?: number | null;
+          from_date?: string;
+          to_date?: string | null;
+          note?: string | null;
+          source?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -1301,6 +1418,24 @@ export interface Database {
           adjustments_credit_eur: number;
           balance_eur: number;
         }[];
+      };
+      submit_property_book_change: {
+        Args: { p_property_id: number; p_message: string; p_payload?: Json };
+        Returns: number;
+      };
+      property_ideal_parts_overview: {
+        Args: Record<string, never>;
+        Returns: {
+          property_count: number;
+          filled_count: number;
+          null_count: number;
+          sum_percent: number | null;
+          needs_review: boolean;
+        }[];
+      };
+      can_read_property_book: {
+        Args: { p_property_id: number };
+        Returns: boolean;
       };
     };
     Enums: Record<string, never>;

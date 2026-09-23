@@ -14,8 +14,24 @@ export function labelOccupancy(raw: string | null | undefined, t: Translate) {
 
 export function labelOccupantKind(raw: string | null | undefined, t: Translate) {
   if (raw === 'tenant') return t('registry.occupantTenant');
-  if (raw === 'user') return t('registry.occupantUser');
+  if (raw === 'user') return t('book.userOfProperty');
   return t('registry.occupantOwner');
+}
+
+export function labelRegistryRelation(raw: string | null | undefined, t: Translate) {
+  if (raw === 'user_of_property') return t('book.userOfProperty');
+  if (raw === 'household_member') return t('book.householdMember');
+  if (raw === 'occupant') return t('book.occupant');
+  if (raw === 'owner') return t('book.owner');
+  return t('book.owner');
+}
+
+export function labelIdealPartsSource(raw: string | null | undefined, t: Translate) {
+  if (raw === 'document') return t('book.sourceDocument');
+  if (raw === 'calculated') return t('book.sourceCalculated');
+  if (raw === 'general_meeting_approved') return t('book.sourceMeeting');
+  if (raw === 'unknown') return t('book.sourceUnknown');
+  return null;
 }
 
 export function labelRequestStatus(raw: string | null | undefined, t: Translate) {
@@ -53,6 +69,7 @@ export function labelCategory(raw: string | null | undefined, t: Translate) {
   if (raw === 'электрика') return t('cat.electric');
   if (raw === 'уборка') return t('cat.cleaning');
   if (raw === 'отопление') return t('cat.heating');
+  if (raw === 'книга') return t('cat.book');
   return t('cat.other');
 }
 

@@ -38,6 +38,7 @@ import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
 import { OwnerOverview } from '@/components/account/OwnerOverview';
+import { OwnerApartment } from '@/components/account/OwnerApartment';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
@@ -58,6 +59,10 @@ import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { ChatMedia } from '@/components/ChatMedia';
 import { MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import { normalizeOccupantKind, type ApartmentPet, type OccupantKind } from '@/lib/registry';
+import {
+  type PropertyAbsencePeriod,
+  type PropertyRegistryPerson,
+} from '@/lib/propertyBook';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -103,6 +108,7 @@ interface ApartmentGuest {
   property_id: number;
   first_name: string;
   last_name: string;
+  middle_name?: string | null;
   birth_year: number | null;
   is_child: boolean;
   check_in: string | null;
@@ -193,6 +199,8 @@ export default function AccountPage() {
 
   // ---------- ЖИЛЬЦЫ ----------
   const [guests, setGuests] = useState<ApartmentGuest[]>([]);
+  const [registryPeople, setRegistryPeople] = useState<PropertyRegistryPerson[]>([]);
+  const [absences, setAbsences] = useState<PropertyAbsencePeriod[]>([]);
   const [guestForm, setGuestForm] = useState({
     first_name: '',
     last_name: '',
@@ -246,7 +254,6 @@ export default function AccountPage() {
   const [listingSaving, setListingSaving] = useState(false);
   const [transfers, setTransfers] = useState<OwnerTransfer[]>([]);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
-  const [ownerTransferOpen, setOwnerTransferOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({
     to_owner_name: '',
     to_owner_email: '',
@@ -336,6 +343,8 @@ export default function AccountPage() {
       setPollTallies([]);
       setTransfers([]);
       setGuests([]);
+      setRegistryPeople([]);
+      setAbsences([]);
       setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
       setElectricityMeters([]);
       setChatMessages([]);
@@ -606,6 +615,30 @@ export default function AccountPage() {
           setPets((petsRes.data as ApartmentPet[]) ?? []);
         }
 
+        const peopleRes = await supabase
+          .from('property_registry_people')
+          .select('*')
+          .eq('property_id', property.id)
+          .order('created_at', { ascending: true });
+        if (peopleRes.error) {
+          if (!isMissingRelation(peopleRes.error, 'property_registry_people')) throw peopleRes.error;
+          setRegistryPeople([]);
+        } else {
+          setRegistryPeople((peopleRes.data as PropertyRegistryPerson[]) ?? []);
+        }
+
+        const absenceRes = await supabase
+          .from('property_absence_periods')
+          .select('*')
+          .eq('property_id', property.id)
+          .order('from_date', { ascending: false });
+        if (absenceRes.error) {
+          if (!isMissingRelation(absenceRes.error, 'property_absence_periods')) throw absenceRes.error;
+          setAbsences([]);
+        } else {
+          setAbsences((absenceRes.data as PropertyAbsencePeriod[]) ?? []);
+        }
+
         await reloadMeterReadings(property.id);
 
         const { data: chatData, error: chatErr } = await supabase
@@ -770,6 +803,39 @@ export default function AccountPage() {
     } finally {
       setOccupancySaving(false);
     }
+  }
+
+  async function handleReportBookChange(message: string) {
+    if (!property) throw new Error(t('err.save'));
+    const { error } = await supabase.rpc('submit_property_book_change', {
+      p_property_id: property.id,
+      p_message: message,
+      p_payload: { source: 'owner_apartment' },
+    });
+    if (error) {
+      if (isMissingRelation(error, 'submit_property_book_change')) {
+        const { error: insertErr } = await supabase.from('requests').insert({
+          property_id: property.id,
+          subject: t('book.aptTitle', { n: String(property.apartment_number ?? '') }),
+          description: message,
+          status: 'новая',
+          priority: 'средний',
+          category: 'книга',
+          owner_name: property.owner_name,
+          owner_phone: property.owner_phone,
+        });
+        if (insertErr) throw insertErr;
+      } else {
+        throw error;
+      }
+    }
+    const { data: reqData, error: reqErr } = await supabase
+      .from('requests')
+      .select('*')
+      .in('property_id', properties.map((p) => p.id))
+      .order('created_at', { ascending: false });
+    if (reqErr) throw reqErr;
+    setRequests(reqData ?? []);
   }
 
   async function handleSaveOccupantDetails(e: React.FormEvent) {
@@ -1329,176 +1395,36 @@ export default function AccountPage() {
       // ===========================================================
       // КВАРТИРА
       // ===========================================================
-      case 'квартира':
+      case 'квартира': {
+        const bookRequestOpen = requests.some(
+          (r) =>
+            r.property_id === property?.id &&
+            r.category === 'книга' &&
+            r.status !== 'выполнена' &&
+            r.status !== 'отклонена',
+        );
         return (
-          <div className="space-y-4">
-            {properties.length > 1 && (
-              <div className="rounded-[14px] border border-border bg-surface shadow-card p-4 text-sm text-secondary">
-                {t('account.onAccount', { count: properties.length, area: myVoteWeight.toFixed(1) })}
-              </div>
-            )}
-            <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card">
-              <div className="relative px-5 pb-5 pt-5 md:px-6 md:pt-6">
-                <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-bg blur-3xl" />
-                <div className="relative flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
-                      {properties.length > 1 ? t('account.selectedApt') : t('account.yourApt')}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <h2 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-                        № {property?.apartment_number ?? '—'}
-                      </h2>
-                      <p className="text-sm text-muted">
-                        {property?.floor != null ? t('account.floorN', { n: property.floor }) : t('account.floorUnknown')}
-                        {' · '}
-                        {property?.area_sqm != null ? `${property.area_sqm} ${t('common.sqm')}` : t('account.areaUnknown')}
-                      </p>
-                    </div>
-                    <p className="mt-2 text-sm text-secondary">
-                      {property?.owner_name || t('account.ownerUnknown')}
-                      {property?.owner_type ? (
-                        <span className="text-muted">
-                          {' · '}
-                          {labelOwnerType(property.owner_type, t)}
-                          {property.company_name ? ` · ${property.company_name}` : ''}
-                        </span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className={`rounded-full border px-2.5 py-1 text-xs ${listingStatusClass(currentListing)}`}>
-                      {labelListing(currentListing, t)}
-                    </span>
-                    <span className={`rounded-full border px-2.5 py-1 text-xs ${
-                      occupancyStatus === 'owner'
-                        ? 'border-accent/25 bg-accent-bg text-accent'
-                        : occupancyStatus === 'standby'
-                          ? 'border-warning/25 bg-warning-bg text-warning'
-                          : 'border-accent/25 bg-accent-bg text-accent'
-                    }`}>
-                      {occupancyStatus === 'owner' && t('account.livesOwner')}
-                      {occupancyStatus === 'standby' && t('account.away')}
-                      {occupancyStatus === 'rented' && t('account.tenants')}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="relative mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div className="rounded-xl bg-surface px-3 py-3">
-                    <div className="text-[11px] text-muted">{t('account.debt')}</div>
-                    <div className={`mt-1 text-lg font-semibold ${
-                      Number(property?.debt ?? 0) <= 0 ? 'text-muted' : 'text-danger'
-                    }`}>
-                      {Number(property?.debt ?? 0).toFixed(2)} €
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-surface px-3 py-3">
-                    <div className="text-[11px] text-muted">{t('account.overpay')}</div>
-                    <div className={`mt-1 text-lg font-semibold ${
-                      Number(property?.overpayment ?? 0) > 0 ? 'text-success' : 'text-muted'
-                    }`}>
-                      {Number(property?.overpayment ?? 0).toFixed(2)} €
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-surface px-3 py-3">
-                    <div className="text-[11px] text-muted">{t('account.feeYear')}</div>
-                    <div className="mt-1 text-lg font-semibold text-foreground">
-                      {annualSupportFee(property?.area_sqm, supportRate).toFixed(0)} €
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-surface px-3 py-3">
-                    <div className="text-[11px] text-muted">{t('account.openRequests')}</div>
-                    <div className="mt-1 text-lg font-semibold text-foreground">
-                      {requests.filter((r) =>
-                        r.property_id === property?.id &&
-                        r.status !== 'выполнена' &&
-                        r.status !== 'отклонена'
-                      ).length}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative mt-5">
-                  <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.objectStatus')}</p>
-                  <div className="inline-flex w-full rounded-full bg-surface p-1 sm:w-auto">
-                    <button
-                      type="button"
-                      disabled={listingSaving}
-                      onClick={() => handleUpdateListing('в собственности')}
-                      className={`flex-1 rounded-full px-4 py-2 text-sm transition disabled:opacity-50 sm:flex-none ${
-                        currentListing === 'в собственности'
-                          ? 'bg-accent-bg text-accent'
-                          : 'text-secondary hover:text-foreground'
-                      }`}
-                    >
-                      {t('account.owned')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={listingSaving}
-                      onClick={() => handleUpdateListing('на продаже')}
-                      className={`flex-1 rounded-full px-4 py-2 text-sm transition disabled:opacity-50 sm:flex-none ${
-                        currentListing === 'на продаже'
-                          ? 'bg-warning/20 text-warning shadow-sm'
-                          : 'text-secondary hover:text-foreground'
-                      }`}
-                    >
-                      {t('account.forSale')}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative mt-5 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveMenu('жильцы')}
-                    className="rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white shadow-card"
-                  >
-                    {t('account.manageOccupancy')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveMenu('заявки')}
-                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover"
-                  >
-                    {t('account.requests')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveMenu('финансы')}
-                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover"
-                  >
-                    {t('account.finance')}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[14px] border border-border bg-surface shadow-card">
-              <button
-                type="button"
-                onClick={() => setOwnerTransferOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-3 p-4 text-left md:p-6"
-                aria-expanded={ownerTransferOpen}
-              >
-                <div>
-                  <h2 className="text-lg font-semibold text-accent">{t('account.ownerTransfer')}</h2>
-                  <p className="mt-0.5 text-sm text-secondary">
-                    {pendingTransfer
-                      ? t('account.transferPending')
-                      : t('account.ownerTransferHint')}
-                  </p>
-                </div>
-                <span className="shrink-0 text-muted">{ownerTransferOpen ? '▲' : '▼'}</span>
-              </button>
-              {ownerTransferOpen && (
-              <div className="border-t border-border px-4 pb-6 pt-4 md:px-6">
-              <p className="text-sm text-secondary mb-4">
+          <OwnerApartment
+            property={property!}
+            properties={properties}
+            occupancyStatus={occupancyStatus}
+            guests={guests}
+            pets={pets}
+            people={registryPeople}
+            absences={absences}
+            bookRequestOpen={bookRequestOpen}
+            onSelectProperty={setSelectedPropertyId}
+            onOpenOccupancy={() => setActiveMenu('жильцы')}
+            onReportChange={handleReportBookChange}
+            listingSaving={listingSaving}
+            onUpdateListing={handleUpdateListing}
+            extra={(
+              <div className="rounded-xl border border-border bg-background px-3 py-3">
+              <p className="text-sm text-secondary mb-3">
                 {t('account.transferLead')}
               </p>
               {pendingTransfer ? (
-                <div className="rounded-xl border border-warning/25 bg-warning-bg p-4 text-sm text-warning">
+                <div className="rounded-xl border border-warning/25 bg-warning-bg p-3 text-sm text-warning">
                   {t('account.transferPending')}
                   <div className="mt-2 text-secondary">
                     {t('account.newOwner')}: {pendingTransfer.to_owner_name} ({pendingTransfer.to_owner_email})
@@ -1560,14 +1486,12 @@ export default function AccountPage() {
                 </div>
               )}
               </div>
-              )}
-            </div>
-          </div>
+            )}
+          />
         );
+      }
 
-      // ===========================================================
-      // ЖИЛЬЦЫ
-      // ===========================================================
+
       case 'жильцы':
         return (
           <div className="space-y-6">

@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { MeterFinanceStatus, compactKpiAlignClass, meterKpiCardClass, meterKpiGridClass } from '@/components/account/MeterFinanceStatus';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
   formatElectricityTariff,
@@ -86,7 +87,7 @@ function LedgerList({
         return (
           <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
             <span className="min-w-0 text-secondary">
-              {new Date(row.created_at).toLocaleDateString(dateLocale)}
+              {formatOwnerDate(row.created_at, dateLocale)}
               {' · '}
               {ledgerKindLabel(row.kind, t)}
               {title ? ` · ${title}` : ''}

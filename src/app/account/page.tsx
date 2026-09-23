@@ -40,6 +40,7 @@ import { OwnerPolls } from '@/components/account/OwnerPolls';
 import { OwnerApartment } from '@/components/account/OwnerApartment';
 import { OwnerOccupancy, type OccupancySavePayload, type GuestInsertPayload, type PetInsertPayload } from '@/components/account/OwnerOccupancy';
 import { OwnerDocumentsDecisions } from '@/components/account/OwnerDocumentsDecisions';
+import { PillTabs } from '@/components/account/ownerUi';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
@@ -62,6 +63,8 @@ import {
   type PropertyAbsencePeriod,
   type PropertyRegistryPerson,
 } from '@/lib/propertyBook';
+import { ownerVisibleError } from '@/lib/ownerError';
+import { ownerMgmtParam, ownerSectionParam, parseOwnerNav } from '@/lib/ownerNav';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -141,8 +144,8 @@ export default function AccountPage() {
     { key: 'финансы', label: t('account.finance'), icon: '💰' },
     { key: 'счётчики', label: t('account.meters'), icon: '⚡' },
     { key: 'документы', label: t('account.docsMenu'), icon: '📁' },
-    { key: 'ук', label: t('account.mgmtTitle'), icon: '🏢' },
     { key: 'опросы', label: t('account.polls'), icon: '🗳️' },
+    { key: 'ук', label: t('account.mgmtTitle'), icon: '🏢' },
   ];
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
@@ -297,19 +300,19 @@ export default function AccountPage() {
         password: passwordInput,
       });
       if (error) {
-        setLoginError(error.message);
+        setLoginError(ownerVisibleError(error, t('err.noAccess')));
         return;
       }
       const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
       if (!authenticatedEmail) {
-        setLoginError('No email on authenticated user');
+        setLoginError(t('err.noAccess'));
         return;
       }
       setEmailInput(authenticatedEmail);
       setDevEmail(authenticatedEmail);
       setPasswordInput('');
     } catch (err: unknown) {
-      setLoginError(err instanceof Error ? err.message : 'Sign in failed');
+      setLoginError(ownerVisibleError(err, t('err.noAccess')));
     } finally {
       setLoginLoading(false);
     }
@@ -520,7 +523,7 @@ export default function AccountPage() {
           setSupportAllocations((allocRes.data as SupportFeeAllocation[]) ?? []);
         }
       } catch (e: any) {
-        setError(e?.message ?? t('err.load'));
+        setError(ownerVisibleError(e, t('err.load')));
       } finally {
         setLoading(false);
       }
@@ -531,6 +534,12 @@ export default function AccountPage() {
   useEffect(() => {
     try {
       const url = new URL(window.location.href);
+      const nav = parseOwnerNav(url);
+      if (nav.menu) setActiveMenu(nav.menu);
+      if (nav.mgmt) {
+        setManagementTab(nav.mgmt);
+        if (!nav.menu) setActiveMenu('ук');
+      }
       const fromFinance = url.searchParams.get('financeTab');
       if (fromFinance === 'support' || fromFinance === 'water' || fromFinance === 'electricity' || fromFinance === 'capital') {
         setFinanceTab(fromFinance);
@@ -674,7 +683,7 @@ export default function AccountPage() {
         setChatMessages(allMsgs);
         setUnreadChatCount(allMsgs.filter((m) => m.sender === 'uk' && !m.read_by_owner).length);
       } catch (e: any) {
-        setError(e?.message ?? t('err.loadApt'));
+        setError(ownerVisibleError(e, t('err.loadApt')));
       }
     }
     loadPropertyScoped();
@@ -791,7 +800,7 @@ export default function AccountPage() {
       setChatFile(null);
       if (chatFileRef.current) chatFileRef.current.value = '';
     } catch (e: any) {
-      setError(e?.message ?? t('err.send'));
+      setError(ownerVisibleError(e, t('err.send')));
     } finally {
       setChatSending(false);
     }
@@ -816,7 +825,7 @@ export default function AccountPage() {
         prev.map((p) => (p.id === property.id ? { ...p, occupant_kind: kind } : p)),
       );
     } catch (e: any) {
-      setError(e?.message ?? t('err.status'));
+      setError(ownerVisibleError(e, t('err.status')));
     } finally {
       setOccupancySaving(false);
     }
@@ -876,7 +885,7 @@ export default function AccountPage() {
         prev.map((p) => (p.id === property.id ? { ...p, ...payload } : p)),
       );
     } catch (err: any) {
-      setError(err?.message ?? t('err.save'));
+      setError(ownerVisibleError(err, t('err.save')));
     } finally {
       setOccupancySaving(false);
     }
@@ -951,7 +960,7 @@ export default function AccountPage() {
         prev.map((p) => (p.id === property.id ? { ...p, status: next } : p))
       );
     } catch (e: any) {
-      setError(e?.message ?? t('err.listing'));
+      setError(ownerVisibleError(e, t('err.listing')));
     } finally {
       setListingSaving(false);
     }
@@ -1110,7 +1119,7 @@ export default function AccountPage() {
         prev.map((p) => (p.id === property.id ? { ...p, pet_info: petInfo.trim() || null } : p))
       );
     } catch (e: any) {
-      setError(e?.message ?? t('err.save'));
+      setError(ownerVisibleError(e, t('err.save')));
     } finally {
       setOccupancySaving(false);
     }
@@ -1126,7 +1135,7 @@ export default function AccountPage() {
       if (delErr) throw delErr;
       setGuests([]);
     } catch (e: any) {
-      setError(e?.message ?? t('err.clear'));
+      setError(ownerVisibleError(e, t('err.clear')));
     }
   }
 
@@ -1186,23 +1195,36 @@ export default function AccountPage() {
       setPhoto(null);
       setShowRequestForm(false);
     } catch (e: any) {
-      setError(e?.message ?? t('err.createRequest'));
+      setError(ownerVisibleError(e, t('err.createRequest')));
     } finally {
       setCreating(false);
     }
   }
 
-  function persistQueryTab(param: 'financeTab' | 'meterTab', value: string, defaultValue: string, storageKey: string) {
+  function persistSearchParam(param: string, value: string | null) {
     try {
-      sessionStorage.setItem(storageKey, value);
       const url = new URL(window.location.href);
-      if (value === defaultValue) url.searchParams.delete(param);
+      if (!value) url.searchParams.delete(param);
       else url.searchParams.set(param, value);
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     } catch {
       /* ignore */
     }
   }
+
+  function persistQueryTab(param: 'financeTab' | 'meterTab', value: string, defaultValue: string, storageKey: string) {
+    try {
+      sessionStorage.setItem(storageKey, value);
+      persistSearchParam(param, value === defaultValue ? null : value);
+    } catch {
+      persistSearchParam(param, value === defaultValue ? null : value);
+    }
+  }
+
+  useEffect(() => {
+    persistSearchParam('section', ownerSectionParam(activeMenu));
+    persistSearchParam('tab', activeMenu === 'ук' ? ownerMgmtParam(managementTab) : null);
+  }, [activeMenu, managementTab]);
 
   function selectFinanceTab(tab: FinanceTab) {
     let next = tab;
@@ -1270,7 +1292,7 @@ export default function AccountPage() {
       ) {
         setError(t('err.voteAlready'));
       } else {
-        setError(message);
+        setError(ownerVisibleError(e, t('err.vote')));
       }
     } finally {
       setVotingPollId(null);
@@ -1644,29 +1666,20 @@ export default function AccountPage() {
               </div>
             )}
 
-            <div className="-mx-1 overflow-x-auto pb-1">
-              <div className="flex min-w-min gap-2 px-1">
-                {([
-                  ['support', t('account.financeTabSupport')],
-                  ...(waterEnabled ? ([['water', t('account.financeTabWater')]] as const) : []),
-                  ...(electricityEnabled ? ([['electricity', t('account.financeTabElectricity')]] as const) : []),
-                  ['capital', t('account.financeTabCapital')],
-                ] as const).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => selectFinanceTab(id)}
-                    className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap ${
-                      financeTab === id
-                        ? 'border-accent/25 bg-accent-bg text-accent'
-                        : 'border-border bg-surface text-secondary hover:bg-hover'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <PillTabs
+              items={[
+                { id: 'support' as const, label: t('account.financeTabSupport') },
+                ...(waterEnabled ? [{ id: 'water' as const, label: t('account.financeTabWater') }] : []),
+                ...(electricityEnabled ? [{ id: 'electricity' as const, label: t('account.financeTabElectricity') }] : []),
+                { id: 'capital' as const, label: t('account.financeTabCapital') },
+              ]}
+              value={
+                (financeTab === 'water' && !waterEnabled) || (financeTab === 'electricity' && !electricityEnabled)
+                  ? 'support'
+                  : financeTab
+              }
+              onChange={selectFinanceTab}
+            />
 
             {property && (
               <OwnerUtilities
@@ -1972,24 +1985,11 @@ export default function AccountPage() {
         return (
           <div className="space-y-4">
             {meterTabs.length > 1 && (
-            <div className="-mx-1 overflow-x-auto pb-1">
-              <div className="flex min-w-min gap-2 px-1">
-                {meterTabs.map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => selectMeterTab(id)}
-                    className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap ${
-                      shownMeterTab === id
-                        ? 'border-accent/25 bg-accent-bg text-accent'
-                        : 'border-border bg-surface text-secondary hover:bg-hover'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+              <PillTabs
+                items={meterTabs.map(([id, label]) => ({ id, label }))}
+                value={shownMeterTab}
+                onChange={selectMeterTab}
+              />
             )}
 
             {property && (
@@ -2123,21 +2123,22 @@ export default function AccountPage() {
           {MENU_ITEMS.map((item) => (
             <button
               key={item.key}
+              type="button"
               onClick={() => {
                 setActiveMenu(item.key);
                 if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                 activeMenu === item.key
                   ? 'bg-accent-bg text-accent border border-accent/25'
                   : 'text-secondary hover:bg-hover hover:text-foreground border border-transparent'
               }`}
               title={item.label}
             >
-              <span className="text-lg flex-shrink-0">{item.icon}</span>
+              <span className="text-lg flex-shrink-0 leading-none">{item.icon}</span>
               {sidebarOpen && (
-                <span className="flex items-center gap-2 text-left leading-tight">
-                  {item.label}
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-left leading-tight">
+                  <span className="min-w-0 truncate">{item.label}</span>
                   {item.key === 'ук' && unreadChatCount > 0 && (
                     <span className="ml-auto bg-danger text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                       {unreadChatCount}
@@ -2236,7 +2237,11 @@ export default function AccountPage() {
             ? 'mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden p-3 md:px-6'
             : 'mx-auto w-full max-w-6xl p-3 md:px-6 md:py-5'
         }>
-          {properties.length > 1 && activeMenu !== 'обзор' && (
+          {properties.length > 1 &&
+            activeMenu !== 'обзор' &&
+            activeMenu !== 'квартира' &&
+            activeMenu !== 'жильцы' &&
+            activeMenu !== 'финансы' && (
             <div className={inMgmtChat ? 'shrink-0' : undefined}>
             <ApartmentPicker
               properties={properties}

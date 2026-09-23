@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
   BUILDING_DOCUMENTS_BUCKET,
@@ -23,13 +24,13 @@ import {
   type MeetingFileLink,
 } from '@/lib/buildingDocuments';
 import { OwnerMeetingLive } from '@/components/account/OwnerMeetingLive';
+import { EmptyState, PillTabs, SectionHeader } from '@/components/account/ownerUi';
 import { OWNER_MEETING_COLUMNS, labelMeetingWorkflowStatus } from '@/lib/generalMeetingWorkflow';
 
 type Tab = 'meetings' | 'decisions' | 'documents';
 
 function fmtWhen(meeting: GeneralMeeting, locale: string) {
-  const d = new Date(`${meeting.meeting_date.slice(0, 10)}T12:00:00`);
-  const date = d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+  const date = formatOwnerDate(meeting.meeting_date, locale);
   const time = meeting.meeting_time ? meeting.meeting_time.slice(0, 5) : null;
   return time ? `${date} · ${time}` : date;
 }
@@ -245,38 +246,23 @@ export function OwnerDocumentsDecisions({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{t('docs.title')}</p>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${
-                tab === item.id ? 'border-accent bg-accent-bg font-medium' : 'border-border bg-background'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        {error ? <p className="mt-2 text-sm text-danger">{t('docs.loadFail')}</p> : null}
-        {fileError ? <p className="mt-2 text-sm text-danger">{fileError}</p> : null}
-      </section>
+      <SectionHeader title={t('account.docsMenu')} />
+      <PillTabs items={tabs} value={tab} onChange={setTab} />
+      {error ? <p className="text-sm text-danger">{t('docs.loadFail')}</p> : null}
+      {fileError ? <p className="text-sm text-danger">{fileError}</p> : null}
 
       {tab === 'meetings' ? (
         <div className="space-y-4">
           <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
             <h3 className="text-sm font-semibold text-foreground">{t('docs.upcoming')}</h3>
             <div className="mt-3 grid gap-2">
-              {upcoming.length === 0 ? <p className="text-sm text-secondary">{t('docs.emptyMeetings')}</p> : upcoming.map((m) => meetingCard(m, true))}
+              {upcoming.length === 0 ? <EmptyState title={t('docs.emptyMeetings')} /> : upcoming.map((m) => meetingCard(m, true))}
             </div>
           </section>
           <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
             <h3 className="text-sm font-semibold text-foreground">{t('docs.past')}</h3>
             <div className="mt-3 grid gap-2">
-              {past.length === 0 ? <p className="text-sm text-secondary">{t('docs.emptyMeetings')}</p> : past.map((m) => meetingCard(m, false))}
+              {past.length === 0 ? <EmptyState title={t('docs.emptyMeetings')} /> : past.map((m) => meetingCard(m, false))}
             </div>
           </section>
         </div>
@@ -284,20 +270,15 @@ export function OwnerDocumentsDecisions({
 
       {tab === 'decisions' ? (
         <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
-          <div className="flex flex-wrap gap-2">
-            {(['all', 'adopted', 'rejected'] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFilter(id)}
-                className={`rounded-full border px-3 py-1.5 text-sm ${
-                  filter === id ? 'border-accent bg-accent-bg' : 'border-border'
-                }`}
-              >
-                {id === 'all' ? t('docs.filterAll') : id === 'adopted' ? t('docs.filterAdopted') : t('docs.filterRejected')}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            items={[
+              { id: 'all', label: t('docs.filterAll') },
+              { id: 'adopted', label: t('docs.filterAdopted') },
+              { id: 'rejected', label: t('docs.filterRejected') },
+            ]}
+            value={filter}
+            onChange={setFilter}
+          />
           <input
             className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
             placeholder={t('docs.search')}
@@ -305,7 +286,7 @@ export function OwnerDocumentsDecisions({
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="mt-3 grid gap-2">
-            {filteredDecisions.length === 0 ? <p className="text-sm text-secondary">{t('docs.emptyDecisions')}</p> : null}
+            {filteredDecisions.length === 0 ? <EmptyState title={t('docs.emptyDecisions')} /> : null}
             {filteredDecisions.map((d) => {
               const meeting = meetings.find((m) => m.id === d.meeting_id);
               const open = decisionId === d.id;
@@ -313,7 +294,7 @@ export function OwnerDocumentsDecisions({
                 <article key={d.id} className="rounded-xl border border-border bg-background px-3 py-3">
                   <p className="text-xs text-muted">
                     {t('docs.decisionN', { n: d.decision_number })}
-                    {meeting ? ` · ${new Date(meeting.meeting_date).toLocaleDateString(dateLocale)}` : ''}
+                    {meeting ? ` · ${formatOwnerDate(meeting.meeting_date, dateLocale)}` : ''}
                   </p>
                   <p className="mt-0.5 text-sm font-medium text-foreground">{d.title}</p>
                   <p className="mt-0.5 text-xs text-muted">{labelProtocolResult(d.protocol_result, t)}</p>
@@ -351,13 +332,13 @@ export function OwnerDocumentsDecisions({
                 <div key={group.id}>
                   <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">{labelDocGroup(group.id, t)}</p>
                   <div className="mt-2 grid gap-2">
-                    {rows.length === 0 ? <p className="text-sm text-secondary">{t('docs.emptyDocs')}</p> : null}
+                    {rows.length === 0 ? <EmptyState title={t('docs.emptyDocs')} /> : null}
                     {rows.map((d) => (
                       <article key={d.id} className="rounded-xl border border-border bg-background px-3 py-3">
                         <p className="text-sm font-medium text-foreground">{d.title}</p>
                         <p className="mt-0.5 text-xs text-muted">{t('docs.version', { n: d.version })}</p>
                         {d.document_date ? (
-                          <p className="text-xs text-secondary">{new Date(d.document_date).toLocaleDateString(dateLocale)}</p>
+                          <p className="text-xs text-secondary">{formatOwnerDate(d.document_date, dateLocale)}</p>
                         ) : null}
                         <p className="text-xs text-muted">{d.mime_type?.includes('pdf') ? t('docs.pdf') : d.mime_type || t('docs.pdf')}</p>
                         <button type="button" className="mt-2 text-sm text-accent hover:underline" onClick={() => void openDocument(d)}>

@@ -20,8 +20,11 @@ import {
   type PropertyAbsencePeriod,
   type PropertyRegistryPerson,
 } from '@/lib/propertyBook';
+import { formatOwnerDate } from '@/lib/ownerFormat';
+import { ownerVisibleError } from '@/lib/ownerError';
+import { PillTabs } from '@/components/account/ownerUi';
 import type { Database } from '@/lib/database.types';
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 type AptTab = 'object' | 'people' | 'residency' | 'animals' | 'extra';
@@ -84,7 +87,6 @@ export function OwnerApartment({
   extra?: ReactNode;
 }) {
   const { t, locale, dateLocale } = useI18n();
-  const tabsId = useId();
   const [tab, setTab] = useState<AptTab>('object');
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeText, setChangeText] = useState('');
@@ -230,7 +232,7 @@ export function OwnerApartment({
 
   function fmtDate(raw: string | null | undefined) {
     if (!raw) return '—';
-    return new Date(raw).toLocaleDateString(dateLocale);
+    return formatOwnerDate(raw, dateLocale);
   }
 
   async function submitChange(e: React.FormEvent) {
@@ -247,7 +249,7 @@ export function OwnerApartment({
       setChangeText('');
       setChangeOpen(false);
     } catch (err: unknown) {
-      setChangeError(err instanceof Error ? err.message : t('err.save'));
+      setChangeError(ownerVisibleError(err, t('err.save')));
     } finally {
       setChangeSaving(false);
     }
@@ -261,7 +263,7 @@ export function OwnerApartment({
         onSelect={onSelectProperty}
       />
 
-      <header className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
+      <header className="rounded-[14px] border border-border bg-surface px-4 py-3">
         <h2 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
           {t('book.aptTitle', { n: String(property.apartment_number ?? '—') })}
         </h2>
@@ -313,49 +315,11 @@ export function OwnerApartment({
       </header>
 
       <div>
-        <div
-          role="tablist"
-          aria-label={t('account.apt')}
-          className="flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible"
-        >
-          {tabs.map((item) => {
-            const selected = tab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                id={`${tabsId}-${item.id}`}
-                aria-selected={selected}
-                aria-controls={`${tabsId}-panel-${item.id}`}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => setTab(item.id)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-                  e.preventDefault();
-                  const i = tabs.findIndex((x) => x.id === tab);
-                  const next = e.key === 'ArrowRight' ? (i + 1) % tabs.length : (i - 1 + tabs.length) % tabs.length;
-                  setTab(tabs[next].id);
-                  const el = document.getElementById(`${tabsId}-${tabs[next].id}`);
-                  el?.focus();
-                }}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-sm whitespace-nowrap transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                  selected
-                    ? 'bg-accent text-white'
-                    : 'border border-border bg-surface text-secondary hover:bg-hover'
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
+        <PillTabs items={tabs} value={tab} onChange={setTab} />
 
         <div
           role="tabpanel"
-          id={`${tabsId}-panel-${tab}`}
-          aria-labelledby={`${tabsId}-${tab}`}
-          className="mt-3 rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5"
+          className="mt-3 rounded-[14px] border border-border bg-surface px-4 py-3"
         >
           {tab === 'object' ? (
             <dl className="space-y-2.5 text-sm">

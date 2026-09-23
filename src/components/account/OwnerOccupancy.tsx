@@ -5,6 +5,7 @@ import { labelOccupantKind } from '@/i18n/labels';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { OccupantKind } from '@/lib/registry';
 import type { ApartmentPet } from '@/lib/registry';
+import { ownerVisibleError } from '@/lib/ownerError';
 import { displayedPropertyOwners, type PropertyRegistryPerson } from '@/lib/propertyBook';
 import { useEffect, useState } from 'react';
 
@@ -266,7 +267,7 @@ export function OwnerOccupancy({
       setOwnerChangeOpen(false);
       flash();
     } catch (err: unknown) {
-      setOwnerChangeError(err instanceof Error ? err.message : t('err.save'));
+      setOwnerChangeError(ownerVisibleError(err, t('err.save')));
     } finally {
       setOwnerChangeSaving(false);
     }
@@ -285,7 +286,7 @@ export function OwnerOccupancy({
       });
       flash();
     } catch (err) {
-      setStatusError(err instanceof Error ? err.message : t('err.status'));
+      setStatusError(ownerVisibleError(err, t('err.status')));
     }
   }
 
@@ -317,11 +318,7 @@ export function OwnerOccupancy({
       flash();
     } catch (err) {
       setGuestError(
-        err instanceof Error
-          ? err.message
-          : editingGuestId != null
-            ? t('err.updateGuest')
-            : t('err.addGuest'),
+        ownerVisibleError(err, editingGuestId != null ? t('err.updateGuest') : t('err.addGuest')),
       );
     }
   }
@@ -362,7 +359,7 @@ export function OwnerOccupancy({
       setPetOpen(false);
       flash();
     } catch (err) {
-      setPetError(err instanceof Error ? err.message : t('err.save'));
+      setPetError(ownerVisibleError(err, t('err.save')));
     }
   }
 
@@ -388,18 +385,12 @@ export function OwnerOccupancy({
       <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
         <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.occTitle')}</p>
         <p className="mt-1 text-lg font-semibold text-foreground">
-          {t('account.occNowLabel')}:{' '}
-          {occupancyStatus === 'standby'
-            ? t('account.occNowStandby')
+          {occupancyStatus === 'owner'
+            ? `${primaryOwnerName || t('account.occOwnerNameMissing')} · ${t('book.owner')}`
             : occupancyStatus === 'rented'
-              ? t('account.occNowRented')
-              : t('account.occNowOwner')}
+              ? `${rentedPrimaryName || t('account.occNowRented')} · ${t('account.occRent')}`
+              : t('account.occNowStandby')}
         </p>
-        {occupancyStatus === 'owner' && primaryOwnerName ? (
-          <p className="mt-1 text-sm font-medium text-foreground">{primaryOwnerName}</p>
-        ) : occupancyStatus === 'rented' && rentedPrimaryName ? (
-          <p className="mt-1 text-sm font-medium text-foreground">{rentedPrimaryName}</p>
-        ) : null}
         {summaryPeople ? <p className="mt-1 text-sm text-secondary">{summaryPeople}</p> : null}
         <p className="mt-1 text-sm text-secondary">{t('account.occLead', { n: apartmentNumber })}</p>
         {savedFlash ? <p className="mt-2 text-sm text-success">✓ {t('account.occSaved')}</p> : null}
@@ -740,7 +731,7 @@ export function OwnerOccupancy({
                             }
                           })
                           .catch((err) =>
-                            setGuestError(err instanceof Error ? err.message : t('err.removeGuest')),
+                            setGuestError(ownerVisibleError(err, t('err.removeGuest'))),
                           );
                       }}
                     />
@@ -852,7 +843,7 @@ export function OwnerOccupancy({
                     onYes={() => {
                       void onRemovePet(pet.id)
                         .then(() => setPendingPetId(null))
-                        .catch((err) => setPetError(err instanceof Error ? err.message : t('err.delete')));
+                        .catch((err) => setPetError(ownerVisibleError(err, t('err.delete'))));
                     }}
                   />
                 ) : null}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
+import { ownerVisibleError } from '@/lib/ownerError';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
@@ -51,7 +52,7 @@ export function OwnerMeetingLive({
       await fn();
       await onReload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(ownerVisibleError(e, t('err.save')));
     } finally {
       setBusy(false);
     }

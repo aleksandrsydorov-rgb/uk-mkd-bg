@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isMissingRelation } from '@/lib/polls';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import {
   formatEurAmount,
   sofiaCalendarYear,
@@ -14,16 +15,7 @@ import {
 } from '@/lib/supportFeeAnnual';
 
 function fmtDate(iso: string | null | undefined, locale: string): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString(locale, {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
+  return formatOwnerDate(iso, locale);
 }
 
 export function OwnerSupportFee({
@@ -96,7 +88,7 @@ export function OwnerSupportFee({
   return (
     <div className="space-y-4">
       {preview && preview.policy_enabled && !assessments.some((a) => a.billing_year === preview.billing_year) ? (
-        <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+        <div className="rounded-[14px] border border-border bg-surface px-4 py-4">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
             {t('account.supportFee')} · {preview.billing_year}
           </p>
@@ -132,7 +124,7 @@ export function OwnerSupportFee({
       ) : null}
 
       {years.length === 0 ? (
-        <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+        <div className="rounded-[14px] border border-border bg-surface px-4 py-4">
           <p className="text-sm text-secondary">{t('account.feePaymentsEmpty')}</p>
         </div>
       ) : (
@@ -140,7 +132,7 @@ export function OwnerSupportFee({
           const a = assessments.find((x) => x.billing_year === year);
           const open = openYear === year;
           return (
-            <div key={year} className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+            <div key={year} className="rounded-[14px] border border-border bg-surface px-4 py-4">
               <button
                 type="button"
                 className="flex w-full items-start justify-between gap-3 text-left"

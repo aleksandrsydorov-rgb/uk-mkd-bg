@@ -45,6 +45,7 @@ import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
+import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
 import {
   canSeeCapitalAdmin,
   canSeeWaterAdmin,
@@ -3846,6 +3847,16 @@ export default function AdminPage() {
                 Нет таблиц в базе. Выполните <span className="font-mono text-warning">supabase/support_fee.sql</span> в SQL Editor.
               </div>
             )}
+
+            <AdminSupportFeeAnnual
+              supabase={supabase}
+              properties={properties}
+              supportRate={supportRate}
+              canPay={canPay}
+              canRate={canRate}
+              onReload={loadAll}
+              onError={setError}
+            />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">

@@ -36,6 +36,11 @@ import {
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
+import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
+import {
+  type SupportFeeAllocation,
+  type SupportFeeAssessment,
+} from '@/lib/supportFeeAnnual';
 import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
 import { OwnerOverview } from '@/components/account/OwnerOverview';
 import { OwnerApartment } from '@/components/account/OwnerApartment';
@@ -187,6 +192,8 @@ export default function AccountPage() {
   const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
+  const [supportAssessments, setSupportAssessments] = useState<SupportFeeAssessment[]>([]);
+  const [supportAllocations, setSupportAllocations] = useState<SupportFeeAllocation[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
   const [pollVotes, setPollVotes] = useState<PollVote[]>([]);
@@ -506,6 +513,29 @@ export default function AccountPage() {
           setSupportLedger([]);
         } else {
           setSupportLedger((ledRes.data as SupportFeeEntry[]) ?? []);
+        }
+
+        const assRes = await supabase
+          .from('support_fee_assessments')
+          .select('*')
+          .in('property_id', ids)
+          .order('billing_year', { ascending: false });
+        if (assRes.error) {
+          if (!isMissingRelation(assRes.error, 'support_fee_assessments')) throw assRes.error;
+          setSupportAssessments([]);
+        } else {
+          setSupportAssessments((assRes.data as SupportFeeAssessment[]) ?? []);
+        }
+
+        const allocRes = await supabase
+          .from('support_fee_allocations')
+          .select('*')
+          .order('created_at', { ascending: true });
+        if (allocRes.error) {
+          if (!isMissingRelation(allocRes.error, 'support_fee_allocations')) throw allocRes.error;
+          setSupportAllocations([]);
+        } else {
+          setSupportAllocations((allocRes.data as SupportFeeAllocation[]) ?? []);
         }
       } catch (e: any) {
         setError(e?.message ?? t('err.load'));
@@ -1424,6 +1454,7 @@ export default function AccountPage() {
             electricityEnabled={electricityEnabled}
             supportDebt={Math.max(0, Number(property?.debt ?? 0))}
             supportOver={Math.max(0, Number(property?.overpayment ?? 0))}
+            supportAssessment={supportAssessments.find((a) => a.property_id === property?.id) ?? null}
             occupancyStatus={occupancyStatus}
             polls={polls}
             pollVotes={pollVotes}
@@ -1736,6 +1767,18 @@ export default function AccountPage() {
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted">{t('account.approx')}</div>
                   </div>
+                </div>
+
+                <div className="relative mt-5">
+                  {property ? (
+                    <OwnerSupportFee
+                      supabase={supabase}
+                      propertyId={property.id}
+                      assessments={supportAssessments.filter((a) => a.property_id === property.id)}
+                      allocations={supportAllocations}
+                      overpayment={totalOver}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="relative mt-5 flex flex-wrap gap-2">

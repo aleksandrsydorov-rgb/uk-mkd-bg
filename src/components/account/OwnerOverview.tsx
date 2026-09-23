@@ -9,6 +9,8 @@ import { isUpcomingMeeting, type GeneralMeeting, type MeetingDecision } from '@/
 import { displayElectricityMeterNumber, type ElectricityMeter } from '@/lib/electricity';
 import type { FinanceTab, MeterTab } from '@/components/account/OwnerUtilities';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
+import type { SupportFeeAssessment } from '@/lib/supportFeeAnnual';
+import { formatEurAmount } from '@/lib/supportFeeAnnual';
 import {
   balanceTone,
   emptyBalance,
@@ -50,6 +52,7 @@ export function OwnerOverview({
   electricityEnabled,
   supportDebt,
   supportOver,
+  supportAssessment,
   occupancyStatus,
   polls,
   pollVotes,
@@ -80,6 +83,7 @@ export function OwnerOverview({
   electricityEnabled: boolean;
   supportDebt: number;
   supportOver: number;
+  supportAssessment: SupportFeeAssessment | null;
   occupancyStatus: OccupancyStatus;
   polls: Poll[];
   pollVotes: PollVote[];
@@ -419,6 +423,18 @@ export function OwnerOverview({
               {formatEur(Math.abs(supportNet))}
             </p>
             <p className="mt-0.5 text-xs text-secondary">{statusLabel(supportNet, t)}</p>
+            {supportAssessment ? (
+              <p className="mt-1 text-[11px] text-muted">
+                {t('account.supportFee')} {supportAssessment.billing_year}
+                {Number(supportAssessment.remaining_due) > 0
+                  ? ` · ${t('account.sfDue')} ${formatEurAmount(supportAssessment.remaining_due)}`
+                  : supportAssessment.pricing_rule === 'early_full_payment'
+                    ? ` · ${t('account.paid')} · ${t('account.sfDiscountPct', { n: Number(supportAssessment.discount_percent) })}`
+                    : ` · ${t('account.paid')}`}
+                {' · '}
+                {t('account.sfMore')}
+              </p>
+            ) : null}
           </button>
           {waterEnabled && (
             <button type="button" onClick={() => onOpenFinance('water')} className={kpiBtn}>

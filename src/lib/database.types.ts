@@ -780,6 +780,151 @@ export interface Database {
         };
         Relationships: [];
       };
+      support_fee_annual_policies: {
+        Row: {
+          id: string;
+          billing_year: number;
+          enabled: boolean;
+          status: string;
+          early_discount_percent: number;
+          late_increase_percent: number;
+          early_payment_deadline: string;
+          created_at: string;
+          created_by_email: string | null;
+          updated_at: string;
+          updated_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          billing_year: number;
+          enabled?: boolean;
+          status?: string;
+          early_discount_percent?: number;
+          late_increase_percent?: number;
+          early_payment_deadline: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          billing_year?: number;
+          enabled?: boolean;
+          status?: string;
+          early_discount_percent?: number;
+          late_increase_percent?: number;
+          early_payment_deadline?: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      support_fee_assessments: {
+        Row: {
+          id: string;
+          property_id: number;
+          billing_year: number;
+          policy_id: string | null;
+          charge_ledger_id: number | null;
+          base_amount: number;
+          discount_percent: number;
+          increase_percent: number;
+          early_amount: number;
+          late_amount: number;
+          early_deadline_at: string | null;
+          pricing_rule: string;
+          pricing_reason_code: string | null;
+          qualification_status: string;
+          qualification_checked_at: string | null;
+          available_credit_at_check: number;
+          amount_covered_at_check: number;
+          dedicated_payment_at_check: number;
+          applied_credit_amount: number;
+          applied_payment_amount: number;
+          final_amount: number;
+          remaining_due: number;
+          balance_before: number | null;
+          balance_after: number | null;
+          status: string;
+          created_at: string;
+          created_by_email: string | null;
+          finalized_at: string | null;
+          finalized_by_email: string | null;
+          correction_reason: string | null;
+          correction_at: string | null;
+          correction_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          billing_year: number;
+          policy_id?: string | null;
+          charge_ledger_id?: number | null;
+          base_amount: number;
+          discount_percent?: number;
+          increase_percent?: number;
+          early_amount: number;
+          late_amount: number;
+          early_deadline_at?: string | null;
+          pricing_rule: string;
+          pricing_reason_code?: string | null;
+          qualification_status: string;
+          qualification_checked_at?: string | null;
+          available_credit_at_check?: number;
+          amount_covered_at_check?: number;
+          dedicated_payment_at_check?: number;
+          applied_credit_amount?: number;
+          applied_payment_amount?: number;
+          final_amount: number;
+          remaining_due?: number;
+          balance_before?: number | null;
+          balance_after?: number | null;
+          status?: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          finalized_at?: string | null;
+          finalized_by_email?: string | null;
+          correction_reason?: string | null;
+          correction_at?: string | null;
+          correction_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          billing_year?: number;
+          remaining_due?: number;
+          status?: string;
+        };
+        Relationships: [];
+      };
+      support_fee_allocations: {
+        Row: {
+          id: string;
+          assessment_id: string;
+          ledger_entry_id: number | null;
+          amount: number;
+          allocation_type: string;
+          created_at: string;
+          created_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          assessment_id: string;
+          ledger_entry_id?: number | null;
+          amount: number;
+          allocation_type: string;
+          created_at?: string;
+          created_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          amount?: number;
+        };
+        Relationships: [];
+      };
       water_meters: {
         Row: {
           id: string;
@@ -1702,6 +1847,61 @@ export interface Database {
       charge_support_fee: {
         Args: { p_property_id: number; p_period: string };
         Returns: Json;
+      };
+      upsert_support_fee_annual_policy: {
+        Args: {
+          p_billing_year: number;
+          p_enabled: boolean;
+          p_early_discount_percent: number;
+          p_late_increase_percent: number;
+          p_early_payment_deadline: string | null;
+        };
+        Returns: Database['public']['Tables']['support_fee_annual_policies']['Row'];
+      };
+      publish_support_fee_annual_policy: {
+        Args: { p_billing_year: number };
+        Returns: Database['public']['Tables']['support_fee_annual_policies']['Row'];
+      };
+      close_support_fee_annual_policy: {
+        Args: { p_billing_year: number };
+        Returns: Database['public']['Tables']['support_fee_annual_policies']['Row'];
+      };
+      preview_support_fee_year: {
+        Args: { p_property_id: number; p_billing_year: number };
+        Returns: Json;
+      };
+      finalize_support_fee_assessment: {
+        Args: { p_property_id: number; p_billing_year: number };
+        Returns: Json;
+      };
+      finalize_support_fee_year: {
+        Args: { p_billing_year: number };
+        Returns: Json;
+      };
+      record_support_fee_assessment_correction: {
+        Args: { p_assessment_id: string; p_amount: number; p_reason: string };
+        Returns: Json;
+      };
+      record_support_payment_for_year: {
+        Args: {
+          p_property_id: number;
+          p_amount: number;
+          p_billing_year: number;
+          p_note: string | null;
+        };
+        Returns: Json;
+      };
+      support_fee_base_amount: {
+        Args: { p_property_id: number };
+        Returns: number;
+      };
+      support_fee_early_deadline: {
+        Args: { p_billing_year: number };
+        Returns: string;
+      };
+      support_fee_year_start: {
+        Args: { p_billing_year: number };
+        Returns: string;
       };
       assign_water_meter: {
         Args: {

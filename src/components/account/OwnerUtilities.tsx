@@ -153,8 +153,15 @@ export function OwnerUtilities({
   const [readingDate, setReadingDate] = useState(todayIsoDate());
   const idempotencyKeyRef = useRef<string | null>(null);
 
-  const lastActive = useMemo(() => lastActiveReading(readings), [readings]);
-  const previousDisplay = lastActive ? Number(lastActive.current_value) : Number(meter?.initial_reading ?? 0);
+  const lastActive = useMemo(() => {
+    const scoped = meter ? readings.filter((r) => r.meter_id === meter.id) : readings;
+    return lastActiveReading(scoped);
+  }, [readings, meter]);
+  const lastCurrent = lastActive ? Number(lastActive.current_value) : null;
+  const previousDisplay = lastActive
+    ? Number(lastActive.previous_value)
+    : Number(meter?.initial_reading ?? 0);
+  const submitMin = lastCurrent ?? Number(meter?.initial_reading ?? 0);
   const previousIsInitial = !lastActive && Boolean(meter);
   const today = todayIsoDate();
 
@@ -296,7 +303,7 @@ export function OwnerUtilities({
       return;
     }
     const normalized = normalizeWaterVolume(parsed);
-    if (normalized < previousDisplay) {
+    if (normalized < submitMin) {
       setSubmitError(t('account.utilErrLower'));
       return;
     }
@@ -469,7 +476,7 @@ export function OwnerUtilities({
                 type="number"
                 inputMode="decimal"
                 step="0.1"
-                min={previousDisplay}
+                min={submitMin}
                 required
                 value={currentValue}
                 onChange={(e) => {
@@ -559,7 +566,7 @@ export function OwnerUtilities({
                       <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.previous_value), locale)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.current_value), locale)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3), locale)}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5">{Number(row.tariff_eur_per_m3).toFixed(4)}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">{Number(row.tariff_eur_per_m3).toFixed(2)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{formatEur(Number(row.charge_amount_eur))}</td>
                       {variant === 'meters' ? (
                         <td className="whitespace-nowrap px-2 py-1.5">{via}</td>

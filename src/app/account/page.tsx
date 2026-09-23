@@ -9,28 +9,20 @@ import {
   accountVoteWeight,
   isMissingRelation,
   isPollAcceptingVotes,
-  pollCategoryClass,
-  pollDecisionLabel,
-  tallyFromAggregates,
   type Poll,
   type PollOption,
   type PollTallyAggregate,
   type PollVote,
 } from '@/lib/polls';
-import { PollDetails, PollOptionBars } from '@/components/PollPanel';
 import { BrandMark } from '@/components/BrandMark';
 import { LoginScreen } from '@/components/LoginScreen';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
 import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
 import {
-  labelCategory,
   labelListing,
   labelOwnerType,
   labelOccupantKind,
-  labelPollCategory,
-  labelPollDecision,
   labelPriority,
-  labelRequestStatus,
   labelTransfer,
 } from '@/i18n/labels';
 import { resolveAccess } from '@/lib/access';
@@ -43,6 +35,8 @@ import {
 } from '@/lib/supportFeeAnnual';
 import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
 import { OwnerOverview } from '@/components/account/OwnerOverview';
+import { OwnerManagement, type ManagementTab } from '@/components/account/OwnerManagement';
+import { OwnerPolls } from '@/components/account/OwnerPolls';
 import { OwnerApartment } from '@/components/account/OwnerApartment';
 import { OwnerOccupancy, type OccupancySavePayload, type GuestInsertPayload, type PetInsertPayload } from '@/components/account/OwnerOccupancy';
 import { OwnerDocumentsDecisions } from '@/components/account/OwnerDocumentsDecisions';
@@ -61,9 +55,7 @@ import {
   type ElectricityMeter,
   type ElectricityTariff,
 } from '@/lib/electricity';
-import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
-import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
-import { ChatMedia } from '@/components/ChatMedia';
+import { isExpensePublished } from '@/lib/expenses';
 import { MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import { normalizeOccupantKind, type ApartmentPet, type OccupantKind } from '@/lib/registry';
 import {
@@ -128,19 +120,10 @@ type MenuSection =
   | 'квартира'
   | 'жильцы'
   | 'финансы'
-  | 'расходы_ук'
+  | 'ук'
   | 'счётчики'
   | 'документы'
-  | 'заявки'
-  | 'сообщения'
-  | 'опросы'
-  | 'чат';
-
-function formatUkDate(dateStr: string) {
-  const [y, m, d] = dateStr.slice(0, 10).split('-');
-  if (!y || !m || !d) return dateStr;
-  return `${d}.${m}.${y}`;
-}
+  | 'опросы';
 
 function expenseYearOf(dateStr: string) {
   const y = Number(dateStr.slice(0, 4));
@@ -158,11 +141,8 @@ export default function AccountPage() {
     { key: 'финансы', label: t('account.finance'), icon: '💰' },
     { key: 'счётчики', label: t('account.meters'), icon: '⚡' },
     { key: 'документы', label: t('account.docsMenu'), icon: '📁' },
-    { key: 'заявки', label: t('account.requests'), icon: '📋' },
-    { key: 'сообщения', label: t('account.announcements'), icon: '📢' },
-    { key: 'расходы_ук', label: t('account.expenses'), icon: '🧾' },
+    { key: 'ук', label: t('account.mgmtTitle'), icon: '🏢' },
     { key: 'опросы', label: t('account.polls'), icon: '🗳️' },
-    { key: 'чат', label: t('account.chat'), icon: '💬' },
   ];
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
@@ -247,8 +227,10 @@ export default function AccountPage() {
 
   // ---------- МЕНЮ ----------
   const [activeMenu, setActiveMenu] = useState<MenuSection>('обзор');
+  const [managementTab, setManagementTab] = useState<ManagementTab>('заявки');
+  const inMgmtChat = activeMenu === 'ук' && managementTab === 'чат';
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expenseYearFilter, setExpenseYearFilter] = useState<number | 'all'>(
+  const [expenseYearFilter, setExpenseYearFilter] = useState<number>(
     new Date().getFullYear()
   );
   const [financeTab, setFinanceTab] = useState<FinanceTab>('support');
@@ -750,15 +732,9 @@ export default function AccountPage() {
   }, [property, loadChatMessages]);
 
   useEffect(() => {
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [chatMessages]);
-
-  useEffect(() => {
-    if (activeMenu !== 'чат' || !property) return;
+    if (!inMgmtChat || !property) return;
     void markOwnerMessagesRead(property.id);
-  }, [activeMenu, property?.id]); // eslint-disable-line
+  }, [inMgmtChat, property?.id]); // eslint-disable-line
 
   async function markOwnerMessagesRead(propertyId: number) {
     const { error } = await supabase
@@ -1468,8 +1444,14 @@ export default function AccountPage() {
             onOpenMeters={openMetersFromOverview}
             onOpenApartment={() => setActiveMenu('квартира')}
             onOpenPolls={() => setActiveMenu('опросы')}
-            onOpenRequests={() => setActiveMenu('заявки')}
-            onOpenChat={() => setActiveMenu('чат')}
+            onOpenRequests={() => {
+              setManagementTab('заявки');
+              setActiveMenu('ук');
+            }}
+            onOpenChat={() => {
+              setManagementTab('чат');
+              setActiveMenu('ук');
+            }}
             onOpenDocuments={() => setActiveMenu('документы')}
           />
         );
@@ -1791,7 +1773,10 @@ export default function AccountPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActiveMenu('расходы_ук')}
+                    onClick={() => {
+                      setManagementTab('расходы');
+                      setActiveMenu('ук');
+                    }}
                     className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover"
                   >
                     {t('account.expenses')}
@@ -1860,106 +1845,110 @@ export default function AccountPage() {
       }
 
       // ===========================================================
-      // РАСХОДЫ УК
+      // УК
       // ===========================================================
-      case 'расходы_ук': {
-        const yearsToShow =
-          expenseYearFilter === 'all' ? expenseYears : [expenseYearFilter];
-        const visibleTotal =
-          expenseYearFilter === 'all'
-            ? ukExpensesTotal
-            : expensesByYear.get(expenseYearFilter)?.total ?? 0;
+      case 'ук':
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h2 className="text-lg font-semibold text-accent">{t('account.expensesTitle')}</h2>
-              <div className="text-sm text-secondary">
-                {expenseYearFilter === 'all' ? t('account.allYears') : expenseYearFilter}:{' '}
-                <span className="font-semibold text-accent">{visibleTotal.toFixed(2)} €</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 mb-5">
-              <button
-                onClick={() => setExpenseYearFilter('all')}
-                className={`rounded-lg px-3 py-1.5 text-sm border ${
-                  expenseYearFilter === 'all'
-                    ? 'bg-accent-bg text-accent border-accent/25'
-                    : 'bg-surface-secondary text-secondary border-border hover:text-foreground'
-                }`}
-              >
-                {t('account.allYears')}
-              </button>
-              {expenseYears.map((year) => {
-                const total = expensesByYear.get(year)?.total ?? 0;
-                return (
-                  <button
-                    key={year}
-                    onClick={() => setExpenseYearFilter(year)}
-                    className={`rounded-lg px-3 py-1.5 text-sm border ${
-                      expenseYearFilter === year
-                        ? 'bg-accent-bg text-accent border-accent/25'
-                        : 'bg-surface-secondary text-secondary border-border hover:text-foreground'
-                    }`}
-                  >
-                    {year}
-                    <span className="ml-2 text-xs text-muted">{total.toFixed(2)} €</span>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mb-4 text-sm text-secondary">
-              {t('account.expensesPublished')}
-            </p>
-            {publishedUkExpenses.length === 0 ? (
-              <div className="text-sm text-secondary">{t('account.expensesEmpty')}</div>
-            ) : (
-              <div className="space-y-6">
-                {yearsToShow.map((year) => {
-                  const group = expensesByYear.get(year);
-                  const items = group?.items ?? [];
-                  return (
-                    <div key={year}>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-accent">{year}</h3>
-                        <span className="text-sm text-secondary">
-                          {(group?.total ?? 0).toFixed(2)} €
-                        </span>
-                      </div>
-                      {items.length === 0 ? (
-                        <div className="text-sm text-muted">{t('account.noExpensesYear', { year })}</div>
-                      ) : (
-                        <div className="space-y-2">
-                          {items.map((e) => {
-                            const photos = expensePhotoUrls(e);
-                            return (
-                              <div key={e.id} className="rounded-xl border border-border bg-surface p-3">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-medium text-foreground">{e.title?.trim() || '—'}</div>
-                                    <div className="mt-0.5 text-xs text-muted">{formatUkDate(e.expense_date)}</div>
-                                    {photos.length > 0 && (
-                                      <div className="mt-2">
-                                        <ExpensePhotoStrip urls={photos} />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="text-sm font-semibold text-foreground">
-                                    {Number(e.amount).toFixed(2)} €
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <OwnerManagement
+            tab={managementTab}
+            onTab={setManagementTab}
+            properties={properties}
+            requests={requests}
+            announcements={announcements}
+            expenseYears={expenseYears}
+            expensesByYear={expensesByYear}
+            expenseYear={expenseYearFilter}
+            onExpenseYear={setExpenseYearFilter}
+            requestFormOpen={showRequestForm}
+            onRequestFormOpen={setShowRequestForm}
+            unreadChatCount={unreadChatCount}
+            requestForm={
+              <form onSubmit={handleCreateRequest} className="space-y-3 rounded-[14px] border border-border bg-surface px-4 py-3">
+                <h3 className="text-sm font-semibold">
+                  {t('account.newRequest')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
+                </h3>
+                <div>
+                  <label className="mb-1 block text-sm text-secondary">{t('account.subject')}</label>
+                  <input
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder={t('account.phReqTitle')}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-secondary">{t('account.description')}</label>
+                  <textarea
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder={t('account.phReqBody')}
+                    rows={4}
+                    required
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm text-secondary">{t('account.category')}</label>
+                    <select
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as Category)}
+                    >
+                      <option value="сантехника">{t('cat.plumbing')}</option>
+                      <option value="электрика">{t('cat.electric')}</option>
+                      <option value="уборка">{t('cat.cleaning')}</option>
+                      <option value="отопление">{t('cat.heating')}</option>
+                      <option value="другое">{t('cat.other')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-secondary">{t('account.priority')}</label>
+                    <select
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value as Priority)}
+                    >
+                      <option value="низкий">{t('status.prioLow')}</option>
+                      <option value="средний">{t('status.prioMid')}</option>
+                      <option value="высокий">{t('status.prioHigh')}</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-secondary">{t('account.photoOpt')}</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm"
+                    onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {creating ? t('account.sending') : t('account.submitRequest')}
+                </button>
+              </form>
+            }
+            chat={{
+              messages: chatMessages,
+              input: chatInput,
+              setInput: setChatInput,
+              file: chatFile,
+              setFile: setChatFile,
+              sending: chatSending,
+              onSend: handleSendChat,
+              fileRef: chatFileRef,
+              scrollRef: chatScrollRef,
+              apartmentNumber: property?.apartment_number,
+              ownerName: property?.owner_name,
+            }}
+          />
         );
-      }
 
       // ===========================================================
       // СЧЁТЧИКИ
@@ -2044,401 +2033,18 @@ export default function AccountPage() {
       case 'документы':
         return <OwnerDocumentsDecisions supabase={supabase} />;
 
-      case 'заявки':
-        return (
-          <div className="space-y-6">
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <h2 className="text-lg font-semibold text-accent">{t('account.requests')}</h2>
-                <button
-                  type="button"
-                  onClick={() => setShowRequestForm((v) => !v)}
-                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white"
-                >
-                  {showRequestForm ? t('account.hideForm') : t('account.createRequest')}
-                </button>
-              </div>
-              {showRequestForm && (
-                <form onSubmit={handleCreateRequest} className="mb-6 space-y-4 rounded-xl border border-border bg-surface p-4">
-                  <h3 className="text-sm font-semibold text-accent">
-                    {t('account.newRequest')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
-                  </h3>
-                  <div>
-                    <label className="text-sm text-secondary mb-1 block">{t('account.subject')}</label>
-                    <input
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                      placeholder={t('account.phReqTitle')}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-secondary mb-1 block">{t('account.description')}</label>
-                    <textarea
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder={t('account.phReqBody')}
-                      rows={4}
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="text-sm text-secondary mb-1 block">{t('account.category')}</label>
-                      <select
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value as Category)}
-                      >
-                        <option value="сантехника">{t('cat.plumbing')}</option>
-                        <option value="электрика">{t('cat.electric')}</option>
-                        <option value="уборка">{t('cat.cleaning')}</option>
-                        <option value="отопление">{t('cat.heating')}</option>
-                        <option value="другое">{t('cat.other')}</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm text-secondary mb-1 block">{t('account.priority')}</label>
-                      <select
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        value={priority}
-                        onChange={(e) => setPriority(e.target.value as Priority)}
-                      >
-                        <option value="низкий">{t('status.prioLow')}</option>
-                        <option value="средний">{t('status.prioMid')}</option>
-                        <option value="высокий">{t('status.prioHigh')}</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm text-secondary mb-1 block">{t('account.photoOpt')}</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary hover:file:bg-hover"
-                      onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
-                  >
-                    {creating ? t('account.sending') : t('account.submitRequest')}
-                  </button>
-                </form>
-              )}
-              <div className="text-sm text-secondary mb-3">{t('account.countPcs', { n: requests.length })}</div>
-              <div className="space-y-3">
-              {requests.length === 0 ? (
-                <div className="text-sm text-secondary">{t('account.noRequestsYet')}</div>
-              ) : (
-                requests.map((r) => (
-                  <div
-                    key={r.id}
-                    className="rounded-[14px] border border-border bg-surface p-4 shadow-card"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm text-secondary">
-                          {t('picker.apt', { n: String(properties.find((p) => p.id === r.property_id)?.apartment_number ?? r.property_id ?? '') })} · {t('account.categoryOf', { c: labelCategory(r.category, t) })}
-                        </div>
-                        <div className="text-foreground font-medium">{r.subject}</div>
-                      </div>
-                      <div className="text-sm text-secondary">
-                        {t('account.priority')}: <span className="text-foreground">{labelPriority(r.priority, t)}</span>
-                        <div>
-                          {t('home.tagStatus')}: <span className="text-foreground">{labelRequestStatus(r.status, t)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-sm text-secondary">{r.description}</div>
-                    {r.photo_url && (
-                      <a
-                        className="mt-3 block text-sm text-accent hover:underline"
-                        href={r.photo_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {t('account.viewPhoto')}
-                      </a>
-                    )}
-                    <div className="mt-2 text-xs text-muted">
-                      {new Date(r.created_at).toLocaleString(dateLocale)}
-                    </div>
-                  </div>
-                ))
-              )}
-              </div>
-            </div>
-          </div>
-        );
-
-      // ===========================================================
-      // СООБЩЕНИЯ ОТ УК
-      // ===========================================================
-      case 'сообщения':
-        return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <h2 className="text-lg font-semibold text-accent mb-4">
-              {t('account.announcementsTitle')}
-            </h2>
-            <div className="space-y-3">
-              {announcements.length === 0 ? (
-                <div className="text-sm text-secondary">{t('account.noAnnouncements')}</div>
-              ) : (
-                announcements.map((a) => (
-                  <div
-                    key={a.id}
-                    className="rounded-[14px] border border-border bg-surface p-4 shadow-card"
-                  >
-                    <h3 className="text-foreground font-semibold">{a.title}</h3>
-                    <p className="mt-2 text-sm text-secondary whitespace-pre-wrap">{a.body}</p>
-                    <div className="mt-2 text-xs text-muted">
-                      {a.created_by && `${t('account.fromBy', { name: a.created_by })} · `}
-                      {new Date(a.created_at).toLocaleString(dateLocale)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
-
-      // ===========================================================
-      // ОПРОСЫ УК
-      // ===========================================================
       case 'опросы':
         return (
-          <div className="space-y-6">
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <h2 className="text-lg font-semibold text-accent mb-1">{t('account.pollsTitle')}</h2>
-              <p className="text-sm text-secondary mb-4">
-                {t('account.pollsLead')}
-              </p>
-              {polls.length === 0 ? (
-                <div className="text-sm text-secondary">{t('account.noPolls')}</div>
-              ) : (
-                <div className="space-y-4">
-                  {polls.map((poll) => {
-                    const options = pollOptions
-                      .filter((o) => o.poll_id === poll.id)
-                      .sort((a, b) => a.sort_order - b.sort_order);
-                    const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
-                    const myVote = votesForPoll.find((v) => myPropertyIds.includes(v.property_id));
-                    const open = isPollAcceptingVotes(poll);
-                    const tally = tallyFromAggregates(options, pollTallies);
-                    const decision = pollDecisionLabel(poll, tally.accepted);
-                    const decisionLabel = labelPollDecision(decision, t);
-                    return (
-                      <div key={poll.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <span className={`text-xs rounded-full px-2 py-0.5 border ${pollCategoryClass(poll.category)}`}>
-                            {labelPollCategory(poll.category, t)}
-                          </span>
-                          <span className={`text-xs ${
-                            decision === 'принято' ? 'text-accent' :
-                            decision === 'не принято' ? 'text-danger' : 'text-secondary'
-                          }`}>
-                            {decisionLabel}
-                          </span>
-                          {myVoteWeight > 0 && (
-                            <span className="text-xs text-muted">
-                              {t('account.yourWeight', { n: myVoteWeight.toFixed(1) })}
-                              {properties.length > 1 ? ` · ${t('account.aptsShort', { n: properties.length })}` : ''}
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="text-foreground font-semibold mb-2">{poll.title}</h3>
-                        <PollDetails
-                          poll={poll}
-                          options={options}
-                          tally={tally}
-                        />
-                        <div className="mt-3">
-                          <PollOptionBars
-                            poll={poll}
-                            options={options}
-                            tally={tally}
-                            myOptionId={myVote?.option_id}
-                            disabled={!open || Boolean(myVote) || votingPollId === poll.id}
-                            onVote={open && !myVote ? (optionId) => handleVote(poll, optionId) : undefined}
-                          />
-                        </div>
-                        <div className="mt-2 text-xs text-muted">
-                          {myVote ? t('account.voteLocked') : open ? t('account.notVotedYet') : ''}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      // ===========================================================
-      // ЧАТ С УК
-      // ===========================================================
-      case 'чат':
-        return (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface md:m-4 md:rounded-2xl md:border md:border-border">
-            <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-bg text-xs font-semibold text-accent">
-                {t('common.uk')}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-foreground">{t('account.chatTitle')}</div>
-                <div className="truncate text-xs text-muted">
-                  {t('common.apt')} {property?.apartment_number}
-                  {property?.owner_name ? ` · ${property.owner_name}` : ''}
-                </div>
-              </div>
-            </div>
-
-            <div ref={chatScrollRef} className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              {chatMessages.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-secondary text-2xl">💬</div>
-                  <p className="max-w-xs text-sm text-muted">{t('account.chatEmpty')}</p>
-                </div>
-              ) : (
-                <div className="mx-auto flex w-full max-w-3xl flex-col">
-                {chatMessages.map((m, i) => {
-                    const isOwner = m.sender === 'owner';
-                    const prev = chatMessages[i - 1];
-                    const next = chatMessages[i + 1];
-                    const newDay = !prev || prev.created_at.slice(0, 10) !== m.created_at.slice(0, 10);
-                    const tight = Boolean(
-                      prev &&
-                        prev.sender === m.sender &&
-                        !newDay &&
-                        Math.abs(new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) < 5 * 60 * 1000,
-                    );
-                    const lastInGroup = !(
-                      next &&
-                      next.sender === m.sender &&
-                      next.created_at.slice(0, 10) === m.created_at.slice(0, 10) &&
-                      Math.abs(new Date(next.created_at).getTime() - new Date(m.created_at).getTime()) < 5 * 60 * 1000
-                    );
-                    const created = new Date(m.created_at);
-                    const dayLabel = newDay
-                      ? created.toDateString() === new Date().toDateString()
-                        ? t('common.today')
-                        : created.toDateString() === new Date(Date.now() - 86400000).toDateString()
-                          ? t('common.yesterday')
-                          : created.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long' })
-                      : null;
-                    return (
-                      <div key={m.id}>
-                        {dayLabel && (
-                          <div className="my-4 flex justify-center">
-                            <span className="rounded-full bg-hover px-3 py-1 text-[11px] text-muted">
-                              {dayLabel}
-                            </span>
-                          </div>
-                        )}
-                        <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} ${tight ? 'mt-0.5' : 'mt-2'}`}>
-                          <div
-                            className={`inline-flex max-w-[85%] flex-col px-3.5 py-2 text-[15px] leading-snug ${
-                              isOwner
-                                ? `bg-accent-bg text-foreground ${lastInGroup ? 'rounded-2xl rounded-br-md' : 'rounded-2xl'}`
-                                : `bg-surface-secondary text-foreground ${lastInGroup ? 'rounded-2xl rounded-bl-md' : 'rounded-2xl'}`
-                            }`}
-                          >
-                            {m.photo_url && (
-                              <div className={m.message.trim() ? 'mb-2' : ''}>
-                                <ChatMedia url={m.photo_url} fileName={m.file_name} />
-                              </div>
-                            )}
-                            {m.message.trim() ? (
-                              <div className="whitespace-pre-wrap break-words">{m.message}</div>
-                            ) : null}
-                            {lastInGroup && (
-                              <div className={`mt-1 flex items-center gap-1 text-[10px] ${isOwner ? 'justify-end text-secondary' : 'text-muted'}`}>
-                                <span>
-                                  {created.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                                {isOwner && (
-                                  <span className={m.read_by_uk ? 'text-accent' : 'text-muted'}>
-                                    {m.read_by_uk ? '✓✓' : '✓'}
-                                  </span>
-                                )}
-                                {!isOwner && !m.read_by_owner && (
-                                  <span className="text-accent">● {t('account.newMsg')}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <form
-              onSubmit={handleSendChat}
-              className="shrink-0 border-t border-border px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4"
-            >
-              <div className="mx-auto w-full max-w-3xl">
-              {chatFile && (
-                <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-surface-secondary px-3 py-2 text-sm text-secondary">
-                  <span className="min-w-0 flex-1 truncate">📎 {chatFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setChatFile(null);
-                      if (chatFileRef.current) chatFileRef.current.value = '';
-                    }}
-                    className="shrink-0 text-xs text-secondary hover:text-foreground"
-                  >
-                    {t('account.removeFile')}
-                  </button>
-                </div>
-              )}
-              <div className="flex items-end gap-2">
-                <input
-                  ref={chatFileRef}
-                  type="file"
-                  className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                  onChange={(e) => setChatFile(e.target.files?.[0] ?? null)}
-                />
-                <button
-                  type="button"
-                  onClick={() => chatFileRef.current?.click()}
-                  disabled={chatSending}
-                  aria-label={t('account.attachFile')}
-                  title={t('account.attachFile')}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-[#1a2422] text-foreground hover:bg-hover disabled:opacity-40"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                  </svg>
-                </button>
-                <input
-                  className="min-w-0 flex-1 rounded-2xl border border-border bg-surface px-4 py-2.5 text-base text-foreground placeholder:text-placeholder outline-none transition focus:border-accent md:text-sm"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder={t('account.chatPlaceholder')}
-                  disabled={chatSending}
-                />
-                <button
-                  type="submit"
-                  disabled={chatSending || (!chatInput.trim() && !chatFile)}
-                  aria-label={t('common.send')}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-lg text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {chatSending ? '…' : '↑'}
-                </button>
-              </div>
-              </div>
-            </form>
-          </div>
+          <OwnerPolls
+            polls={polls}
+            pollOptions={pollOptions}
+            pollVotes={pollVotes}
+            pollTallies={pollTallies}
+            myPropertyIds={properties.map((p) => p.id)}
+            myVoteWeight={myVoteWeight}
+            votingPollId={votingPollId}
+            onVote={handleVote}
+          />
         );
 
       default:
@@ -2532,7 +2138,7 @@ export default function AccountPage() {
               {sidebarOpen && (
                 <span className="flex items-center gap-2 text-left leading-tight">
                   {item.label}
-                  {item.key === 'чат' && unreadChatCount > 0 && (
+                  {item.key === 'ук' && unreadChatCount > 0 && (
                     <span className="ml-auto bg-danger text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                       {unreadChatCount}
                     </span>
@@ -2596,7 +2202,7 @@ export default function AccountPage() {
 
       {/* ===== ОСНОВНОЙ КОНТЕНТ ===== */}
       <main className={`min-w-0 flex-1 ${
-        activeMenu === 'чат'
+        inMgmtChat
           ? 'flex h-dvh flex-col overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
       }`}>
@@ -2626,14 +2232,12 @@ export default function AccountPage() {
         </div>
 
         <div className={
-          activeMenu === 'чат'
-            ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
-            : activeMenu === 'обзор'
-              ? 'mx-auto w-full max-w-6xl p-3 md:px-6 md:py-5'
-              : 'mx-auto w-full max-w-5xl p-4 md:p-8'
+          inMgmtChat
+            ? 'mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden p-3 md:px-6'
+            : 'mx-auto w-full max-w-6xl p-3 md:px-6 md:py-5'
         }>
           {properties.length > 1 && activeMenu !== 'обзор' && (
-            <div className={activeMenu === 'чат' ? 'shrink-0 px-4 pt-3' : undefined}>
+            <div className={inMgmtChat ? 'shrink-0' : undefined}>
             <ApartmentPicker
               properties={properties}
               selectedId={property?.id ?? null}
@@ -2648,7 +2252,7 @@ export default function AccountPage() {
           )}
 
           {error && (
-            <div className={`rounded-xl border border-danger/25 bg-danger-bg p-4 text-danger ${activeMenu === 'чат' ? 'mx-3 mt-3 md:mx-4 shrink-0' : 'mb-4'}`}>
+            <div className={`rounded-xl border border-danger/25 bg-danger-bg p-4 text-danger ${inMgmtChat ? 'mb-3 shrink-0' : 'mb-4'}`}>
               {error}
               <button
                 onClick={() => setError(null)}
@@ -2660,7 +2264,7 @@ export default function AccountPage() {
           )}
 
           {!loading && property && (
-            activeMenu === 'чат'
+            inMgmtChat
               ? <div className="flex min-h-0 flex-1 flex-col">{renderContent()}</div>
               : renderContent()
           )}
@@ -2676,11 +2280,11 @@ export default function AccountPage() {
         items={[
           { key: 'обзор', label: t('account.overview'), icon: '▦' },
           { key: 'финансы', label: t('account.finance'), icon: '💰' },
-          { key: 'заявки', label: t('account.requests'), icon: '📋' },
-          { key: 'чат', label: t('account.tabChat'), icon: '💬', badge: unreadChatCount || undefined },
+          { key: 'ук', label: t('account.mgmtTitle'), icon: '🏢', badge: unreadChatCount || undefined },
+          { key: 'опросы', label: t('account.polls'), icon: '🗳️', badge: unansweredPollsCount || undefined },
         ]}
         activeKey={activeMenu}
-        moreActive={!['обзор', 'финансы', 'заявки', 'чат'].includes(activeMenu)}
+        moreActive={!['обзор', 'финансы', 'ук', 'опросы'].includes(activeMenu)}
         onSelect={(key) => setActiveMenu(key as MenuSection)}
         onMore={() => setSidebarOpen(true)}
         hidden={sidebarOpen}

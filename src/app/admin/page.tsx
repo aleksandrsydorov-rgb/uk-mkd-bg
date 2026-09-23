@@ -43,7 +43,26 @@ import { AdminReports } from '@/components/AdminReports';
 import { ChatMedia } from '@/components/ChatMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
-import { canSeeCapitalAdmin, canSeeWaterAdmin } from '@/lib/utilities';
+import {
+  canSeeCapitalAdmin,
+  canSeeWaterAdmin,
+  mapAdminRpcError,
+  todayIsoDate,
+  parseWaterMode,
+  DEFAULT_WATER_MODE,
+  type WaterMode,
+} from '@/lib/utilities';
+import {
+  canSubmitElectricityStaff,
+  canManageElectricityMeter,
+  activeElectricityMeter,
+  displayElectricityMeterNumber,
+  parseElectricityMode,
+  DEFAULT_ELECTRICITY_MODE,
+  mapSubmitElectricityError,
+  type ElectricityMode,
+  type ElectricityMeter,
+} from '@/lib/electricity';
 import { chatPreviewText, MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import {
   buildRegistryPdfHtml,
@@ -78,6 +97,8 @@ interface MeterReading {
   value: number;
   reading_date: string;
   submitted_by: string | null;
+  submitted_source?: string | null;
+  electricity_meter_id?: string | null;
 }
 
 interface ChatMessage {
@@ -193,6 +214,7 @@ export default function AdminPage() {
   const TOP_MENU: AdminSection[] = ['обзор', 'чат'];
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
+  const [staffActive, setStaffActive] = useState(false);
   const showWater = canSeeWaterAdmin(staffRole);
   const showCapital = canSeeCapitalAdmin(staffRole);
   const MENU_GROUPS: { id: string; label: string; icon: string; items: AdminSection[] }[] = [
@@ -219,6 +241,8 @@ export default function AdminPage() {
   const [authReady, setAuthReady] = useState(false);
   const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
   const [supportRateInput, setSupportRateInput] = useState(String(DEFAULT_SUPPORT_RATE));
+  const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
+  const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
   const [supportFeeMissing, setSupportFeeMissing] = useState(false);
   const [ledger, setLedger] = useState<SupportFeeEntry[]>([]);
   const [payPropertyId, setPayPropertyId] = useState<number | ''>('');
@@ -242,6 +266,7 @@ export default function AdminPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [ukExpenses, setUkExpenses] = useState<UkExpense[]>([]);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
+  const [electricityMeters, setElectricityMeters] = useState<ElectricityMeter[]>([]);
   const [allGuests, setAllGuests] = useState<ApartmentGuest[]>([]);
   const [allPets, setAllPets] = useState<ApartmentPet[]>([]);
   const [allChatMessages, setAllChatMessages] = useState<ChatMessage[]>([]);
@@ -321,11 +346,24 @@ export default function AdminPage() {
   const [showMeterForm, setShowMeterForm] = useState(false);
   const [meterForm, setMeterForm] = useState({
     property_id: '',
-    meter_type: 'electricity_day' as 'electricity_day' | 'electricity_night' | 'cold_water',
-    value: '',
+    day: '',
+    night: '',
     reading_date: new Date().toISOString().slice(0, 10),
-    submitted_by: 'УК',
   });
+  const meterIdempotencyRef = useRef<string | null>(null);
+  const [elMeterPropertyId, setElMeterPropertyId] = useState('');
+  const [showElAssign, setShowElAssign] = useState(false);
+  const [showElReplace, setShowElReplace] = useState(false);
+  const [elMeterBusy, setElMeterBusy] = useState(false);
+  const [elMeterNumber, setElMeterNumber] = useState('');
+  const [elInitialDay, setElInitialDay] = useState('');
+  const [elInitialNight, setElInitialNight] = useState('');
+  const [elInstalledAt, setElInstalledAt] = useState(todayIsoDate());
+  const [elReplaceNumber, setElReplaceNumber] = useState('');
+  const [elReplaceDay, setElReplaceDay] = useState('');
+  const [elReplaceNight, setElReplaceNight] = useState('');
+  const [elReplaceDate, setElReplaceDate] = useState(todayIsoDate());
+  const [elReplaceReason, setElReplaceReason] = useState('');
 
   const [showAnnForm, setShowAnnForm] = useState(false);
   const [annForm, setAnnForm] = useState({ title: '', body: '', created_by: 'УК' });
@@ -442,6 +480,13 @@ export default function AdminPage() {
       setAnnouncements((annsRes.data as Announcement[]) ?? []);
       setStaff((staffRes.data as StaffMember[]) ?? []);
       setMeterReadings((metersRes.data as MeterReading[]) ?? []);
+      const elMetersRes = await supabase.from('electricity_meters').select('*').order('created_at', { ascending: false });
+      if (elMetersRes.error) {
+        if (!isMissingRelation(elMetersRes.error, 'electricity_meters')) throw elMetersRes.error;
+        setElectricityMeters([]);
+      } else {
+        setElectricityMeters((elMetersRes.data as ElectricityMeter[]) ?? []);
+      }
       setAllGuests((guestsRes.data as ApartmentGuest[]) ?? []);
       if (!petsRes.error) setAllPets((petsRes.data as ApartmentPet[]) ?? []);
       setAllChatMessages((chatRes.data as ChatMessage[]) ?? []);
@@ -474,6 +519,8 @@ export default function AdminPage() {
         const rate = Number(settingsRes.data?.support_rate_eur_per_sqm_year ?? DEFAULT_SUPPORT_RATE);
         setSupportRate(rate > 0 ? rate : DEFAULT_SUPPORT_RATE);
         setSupportRateInput(String(rate > 0 ? rate : DEFAULT_SUPPORT_RATE));
+        setElectricityMode(parseElectricityMode(settingsRes.data?.electricity_mode));
+        setWaterMode(parseWaterMode(settingsRes.data?.water_mode));
         setSupportFeeMissing(false);
       }
 
@@ -511,6 +558,7 @@ export default function AdminPage() {
         }
         setSessionEmail(email);
         setStaffRole(access.staff?.role ?? '');
+        setStaffActive(access.staff?.active === true);
         setHasCabinet(access.isOwner);
         setAllowed(true);
       } catch (e: any) {
@@ -535,7 +583,8 @@ export default function AdminPage() {
       // logout UI должен продолжиться
     } finally {
       setSessionEmail('');
-      setStaffRole('');
+        setStaffRole('');
+        setStaffActive(false);
       setHasCabinet(false);
       setAllowed(false);
       router.replace('/');
@@ -1146,31 +1195,181 @@ export default function AdminPage() {
   async function handleSaveMeter(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (electricityMode === 'disabled') {
+      setError(t('account.elErrDisabled'));
+      return;
+    }
+    if (!canSubmitElectricityStaff(staffRole, staffActive)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    const day = Number(String(meterForm.day).replace(',', '.'));
+    const night = Number(String(meterForm.night).replace(',', '.'));
+    if (!Number.isFinite(day) || !Number.isFinite(night)) {
+      setError(t('account.utilNeedNumber'));
+      return;
+    }
+    if (!meterIdempotencyRef.current) {
+      meterIdempotencyRef.current = crypto.randomUUID();
+    }
     try {
-      const { error } = await supabase.from('meter_readings').insert({
-        property_id: Number(meterForm.property_id),
-        meter_type: meterForm.meter_type,
-        value: Number(meterForm.value),
-        reading_date: meterForm.reading_date,
-        submitted_by: meterForm.submitted_by,
+      const { error } = await supabase.rpc('submit_electricity_reading', {
+        p_property_id: Number(meterForm.property_id),
+        p_day_reading: Number(day.toFixed(3)),
+        p_night_reading: Number(night.toFixed(3)),
+        p_reading_date: meterForm.reading_date,
+        p_idempotency_key: meterIdempotencyRef.current,
       });
-      if (error) throw error;
+      if (error) {
+        const key = mapSubmitElectricityError(error.message);
+        const map = {
+          lower: t('account.utilErrLower'),
+          datePrev: t('account.utilErrDatePrev'),
+          future: t('account.utilErrFuture'),
+          conflict: t('account.utilErrConflict'),
+          disabled: t('account.elErrDisabled'),
+          staffOnly: t('account.elStaffOnly'),
+          noMeter: t('account.elErrNoMeter'),
+          generic: error.message || t('account.utilErrGeneric'),
+        } as const;
+        throw new Error(map[key]);
+      }
       setShowMeterForm(false);
-      setMeterForm({ property_id: '', meter_type: 'electricity_day', value: '',
-        reading_date: new Date().toISOString().slice(0, 10), submitted_by: 'УК' });
+      setMeterForm({
+        property_id: '',
+        day: '',
+        night: '',
+        reading_date: new Date().toISOString().slice(0, 10),
+      });
+      meterIdempotencyRef.current = null;
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Ошибка сохранения показания');
     }
   }
 
-  async function handleDeleteMeter(id: number) {
+  async function handleAssignElectricityMeter(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canManageElectricityMeter(staffRole, staffActive)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    const propertyId = Number(elMeterPropertyId || meterAptFilter);
+    if (!Number.isFinite(propertyId) || propertyId <= 0) {
+      setError(t('form.pickApt'));
+      return;
+    }
+    const day = Number(String(elInitialDay).replace(',', '.'));
+    const night = Number(String(elInitialNight).replace(',', '.'));
+    if (!elMeterNumber.trim() || !Number.isFinite(day) || !Number.isFinite(night) || day < 0 || night < 0) {
+      setError(t('account.utilNeedNumber'));
+      return;
+    }
+    setElMeterBusy(true);
+    setError(null);
     try {
-      const { error } = await supabase.from('meter_readings').delete().eq('id', id);
-      if (error) throw error;
+      const { error } = await supabase.rpc('assign_electricity_meter', {
+        p_property_id: propertyId,
+        p_meter_number: elMeterNumber.trim(),
+        p_initial_day_reading: Number(day.toFixed(3)),
+        p_initial_night_reading: Number(night.toFixed(3)),
+        p_installed_at: elInstalledAt,
+      });
+      if (error) throw new Error(t(mapAdminRpcError(error.message)));
+      setShowElAssign(false);
+      setElMeterNumber('');
+      setElInitialDay('');
+      setElInitialNight('');
       await loadAll();
+    } catch (err: any) {
+      setError(err?.message ?? t('admin.errGeneric'));
+    } finally {
+      setElMeterBusy(false);
+    }
+  }
+
+  async function handleReplaceElectricityMeter(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canManageElectricityMeter(staffRole, staffActive)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    const propertyId = Number(elMeterPropertyId || meterAptFilter);
+    if (!Number.isFinite(propertyId) || propertyId <= 0) {
+      setError(t('form.pickApt'));
+      return;
+    }
+    const day = Number(String(elReplaceDay).replace(',', '.'));
+    const night = Number(String(elReplaceNight).replace(',', '.'));
+    if (!elReplaceNumber.trim() || !elReplaceReason.trim() || !Number.isFinite(day) || !Number.isFinite(night) || day < 0 || night < 0) {
+      setError(t('account.utilNeedNumber'));
+      return;
+    }
+    setElMeterBusy(true);
+    setError(null);
+    try {
+      const { error } = await supabase.rpc('replace_electricity_meter', {
+        p_property_id: propertyId,
+        p_new_meter_number: elReplaceNumber.trim(),
+        p_initial_day_reading: Number(day.toFixed(3)),
+        p_initial_night_reading: Number(night.toFixed(3)),
+        p_installed_at: elReplaceDate,
+        p_replacement_reason: elReplaceReason.trim(),
+      });
+      if (error) throw new Error(t(mapAdminRpcError(error.message)));
+      setShowElReplace(false);
+      setElReplaceNumber('');
+      setElReplaceDay('');
+      setElReplaceNight('');
+      setElReplaceReason('');
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message ?? t('admin.errGeneric'));
+    } finally {
+      setElMeterBusy(false);
+    }
+  }
+
+  async function handleSaveElectricityMode(mode: ElectricityMode) {
+    if (staffRole.trim().toLowerCase() !== 'администрация') {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    setError(null);
+    try {
+      const { error } = await supabase.from('building_settings').upsert({
+        id: 1,
+        support_rate_eur_per_sqm_year: supportRate,
+        electricity_mode: mode,
+        updated_at: new Date().toISOString(),
+        updated_by: sessionEmail,
+      });
+      if (error) throw error;
+      setElectricityMode(mode);
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка удаления');
+      setError(e?.message ?? t('admin.errGeneric'));
+    }
+  }
+
+  async function handleSaveWaterMode(mode: WaterMode) {
+    if (staffRole.trim().toLowerCase() !== 'администрация') {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    setError(null);
+    try {
+      const { error } = await supabase.from('building_settings').upsert({
+        id: 1,
+        support_rate_eur_per_sqm_year: supportRate,
+        electricity_mode: electricityMode,
+        water_mode: mode,
+        updated_at: new Date().toISOString(),
+        updated_by: sessionEmail,
+      });
+      if (error) throw error;
+      setWaterMode(mode);
+    } catch (e: any) {
+      setError(e?.message ?? t('admin.errGeneric'));
     }
   }
 
@@ -2495,6 +2694,10 @@ export default function AdminPage() {
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
+            staffActive={staffActive}
+            waterMode={waterMode}
+            canChangeWaterMode={staffRole.trim().toLowerCase() === 'администрация'}
+            onSaveWaterMode={handleSaveWaterMode}
           />
         );
 
@@ -2507,18 +2710,183 @@ export default function AdminPage() {
           />
         );
 
-      case 'счётчики':
+      case 'счётчики': {
+        const canElSubmit =
+          electricityMode !== 'disabled' && canSubmitElectricityStaff(staffRole, staffActive);
         return (
           <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-accent">Показания счётчиков</h2>
-              <button onClick={() => setShowMeterForm(true)}
-                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                + Добавить
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h2 className="text-lg font-semibold text-accent">{t('admin.meters')}</h2>
+              {canElSubmit && (
+                <button onClick={() => setShowMeterForm(true)}
+                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+                  + {t('account.elSubmit')}
+                </button>
+              )}
             </div>
 
-            {/* ФИЛЬТРЫ СЧЁТЧИКОВ */}
+            {staffRole.trim().toLowerCase() === 'администрация' && (
+              <div className="mb-4 space-y-3">
+                <div className="rounded-[14px] border border-border bg-background px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.waterMode')}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {([
+                      ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
+                      ['staff_only', t('admin.elModeStaffOnly')],
+                      ['disabled', t('admin.elModeDisabled')],
+                    ] as const).map(([id, label]) => (
+                      <button
+                        key={`water-${id}`}
+                        type="button"
+                        onClick={() => void handleSaveWaterMode(id)}
+                        className={`rounded-full border px-3 py-1.5 text-sm ${
+                          waterMode === id
+                            ? 'border-accent/25 bg-accent-bg text-accent'
+                            : 'border-border text-secondary hover:bg-hover'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[14px] border border-border bg-background px-4 py-3">
+                <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.electricityMode')}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {([
+                    ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
+                    ['staff_only', t('admin.elModeStaffOnly')],
+                    ['disabled', t('admin.elModeDisabled')],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={`el-${id}`}
+                      type="button"
+                      onClick={() => void handleSaveElectricityMode(id)}
+                      className={`rounded-full border px-3 py-1.5 text-sm ${
+                        electricityMode === id
+                          ? 'border-accent/25 bg-accent-bg text-accent'
+                          : 'border-border text-secondary hover:bg-hover'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                </div>
+              </div>
+            )}
+
+            {electricityMode === 'disabled' && (
+              <p className="mb-4 text-sm text-secondary">{t('account.elErrDisabled')}</p>
+            )}
+
+            {(() => {
+              const canElMeter = canManageElectricityMeter(staffRole, staffActive);
+              const selectedElId = elMeterPropertyId || meterAptFilter || (properties[0] ? String(properties[0].id) : '');
+              const activeEl = activeElectricityMeter(
+                electricityMeters.filter((m) => String(m.property_id) === selectedElId),
+              );
+              const fieldClass = 'rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground';
+              return (
+                <div className="mb-4 rounded-[14px] border border-border bg-background px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.elMeter')}</p>
+                  <select
+                    className={`${fieldClass} mt-2 max-w-xl`}
+                    value={selectedElId}
+                    onChange={(e) => {
+                      setElMeterPropertyId(e.target.value);
+                      setShowElAssign(false);
+                      setShowElReplace(false);
+                    }}
+                  >
+                    {properties.length === 0 && <option value="">{t('form.pickApt')}</option>}
+                    {properties.map((p) => (
+                      <option key={p.id} value={String(p.id)}>
+                        {t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}
+                      </option>
+                    ))}
+                  </select>
+                  {!activeEl ? (
+                    <p className="mt-3 text-sm text-secondary">{t('admin.noElectricityMeter')}</p>
+                  ) : (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                      <div>
+                        <div className="text-[11px] text-muted">{t('account.elMeterNumber')}</div>
+                        <div className="mt-0.5 font-semibold tabular-nums">{displayElectricityMeterNumber(activeEl.meter_number)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">{t('account.elInstalledAt')}</div>
+                        <div className="mt-0.5 tabular-nums">{new Date(activeEl.installed_at).toLocaleDateString(dateLocale)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">{t('account.elInitialDay')}</div>
+                        <div className="mt-0.5 tabular-nums">{Number(activeEl.initial_day_reading).toFixed(3)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">{t('account.elInitialNight')}</div>
+                        <div className="mt-0.5 tabular-nums">{Number(activeEl.initial_night_reading).toFixed(3)}</div>
+                      </div>
+                    </div>
+                  )}
+                  {canElMeter && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {!activeEl && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowElAssign((v) => !v); setShowElReplace(false); if (!elMeterPropertyId) setElMeterPropertyId(selectedElId); }}
+                          className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
+                        >
+                          {t('account.elAssignMeter')}
+                        </button>
+                      )}
+                      {activeEl && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowElReplace((v) => !v); setShowElAssign(false); if (!elMeterPropertyId) setElMeterPropertyId(selectedElId); }}
+                          className="rounded-xl border border-border px-4 py-2 text-sm text-secondary hover:bg-hover"
+                        >
+                          {t('account.elReplaceMeter')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {canElMeter && showElAssign && (
+                    <form onSubmit={handleAssignElectricityMeter} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <input className={fieldClass} placeholder={t('account.elMeterNumber')} value={elMeterNumber} onChange={(e) => setElMeterNumber(e.target.value)} required />
+                      <input className={fieldClass} type="number" min="0" step="0.001" placeholder={t('account.elInitialDay')} value={elInitialDay} onChange={(e) => setElInitialDay(e.target.value)} required />
+                      <input className={fieldClass} type="number" min="0" step="0.001" placeholder={t('account.elInitialNight')} value={elInitialNight} onChange={(e) => setElInitialNight(e.target.value)} required />
+                      <input className={fieldClass} type="date" max={todayIsoDate()} value={elInstalledAt} onChange={(e) => setElInstalledAt(e.target.value)} required />
+                      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
+                        <button type="submit" disabled={elMeterBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
+                          {elMeterBusy ? t('common.saving') : t('common.save')}
+                        </button>
+                        <button type="button" onClick={() => setShowElAssign(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-secondary hover:bg-hover">
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  {canElMeter && showElReplace && activeEl && (
+                    <form onSubmit={handleReplaceElectricityMeter} className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <input className={fieldClass} placeholder={t('admin.newMeterNumber')} value={elReplaceNumber} onChange={(e) => setElReplaceNumber(e.target.value)} required />
+                      <input className={fieldClass} type="number" min="0" step="0.001" placeholder={t('account.elInitialDay')} value={elReplaceDay} onChange={(e) => setElReplaceDay(e.target.value)} required />
+                      <input className={fieldClass} type="number" min="0" step="0.001" placeholder={t('account.elInitialNight')} value={elReplaceNight} onChange={(e) => setElReplaceNight(e.target.value)} required />
+                      <input className={fieldClass} type="date" max={todayIsoDate()} value={elReplaceDate} onChange={(e) => setElReplaceDate(e.target.value)} required />
+                      <input className={fieldClass} placeholder={t('account.elReplaceReason')} value={elReplaceReason} onChange={(e) => setElReplaceReason(e.target.value)} required />
+                      <div className="flex gap-2 sm:col-span-2">
+                        <button type="submit" disabled={elMeterBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
+                          {elMeterBusy ? t('common.saving') : t('common.save')}
+                        </button>
+                        <button type="button" onClick={() => setShowElReplace(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-secondary hover:bg-hover">
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="mb-4 rounded-[14px] border border-border bg-surface p-4 shadow-card">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <select value={meterAptFilter} onChange={(e) => setMeterAptFilter(e.target.value)}
@@ -2544,41 +2912,49 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {showMeterForm && (
+            {showMeterForm && canElSubmit && (
               <form onSubmit={handleSaveMeter}
                 className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-accent">Новое показание</h3>
+                <h3 className="text-sm font-semibold text-accent">{t('account.meterTabElectricity')}</h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     value={meterForm.property_id}
-                    onChange={(e) => setMeterForm({ ...meterForm, property_id: e.target.value })} required>
+                    onChange={(e) => {
+                      meterIdempotencyRef.current = null;
+                      setMeterForm({ ...meterForm, property_id: e.target.value });
+                    }} required>
                     <option value="">{t('form.pickApt')}</option>
                     {properties.map((p) => (
                       <option key={p.id} value={p.id}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
                     ))}
                   </select>
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    value={meterForm.meter_type}
-                    onChange={(e) => setMeterForm({ ...meterForm, meter_type: e.target.value as any })}>
-                    <option value="electricity_day">Э/э день</option>
-                    <option value="electricity_night">Э/э ночь</option>
-                    <option value="cold_water">Холодная вода</option>
-                  </select>
                   <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Показание" type="number" step="0.01" value={meterForm.value}
-                    onChange={(e) => setMeterForm({ ...meterForm, value: e.target.value })} required />
+                    placeholder={t('admin.elDayReading')} type="number" step="0.001" value={meterForm.day}
+                    onChange={(e) => {
+                      meterIdempotencyRef.current = null;
+                      setMeterForm({ ...meterForm, day: e.target.value });
+                    }} required />
+                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                    placeholder={t('admin.elNightReading')} type="number" step="0.001" value={meterForm.night}
+                    onChange={(e) => {
+                      meterIdempotencyRef.current = null;
+                      setMeterForm({ ...meterForm, night: e.target.value });
+                    }} required />
                   <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     type="date" value={meterForm.reading_date}
-                    onChange={(e) => setMeterForm({ ...meterForm, reading_date: e.target.value })} required />
+                    onChange={(e) => {
+                      meterIdempotencyRef.current = null;
+                      setMeterForm({ ...meterForm, reading_date: e.target.value });
+                    }} required />
                 </div>
                 <div className="flex gap-2">
                   <button type="submit"
                     className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                    Сохранить
+                    {t('account.elSubmit')}
                   </button>
                   <button type="button" onClick={() => setShowMeterForm(false)}
                     className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
-                    Отмена
+                    {t('common.cancel')}
                   </button>
                 </div>
               </form>
@@ -2589,17 +2965,20 @@ export default function AdminPage() {
                 <thead>
                   <tr className="text-left text-secondary border-b border-border">
                     <th className="py-2 px-3">{t('admin.aptLabel')}</th>
+                    <th className="py-2 px-3">{t('account.elMeter')}</th>
                     <th className="py-2 px-3">Тип</th>
                     <th className="py-2 px-3">Показание</th>
                     <th className="py-2 px-3">Дата</th>
-                    <th className="py-2 px-3">Кто внёс</th>
-                    <th className="py-2 px-3"></th>
+                    <th className="py-2 px-3">{t('account.elSubmittedBy')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredMeters.slice(0, 100).map((m) => (
                     <tr key={m.id} className="border-b border-border hover:bg-surface">
                       <td className="py-2 px-3 text-foreground">{propertyNameById(m.property_id)}</td>
+                      <td className="py-2 px-3 text-secondary">
+                        {displayElectricityMeterNumber(electricityMeters.find((em) => em.id === m.electricity_meter_id)?.meter_number) || '—'}
+                      </td>
                       <td className="py-2 px-3 text-secondary">
                         {m.meter_type === 'electricity_day' ? 'Э/э день' :
                          m.meter_type === 'electricity_night' ? 'Э/э ночь' : 'Вода'}
@@ -2608,10 +2987,12 @@ export default function AdminPage() {
                       <td className="py-2 px-3 text-secondary">
                         {new Date(m.reading_date).toLocaleDateString(dateLocale)}
                       </td>
-                      <td className="py-2 px-3 text-secondary">{m.submitted_by ?? '—'}</td>
-                      <td className="py-2 px-3">
-                        <button onClick={() => handleDeleteMeter(m.id)}
-                          className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">✕</button>
+                      <td className="py-2 px-3 text-secondary">
+                        {m.submitted_source === 'owner'
+                          ? t('account.elByOwner')
+                          : m.submitted_source === 'staff'
+                            ? t('account.elByStaff')
+                            : (m.submitted_by ?? '—')}
                       </td>
                     </tr>
                   ))}
@@ -2623,6 +3004,7 @@ export default function AdminPage() {
             )}
           </div>
         );
+      }
 
       // =============================================================
       // РАСХОДЫ УК

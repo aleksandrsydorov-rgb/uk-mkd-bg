@@ -13,18 +13,24 @@ import {
   lastActiveReading,
   mapSubmitWaterError,
   todayIsoDate,
+  parseWaterVolume,
+  normalizeWaterVolume,
+  DEFAULT_WATER_MODE,
   type CapitalAssessment,
   type CapitalLedger,
   type UtilityBalance,
+  type WaterMode,
   type WaterLedger,
   type WaterMeter,
   type WaterReading,
   type WaterSubmitResult,
   type WaterTariff,
 } from '@/lib/utilities';
+import { displayElectricityMeterNumber } from '@/lib/electricity';
 
 type Variant = 'finance' | 'meters';
 export type FinanceTab = 'support' | 'water' | 'capital';
+export type MeterTab = 'water' | 'electricity';
 
 function ledgerKindLabel(kind: string, t: (key: 'account.utilCharge' | 'account.utilPayment' | 'account.utilAdjDebit' | 'account.utilAdjCredit') => string) {
   if (kind === 'charge') return t('account.utilCharge');
@@ -99,6 +105,15 @@ export function OwnerUtilities({
   onSelectFinanceTab,
   supportDebt = 0,
   supportOver = 0,
+  meterTab = 'water',
+  onSelectMeterTab,
+  waterMode = DEFAULT_WATER_MODE,
+  waterEnabled = true,
+  electricityEnabled = true,
+  electricLastDay = null,
+  electricLastNight = null,
+  electricLastDate = null,
+  electricMeterNumber = null,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
@@ -108,8 +123,17 @@ export function OwnerUtilities({
   onSelectFinanceTab?: (tab: FinanceTab) => void;
   supportDebt?: number;
   supportOver?: number;
+  meterTab?: MeterTab;
+  onSelectMeterTab?: (tab: MeterTab) => void;
+  waterMode?: WaterMode;
+  waterEnabled?: boolean;
+  electricityEnabled?: boolean;
+  electricLastDay?: number | null;
+  electricLastNight?: number | null;
+  electricLastDate?: string | null;
+  electricMeterNumber?: string | null;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
   const [waterLoading, setWaterLoading] = useState(true);
   const [capitalLoading, setCapitalLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -223,14 +247,22 @@ export function OwnerUtilities({
   }, [propertyId, supabase]);
 
   useEffect(() => {
-    void loadWater();
+    if (waterEnabled) {
+      void loadWater();
+    } else {
+      setWaterLoading(false);
+      setMeter(null);
+      setReadings([]);
+      setWaterLedger([]);
+      setWaterBalance(emptyBalance());
+    }
     if (variant === 'finance') void loadCapital();
     setCurrentValue('');
     setReadingDate(todayIsoDate());
     setSubmitError(null);
     setSuccess(null);
     idempotencyKeyRef.current = null;
-  }, [loadWater, loadCapital, variant, propertyId]);
+  }, [loadWater, loadCapital, variant, propertyId, waterEnabled]);
 
   const assessmentTitles = useMemo(() => {
     const map = new Map<string, string>();
@@ -258,12 +290,12 @@ export function OwnerUtilities({
     setSubmitError(null);
     setSuccess(null);
 
-    const parsed = Number(String(currentValue).replace(',', '.'));
+    const parsed = parseWaterVolume(String(currentValue));
     if (!Number.isFinite(parsed)) {
       setSubmitError(t('account.utilNeedNumber'));
       return;
     }
-    const normalized = Number(parsed.toFixed(3));
+    const normalized = normalizeWaterVolume(parsed);
     if (normalized < previousDisplay) {
       setSubmitError(t('account.utilErrLower'));
       return;
@@ -297,6 +329,8 @@ export function OwnerUtilities({
           datePrev: t('account.utilErrDatePrev'),
           future: t('account.utilErrFuture'),
           conflict: t('account.utilErrConflict'),
+          disabled: t('account.utilErrDisabled'),
+          staffOnly: t('account.waterStaffOnly'),
           generic: t('account.utilErrGeneric'),
         };
         setSubmitError(map[code]);
@@ -324,23 +358,33 @@ export function OwnerUtilities({
           {waterLoading ? (
             <p className="mt-2 text-sm text-muted">{t('common.loading')}</p>
           ) : meter ? (
-            <p className="mt-1 text-sm text-secondary">
-              {t('account.utilMeterNo')}: <span className="font-medium text-foreground">{meter.meter_number}</span>
-            </p>
+            <>
+              <p className="mt-1 text-sm text-secondary">
+                {t('account.utilMeterNo')}: <span className="font-medium text-foreground">{meter.meter_number}</span>
+              </p>
+              <p className="mt-0.5 text-sm text-secondary">
+                {t('account.utilInstalled')}:{' '}
+                <span className="font-medium text-foreground">
+                  {new Date(meter.installed_at).toLocaleDateString(dateLocale)}
+                </span>
+              </p>
+            </>
           ) : (
             <p className="mt-2 text-sm text-secondary">{t('account.utilNoMeter')}</p>
           )}
         </div>
-        <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
+        {variant === 'finance' ? (
+          <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
+        ) : null}
       </div>
 
-      {meter && !waterLoading && (
+      {meter && !waterLoading && variant === 'finance' && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="rounded-xl bg-background px-3 py-3">
             <div className="text-[11px] text-muted">
               {previousIsInitial ? t('account.utilInitial') : t('account.utilLastReading')}
             </div>
-            <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(previousDisplay)} {t('account.m3')}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(previousDisplay, locale)} {t('account.m3')}</div>
             <div className="mt-0.5 text-[11px] text-muted">
               {lastActive
                 ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)
@@ -369,7 +413,53 @@ export function OwnerUtilities({
         </div>
       )}
 
-      {meter && variant === 'meters' && (
+      {meter && !waterLoading && variant === 'meters' && (
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl bg-background px-3 py-3">
+            <div className="text-[11px] text-muted">{t('account.utilLastReading')}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">
+              {lastActive ? `${formatM3(Number(lastActive.current_value), locale)} ${t('account.m3')}` : '—'}
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted">
+              {lastActive
+                ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)
+                : t('account.utilNoReadings')}
+            </div>
+          </div>
+          <div className="rounded-xl bg-background px-3 py-3">
+            <div className="text-[11px] text-muted">
+              {previousIsInitial ? t('account.utilInitial') : t('account.previousReading')}
+            </div>
+            <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(previousDisplay, locale)} {t('account.m3')}</div>
+            <div className="mt-0.5 text-[11px] text-muted">
+              {lastActive
+                ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)
+                : t('account.utilInitialHint')}
+            </div>
+          </div>
+          <div className="rounded-xl bg-background px-3 py-3">
+            <div className="text-[11px] text-muted">{t('account.consumption')}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">
+              {lastActive ? `${formatM3(Number(lastActive.consumption_m3), locale)} ${t('account.m3')}` : '—'}
+            </div>
+          </div>
+          <div className="rounded-xl bg-background px-3 py-3">
+            <div className="text-[11px] text-muted">{t('account.utilTariff')}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">
+              {tariff ? Number(tariff.price_eur_per_m3).toFixed(2) : '—'}
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted">{t('account.perM3')}</div>
+          </div>
+        </div>
+      )}
+
+      {meter && variant === 'meters' && waterMode === 'staff_only' && (
+        <p className="mt-5 rounded-xl border border-border bg-background px-3 py-3 text-sm text-secondary">
+          {t('account.waterStaffOnly')}
+        </p>
+      )}
+
+      {meter && variant === 'meters' && waterMode === 'owner_and_staff' && (
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
           <p className="text-sm font-medium text-foreground">{t('account.utilSubmitTitle')}</p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -378,7 +468,7 @@ export function OwnerUtilities({
               <input
                 type="number"
                 inputMode="decimal"
-                step="0.001"
+                step="0.1"
                 min={previousDisplay}
                 required
                 value={currentValue}
@@ -410,7 +500,7 @@ export function OwnerUtilities({
               <p className="font-medium text-accent">{t('account.utilSubmitOk')}</p>
               {success.charge_created ? (
                 <p className="mt-1">
-                  {t('account.consumption')} {formatM3(Number(success.consumption_m3))} {t('account.m3')}
+                  {t('account.consumption')} {formatM3(Number(success.consumption_m3), locale)} {t('account.m3')}
                   {' · '}
                   {t('account.utilCharged')} {formatEur(Number(success.charge_amount_eur))}
                 </p>
@@ -446,22 +536,34 @@ export function OwnerUtilities({
                   <th className="px-2 py-1 font-medium">{t('account.consumption')}</th>
                   <th className="px-2 py-1 font-medium">{t('account.utilTariff')}</th>
                   <th className="px-2 py-1 font-medium">{t('account.utilCharged')}</th>
+                  {variant === 'meters' ? (
+                    <th className="px-2 py-1 font-medium">{t('account.elSubmittedBy')}</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {readings.map((row) => {
                   const reversed = row.status === 'reversed';
+                  const via =
+                    row.submitted_via === 'staff'
+                      ? t('account.elByStaff')
+                      : row.submitted_via === 'owner'
+                        ? t('account.elByOwner')
+                        : '—';
                   return (
                     <tr key={row.id} className={reversed ? 'text-muted' : 'text-secondary'}>
                       <td className="whitespace-nowrap px-2 py-1.5">
                         {new Date(row.reading_date).toLocaleDateString(dateLocale)}
                         {reversed ? ` · ${t('account.utilReversed')}` : ''}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.previous_value))}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.current_value))}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3))}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.previous_value), locale)}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.current_value), locale)}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3), locale)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{Number(row.tariff_eur_per_m3).toFixed(4)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{formatEur(Number(row.charge_amount_eur))}</td>
+                      {variant === 'meters' ? (
+                        <td className="whitespace-nowrap px-2 py-1.5">{via}</td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -474,7 +576,64 @@ export function OwnerUtilities({
   );
 
   if (variant === 'meters') {
-    return waterCard;
+    const cardBtn =
+      'rounded-[14px] border bg-surface px-4 py-4 text-left shadow-card transition';
+    const cardActive = 'border-accent/30 bg-accent-bg';
+    const cardIdle = 'border-border hover:bg-hover';
+    const waterLast =
+      lastActive != null
+        ? `${formatM3(Number(lastActive.current_value), locale)} ${t('account.m3')}`
+        : '—';
+    const waterDate = lastActive
+      ? t('account.meterSubmitted', { d: new Date(lastActive.reading_date).toLocaleDateString(dateLocale) })
+      : t('account.utilNoReadings');
+    const electricDate = electricLastDate
+      ? t('account.meterSubmitted', { d: new Date(electricLastDate).toLocaleDateString(dateLocale) })
+      : t('account.utilNoReadings');
+
+    const summaryCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
+    return (
+      <div className="space-y-4">
+        <div className={`grid gap-2 ${summaryCount > 1 ? 'sm:grid-cols-2' : ''}`}>
+          {waterEnabled && (
+          <button
+            type="button"
+            onClick={() => onSelectMeterTab?.('water')}
+            className={`${cardBtn} ${meterTab === 'water' ? cardActive : cardIdle}`}
+          >
+            <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.meterTabWater')}</p>
+            <p className="mt-1 text-[11px] text-secondary">{t('account.utilLastReading')}</p>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{waterLoading ? t('common.loading') : waterLast}</div>
+            <p className="mt-1 text-xs text-secondary">{waterLoading ? '—' : waterDate}</p>
+            {meter?.meter_number ? (
+              <p className="mt-1 text-[11px] text-muted">{t('account.elMeterShort', { n: meter.meter_number })}</p>
+            ) : null}
+          </button>
+          )}
+          {electricityEnabled && (
+          <button
+            type="button"
+            onClick={() => onSelectMeterTab?.('electricity')}
+            className={`${cardBtn} ${meterTab === 'electricity' ? cardActive : cardIdle}`}
+          >
+            <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.meterTabElectricity')}</p>
+            <p className="mt-1 text-[11px] text-secondary">{t('account.utilLastReading')}</p>
+            <div className="mt-1 text-sm font-semibold tracking-tight text-foreground">
+              {t('account.elDayShort')}: {electricLastDay != null ? `${electricLastDay} ${t('account.kwh')}` : '—'}
+            </div>
+            <div className="mt-0.5 text-sm font-semibold tracking-tight text-foreground">
+              {t('account.elNightShort')}: {electricLastNight != null ? `${electricLastNight} ${t('account.kwh')}` : '—'}
+            </div>
+            <p className="mt-1 text-xs text-secondary">{electricDate}</p>
+            {electricMeterNumber ? (
+              <p className="mt-1 text-[11px] text-muted">{t('account.elMeterShort', { n: displayElectricityMeterNumber(electricMeterNumber) })}</p>
+            ) : null}
+          </button>
+          )}
+        </div>
+        {waterEnabled && meterTab === 'water' ? waterCard : null}
+      </div>
+    );
   }
 
   const cardBtn =
@@ -484,7 +643,7 @@ export function OwnerUtilities({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className={`grid gap-2 ${waterEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         <button
           type="button"
           onClick={() => onSelectFinanceTab?.('support')}
@@ -498,6 +657,7 @@ export function OwnerUtilities({
             {supportDebt > 0 ? t('account.hasDebt') : supportOver > 0 ? t('account.hasOver') : t('account.noDebt')}
           </p>
         </button>
+        {waterEnabled && (
         <button
           type="button"
           onClick={() => onSelectFinanceTab?.('water')}
@@ -506,6 +666,7 @@ export function OwnerUtilities({
           <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabWater')}</p>
           <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
         </button>
+        )}
         <button
           type="button"
           onClick={() => onSelectFinanceTab?.('capital')}
@@ -516,7 +677,7 @@ export function OwnerUtilities({
         </button>
       </div>
 
-      {financeTab === 'water' && (
+      {waterEnabled && financeTab === 'water' && (
         <>
           <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -590,7 +751,7 @@ export function OwnerUtilities({
                           {new Date(row.reading_date).toLocaleDateString(dateLocale)}
                           {row.status === 'reversed' ? ` · ${t('account.utilReversed')}` : ''}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3))} {t('account.m3')}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3), locale)} {t('account.m3')}</td>
                         <td className="whitespace-nowrap px-2 py-1.5">{formatEur(Number(row.charge_amount_eur))}</td>
                       </tr>
                     ))}

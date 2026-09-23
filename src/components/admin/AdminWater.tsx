@@ -11,6 +11,7 @@ import {
   canManageWaterFinance,
   canManageWaterTariff,
   canSeeWaterAdmin,
+  canSubmitWaterStaff,
   currentWaterTariff,
   emptyBalance,
   formatEur,
@@ -18,9 +19,13 @@ import {
   lastActiveReading,
   mapAdminRpcError,
   todayIsoDate,
+  parseWaterVolume,
+  normalizeWaterVolume,
+  DEFAULT_WATER_MODE,
   type UtilityBalance,
   type WaterLedger,
   type WaterMeter,
+  type WaterMode,
   type WaterReading,
   type WaterTariff,
 } from '@/lib/utilities';
@@ -56,16 +61,25 @@ export function AdminWater({
   supabase,
   properties,
   staffRole,
+  staffActive = false,
+  waterMode = DEFAULT_WATER_MODE,
+  canChangeWaterMode = false,
+  onSaveWaterMode,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
   staffRole: string;
+  staffActive?: boolean;
+  waterMode?: WaterMode;
+  canChangeWaterMode?: boolean;
+  onSaveWaterMode?: (mode: WaterMode) => void;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
   const canSee = canSeeWaterAdmin(staffRole);
   const canMeter = canAssignWaterMeter(staffRole);
   const canTariff = canManageWaterTariff(staffRole);
   const canFinance = canManageWaterFinance(staffRole);
+  const canSubmit = waterMode !== 'disabled' && canSubmitWaterStaff(staffRole, staffActive);
 
   const sorted = useMemo(
     () =>
@@ -105,8 +119,12 @@ export function AdminWater({
 
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
+  const [submitValue, setSubmitValue] = useState('');
+  const [submitDate, setSubmitDate] = useState(todayIsoDate());
+  const [submitBusy, setSubmitBusy] = useState(false);
 
   const payKeyRef = useRef(crypto.randomUUID());
+  const submitKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (propertyId === '' && sorted[0]) setPropertyId(sorted[0].id);
@@ -345,6 +363,40 @@ export function AdminWater({
     await loadPropertyWater();
   }
 
+  async function handleSubmitReading(e: React.FormEvent) {
+    e.preventDefault();
+    if (propertyId === '' || !canSubmit) return;
+    const parsed = parseWaterVolume(String(submitValue));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError(t('account.utilNeedNumber'));
+      return;
+    }
+    if (!submitDate) {
+      setError(t('account.utilNeedDate'));
+      return;
+    }
+    if (submitDate > todayIsoDate()) {
+      setError(t('admin.errFutureDate'));
+      return;
+    }
+    setSubmitBusy(true);
+    const { error: rpcErr } = await supabase.rpc('submit_water_reading', {
+      p_property_id: Number(propertyId),
+      p_current_value: normalizeWaterVolume(parsed),
+      p_reading_date: submitDate,
+      p_idempotency_key: submitKeyRef.current,
+    });
+    setSubmitBusy(false);
+    if (rpcErr) {
+      rpcFail(rpcErr.message);
+      return;
+    }
+    submitKeyRef.current = crypto.randomUUID();
+    setSubmitValue('');
+    flash(t('account.utilSubmitOk'));
+    await loadPropertyWater();
+  }
+
   if (!canSee) {
     return (
       <div className={cardClass}>
@@ -362,6 +414,34 @@ export function AdminWater({
       <div className={cardClass}>
         <h2 className="text-lg font-semibold text-accent">{t('admin.water')}</h2>
         <p className="mt-1 text-sm text-secondary">{t('admin.waterLead')}</p>
+        {canChangeWaterMode && (
+          <div className="mt-4 rounded-[14px] border border-border bg-background px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.waterMode')}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([
+                ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
+                ['staff_only', t('admin.elModeStaffOnly')],
+                ['disabled', t('admin.elModeDisabled')],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onSaveWaterMode?.(id)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    waterMode === id
+                      ? 'border-accent/25 bg-accent-bg text-accent'
+                      : 'border-border text-secondary hover:bg-hover'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {waterMode === 'disabled' && (
+          <p className="mt-3 text-sm text-secondary">{t('account.utilErrDisabled')}</p>
+        )}
         <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
         <select
           className={`${fieldClass} mt-1 max-w-xl`}
@@ -406,12 +486,12 @@ export function AdminWater({
             </div>
             <div>
               <div className="text-[11px] text-muted">{t('admin.initialReading')}</div>
-              <div className="mt-0.5 tabular-nums">{formatM3(Number(activeMeter.initial_reading))}</div>
+              <div className="mt-0.5 tabular-nums">{formatM3(Number(activeMeter.initial_reading), locale)}</div>
             </div>
             <div>
               <div className="text-[11px] text-muted">{t('admin.lastReading')}</div>
               <div className="mt-0.5 tabular-nums">
-                {lastReading ? formatM3(Number(lastReading.current_value)) : '—'}
+                {lastReading ? formatM3(Number(lastReading.current_value), locale) : '—'}
               </div>
             </div>
             <div>
@@ -453,7 +533,7 @@ export function AdminWater({
         {canMeter && showAssign && (
           <form onSubmit={handleAssign} className="mt-4 grid gap-3 sm:grid-cols-3">
             <input className={fieldClass} placeholder={t('admin.meterNumber')} value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)} required />
-            <input className={fieldClass} type="number" min="0" step="0.001" placeholder={t('admin.initialReading')} value={initialReading} onChange={(e) => setInitialReading(e.target.value)} required />
+            <input className={fieldClass} type="number" min="0" step="0.1" placeholder={t('admin.initialReading')} value={initialReading} onChange={(e) => setInitialReading(e.target.value)} required />
             <input className={fieldClass} type="date" max={todayIsoDate()} value={installedAt} onChange={(e) => setInstalledAt(e.target.value)} required />
             <div className="flex gap-2 sm:col-span-3">
               <button type="submit" disabled={meterBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
@@ -469,7 +549,7 @@ export function AdminWater({
         {canMeter && showReplace && activeMeter && (
           <form onSubmit={handleReplace} className="mt-4 grid gap-3 sm:grid-cols-2">
             <input className={fieldClass} placeholder={t('admin.newMeterNumber')} value={replaceNumber} onChange={(e) => setReplaceNumber(e.target.value)} required />
-            <input className={fieldClass} type="number" min="0" step="0.001" placeholder={t('admin.initialReading')} value={replaceInitial} onChange={(e) => setReplaceInitial(e.target.value)} required />
+            <input className={fieldClass} type="number" min="0" step="0.1" placeholder={t('admin.initialReading')} value={replaceInitial} onChange={(e) => setReplaceInitial(e.target.value)} required />
             <input className={fieldClass} type="date" max={todayIsoDate()} value={replaceDate} onChange={(e) => setReplaceDate(e.target.value)} required />
             <input className={fieldClass} placeholder={t('admin.replaceReason')} value={replaceReason} onChange={(e) => setReplaceReason(e.target.value)} required />
             <div className="flex gap-2 sm:col-span-2">
@@ -483,6 +563,58 @@ export function AdminWater({
           </form>
         )}
       </div>
+
+      {canSubmit && (
+        <div className={cardClass}>
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilSubmitTitle')}</p>
+          <form onSubmit={handleSubmitReading} className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label className="block text-sm text-secondary sm:col-span-3">
+              {t('admin.pickProperty')}
+              <select
+                className={`${fieldClass} mt-1`}
+                value={propertyId === '' ? '' : String(propertyId)}
+                onChange={(e) => {
+                  setPropertyId(e.target.value ? Number(e.target.value) : '');
+                  setSuccess(null);
+                  setError(null);
+                }}
+              >
+                {sorted.length === 0 && <option value="">{t('form.pickApt')}</option>}
+                {sorted.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {t('form.aptOwner', { n: aptNumber(p.apartment_number), owner: p.owner_name ?? '—' })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              className={fieldClass}
+              type="number"
+              min="0"
+              step="0.1"
+              placeholder={t('account.utilCurrentM3')}
+              value={submitValue}
+              onChange={(e) => setSubmitValue(e.target.value)}
+              required
+            />
+            <input
+              className={fieldClass}
+              type="date"
+              max={todayIsoDate()}
+              value={submitDate}
+              onChange={(e) => setSubmitDate(e.target.value)}
+              required
+            />
+            <button
+              type="submit"
+              disabled={submitBusy || !activeMeter}
+              className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {submitBusy ? t('account.utilSubmitting') : t('account.utilSubmit')}
+            </button>
+          </form>
+        </div>
+      )}
 
       {canTariff && (
         <div className={cardClass}>
@@ -590,7 +722,7 @@ export function AdminWater({
                   <th className="py-2 pr-3">{t('admin.tariff')}</th>
                   <th className="py-2 pr-3">{t('admin.charge')}</th>
                   <th className="py-2 pr-3">{t('admin.status')}</th>
-                  <th className="py-2 pr-3">{t('admin.via')}</th>
+                  <th className="py-2 pr-3">{t('account.elSubmittedBy')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -600,13 +732,19 @@ export function AdminWater({
                     <tr key={row.id} className={`border-t border-border ${reversed ? 'text-muted line-through' : ''}`}>
                       <td className="py-2 pr-3 tabular-nums">{row.reading_date}</td>
                       <td className="py-2 pr-3">{meterById.get(row.meter_id)?.meter_number ?? '—'}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.previous_value))}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.current_value))}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.consumption_m3))}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.previous_value), locale)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.current_value), locale)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.consumption_m3), locale)}</td>
                       <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.tariff_eur_per_m3))}</td>
                       <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.charge_amount_eur))}</td>
                       <td className="py-2 pr-3">{row.status}</td>
-                      <td className="py-2 pr-3">{row.submitted_via}</td>
+                      <td className="py-2 pr-3">
+                        {row.submitted_via === 'staff'
+                          ? t('account.elByStaff')
+                          : row.submitted_via === 'owner'
+                            ? t('account.elByOwner')
+                            : '—'}
+                      </td>
                     </tr>
                   );
                 })}

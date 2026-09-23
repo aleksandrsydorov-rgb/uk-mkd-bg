@@ -45,8 +45,20 @@ export function formatEur(n: number) {
   return `${Number(n).toFixed(2)} €`;
 }
 
-export function formatM3(n: number) {
-  return Number(n).toFixed(3);
+export const WATER_VOLUME_DECIMALS = 1;
+
+export function normalizeWaterVolume(n: number) {
+  return Number(Number(n).toFixed(WATER_VOLUME_DECIMALS));
+}
+
+export function parseWaterVolume(raw: string) {
+  return Number(String(raw).replace(',', '.'));
+}
+
+export function formatM3(n: number, locale: string = 'ru') {
+  const s = Number(n).toFixed(WATER_VOLUME_DECIMALS);
+  if (locale === 'en' || locale.startsWith('en')) return s;
+  return s.replace('.', ',');
 }
 
 export function todayIsoDate() {
@@ -67,11 +79,13 @@ export function lastActiveReading(readings: WaterReading[]): WaterReading | null
   return readings.find((r) => r.status === 'active') ?? null;
 }
 
-export function mapSubmitWaterError(message: string): 'noMeter' | 'lower' | 'datePrev' | 'future' | 'conflict' | 'generic' {
+export function mapSubmitWaterError(message: string): 'noMeter' | 'lower' | 'datePrev' | 'future' | 'conflict' | 'disabled' | 'staffOnly' | 'generic' {
   const msg = message.toLowerCase();
+  if (msg.includes('water readings are disabled')) return 'disabled';
+  if (msg.includes('submitted by the management company') || (msg.includes('not authorized') && msg.includes('staff'))) return 'staffOnly';
   if (msg.includes('no active water meter')) return 'noMeter';
   if (msg.includes('cannot be lower than previous')) return 'lower';
-  if (msg.includes('earlier than previous reading')) return 'datePrev';
+  if (msg.includes('earlier than previous reading') || msg.includes('earlier than meter installation')) return 'datePrev';
   if (msg.includes('cannot be in the future')) return 'future';
   if (msg.includes('idempotency key conflict')) return 'conflict';
   return 'generic';
@@ -94,6 +108,25 @@ export function canSeeWaterAdmin(role?: string | null) {
 export function canAssignWaterMeter(role?: string | null) {
   const r = exactStaffRole(role);
   return r === STAFF_ROLE_ADMIN || r === STAFF_ROLE_ENGINEER;
+}
+
+export type WaterMode = 'owner_and_staff' | 'staff_only' | 'disabled';
+export const DEFAULT_WATER_MODE: WaterMode = 'owner_and_staff';
+
+export function parseWaterMode(value: unknown): WaterMode {
+  if (value === 'owner_and_staff' || value === 'staff_only' || value === 'disabled') {
+    return value;
+  }
+  return DEFAULT_WATER_MODE;
+}
+
+export function isOwnerModuleEnabled(mode: string | null | undefined) {
+  return mode !== 'disabled';
+}
+
+export function canSubmitWaterStaff(role?: string | null, active?: boolean | null) {
+  if (active !== true) return false;
+  return canAssignWaterMeter(role);
 }
 
 export function canManageWaterTariff(role?: string | null) {
@@ -119,13 +152,14 @@ export type AdminRpcErrorKey =
   | 'admin.errCapitalDup'
   | 'admin.errIdempotency'
   | 'admin.errNoAccess'
+  | 'admin.errReadingsDisabled'
   | 'admin.errGeneric';
 
 export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   const msg = message.toLowerCase();
-  if (msg.includes('active water meter is already assigned')) return 'admin.errMeterAssigned';
+  if (msg.includes('active water meter is already assigned') || msg.includes('active electricity meter is already assigned')) return 'admin.errMeterAssigned';
   if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
-  if (msg.includes('no active water meter')) return 'admin.errNoMeter';
+  if (msg.includes('no active water meter') || msg.includes('no active electricity meter') || msg.includes('electricity meter is not assigned')) return 'admin.errNoMeter';
   if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
   if (msg.includes('tariff already exists') || msg.includes('already exists for this valid_from')) {
     return 'admin.errTariffDate';
@@ -134,6 +168,7 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
     return 'admin.errCapitalDup';
   }
   if (msg.includes('idempotency key conflict')) return 'admin.errIdempotency';
+  if (msg.includes('water readings are disabled') || msg.includes('electricity readings are disabled')) return 'admin.errReadingsDisabled';
   if (msg.includes('not authorized') || msg.includes('permission denied')) return 'admin.errNoAccess';
   return 'admin.errGeneric';
 }

@@ -118,6 +118,9 @@ export interface Database {
           reading_date: string | null;
           submitted_by: string | null;
           meter_serial_number: string | null;
+          submitted_source: string | null;
+          idempotency_key: string | null;
+          electricity_meter_id: string | null;
         };
         Insert: {
           id?: number;
@@ -128,6 +131,9 @@ export interface Database {
           reading_date?: string | null;
           submitted_by?: string | null;
           meter_serial_number?: string | null;
+          submitted_source?: string | null;
+          idempotency_key?: string | null;
+          electricity_meter_id?: string | null;
         };
         Update: {
           id?: number;
@@ -138,6 +144,9 @@ export interface Database {
           reading_date?: string | null;
           submitted_by?: string | null;
           meter_serial_number?: string | null;
+          submitted_source?: string | null;
+          idempotency_key?: string | null;
+          electricity_meter_id?: string | null;
         };
         Relationships: [];
       };
@@ -594,18 +603,24 @@ export interface Database {
           support_rate_eur_per_sqm_year: number;
           updated_at: string;
           updated_by: string | null;
+          electricity_mode: string | null;
+          water_mode: string | null;
         };
         Insert: {
           id?: number;
           support_rate_eur_per_sqm_year?: number;
           updated_at?: string;
           updated_by?: string | null;
+          electricity_mode?: string | null;
+          water_mode?: string | null;
         };
         Update: {
           id?: number;
           support_rate_eur_per_sqm_year?: number;
           updated_at?: string;
           updated_by?: string | null;
+          electricity_mode?: string | null;
+          water_mode?: string | null;
         };
         Relationships: [];
       };
@@ -680,6 +695,45 @@ export interface Database {
           retired_at?: string | null;
           replacement_reason?: string | null;
           assigned_by_email?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      electricity_meters: {
+        Row: {
+          id: string;
+          property_id: number;
+          meter_number: string;
+          initial_day_reading: number;
+          initial_night_reading: number;
+          installed_at: string;
+          retired_at: string | null;
+          replacement_reason: string | null;
+          assigned_by_email: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          meter_number: string;
+          initial_day_reading: number;
+          initial_night_reading: number;
+          installed_at: string;
+          retired_at?: string | null;
+          replacement_reason?: string | null;
+          assigned_by_email: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          meter_number?: string;
+          initial_day_reading?: number;
+          initial_night_reading?: number;
+          installed_at?: string;
+          retired_at?: string | null;
+          replacement_reason?: string | null;
+          assigned_by_email?: string;
           created_at?: string;
         };
         Relationships: [];
@@ -923,6 +977,27 @@ export interface Database {
         };
         Returns: Database['public']['Tables']['water_meters']['Row'][];
       };
+      assign_electricity_meter: {
+        Args: {
+          p_property_id: number;
+          p_meter_number: string;
+          p_initial_day_reading: number;
+          p_initial_night_reading: number;
+          p_installed_at: string;
+        };
+        Returns: Database['public']['Tables']['electricity_meters']['Row'][];
+      };
+      replace_electricity_meter: {
+        Args: {
+          p_property_id: number;
+          p_new_meter_number: string;
+          p_initial_day_reading: number;
+          p_initial_night_reading: number;
+          p_installed_at: string;
+          p_replacement_reason: string;
+        };
+        Returns: Database['public']['Tables']['electricity_meters']['Row'][];
+      };
       replace_water_meter: {
         Args: {
           p_property_id: number;
@@ -975,6 +1050,28 @@ export interface Database {
           tariff_eur_per_m3: number;
           charge_amount_eur: number;
           charge_created: boolean;
+        }[];
+      };
+      submit_electricity_reading: {
+        Args: {
+          p_property_id: number;
+          p_day_reading: number;
+          p_night_reading: number;
+          p_reading_date: string;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          day_reading_id: number;
+          night_reading_id: number;
+          property_id: number;
+          reading_date: string;
+          previous_day: number;
+          current_day: number;
+          consumption_day: number;
+          previous_night: number;
+          current_night: number;
+          consumption_night: number;
+          submitted_source: string;
         }[];
       };
       create_capital_repair_assessment: {

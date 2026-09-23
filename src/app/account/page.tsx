@@ -36,8 +36,19 @@ import {
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
-import { OwnerUtilities, type FinanceTab } from '@/components/account/OwnerUtilities';
-import type { WaterTariff } from '@/lib/utilities';
+import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
+import { OwnerElectricity } from '@/components/account/OwnerElectricity';
+import type { WaterTariff, WaterMode } from '@/lib/utilities';
+import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
+import {
+  DEFAULT_ELECTRICITY_MODE,
+  parseElectricityMode,
+  pairElectricityReadings,
+  activeElectricityMeter,
+  electricityActiveMeterReadings,
+  type ElectricityMode,
+  type ElectricityMeter,
+} from '@/lib/electricity';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { ChatMedia } from '@/components/ChatMedia';
@@ -65,6 +76,10 @@ interface MeterReading {
   value: number;
   reading_date: string;
   submitted_by: string | null;
+  created_at?: string;
+  submitted_source?: string | null;
+  idempotency_key?: string | null;
+  electricity_meter_id?: string | null;
 }
 
 interface ChatMessage {
@@ -152,6 +167,10 @@ export default function AccountPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [ukExpenses, setUkExpenses] = useState<UkExpense[]>([]);
   const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
+  const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
+  const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
+  const waterEnabled = isOwnerModuleEnabled(waterMode);
+  const electricityEnabled = isOwnerModuleEnabled(electricityMode);
   const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
@@ -166,6 +185,7 @@ export default function AccountPage() {
     electricity_night: MeterReading[];
     cold_water: MeterReading[];
   }>({ electricity_day: [], electricity_night: [], cold_water: [] });
+  const [electricityMeters, setElectricityMeters] = useState<ElectricityMeter[]>([]);
 
   // ---------- ЖИЛЬЦЫ ----------
   const [guests, setGuests] = useState<ApartmentGuest[]>([]);
@@ -208,6 +228,7 @@ export default function AccountPage() {
     new Date().getFullYear()
   );
   const [financeTab, setFinanceTab] = useState<FinanceTab>('support');
+  const [meterTab, setMeterTab] = useState<MeterTab>('water');
 
   // ---------- ФОРМА ЗАЯВКИ ----------
   const [subject, setSubject] = useState('');
@@ -312,6 +333,7 @@ export default function AccountPage() {
       setTransfers([]);
       setGuests([]);
       setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
+      setElectricityMeters([]);
       setChatMessages([]);
       setUnreadChatCount(0);
       setError(null);
@@ -428,6 +450,8 @@ export default function AccountPage() {
         } else {
           const rate = Number(settingsRes.data?.support_rate_eur_per_sqm_year ?? DEFAULT_SUPPORT_RATE);
           setSupportRate(rate > 0 ? rate : DEFAULT_SUPPORT_RATE);
+          setElectricityMode(parseElectricityMode(settingsRes.data?.electricity_mode));
+          setWaterMode(parseWaterMode(settingsRes.data?.water_mode));
         }
 
         const waterTariffRes = await supabase
@@ -465,19 +489,76 @@ export default function AccountPage() {
 
   useEffect(() => {
     try {
-      const fromQuery = new URL(window.location.href).searchParams.get('financeTab');
-      if (fromQuery === 'support' || fromQuery === 'water' || fromQuery === 'capital') {
-        setFinanceTab(fromQuery);
-        return;
+      const url = new URL(window.location.href);
+      const fromFinance = url.searchParams.get('financeTab');
+      if (fromFinance === 'support' || fromFinance === 'water' || fromFinance === 'capital') {
+        setFinanceTab(fromFinance);
+      } else {
+        const storedFinance = sessionStorage.getItem('amadeus-finance-tab');
+        if (storedFinance === 'support' || storedFinance === 'water' || storedFinance === 'capital') {
+          setFinanceTab(storedFinance);
+        }
       }
-      const stored = sessionStorage.getItem('amadeus-finance-tab');
-      if (stored === 'support' || stored === 'water' || stored === 'capital') {
-        setFinanceTab(stored);
-      }
+      const fromMeter = url.searchParams.get('meterTab');
+      const storedMeter = sessionStorage.getItem('amadeus-meter-tab');
+      const candidate =
+        fromMeter === 'water' || fromMeter === 'electricity'
+          ? fromMeter
+          : storedMeter === 'water' || storedMeter === 'electricity'
+            ? storedMeter
+            : null;
+      if (candidate) setMeterTab(candidate);
     } catch {
       /* ignore */
     }
   }, []);
+
+  const reloadMeterReadings = useCallback(async (propertyId: number) => {
+    const [dayRes, nightRes, waterRes, metersRes] = await Promise.all([
+      supabase
+        .from('meter_readings')
+        .select('*')
+        .eq('property_id', propertyId)
+        .eq('meter_type', 'electricity_day')
+        .order('reading_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(40),
+      supabase
+        .from('meter_readings')
+        .select('*')
+        .eq('property_id', propertyId)
+        .eq('meter_type', 'electricity_night')
+        .order('reading_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(40),
+      supabase
+        .from('meter_readings')
+        .select('*')
+        .eq('property_id', propertyId)
+        .eq('meter_type', 'cold_water')
+        .order('reading_date', { ascending: false })
+        .limit(2),
+      supabase
+        .from('electricity_meters')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false }),
+    ]);
+    if (dayRes.error) throw dayRes.error;
+    if (nightRes.error) throw nightRes.error;
+    if (waterRes.error) throw waterRes.error;
+    if (metersRes.error) {
+      if (!isMissingRelation(metersRes.error, 'electricity_meters')) throw metersRes.error;
+      setElectricityMeters([]);
+    } else {
+      setElectricityMeters((metersRes.data as ElectricityMeter[]) ?? []);
+    }
+    setMeterReadings({
+      electricity_day: (dayRes.data as MeterReading[]) ?? [],
+      electricity_night: (nightRes.data as MeterReading[]) ?? [],
+      cold_water: (waterRes.data as MeterReading[]) ?? [],
+    });
+  }, [supabase]);
 
   useEffect(() => {
     async function loadPropertyScoped() {
@@ -510,37 +591,7 @@ export default function AccountPage() {
           setPets((petsRes.data as ApartmentPet[]) ?? []);
         }
 
-        const [dayRes, nightRes, waterRes] = await Promise.all([
-          supabase
-            .from('meter_readings')
-            .select('*')
-            .eq('property_id', property.id)
-            .eq('meter_type', 'electricity_day')
-            .order('reading_date', { ascending: false })
-            .limit(2),
-          supabase
-            .from('meter_readings')
-            .select('*')
-            .eq('property_id', property.id)
-            .eq('meter_type', 'electricity_night')
-            .order('reading_date', { ascending: false })
-            .limit(2),
-          supabase
-            .from('meter_readings')
-            .select('*')
-            .eq('property_id', property.id)
-            .eq('meter_type', 'cold_water')
-            .order('reading_date', { ascending: false })
-            .limit(2),
-        ]);
-        if (dayRes.error) throw dayRes.error;
-        if (nightRes.error) throw nightRes.error;
-        if (waterRes.error) throw waterRes.error;
-        setMeterReadings({
-          electricity_day: (dayRes.data as MeterReading[]) ?? [],
-          electricity_night: (nightRes.data as MeterReading[]) ?? [],
-          cold_water: (waterRes.data as MeterReading[]) ?? [],
-        });
+        await reloadMeterReadings(property.id);
 
         const { data: chatData, error: chatErr } = await supabase
           .from('chat_messages')
@@ -557,6 +608,25 @@ export default function AccountPage() {
     }
     loadPropertyScoped();
   }, [property?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!waterEnabled && !electricityEnabled) return;
+    if (!waterEnabled && meterTab === 'water') {
+      setMeterTab('electricity');
+      persistQueryTab('meterTab', 'electricity', 'water', 'amadeus-meter-tab');
+    }
+    if (!electricityEnabled && meterTab === 'electricity') {
+      setMeterTab('water');
+      persistQueryTab('meterTab', 'water', 'water', 'amadeus-meter-tab');
+    }
+  }, [electricityEnabled, waterEnabled, meterTab]);
+
+  useEffect(() => {
+    if (!waterEnabled && financeTab === 'water') {
+      setFinanceTab('support');
+      persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
+    }
+  }, [waterEnabled, financeTab]);
 
   // ===================================================================
   // ЧАТ — ПОЛИНГ
@@ -981,17 +1051,30 @@ export default function AccountPage() {
     }
   }
 
-  function selectFinanceTab(tab: FinanceTab) {
-    setFinanceTab(tab);
+  function persistQueryTab(param: 'financeTab' | 'meterTab', value: string, defaultValue: string, storageKey: string) {
     try {
-      sessionStorage.setItem('amadeus-finance-tab', tab);
+      sessionStorage.setItem(storageKey, value);
       const url = new URL(window.location.href);
-      if (tab === 'support') url.searchParams.delete('financeTab');
-      else url.searchParams.set('financeTab', tab);
+      if (value === defaultValue) url.searchParams.delete(param);
+      else url.searchParams.set(param, value);
       window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     } catch {
       /* ignore */
     }
+  }
+
+  function selectFinanceTab(tab: FinanceTab) {
+    const next = tab === 'water' && !waterEnabled ? 'support' : tab;
+    setFinanceTab(next);
+    persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
+  }
+
+  function selectMeterTab(tab: MeterTab) {
+    let next = tab;
+    if (tab === 'electricity' && !electricityEnabled) next = waterEnabled ? 'water' : 'electricity';
+    if (tab === 'water' && !waterEnabled) next = electricityEnabled ? 'electricity' : 'water';
+    setMeterTab(next);
+    persistQueryTab('meterTab', next, waterEnabled ? 'water' : 'electricity', 'amadeus-meter-tab');
   }
 
   async function refreshPolls() {
@@ -1116,6 +1199,15 @@ export default function AccountPage() {
         ? transfers.find((t) => t.property_id === property.id && t.status === 'ожидает')
         : undefined,
     [transfers, property]
+  );
+  const electricityHistory = useMemo(
+    () => pairElectricityReadings([...meterReadings.electricity_day, ...meterReadings.electricity_night], electricityMeters),
+    [meterReadings.electricity_day, meterReadings.electricity_night, electricityMeters],
+  );
+  const activeElMeter = useMemo(() => activeElectricityMeter(electricityMeters), [electricityMeters]);
+  const latestElectric = useMemo(
+    () => electricityActiveMeterReadings(electricityHistory, activeElMeter),
+    [electricityHistory, activeElMeter],
   );
 
   // ===================================================================
@@ -1857,7 +1949,7 @@ export default function AccountPage() {
               <div className="flex min-w-min gap-2 px-1">
                 {([
                   ['support', t('account.financeTabSupport')],
-                  ['water', t('account.financeTabWater')],
+                  ...(waterEnabled ? ([['water', t('account.financeTabWater')]] as const) : []),
                   ['capital', t('account.financeTabCapital')],
                 ] as const).map(([id, label]) => (
                   <button
@@ -1883,10 +1975,11 @@ export default function AccountPage() {
                 propertyId={property.id}
                 variant="finance"
                 currentTariff={waterTariff}
-                financeTab={financeTab}
+                financeTab={financeTab === 'water' && !waterEnabled ? 'support' : financeTab}
                 onSelectFinanceTab={selectFinanceTab}
                 supportDebt={totalDebt}
                 supportOver={totalOver}
+                waterEnabled={waterEnabled}
               />
             )}
 
@@ -1976,7 +2069,9 @@ export default function AccountPage() {
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
                 {t('account.houseTariffs')}
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className={`mt-3 grid gap-2 ${electricityEnabled ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'}`}>
+                {electricityEnabled && (
+                <>
                 <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.elDay')}</div>
                   <div className="mt-1 text-lg font-semibold text-foreground">{DAY_RATE}</div>
@@ -1987,6 +2082,8 @@ export default function AccountPage() {
                   <div className="mt-1 text-lg font-semibold text-foreground">{NIGHT_RATE}</div>
                   <div className="text-[11px] text-muted">{t('account.perKwh')}</div>
                 </div>
+                </>
+                )}
                 <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.supportFee')}</div>
                   <div className="mt-1 text-lg font-semibold text-foreground">{supportRate}</div>
@@ -2130,18 +2227,45 @@ export default function AccountPage() {
       // ===========================================================
       // СЧЁТЧИКИ
       // ===========================================================
-      case 'счётчики':
+      case 'счётчики': {
+        const metersUnused = !waterEnabled && !electricityEnabled;
+        const meterTabs = (
+          [
+            ...(waterEnabled ? ([['water', t('account.meterTabWater')]] as const) : []),
+            ...(electricityEnabled ? ([['electricity', t('account.meterTabElectricity')]] as const) : []),
+          ]
+        );
+        const shownMeterTab = !waterEnabled && electricityEnabled ? 'electricity' : !electricityEnabled && waterEnabled ? 'water' : meterTab;
+        if (metersUnused) {
+          return (
+            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
+              <p className="text-sm text-secondary">{t('account.metersUnused')}</p>
+            </div>
+          );
+        }
         return (
           <div className="space-y-4">
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <h2 className="text-lg font-semibold text-accent mb-4">
-                {t('account.metersTitle')}{property ? ` · ${t('picker.apt', { n: property.apartment_number })}` : ''}
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                {renderMeterBlock(t('account.elDayFull'), t('account.kwh'), meterReadings.electricity_day)}
-                {renderMeterBlock(t('account.elNightFull'), t('account.kwh'), meterReadings.electricity_night)}
+            {meterTabs.length > 1 && (
+            <div className="-mx-1 overflow-x-auto pb-1">
+              <div className="flex min-w-min gap-2 px-1">
+                {meterTabs.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => selectMeterTab(id)}
+                    className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap ${
+                      shownMeterTab === id
+                        ? 'border-accent/25 bg-accent-bg text-accent'
+                        : 'border-border bg-surface text-secondary hover:bg-hover'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
+            )}
+
             {property && (
               <OwnerUtilities
                 key={`meters-${property.id}`}
@@ -2149,10 +2273,31 @@ export default function AccountPage() {
                 propertyId={property.id}
                 variant="meters"
                 currentTariff={waterTariff}
+                meterTab={shownMeterTab}
+                onSelectMeterTab={selectMeterTab}
+                waterMode={waterMode}
+                waterEnabled={waterEnabled}
+                electricityEnabled={electricityEnabled}
+                electricLastDay={latestElectric.currentDay}
+                electricLastNight={latestElectric.currentNight}
+                electricLastDate={latestElectric.readingDate}
+                electricMeterNumber={activeElMeter?.meter_number ?? null}
+              />
+            )}
+
+            {electricityEnabled && shownMeterTab === 'electricity' && property && (
+              <OwnerElectricity
+                supabase={supabase}
+                propertyId={property.id}
+                mode={electricityMode}
+                rows={[...meterReadings.electricity_day, ...meterReadings.electricity_night]}
+                meters={electricityMeters}
+                onSubmitted={() => reloadMeterReadings(property.id)}
               />
             )}
           </div>
         );
+      }
 
       // ===========================================================
       // ЗАЯВКИ

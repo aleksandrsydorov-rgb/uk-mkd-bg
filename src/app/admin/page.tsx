@@ -43,16 +43,22 @@ import { AdminReports } from '@/components/AdminReports';
 import { ChatMedia } from '@/components/ChatMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
+import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import {
   canSeeCapitalAdmin,
   canSeeWaterAdmin,
+  canSeeElectricityFinance,
   mapAdminRpcError,
   todayIsoDate,
   parseWaterMode,
   DEFAULT_WATER_MODE,
+  formatKwh,
+  formatM3,
   type WaterMode,
 } from '@/lib/utilities';
 import {
+  currentElectricityTariff,
+  formatElectricityTariff,
   canSubmitElectricityStaff,
   canManageElectricityMeter,
   activeElectricityMeter,
@@ -62,6 +68,7 @@ import {
   mapSubmitElectricityError,
   type ElectricityMode,
   type ElectricityMeter,
+  type ElectricityTariff,
 } from '@/lib/electricity';
 import { chatPreviewText, MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import {
@@ -170,6 +177,7 @@ type AdminSection =
   | 'вода'
   | 'персонал'
   | 'такса'
+  | 'электроэнергия'
   | 'капремонт'
   | 'расходы'
   | 'опросы'
@@ -188,12 +196,9 @@ function expenseYearOf(dateStr: string) {
   return Number.isFinite(y) && y > 0 ? y : 0;
 }
 
-const DAY_RATE = 0.14;
-const NIGHT_RATE = 0.09;
-
 export default function AdminPage() {
   const router = useRouter();
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
   const [supabase] = useState(() => createBrowserClient());
   const MENU_ITEMS: { key: AdminSection; label: string; icon: string }[] = [
     { key: 'обзор', label: t('admin.overview'), icon: '📊' },
@@ -204,6 +209,7 @@ export default function AdminPage() {
     { key: 'вода', label: t('admin.water'), icon: '💧' },
     { key: 'персонал', label: t('admin.staff'), icon: '👷' },
     { key: 'такса', label: t('admin.fee'), icon: '💶' },
+    { key: 'электроэнергия', label: t('admin.electricityFinance'), icon: '⚡' },
     { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
     { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
     { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
@@ -217,6 +223,7 @@ export default function AdminPage() {
   const [staffActive, setStaffActive] = useState(false);
   const showWater = canSeeWaterAdmin(staffRole);
   const showCapital = canSeeCapitalAdmin(staffRole);
+  const showElectricityFinance = canSeeElectricityFinance(staffRole);
   const MENU_GROUPS: { id: string; label: string; icon: string; items: AdminSection[] }[] = [
     {
       id: 'house',
@@ -230,9 +237,13 @@ export default function AdminPage() {
       id: 'finance',
       label: t('admin.menuFinance'),
       icon: '💶',
-      items: showCapital
-        ? ['такса', 'капремонт', 'расходы', 'отчётность']
-        : ['такса', 'расходы', 'отчётность'],
+      items: [
+        'такса',
+        ...(showElectricityFinance ? (['электроэнергия'] as const) : []),
+        ...(showCapital ? (['капремонт'] as const) : []),
+        'расходы',
+        'отчётность',
+      ],
     },
     { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'опросы', 'объявления'] },
   ];
@@ -2710,6 +2721,15 @@ export default function AdminPage() {
           />
         );
 
+      case 'электроэнергия':
+        return (
+          <AdminElectricityFinance
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+          />
+        );
+
       case 'счётчики': {
         const canElSubmit =
           electricityMode !== 'disabled' && canSubmitElectricityStaff(staffRole, staffActive);
@@ -2820,11 +2840,11 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <div className="text-[11px] text-muted">{t('account.elInitialDay')}</div>
-                        <div className="mt-0.5 tabular-nums">{Number(activeEl.initial_day_reading).toFixed(3)}</div>
+                        <div className="mt-0.5 tabular-nums">{formatKwh(Number(activeEl.initial_day_reading), locale)}</div>
                       </div>
                       <div>
                         <div className="text-[11px] text-muted">{t('account.elInitialNight')}</div>
-                        <div className="mt-0.5 tabular-nums">{Number(activeEl.initial_night_reading).toFixed(3)}</div>
+                        <div className="mt-0.5 tabular-nums">{formatKwh(Number(activeEl.initial_night_reading), locale)}</div>
                       </div>
                     </div>
                   )}
@@ -2983,7 +3003,11 @@ export default function AdminPage() {
                         {m.meter_type === 'electricity_day' ? 'Э/э день' :
                          m.meter_type === 'electricity_night' ? 'Э/э ночь' : 'Вода'}
                       </td>
-                      <td className="py-2 px-3 text-foreground">{m.value}</td>
+                      <td className="py-2 px-3 text-foreground">
+                        {m.meter_type === 'cold_water'
+                          ? formatM3(Number(m.value), locale)
+                          : formatKwh(Number(m.value), locale)}
+                      </td>
                       <td className="py-2 px-3 text-secondary">
                         {new Date(m.reading_date).toLocaleDateString(dateLocale)}
                       </td>
@@ -4385,10 +4409,11 @@ function ApartmentDetailModal({
   onTakePayment: () => void;
   onChanged: () => Promise<void> | void;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
   const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
   const [waterTariffPrice, setWaterTariffPrice] = useState<number | null>(null);
+  const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
   const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
   const [petSaving, setPetSaving] = useState(false);
   const [guestForm, setGuestForm] = useState({
@@ -4414,12 +4439,21 @@ function ApartmentDetailModal({
         .select('price_eur_per_m3')
         .order('valid_from', { ascending: false })
         .limit(1);
+      const elRes = await supabase
+        .from('electricity_tariffs')
+        .select('*')
+        .order('valid_from', { ascending: false });
       if (cancelled) return;
       if (error || !data?.[0]) {
         setWaterTariffPrice(null);
-        return;
+      } else {
+        setWaterTariffPrice(Number(data[0].price_eur_per_m3));
       }
-      setWaterTariffPrice(Number(data[0].price_eur_per_m3));
+      if (elRes.error || !elRes.data) {
+        setElectricityTariff(null);
+      } else {
+        setElectricityTariff(currentElectricityTariff((elRes.data as ElectricityTariff[]) ?? []));
+      }
     })();
     return () => {
       cancelled = true;
@@ -4658,8 +4692,8 @@ function ApartmentDetailModal({
               <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
                 <div className="text-secondary text-xs mb-2">Тарифы</div>
                 <div className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
-                  <div>Э/э день: {DAY_RATE} €/кВтч</div>
-                  <div>Э/э ночь: {NIGHT_RATE} €/кВтч</div>
+                  <div>Э/э день: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh)) : '—'}</div>
+                  <div>Э/э ночь: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh)) : '—'}</div>
                   <div>Вода: {waterTariffPrice == null || Number.isNaN(waterTariffPrice) ? '—' : `${waterTariffPrice.toFixed(2)} €/м³`}</div>
                   <div>Такса: {supportRate} €/м²·год</div>
                 </div>
@@ -4693,7 +4727,11 @@ function ApartmentDetailModal({
                     {meterReadings.map((m) => (
                       <tr key={m.id} className="border-b border-border">
                         <td className="py-2 px-3 text-foreground">{meterTypeLabel(m.meter_type)}</td>
-                        <td className="py-2 px-3 text-foreground">{m.value}</td>
+                        <td className="py-2 px-3 text-foreground">
+                          {m.meter_type === 'cold_water'
+                            ? formatM3(Number(m.value), locale)
+                            : formatKwh(Number(m.value), locale)}
+                        </td>
                         <td className="py-2 px-3 text-secondary">
                           {new Date(m.reading_date).toLocaleDateString(dateLocale)}
                         </td>

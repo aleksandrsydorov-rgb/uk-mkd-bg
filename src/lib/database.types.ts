@@ -738,6 +738,131 @@ export interface Database {
         };
         Relationships: [];
       };
+      electricity_tariffs: {
+        Row: {
+          id: string;
+          day_price_eur_per_kwh: number;
+          night_price_eur_per_kwh: number;
+          valid_from: string;
+          note: string | null;
+          created_by_email: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          day_price_eur_per_kwh: number;
+          night_price_eur_per_kwh: number;
+          valid_from: string;
+          note?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          day_price_eur_per_kwh?: number;
+          night_price_eur_per_kwh?: number;
+          valid_from?: string;
+          note?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      electricity_charges: {
+        Row: {
+          id: string;
+          property_id: number;
+          day_reading_id: number;
+          night_reading_id: number;
+          reading_date: string;
+          previous_day: number;
+          current_day: number;
+          previous_night: number;
+          current_night: number;
+          tariff_id: string;
+          day_tariff_eur_per_kwh: number;
+          night_tariff_eur_per_kwh: number;
+          consumption_day: number;
+          consumption_night: number;
+          day_amount_eur: number;
+          night_amount_eur: number;
+          total_amount_eur: number;
+          recorded_by_email: string;
+          idempotency_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          day_reading_id: number;
+          night_reading_id: number;
+          reading_date: string;
+          previous_day: number;
+          current_day: number;
+          previous_night: number;
+          current_night: number;
+          tariff_id: string;
+          day_tariff_eur_per_kwh: number;
+          night_tariff_eur_per_kwh: number;
+          recorded_by_email: string;
+          idempotency_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          day_reading_id?: number;
+          night_reading_id?: number;
+          reading_date?: string;
+          previous_day?: number;
+          current_day?: number;
+          previous_night?: number;
+          current_night?: number;
+          tariff_id?: string;
+          day_tariff_eur_per_kwh?: number;
+          night_tariff_eur_per_kwh?: number;
+          recorded_by_email?: string;
+          idempotency_key?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      electricity_ledger: {
+        Row: {
+          id: string;
+          property_id: number;
+          charge_id: string | null;
+          kind: string;
+          amount_eur: number;
+          note: string | null;
+          recorded_by_email: string | null;
+          idempotency_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          charge_id?: string | null;
+          kind: string;
+          amount_eur: number;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          charge_id?: string | null;
+          kind?: string;
+          amount_eur?: number;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       water_tariffs: {
         Row: {
           id: string;
@@ -1072,6 +1197,48 @@ export interface Database {
           current_night: number;
           consumption_night: number;
           submitted_source: string;
+          day_tariff_eur_per_kwh: number;
+          night_tariff_eur_per_kwh: number;
+          day_amount_eur: number;
+          night_amount_eur: number;
+          total_amount_eur: number;
+          charge_created: boolean;
+        }[];
+      };
+      set_electricity_tariff: {
+        Args: {
+          p_day_price_eur_per_kwh: number;
+          p_night_price_eur_per_kwh: number;
+          p_valid_from: string;
+          p_note: string | null;
+        };
+        Returns: Database['public']['Tables']['electricity_tariffs']['Row'][];
+      };
+      record_electricity_payment: {
+        Args: {
+          p_property_id: number;
+          p_amount_eur: number;
+          p_note: string | null;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          ledger_id: string;
+          property_id: number;
+          amount_eur: number;
+          note: string | null;
+          created_at: string;
+        }[];
+      };
+      get_electricity_balance: {
+        Args: { p_property_id: number };
+        Returns: {
+          charged_eur: number;
+          paid_eur: number;
+          adjustments_debit_eur: number;
+          adjustments_credit_eur: number;
+          balance_eur: number;
+          debt_eur: number;
+          overpayment_eur: number;
         }[];
       };
       create_capital_repair_assessment: {

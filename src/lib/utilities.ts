@@ -46,6 +46,28 @@ export function formatEur(n: number) {
 }
 
 export const WATER_VOLUME_DECIMALS = 1;
+export const UTILITY_READING_DECIMALS = 1;
+
+function numberFormatLocale(locale: string) {
+  if (locale === 'en' || locale.startsWith('en')) return 'en-US';
+  if (locale === 'bg' || locale.startsWith('bg')) return 'bg-BG';
+  return 'ru-RU';
+}
+
+export function formatUtilityReading(n: number, locale: string = 'ru') {
+  return new Intl.NumberFormat(numberFormatLocale(locale), {
+    minimumFractionDigits: UTILITY_READING_DECIMALS,
+    maximumFractionDigits: UTILITY_READING_DECIMALS,
+  }).format(Number(n));
+}
+
+export function formatM3(n: number, locale: string = 'ru') {
+  return formatUtilityReading(n, locale);
+}
+
+export function formatKwh(n: number, locale: string = 'ru') {
+  return formatUtilityReading(n, locale);
+}
 
 export function normalizeWaterVolume(n: number) {
   return Number(Number(n).toFixed(WATER_VOLUME_DECIMALS));
@@ -53,12 +75,6 @@ export function normalizeWaterVolume(n: number) {
 
 export function parseWaterVolume(raw: string) {
   return Number(String(raw).replace(',', '.'));
-}
-
-export function formatM3(n: number, locale: string = 'ru') {
-  const s = Number(n).toFixed(WATER_VOLUME_DECIMALS);
-  if (locale === 'en' || locale.startsWith('en')) return s;
-  return s.replace('.', ',');
 }
 
 export function todayIsoDate() {
@@ -143,12 +159,21 @@ export function canSeeCapitalAdmin(role?: string | null) {
   return canManageWaterFinance(role);
 }
 
+export function canSeeElectricityFinance(role?: string | null) {
+  return canManageWaterFinance(role);
+}
+
+export function canManageElectricityTariff(role?: string | null) {
+  return canManageWaterTariff(role);
+}
+
 export type AdminRpcErrorKey =
   | 'admin.errMeterAssigned'
   | 'admin.errMeterInUse'
   | 'admin.errNoMeter'
   | 'admin.errReadingLower'
   | 'admin.errTariffDate'
+  | 'admin.errNoTariff'
   | 'admin.errCapitalDup'
   | 'admin.errIdempotency'
   | 'admin.errNoAccess'
@@ -161,6 +186,7 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
   if (msg.includes('no active water meter') || msg.includes('no active electricity meter') || msg.includes('electricity meter is not assigned')) return 'admin.errNoMeter';
   if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
+  if (msg.includes('no electricity tariff is defined')) return 'admin.errNoTariff';
   if (msg.includes('tariff already exists') || msg.includes('already exists for this valid_from')) {
     return 'admin.errTariffDate';
   }

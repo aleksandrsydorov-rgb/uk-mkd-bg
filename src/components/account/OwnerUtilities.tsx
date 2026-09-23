@@ -4,11 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { MeterFinanceStatus, compactKpiAlignClass, meterKpiCardClass, meterKpiGridClass } from '@/components/account/MeterFinanceStatus';
 import { isMissingRelation } from '@/lib/polls';
+import {
+  formatElectricityTariff,
+  type ElectricityCharge,
+  type ElectricityLedger,
+} from '@/lib/electricity';
 import {
   balanceTone,
   emptyBalance,
   formatEur,
+  formatKwh,
   formatM3,
   lastActiveReading,
   mapSubmitWaterError,
@@ -26,10 +33,9 @@ import {
   type WaterSubmitResult,
   type WaterTariff,
 } from '@/lib/utilities';
-import { displayElectricityMeterNumber } from '@/lib/electricity';
 
 type Variant = 'finance' | 'meters';
-export type FinanceTab = 'support' | 'water' | 'capital';
+export type FinanceTab = 'support' | 'water' | 'electricity' | 'capital';
 export type MeterTab = 'water' | 'electricity';
 
 function ledgerKindLabel(kind: string, t: (key: 'account.utilCharge' | 'account.utilPayment' | 'account.utilAdjDebit' | 'account.utilAdjCredit') => string) {
@@ -114,6 +120,7 @@ export function OwnerUtilities({
   electricLastNight = null,
   electricLastDate = null,
   electricMeterNumber = null,
+  onOpenFinance,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
@@ -132,6 +139,7 @@ export function OwnerUtilities({
   electricLastNight?: number | null;
   electricLastDate?: string | null;
   electricMeterNumber?: string | null;
+  onOpenFinance?: (tab: FinanceTab) => void;
 }) {
   const { t, dateLocale, locale } = useI18n();
   const [waterLoading, setWaterLoading] = useState(true);
@@ -145,9 +153,15 @@ export function OwnerUtilities({
   const [readings, setReadings] = useState<WaterReading[]>([]);
   const [waterLedger, setWaterLedger] = useState<WaterLedger[]>([]);
   const [waterBalance, setWaterBalance] = useState<UtilityBalance>(emptyBalance());
+  const [waterBalanceLoading, setWaterBalanceLoading] = useState(true);
+  const [waterBalanceFailed, setWaterBalanceFailed] = useState(false);
   const [capitalLedger, setCapitalLedger] = useState<CapitalLedger[]>([]);
   const [assessments, setAssessments] = useState<CapitalAssessment[]>([]);
   const [capitalBalance, setCapitalBalance] = useState<UtilityBalance>(emptyBalance());
+  const [electricityLoading, setElectricityLoading] = useState(true);
+  const [electricityCharges, setElectricityCharges] = useState<ElectricityCharge[]>([]);
+  const [electricityLedger, setElectricityLedger] = useState<ElectricityLedger[]>([]);
+  const [electricityBalance, setElectricityBalance] = useState<UtilityBalance>(emptyBalance());
 
   const [currentValue, setCurrentValue] = useState('');
   const [readingDate, setReadingDate] = useState(todayIsoDate());
@@ -167,8 +181,10 @@ export function OwnerUtilities({
 
   const loadWater = useCallback(async () => {
     setWaterLoading(true);
+    setWaterBalanceLoading(true);
+    setWaterBalanceFailed(false);
     try {
-      const [meterRes, tariffRes, readingsRes, ledgerRes, balRes] = await Promise.all([
+      const [meterRes, tariffRes, readingsRes, ledgerRes] = await Promise.all([
         supabase
           .from('water_meters')
           .select('*')
@@ -191,7 +207,6 @@ export function OwnerUtilities({
           .eq('property_id', propertyId)
           .order('created_at', { ascending: false })
           .limit(12),
-        supabase.rpc('get_water_balance', { p_property_id: propertyId }),
       ]);
 
       if (meterRes.error && !isMissingRelation(meterRes.error, 'water_meters')) throw meterRes.error;
@@ -205,18 +220,27 @@ export function OwnerUtilities({
 
       if (ledgerRes.error && !isMissingRelation(ledgerRes.error, 'water_ledger')) throw ledgerRes.error;
       setWaterLedger((ledgerRes.data as WaterLedger[] | null) ?? []);
-
-      if (balRes.error && !isMissingRelation(balRes.error, 'get_water_balance')) throw balRes.error;
-      const row = ((balRes.data as UtilityBalance[] | null) ?? [])[0];
-      setWaterBalance(row ? { ...emptyBalance(), ...row } : emptyBalance());
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') console.error(err);
       setMeter(null);
       setReadings([]);
       setWaterLedger([]);
-      setWaterBalance(emptyBalance());
     } finally {
       setWaterLoading(false);
+    }
+
+    try {
+      const balRes = await supabase.rpc('get_water_balance', { p_property_id: propertyId });
+      if (balRes.error && !isMissingRelation(balRes.error, 'get_water_balance')) throw balRes.error;
+      const row = ((balRes.data as UtilityBalance[] | null) ?? [])[0];
+      setWaterBalance(row ? { ...emptyBalance(), ...row } : emptyBalance());
+      setWaterBalanceFailed(false);
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') console.error(err);
+      setWaterBalance(emptyBalance());
+      setWaterBalanceFailed(true);
+    } finally {
+      setWaterBalanceLoading(false);
     }
   }, [propertyId, supabase, currentTariff]);
 
@@ -253,23 +277,69 @@ export function OwnerUtilities({
     }
   }, [propertyId, supabase]);
 
+  const loadElectricity = useCallback(async () => {
+    setElectricityLoading(true);
+    try {
+      const [chargeRes, ledgerRes, balRes] = await Promise.all([
+        supabase
+          .from('electricity_charges')
+          .select('*')
+          .eq('property_id', propertyId)
+          .order('reading_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(40),
+        supabase
+          .from('electricity_ledger')
+          .select('*')
+          .eq('property_id', propertyId)
+          .order('created_at', { ascending: false })
+          .limit(40),
+        supabase.rpc('get_electricity_balance', { p_property_id: propertyId }),
+      ]);
+      if (chargeRes.error && !isMissingRelation(chargeRes.error, 'electricity_charges')) throw chargeRes.error;
+      setElectricityCharges((chargeRes.data as ElectricityCharge[] | null) ?? []);
+      if (ledgerRes.error && !isMissingRelation(ledgerRes.error, 'electricity_ledger')) throw ledgerRes.error;
+      setElectricityLedger((ledgerRes.data as ElectricityLedger[] | null) ?? []);
+      if (balRes.error && !isMissingRelation(balRes.error, 'get_electricity_balance')) throw balRes.error;
+      const row = ((balRes.data as UtilityBalance[] | null) ?? [])[0];
+      setElectricityBalance(row ? { ...emptyBalance(), ...row } : emptyBalance());
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') console.error(err);
+      setElectricityCharges([]);
+      setElectricityLedger([]);
+      setElectricityBalance(emptyBalance());
+    } finally {
+      setElectricityLoading(false);
+    }
+  }, [propertyId, supabase]);
+
   useEffect(() => {
     if (waterEnabled) {
       void loadWater();
     } else {
       setWaterLoading(false);
+      setWaterBalanceLoading(false);
+      setWaterBalanceFailed(false);
       setMeter(null);
       setReadings([]);
       setWaterLedger([]);
       setWaterBalance(emptyBalance());
     }
     if (variant === 'finance') void loadCapital();
+    if (variant === 'finance' && electricityEnabled) {
+      void loadElectricity();
+    } else {
+      setElectricityLoading(false);
+      setElectricityCharges([]);
+      setElectricityLedger([]);
+      setElectricityBalance(emptyBalance());
+    }
     setCurrentValue('');
     setReadingDate(todayIsoDate());
     setSubmitError(null);
     setSuccess(null);
     idempotencyKeyRef.current = null;
-  }, [loadWater, loadCapital, variant, propertyId, waterEnabled]);
+  }, [loadWater, loadCapital, loadElectricity, variant, propertyId, waterEnabled, electricityEnabled]);
 
   const assessmentTitles = useMemo(() => {
     const map = new Map<string, string>();
@@ -387,7 +457,7 @@ export function OwnerUtilities({
 
       {meter && !waterLoading && variant === 'finance' && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">
               {previousIsInitial ? t('account.utilInitial') : t('account.utilLastReading')}
             </div>
@@ -398,20 +468,20 @@ export function OwnerUtilities({
                 : t('account.utilInitialHint')}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.utilTariff')}</div>
             <div className="mt-1 text-lg font-semibold text-foreground">
               {tariff ? Number(tariff.price_eur_per_m3).toFixed(2) : '—'}
             </div>
             <div className="mt-0.5 text-[11px] text-muted">{t('account.perM3')}</div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.debt')}</div>
             <div className={`mt-1 text-lg font-semibold ${waterBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
               {formatEur(Math.max(0, Number(waterBalance.balance_eur)))}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.overpay')}</div>
             <div className={`mt-1 text-lg font-semibold ${waterBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
               {formatEur(Math.max(0, -Number(waterBalance.balance_eur)))}
@@ -421,8 +491,8 @@ export function OwnerUtilities({
       )}
 
       {meter && !waterLoading && variant === 'meters' && (
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl bg-background px-3 py-3">
+        <div className={meterKpiGridClass}>
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.utilLastReading')}</div>
             <div className="mt-1 text-lg font-semibold text-foreground">
               {lastActive ? `${formatM3(Number(lastActive.current_value), locale)} ${t('account.m3')}` : '—'}
@@ -433,7 +503,7 @@ export function OwnerUtilities({
                 : t('account.utilNoReadings')}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">
               {previousIsInitial ? t('account.utilInitial') : t('account.previousReading')}
             </div>
@@ -444,19 +514,38 @@ export function OwnerUtilities({
                 : t('account.utilInitialHint')}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.consumption')}</div>
             <div className="mt-1 text-lg font-semibold text-foreground">
               {lastActive ? `${formatM3(Number(lastActive.consumption_m3), locale)} ${t('account.m3')}` : '—'}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.utilTariff')}</div>
             <div className="mt-1 text-lg font-semibold text-foreground">
               {tariff ? Number(tariff.price_eur_per_m3).toFixed(2) : '—'}
             </div>
             <div className="mt-0.5 text-[11px] text-muted">{t('account.perM3')}</div>
           </div>
+          {onOpenFinance ? (
+            <MeterFinanceStatus
+              balance={Number(waterBalance.balance_eur)}
+              loading={waterBalanceLoading}
+              failed={waterBalanceFailed}
+              onOpenFinances={() => onOpenFinance('water')}
+            />
+          ) : null}
+        </div>
+      )}
+
+      {!meter && variant === 'meters' && onOpenFinance && (
+        <div className={meterKpiGridClass}>
+          <MeterFinanceStatus
+            balance={Number(waterBalance.balance_eur)}
+            loading={waterBalanceLoading}
+            failed={waterBalanceFailed}
+            onOpenFinances={() => onOpenFinance('water')}
+          />
         </div>
       )}
 
@@ -583,107 +672,11 @@ export function OwnerUtilities({
   );
 
   if (variant === 'meters') {
-    const cardBtn =
-      'rounded-[14px] border bg-surface px-4 py-4 text-left shadow-card transition';
-    const cardActive = 'border-accent/30 bg-accent-bg';
-    const cardIdle = 'border-border hover:bg-hover';
-    const waterLast =
-      lastActive != null
-        ? `${formatM3(Number(lastActive.current_value), locale)} ${t('account.m3')}`
-        : '—';
-    const waterDate = lastActive
-      ? t('account.meterSubmitted', { d: new Date(lastActive.reading_date).toLocaleDateString(dateLocale) })
-      : t('account.utilNoReadings');
-    const electricDate = electricLastDate
-      ? t('account.meterSubmitted', { d: new Date(electricLastDate).toLocaleDateString(dateLocale) })
-      : t('account.utilNoReadings');
-
-    const summaryCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
-    return (
-      <div className="space-y-4">
-        <div className={`grid gap-2 ${summaryCount > 1 ? 'sm:grid-cols-2' : ''}`}>
-          {waterEnabled && (
-          <button
-            type="button"
-            onClick={() => onSelectMeterTab?.('water')}
-            className={`${cardBtn} ${meterTab === 'water' ? cardActive : cardIdle}`}
-          >
-            <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.meterTabWater')}</p>
-            <p className="mt-1 text-[11px] text-secondary">{t('account.utilLastReading')}</p>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{waterLoading ? t('common.loading') : waterLast}</div>
-            <p className="mt-1 text-xs text-secondary">{waterLoading ? '—' : waterDate}</p>
-            {meter?.meter_number ? (
-              <p className="mt-1 text-[11px] text-muted">{t('account.elMeterShort', { n: meter.meter_number })}</p>
-            ) : null}
-          </button>
-          )}
-          {electricityEnabled && (
-          <button
-            type="button"
-            onClick={() => onSelectMeterTab?.('electricity')}
-            className={`${cardBtn} ${meterTab === 'electricity' ? cardActive : cardIdle}`}
-          >
-            <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.meterTabElectricity')}</p>
-            <p className="mt-1 text-[11px] text-secondary">{t('account.utilLastReading')}</p>
-            <div className="mt-1 text-sm font-semibold tracking-tight text-foreground">
-              {t('account.elDayShort')}: {electricLastDay != null ? `${electricLastDay} ${t('account.kwh')}` : '—'}
-            </div>
-            <div className="mt-0.5 text-sm font-semibold tracking-tight text-foreground">
-              {t('account.elNightShort')}: {electricLastNight != null ? `${electricLastNight} ${t('account.kwh')}` : '—'}
-            </div>
-            <p className="mt-1 text-xs text-secondary">{electricDate}</p>
-            {electricMeterNumber ? (
-              <p className="mt-1 text-[11px] text-muted">{t('account.elMeterShort', { n: displayElectricityMeterNumber(electricMeterNumber) })}</p>
-            ) : null}
-          </button>
-          )}
-        </div>
-        {waterEnabled && meterTab === 'water' ? waterCard : null}
-      </div>
-    );
+    return waterEnabled && meterTab === 'water' ? waterCard : null;
   }
-
-  const cardBtn =
-    'rounded-[14px] border bg-surface px-4 py-4 text-left shadow-card transition';
-  const cardActive = 'border-accent/30 bg-accent-bg';
-  const cardIdle = 'border-border hover:bg-hover';
 
   return (
     <div className="space-y-4">
-      <div className={`grid gap-2 ${waterEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        <button
-          type="button"
-          onClick={() => onSelectFinanceTab?.('support')}
-          className={`${cardBtn} ${financeTab === 'support' ? cardActive : cardIdle}`}
-        >
-          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabSupport')}</p>
-          <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-            {formatEur(supportDebt > 0 ? supportDebt : supportOver)}
-          </div>
-          <p className="mt-1 text-xs text-secondary">
-            {supportDebt > 0 ? t('account.hasDebt') : supportOver > 0 ? t('account.hasOver') : t('account.noDebt')}
-          </p>
-        </button>
-        {waterEnabled && (
-        <button
-          type="button"
-          onClick={() => onSelectFinanceTab?.('water')}
-          className={`${cardBtn} ${financeTab === 'water' ? cardActive : cardIdle}`}
-        >
-          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabWater')}</p>
-          <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
-        </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onSelectFinanceTab?.('capital')}
-          className={`${cardBtn} ${financeTab === 'capital' ? cardActive : cardIdle}`}
-        >
-          <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.financeTabCapital')}</p>
-          <BalanceBadge balance={Number(capitalBalance.balance_eur)} loading={capitalLoading} />
-        </button>
-      </div>
-
       {waterEnabled && financeTab === 'water' && (
         <>
           <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
@@ -697,21 +690,21 @@ export function OwnerUtilities({
               <BalanceBadge balance={Number(waterBalance.balance_eur)} loading={waterLoading} />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-xl bg-background px-3 py-3">
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
                 <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
                 <div className="mt-1 text-lg font-semibold">{formatEur(Number(waterBalance.charged_eur))}</div>
               </div>
-              <div className="rounded-xl bg-background px-3 py-3">
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
                 <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
                 <div className="mt-1 text-lg font-semibold">{formatEur(Number(waterBalance.paid_eur))}</div>
               </div>
-              <div className="rounded-xl bg-background px-3 py-3">
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
                 <div className="text-[11px] text-muted">{t('account.debt')}</div>
                 <div className={`mt-1 text-lg font-semibold ${waterBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
                   {formatEur(Math.max(0, Number(waterBalance.balance_eur)))}
                 </div>
               </div>
-              <div className="rounded-xl bg-background px-3 py-3">
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
                 <div className="text-[11px] text-muted">{t('account.overpay')}</div>
                 <div className={`mt-1 text-lg font-semibold ${waterBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
                   {formatEur(Math.max(0, -Number(waterBalance.balance_eur)))}
@@ -770,6 +763,92 @@ export function OwnerUtilities({
         </>
       )}
 
+      {electricityEnabled && financeTab === 'electricity' && (
+        <>
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.financeTabElectricity')}</p>
+              </div>
+              <BalanceBadge balance={Number(electricityBalance.balance_eur)} loading={electricityLoading} />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+                <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
+                <div className="mt-1 text-lg font-semibold">{formatEur(Number(electricityBalance.charged_eur))}</div>
+              </div>
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+                <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
+                <div className="mt-1 text-lg font-semibold">{formatEur(Number(electricityBalance.paid_eur))}</div>
+              </div>
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+                <div className="text-[11px] text-muted">{t('account.debt')}</div>
+                <div className={`mt-1 text-lg font-semibold ${electricityBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
+                  {formatEur(Math.max(0, Number(electricityBalance.balance_eur)))}
+                </div>
+              </div>
+              <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+                <div className="text-[11px] text-muted">{t('account.overpay')}</div>
+                <div className={`mt-1 text-lg font-semibold ${electricityBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
+                  {formatEur(Math.max(0, -Number(electricityBalance.balance_eur)))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+            <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.elChargeHistory')}</p>
+            {electricityLoading ? (
+              <p className="text-sm text-muted">{t('common.loading')}</p>
+            ) : electricityCharges.length === 0 ? (
+              <p className="text-sm text-secondary">{t('account.utilNoReadings')}</p>
+            ) : (
+              <div className="-mx-1 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-[11px] uppercase tracking-wider text-muted">
+                    <tr>
+                      <th className="px-2 py-1 font-medium">{t('account.utilColDate')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.elConsDay')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.elConsNight')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.elTariffDay')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.elTariffNight')}</th>
+                      <th className="px-2 py-1 font-medium">{t('account.utilCharged')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {electricityCharges.map((row) => (
+                      <tr key={row.id} className="text-secondary">
+                        <td className="whitespace-nowrap px-2 py-1.5">{new Date(row.reading_date).toLocaleDateString(dateLocale)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatKwh(Number(row.consumption_day), locale)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatKwh(Number(row.consumption_night), locale)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatElectricityTariff(Number(row.day_tariff_eur_per_kwh), locale)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatElectricityTariff(Number(row.night_tariff_eur_per_kwh), locale)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatEur(Number(row.total_amount_eur))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.elOpsHistory')}</p>
+            <div className="mt-3">
+              {electricityLoading ? (
+                <p className="text-sm text-muted">{t('common.loading')}</p>
+              ) : (
+                <LedgerList
+                  rows={electricityLedger}
+                  empty={t('account.utilNoElLedger')}
+                  dateLocale={dateLocale}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {financeTab === 'capital' && (
         <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -781,21 +860,21 @@ export function OwnerUtilities({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
             <div className="mt-1 text-lg font-semibold">{formatEur(Number(capitalBalance.charged_eur))}</div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
             <div className="mt-1 text-lg font-semibold">{formatEur(Number(capitalBalance.paid_eur))}</div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.debt')}</div>
             <div className={`mt-1 text-lg font-semibold ${capitalBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
               {formatEur(Math.max(0, Number(capitalBalance.balance_eur)))}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.overpay')}</div>
             <div className={`mt-1 text-lg font-semibold ${capitalBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
               {formatEur(Math.max(0, -Number(capitalBalance.balance_eur)))}

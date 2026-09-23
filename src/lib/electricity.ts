@@ -57,7 +57,65 @@ export type ElectricitySubmitResult = {
   current_night: number;
   consumption_night: number;
   submitted_source: string;
+  day_tariff_eur_per_kwh?: number;
+  night_tariff_eur_per_kwh?: number;
+  day_amount_eur?: number;
+  night_amount_eur?: number;
+  total_amount_eur?: number;
+  charge_created?: boolean;
 };
+
+export type ElectricityTariff = {
+  id: string;
+  day_price_eur_per_kwh: number;
+  night_price_eur_per_kwh: number;
+  valid_from: string;
+  note: string | null;
+  created_by_email: string | null;
+  created_at: string;
+};
+
+export type ElectricityCharge = {
+  id: string;
+  property_id: number;
+  reading_date: string;
+  previous_day: number;
+  current_day: number;
+  previous_night: number;
+  current_night: number;
+  consumption_day: number;
+  consumption_night: number;
+  day_tariff_eur_per_kwh: number;
+  night_tariff_eur_per_kwh: number;
+  day_amount_eur: number;
+  night_amount_eur: number;
+  total_amount_eur: number;
+  created_at: string;
+};
+
+export type ElectricityLedger = {
+  id: string;
+  property_id: number;
+  charge_id: string | null;
+  kind: string;
+  amount_eur: number;
+  note: string | null;
+  recorded_by_email: string | null;
+  idempotency_key: string;
+  created_at: string;
+};
+
+export function currentElectricityTariff(rows: ElectricityTariff[], onDate?: string) {
+  const day = onDate ?? new Date().toISOString().slice(0, 10);
+  return [...rows]
+    .filter((row) => row.valid_from <= day)
+    .sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0] ?? null;
+}
+
+export function formatElectricityTariff(n: number, locale?: string) {
+  const unit = locale === 'en' ? '€/kWh' : '€/кВт·ч';
+  return `${Number(n).toFixed(2)} ${unit}`;
+}
 
 export function parseElectricityMode(value: unknown): ElectricityMode {
   if (value === 'owner_and_staff' || value === 'staff_only' || value === 'disabled') {

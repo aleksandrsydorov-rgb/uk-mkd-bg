@@ -1,10 +1,13 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { todayIsoDate } from '@/lib/utilities';
+import { isMissingRelation } from '@/lib/polls';
+import { MeterFinanceStatus, meterKpiCardClass, meterKpiGridClass } from '@/components/account/MeterFinanceStatus';
+import { emptyBalance, formatKwh, todayIsoDate, type UtilityBalance } from '@/lib/utilities';
+import type { FinanceTab } from '@/components/account/OwnerUtilities';
 import {
   activeElectricityMeter,
   electricityActiveMeterReadings,
@@ -24,6 +27,7 @@ export function OwnerElectricity({
   rows,
   meters,
   onSubmitted,
+  onOpenFinance,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
@@ -31,8 +35,9 @@ export function OwnerElectricity({
   rows: MeterReadingRow[];
   meters: ElectricityMeter[];
   onSubmitted: () => Promise<void> | void;
+  onOpenFinance?: (tab: FinanceTab) => void;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
   const pairs = useMemo(() => pairElectricityReadings(rows, meters), [rows, meters]);
   const meter = useMemo(() => activeElectricityMeter(meters), [meters]);
   const shown = useMemo(() => electricityActiveMeterReadings(pairs, meter), [pairs, meter]);
@@ -46,9 +51,34 @@ export function OwnerElectricity({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<ElectricitySubmitResult | null>(null);
+  const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
+  const [balanceLoading, setBalanceLoading] = useState(true);
+  const [balanceFailed, setBalanceFailed] = useState(false);
   const idempotencyKeyRef = useRef<string | null>(null);
   const canSubmit = mode === 'owner_and_staff' && Boolean(meter);
   const today = todayIsoDate();
+
+  const loadBalance = useCallback(async () => {
+    setBalanceLoading(true);
+    setBalanceFailed(false);
+    try {
+      const { data, error } = await supabase.rpc('get_electricity_balance', { p_property_id: propertyId });
+      if (error && !isMissingRelation(error, 'get_electricity_balance')) throw error;
+      const row = ((data as UtilityBalance[] | null) ?? [])[0];
+      setBalance(row ? { ...emptyBalance(), ...row } : emptyBalance());
+      setBalanceFailed(false);
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') console.error(err);
+      setBalance(emptyBalance());
+      setBalanceFailed(true);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }, [propertyId, supabase]);
+
+  useEffect(() => {
+    void loadBalance();
+  }, [loadBalance]);
 
   function onFormChange() {
     if (!submitting) idempotencyKeyRef.current = null;
@@ -123,6 +153,7 @@ export function OwnerElectricity({
       setNightValue('');
       idempotencyKeyRef.current = null;
       await onSubmitted();
+      await loadBalance();
     } catch {
       setSubmitError(t('account.utilErrGeneric'));
     } finally {
@@ -144,38 +175,50 @@ export function OwnerElectricity({
               {t('account.elInstalledAt')}: {new Date(meter.installed_at).toLocaleDateString(dateLocale)}
             </p>
             <p className="mt-0.5">
-              {t('account.elInitialDay')}: {Number(meter.initial_day_reading).toFixed(3)} {t('account.kwh')}
+              {t('account.elInitialDay')}: {formatKwh(Number(meter.initial_day_reading), locale)} {t('account.kwh')}
             </p>
             <p className="mt-0.5">
-              {t('account.elInitialNight')}: {Number(meter.initial_night_reading).toFixed(3)} {t('account.kwh')}
+              {t('account.elInitialNight')}: {formatKwh(Number(meter.initial_night_reading), locale)} {t('account.kwh')}
             </p>
           </div>
         ) : (
           <p className="mt-3 text-sm text-secondary">{t('account.elNoMeter')}</p>
         )}
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl bg-background px-3 py-3">
+        <div className={meterKpiGridClass}>
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.elDayReading')}</div>
-            <div className="mt-1 text-lg font-semibold">{shown.currentDay != null ? `${shown.currentDay} ${t('account.kwh')}` : '—'}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">
+              {shown.currentDay != null ? `${formatKwh(shown.currentDay, locale)} ${t('account.kwh')}` : '—'}
+            </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.elNightReading')}</div>
-            <div className="mt-1 text-lg font-semibold">{shown.currentNight != null ? `${shown.currentNight} ${t('account.kwh')}` : '—'}</div>
+            <div className="mt-1 text-lg font-semibold text-foreground">
+              {shown.currentNight != null ? `${formatKwh(shown.currentNight, locale)} ${t('account.kwh')}` : '—'}
+            </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.previousReading')}</div>
-            <div className="mt-1 text-sm font-semibold">
+            <div className="mt-1 text-sm font-semibold text-foreground">
               {prevDay != null || prevNight != null
-                ? `${prevDay ?? '—'} / ${prevNight ?? '—'} ${t('account.kwh')}`
+                ? `${prevDay != null ? formatKwh(prevDay, locale) : '—'} / ${prevNight != null ? formatKwh(prevNight, locale) : '—'} ${t('account.kwh')}`
                 : '—'}
             </div>
           </div>
-          <div className="rounded-xl bg-background px-3 py-3">
+          <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.utilLastReading')}</div>
-            <div className="mt-1 text-sm font-semibold">
+            <div className="mt-1 text-sm font-semibold text-foreground">
               {shown.readingDate ? new Date(shown.readingDate).toLocaleDateString(dateLocale) : '—'}
             </div>
           </div>
+          {onOpenFinance ? (
+            <MeterFinanceStatus
+              balance={Number(balance.balance_eur)}
+              loading={balanceLoading}
+              failed={balanceFailed}
+              onOpenFinances={() => onOpenFinance('electricity')}
+            />
+          ) : null}
         </div>
 
         {mode === 'staff_only' && (
@@ -246,9 +289,9 @@ export function OwnerElectricity({
               <div className="rounded-xl border border-accent/20 bg-accent-bg px-3 py-2 text-sm text-secondary">
                 <p className="font-medium text-accent">{t('account.elSubmitOk')}</p>
                 <p className="mt-1">
-                  {t('account.consumption')} {t('account.elDayShort')}: {Number(success.consumption_day).toFixed(3)} {t('account.kwh')}
+                  {t('account.consumption')} {t('account.elDayShort')}: {formatKwh(Number(success.consumption_day), locale)} {t('account.kwh')}
                   {' · '}
-                  {t('account.elNightShort')}: {Number(success.consumption_night).toFixed(3)} {t('account.kwh')}
+                  {t('account.elNightShort')}: {formatKwh(Number(success.consumption_night), locale)} {t('account.kwh')}
                 </p>
               </div>
             )}
@@ -290,10 +333,10 @@ export function OwnerElectricity({
                     <td className="whitespace-nowrap px-2 py-1.5">
                       {row.meter_number ? t('account.elMeterShort', { n: displayElectricityMeterNumber(row.meter_number) }) : '—'}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.day ?? '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.night ?? '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.consumptionDay ?? '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.consumptionNight ?? '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5">{row.day != null ? formatKwh(row.day, locale) : '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5">{row.night != null ? formatKwh(row.night, locale) : '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5">{row.consumptionDay != null ? formatKwh(row.consumptionDay, locale) : '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5">{row.consumptionNight != null ? formatKwh(row.consumptionNight, locale) : '—'}</td>
                     <td className="whitespace-nowrap px-2 py-1.5">{sourceLabel(row.source)}</td>
                   </tr>
                 ))}

@@ -37,10 +37,13 @@ import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
+import { OwnerOverview } from '@/components/account/OwnerOverview';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
 import {
+  currentElectricityTariff,
+  formatElectricityTariff,
   DEFAULT_ELECTRICITY_MODE,
   parseElectricityMode,
   pairElectricityReadings,
@@ -48,6 +51,7 @@ import {
   electricityActiveMeterReadings,
   type ElectricityMode,
   type ElectricityMeter,
+  type ElectricityTariff,
 } from '@/lib/electricity';
 import { expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
@@ -107,6 +111,7 @@ interface ApartmentGuest {
 }
 
 type MenuSection =
+  | 'обзор'
   | 'квартира'
   | 'жильцы'
   | 'финансы'
@@ -128,14 +133,12 @@ function expenseYearOf(dateStr: string) {
   return Number.isFinite(y) && y > 0 ? y : 0;
 }
 
-const DAY_RATE = 0.14;
-const NIGHT_RATE = 0.09;
-
 export default function AccountPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
   const [supabase] = useState(() => createClient());
   const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = [
+    { key: 'обзор', label: t('account.overview'), icon: '▦' },
     { key: 'квартира', label: t('account.apt'), icon: '🏠' },
     { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
     { key: 'финансы', label: t('account.finance'), icon: '💰' },
@@ -172,6 +175,7 @@ export default function AccountPage() {
   const waterEnabled = isOwnerModuleEnabled(waterMode);
   const electricityEnabled = isOwnerModuleEnabled(electricityMode);
   const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
+  const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [pollOptions, setPollOptions] = useState<PollOption[]>([]);
@@ -222,7 +226,7 @@ export default function AccountPage() {
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ---------- МЕНЮ ----------
-  const [activeMenu, setActiveMenu] = useState<MenuSection>('квартира');
+  const [activeMenu, setActiveMenu] = useState<MenuSection>('обзор');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expenseYearFilter, setExpenseYearFilter] = useState<number | 'all'>(
     new Date().getFullYear()
@@ -466,6 +470,17 @@ export default function AccountPage() {
           setWaterTariff(((waterTariffRes.data as WaterTariff[] | null) ?? [])[0] ?? null);
         }
 
+        const elTariffRes = await supabase
+          .from('electricity_tariffs')
+          .select('*')
+          .order('valid_from', { ascending: false });
+        if (elTariffRes.error) {
+          if (!isMissingRelation(elTariffRes.error, 'electricity_tariffs')) throw elTariffRes.error;
+          setElectricityTariff(null);
+        } else {
+          setElectricityTariff(currentElectricityTariff((elTariffRes.data as ElectricityTariff[] | null) ?? []));
+        }
+
         const ledRes = await supabase
           .from('support_fee_ledger')
           .select('*')
@@ -491,11 +506,11 @@ export default function AccountPage() {
     try {
       const url = new URL(window.location.href);
       const fromFinance = url.searchParams.get('financeTab');
-      if (fromFinance === 'support' || fromFinance === 'water' || fromFinance === 'capital') {
+      if (fromFinance === 'support' || fromFinance === 'water' || fromFinance === 'electricity' || fromFinance === 'capital') {
         setFinanceTab(fromFinance);
       } else {
         const storedFinance = sessionStorage.getItem('amadeus-finance-tab');
-        if (storedFinance === 'support' || storedFinance === 'water' || storedFinance === 'capital') {
+        if (storedFinance === 'support' || storedFinance === 'water' || storedFinance === 'electricity' || storedFinance === 'capital') {
           setFinanceTab(storedFinance);
         }
       }
@@ -626,7 +641,11 @@ export default function AccountPage() {
       setFinanceTab('support');
       persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
     }
-  }, [waterEnabled, financeTab]);
+    if (!electricityEnabled && financeTab === 'electricity') {
+      setFinanceTab('support');
+      persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
+    }
+  }, [waterEnabled, electricityEnabled, financeTab]);
 
   // ===================================================================
   // ЧАТ — ПОЛИНГ
@@ -1064,7 +1083,9 @@ export default function AccountPage() {
   }
 
   function selectFinanceTab(tab: FinanceTab) {
-    const next = tab === 'water' && !waterEnabled ? 'support' : tab;
+    let next = tab;
+    if (tab === 'water' && !waterEnabled) next = 'support';
+    if (tab === 'electricity' && !electricityEnabled) next = 'support';
     setFinanceTab(next);
     persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
   }
@@ -1075,6 +1096,16 @@ export default function AccountPage() {
     if (tab === 'water' && !waterEnabled) next = electricityEnabled ? 'electricity' : 'water';
     setMeterTab(next);
     persistQueryTab('meterTab', next, waterEnabled ? 'water' : 'electricity', 'amadeus-meter-tab');
+  }
+
+  function openFinanceFromOverview(tab: FinanceTab) {
+    selectFinanceTab(tab);
+    setActiveMenu('финансы');
+  }
+
+  function openMetersFromOverview(tab: MeterTab) {
+    selectMeterTab(tab);
+    setActiveMenu('счётчики');
   }
 
   async function refreshPolls() {
@@ -1260,6 +1291,41 @@ export default function AccountPage() {
   // ===================================================================
   function renderContent() {
     switch (activeMenu) {
+      case 'обзор': {
+        const openRequestsCount = requests.filter(
+          (r) =>
+            r.property_id === property?.id &&
+            r.status !== 'выполнена' &&
+            r.status !== 'отклонена',
+        ).length;
+        return (
+          <OwnerOverview
+            supabase={supabase}
+            property={property!}
+            properties={properties}
+            onSelectProperty={setSelectedPropertyId}
+            waterEnabled={waterEnabled}
+            electricityEnabled={electricityEnabled}
+            supportDebt={Math.max(0, Number(property?.debt ?? 0))}
+            supportOver={Math.max(0, Number(property?.overpayment ?? 0))}
+            occupancyStatus={occupancyStatus}
+            polls={polls}
+            pollVotes={pollVotes}
+            openRequestsCount={openRequestsCount}
+            unreadChatCount={unreadChatCount}
+            electricLastDay={latestElectric.currentDay}
+            electricLastNight={latestElectric.currentNight}
+            electricLastDate={latestElectric.readingDate}
+            electricMeter={activeElMeter ?? null}
+            onOpenFinance={openFinanceFromOverview}
+            onOpenMeters={openMetersFromOverview}
+            onOpenApartment={() => setActiveMenu('квартира')}
+            onOpenPolls={() => setActiveMenu('опросы')}
+            onOpenRequests={() => setActiveMenu('заявки')}
+            onOpenChat={() => setActiveMenu('чат')}
+          />
+        );
+      }
       // ===========================================================
       // КВАРТИРА
       // ===========================================================
@@ -1950,6 +2016,7 @@ export default function AccountPage() {
                 {([
                   ['support', t('account.financeTabSupport')],
                   ...(waterEnabled ? ([['water', t('account.financeTabWater')]] as const) : []),
+                  ...(electricityEnabled ? ([['electricity', t('account.financeTabElectricity')]] as const) : []),
                   ['capital', t('account.financeTabCapital')],
                 ] as const).map(([id, label]) => (
                   <button
@@ -1975,11 +2042,16 @@ export default function AccountPage() {
                 propertyId={property.id}
                 variant="finance"
                 currentTariff={waterTariff}
-                financeTab={financeTab === 'water' && !waterEnabled ? 'support' : financeTab}
+                financeTab={
+                  (financeTab === 'water' && !waterEnabled) || (financeTab === 'electricity' && !electricityEnabled)
+                    ? 'support'
+                    : financeTab
+                }
                 onSelectFinanceTab={selectFinanceTab}
                 supportDebt={totalDebt}
                 supportOver={totalOver}
                 waterEnabled={waterEnabled}
+                electricityEnabled={electricityEnabled}
               />
             )}
 
@@ -2074,13 +2146,15 @@ export default function AccountPage() {
                 <>
                 <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.elDay')}</div>
-                  <div className="mt-1 text-lg font-semibold text-foreground">{DAY_RATE}</div>
-                  <div className="text-[11px] text-muted">{t('account.perKwh')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh)) : '—'}
+                  </div>
                 </div>
                 <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.elNight')}</div>
-                  <div className="mt-1 text-lg font-semibold text-foreground">{NIGHT_RATE}</div>
-                  <div className="text-[11px] text-muted">{t('account.perKwh')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh)) : '—'}
+                  </div>
                 </div>
                 </>
                 )}
@@ -2282,6 +2356,7 @@ export default function AccountPage() {
                 electricLastNight={latestElectric.currentNight}
                 electricLastDate={latestElectric.readingDate}
                 electricMeterNumber={activeElMeter?.meter_number ?? null}
+                onOpenFinance={openFinanceFromOverview}
               />
             )}
 
@@ -2293,6 +2368,7 @@ export default function AccountPage() {
                 rows={[...meterReadings.electricity_day, ...meterReadings.electricity_night]}
                 meters={electricityMeters}
                 onSubmitted={() => reloadMeterReadings(property.id)}
+                onOpenFinance={openFinanceFromOverview}
               />
             )}
           </div>
@@ -2883,8 +2959,14 @@ export default function AccountPage() {
           </div>
         </div>
 
-        <div className={activeMenu === 'чат' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'mx-auto w-full max-w-5xl p-4 md:p-8'}>
-          {properties.length > 1 && (
+        <div className={
+          activeMenu === 'чат'
+            ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+            : activeMenu === 'обзор'
+              ? 'mx-auto w-full max-w-6xl p-3 md:px-6 md:py-5'
+              : 'mx-auto w-full max-w-5xl p-4 md:p-8'
+        }>
+          {properties.length > 1 && activeMenu !== 'обзор' && (
             <div className={activeMenu === 'чат' ? 'shrink-0 px-4 pt-3' : undefined}>
             <ApartmentPicker
               properties={properties}
@@ -2926,13 +3008,13 @@ export default function AccountPage() {
       </main>
       <MobileBottomNav
         items={[
-          { key: 'квартира', label: t('account.apt'), icon: '🏠' },
+          { key: 'обзор', label: t('account.overview'), icon: '▦' },
           { key: 'финансы', label: t('account.finance'), icon: '💰' },
           { key: 'заявки', label: t('account.requests'), icon: '📋' },
           { key: 'чат', label: t('account.tabChat'), icon: '💬', badge: unreadChatCount || undefined },
         ]}
         activeKey={activeMenu}
-        moreActive={!['квартира', 'финансы', 'заявки', 'чат'].includes(activeMenu)}
+        moreActive={!['обзор', 'финансы', 'заявки', 'чат'].includes(activeMenu)}
         onSelect={(key) => setActiveMenu(key as MenuSection)}
         onMore={() => setSidebarOpen(true)}
         hidden={sidebarOpen}

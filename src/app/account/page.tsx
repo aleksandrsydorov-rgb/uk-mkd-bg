@@ -33,6 +33,7 @@ import {
   chatFilePath,
   requestPhotoPath,
   uploadPrivateFile,
+  messageForUploadError,
 } from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import {
@@ -778,7 +779,7 @@ export default function AccountPage() {
       setChatFile(null);
       if (chatFileRef.current) chatFileRef.current.value = '';
     } catch (e: any) {
-      setError(ownerVisibleError(e, t('err.send')));
+      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? ownerVisibleError(e, t('err.send')));
     } finally {
       setChatSending(false);
     }
@@ -1165,7 +1166,7 @@ export default function AccountPage() {
       setPhoto(null);
       setShowRequestForm(false);
     } catch (e: any) {
-      setError(ownerVisibleError(e, t('err.createRequest')));
+      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? ownerVisibleError(e, t('err.createRequest')));
     } finally {
       setCreating(false);
     }

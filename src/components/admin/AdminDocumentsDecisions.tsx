@@ -11,6 +11,7 @@ import { formatOwnerDate } from '@/lib/ownerFormat';
 import { labelDocumentStatus } from '@/i18n/labels';
 import {
   BUILDING_DOCUMENTS_BUCKET,
+  MAX_BUILDING_DOCUMENT_BYTES,
   buildPrivateStoragePath,
   canManageBuildingGovernance,
   fileKindLabel,
@@ -435,6 +436,11 @@ export function AdminDocumentsDecisions({
     if (!canWrite || !selected) return;
     setBusy(true);
     setError(null);
+    if (file.size > MAX_BUILDING_DOCUMENT_BYTES) {
+      setBusy(false);
+      setError(t('docs.fileTooLarge'));
+      return;
+    }
     const built = buildPrivateStoragePath({ scopeId: selected.id, file, folder: 'meetings' });
     if (!built.ok) {
       setBusy(false);
@@ -493,6 +499,11 @@ export function AdminDocumentsDecisions({
     if (!canWrite || !docForm.title.trim()) return;
     setBusy(true);
     setError(null);
+    if (file.size > MAX_BUILDING_DOCUMENT_BYTES) {
+      setBusy(false);
+      setError(t('docs.fileTooLarge'));
+      return;
+    }
     const scopeId = crypto.randomUUID();
     const built = buildPrivateStoragePath({ scopeId, file, folder: 'documents' });
     if (!built.ok) {

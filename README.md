@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database / new complex
+
+Production schema changes go in `supabase/migrations` only.
+
+`NEW COMPLEX = NEW DATABASE`. Fresh-complex provisioning is **blocked** until a hardened baseline is generated after SH-3. Do not bootstrap a second complex from `supabase/legacy/DO_NOT_RUN/` or any standalone SQL Editor script.
+
+See `supabase/README.md`.
+
 ## Getting Started
 
 First, run the development server:

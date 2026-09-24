@@ -85,6 +85,7 @@ import {
   expenseReceiptPath,
   pollImagePath,
   uploadPrivateFile,
+  messageForUploadError,
 } from '@/lib/privateMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
@@ -1116,7 +1117,7 @@ function AdminPortal() {
       setChatFile(null);
       if (chatFileRef.current) chatFileRef.current.value = '';
     } catch (e: any) {
-      setError(e?.message ?? t('err.sendShort'));
+      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? e?.message ?? t('err.sendShort'));
     } finally {
       setChatSending(false);
     }
@@ -1816,7 +1817,7 @@ function AdminPortal() {
         const { error } = await supabase.from('uk_expenses').update(payload).eq('id', editingExpense.id);
         if (error) {
           if (error.message?.includes('status') || error.message?.includes('photo_urls')) {
-            throw new Error('Выполните supabase/uk_expenses_approval.sql в SQL Editor.');
+            throw new Error(t('err.expenseSql'));
           }
           throw error;
         }
@@ -1824,7 +1825,7 @@ function AdminPortal() {
         const { data, error } = await supabase.from('uk_expenses').insert(payload).select('id').single();
         if (error) {
           if (error.message?.includes('status') || error.message?.includes('photo_urls')) {
-            throw new Error('Выполните supabase/uk_expenses_approval.sql в SQL Editor.');
+            throw new Error(t('err.expenseSql'));
           }
           throw error;
         }
@@ -1849,7 +1850,7 @@ function AdminPortal() {
       setExpenseYearFilter(Number(expenseForm.expense_date.slice(0, 4)) || new Date().getFullYear());
       await loadAll();
     } catch (err: any) {
-      setError(err?.message ?? 'Ошибка сохранения расхода');
+      setError(messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ?? err?.message ?? 'Ошибка сохранения расхода');
     }
   }
 
@@ -1866,7 +1867,7 @@ function AdminPortal() {
       }).eq('id', exp.id);
       if (error) {
         if (error.message?.includes('status')) {
-          throw new Error('Выполните supabase/uk_expenses_approval.sql в SQL Editor.');
+          throw new Error(t('err.expenseSql'));
         }
         throw error;
       }
@@ -1914,7 +1915,7 @@ function AdminPortal() {
       if (error) {
         if (isMissingRelation(error, 'building_settings')) {
           setSupportFeeMissing(true);
-          throw new Error('Выполните supabase/support_fee.sql в SQL Editor.');
+          throw new Error(t('err.feeSql'));
         }
         throw error;
       }
@@ -1974,7 +1975,7 @@ function AdminPortal() {
           : '';
       if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
-        setError('Выполните supabase/support_fee.sql в SQL Editor.');
+        setError(t('err.feeSql'));
       } else if (msg.toLowerCase().includes('idempotency key conflict')) {
         setError(t('admin.errIdempotency'));
       } else {
@@ -2020,7 +2021,7 @@ function AdminPortal() {
       const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
       if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
-        setError('Выполните supabase/support_fee.sql в SQL Editor.');
+        setError(t('err.feeSql'));
       } else if (/could not find the function/i.test(msg)) {
         setError(t('admin.bulkUnavailable'));
       } else {
@@ -2159,7 +2160,7 @@ function AdminPortal() {
       setPollPhoto(null);
       await loadAll();
     } catch (err: any) {
-      setError(err?.message ?? 'Ошибка создания опроса');
+      setError(messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ?? err?.message ?? 'Ошибка создания опроса');
     }
   }
 

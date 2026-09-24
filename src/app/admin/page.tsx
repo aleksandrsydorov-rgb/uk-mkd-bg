@@ -331,6 +331,7 @@ function AdminPortal() {
   const showCapital = canSeeCapitalAdmin(staffRole);
   const showElectricityFinance = canSeeElectricityFinance(staffRole);
   const canEditStaff = isUkAdminRole(staffRole);
+  const canManageCriticalAccess = staffActive && isUkAdminRole(staffRole);
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
@@ -1396,6 +1397,10 @@ function AdminPortal() {
   }
 
   function startNewProp() {
+    if (!canManageCriticalAccess) {
+      setError('Добавлять квартиры может только активный администратор.');
+      return;
+    }
     setEditingProp(null);
     setPropForm({
       apartment_number: '', floor: '', area_sqm: '', owner_name: '', owner_email: '',
@@ -1410,15 +1415,14 @@ function AdminPortal() {
   async function handleSaveProp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const payload = {
+    if (!editingProp && !canManageCriticalAccess) {
+      setError('Добавлять квартиры может только активный администратор.');
+      return;
+    }
+    const operationalPayload = {
       apartment_number: propForm.apartment_number.trim(),
       floor: Number(propForm.floor) || null,
       area_sqm: Number(propForm.area_sqm) || null,
-      owner_name: propForm.owner_name.trim(),
-      owner_email: normalizeEmail(propForm.owner_email),
-      owner_phone: propForm.owner_phone.trim() || null,
-      owner_type: propForm.owner_type,
-      company_name: propForm.company_name.trim() || null,
       status: propForm.status,
       occupancy_status: propForm.occupancy_status,
       occupant_kind: propForm.occupant_kind,
@@ -1428,6 +1432,16 @@ function AdminPortal() {
       occupant_until: propForm.occupant_until || null,
       pet_info: propForm.pet_info.trim() || null,
     };
+    const payload = canManageCriticalAccess
+      ? {
+          ...operationalPayload,
+          owner_name: propForm.owner_name.trim(),
+          owner_email: normalizeEmail(propForm.owner_email),
+          owner_phone: propForm.owner_phone.trim() || null,
+          owner_type: propForm.owner_type,
+          company_name: propForm.company_name.trim() || null,
+        }
+      : operationalPayload;
     try {
       if (editingProp) {
         const { error: updErr } = await supabase.from('properties').update(payload).eq('id', editingProp.id);
@@ -1449,6 +1463,10 @@ function AdminPortal() {
   }
 
   async function handleDeleteProp(id: number) {
+    if (!canManageCriticalAccess) {
+      setError('Удалять квартиры может только активный администратор.');
+      return;
+    }
     if (!confirm(t('confirm.deleteApt'))) return;
     try {
       const { error } = await supabase.from('properties').delete().eq('id', id);
@@ -1802,6 +1820,10 @@ function AdminPortal() {
   }
 
   async function handleDeleteExpense(id: number) {
+    if (!canManageCriticalAccess) {
+      setError('Удалять расходы может только активный администратор.');
+      return;
+    }
     if (!confirm('Удалить расход?')) return;
     try {
       const { error } = await supabase.from('uk_expenses').delete().eq('id', id);
@@ -2110,6 +2132,10 @@ function AdminPortal() {
   }
 
   async function handleApproveTransfer(tr: OwnerTransfer) {
+    if (!canManageCriticalAccess) {
+      setError('Решение по смене собственника принимает только активный администратор.');
+      return;
+    }
     if (!confirm(t('admin.approveTransfer', { n: propertyNameById(tr.property_id) }))) return;
     try {
       const { error: updErr } = await supabase
@@ -2137,6 +2163,10 @@ function AdminPortal() {
   }
 
   async function handleRejectTransfer(t: OwnerTransfer) {
+    if (!canManageCriticalAccess) {
+      setError('Решение по смене собственника принимает только активный администратор.');
+      return;
+    }
     const reason = prompt('Причина отклонения (необязательно):') ?? '';
     try {
       const { error } = await supabase
@@ -2424,9 +2454,11 @@ function AdminPortal() {
                         {t('admin.resetN', { n: aptActiveFiltersCount })}
                       </button>
                     )}
-                    <button type="button" onClick={startNewProp} className={adminBtnPrimaryClass}>
-                      {t('admin.addPlus')}
-                    </button>
+                    {canManageCriticalAccess ? (
+                      <button type="button" onClick={startNewProp} className={adminBtnPrimaryClass}>
+                        {t('admin.addPlus')}
+                      </button>
+                    ) : null}
                     <button type="button" onClick={() => exportRegistry('csv')} className={adminBtnSecondaryClass}>
                       {t('registry.exportCsv')}
                     </button>
@@ -2454,10 +2486,12 @@ function AdminPortal() {
                 {t('common.filters')}
                 {aptActiveFiltersCount > 0 ? ` ${aptActiveFiltersCount}` : ''}
               </button>
-              <button type="button" onClick={startNewProp}
-                className="shrink-0 rounded-xl bg-accent hover:bg-accent-hover px-3 py-2 text-sm font-semibold text-white">
-                +
-              </button>
+              {canManageCriticalAccess ? (
+                <button type="button" onClick={startNewProp}
+                  className="shrink-0 rounded-xl bg-accent hover:bg-accent-hover px-3 py-2 text-sm font-semibold text-white">
+                  +
+                </button>
+              ) : null}
             </div>
 
             {/* ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ */}
@@ -2495,25 +2529,32 @@ function AdminPortal() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <input className={adminFieldClass}
                     placeholder={t('admin.phOwner')} value={propForm.owner_name}
-                    onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })} required />
+                    onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })}
+                    readOnly={!canManageCriticalAccess}
+                    required />
                   <input className={adminFieldClass}
                     placeholder="Email" type="email" value={propForm.owner_email}
-                    onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })} required />
+                    onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })}
+                    readOnly={!canManageCriticalAccess}
+                    required />
                   <input className={adminFieldClass}
                     placeholder={t('admin.phPhone')} value={propForm.owner_phone}
-                    onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })} />
+                    onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })}
+                    readOnly={!canManageCriticalAccess} />
                 </div>
                 <p className="text-xs font-medium text-muted">{t('admin.aptGroupMore')}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <select className={adminFieldClass}
                     value={propForm.owner_type}
-                    onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}>
+                    onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}
+                    disabled={!canManageCriticalAccess}>
                     <option value="физическое лицо">{t('ownerType.personShort')}</option>
                     <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
                   </select>
                   <input className={adminFieldClass}
                     placeholder={t('admin.phCompany')} value={propForm.company_name}
-                    onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })} />
+                    onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })}
+                    readOnly={!canManageCriticalAccess} />
                 </div>
                 {editingProp ? (
                   <p className="text-xs text-secondary">
@@ -2706,7 +2747,9 @@ function AdminPortal() {
             {properties.length === 0 ? (
               <AdminEmptyState
                 title={t('admin.aptNone')}
-                action={<button type="button" onClick={startNewProp} className={adminBtnPrimaryClass}>{t('admin.addPlus')}</button>}
+                action={canManageCriticalAccess
+                  ? <button type="button" onClick={startNewProp} className={adminBtnPrimaryClass}>{t('admin.addPlus')}</button>
+                  : undefined}
               />
             ) : filteredProperties.length === 0 ? (
               <AdminEmptyState title={t('admin.noAptsFilter')} />
@@ -2727,7 +2770,7 @@ function AdminPortal() {
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
                 onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); navigateAdminSection('чат'); }}
                 onChanged={loadAll}
-                onDelete={() => { void handleDeleteProp(detailProperty.id); }}
+                onDelete={canManageCriticalAccess ? () => { void handleDeleteProp(detailProperty.id); } : undefined}
                 onOpenTransfer={() => { setDetailProperty(null); navigateAdminSection('смены'); }}
                 onTakePayment={() => {
                   setPayPropertyId(detailProperty.id);
@@ -2779,7 +2822,7 @@ function AdminPortal() {
                       </div>
                       <div className="text-right">
                         <div className={`text-sm font-medium ${transferStatusClass(tr.status)}`}>{labelTransfer(tr.status, t)}</div>
-                        {tr.status === 'ожидает' && (
+                        {tr.status === 'ожидает' && canManageCriticalAccess && (
                           <div className="mt-2 flex gap-2">
                             <button
                               type="button"
@@ -3625,7 +3668,9 @@ function AdminPortal() {
                                             {(!published || canApproveUkExpenses(staffRole)) && (
                                               <button type="button" onClick={() => startEditExpense(exp)} className="rounded px-2 py-1 text-xs bg-hover text-secondary">✎</button>
                                             )}
-                                            <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="rounded px-2 py-1 text-xs bg-danger-bg text-danger">✕</button>
+                                            {canManageCriticalAccess ? (
+                                              <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="rounded px-2 py-1 text-xs bg-danger-bg text-danger">✕</button>
+                                            ) : null}
                                           </div>
                                         </td>
                                       </tr>
@@ -3662,7 +3707,9 @@ function AdminPortal() {
                                     {(!published || canApproveUkExpenses(staffRole)) && (
                                       <button type="button" onClick={() => startEditExpense(exp)} className="text-xs text-secondary">✎</button>
                                     )}
-                                    <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-xs text-danger">✕</button>
+                                    {canManageCriticalAccess ? (
+                                      <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-xs text-danger">✕</button>
+                                    ) : null}
                                   </div>
                                   {open && photos.length > 0 && (
                                     <div className="mt-2">
@@ -5063,7 +5110,7 @@ function ApartmentDetailModal({
   onOpenChat: () => void;
   onTakePayment: () => void;
   onChanged: () => Promise<void> | void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onOpenTransfer: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -5231,7 +5278,9 @@ function ApartmentDetailModal({
               {t('admin.tabChat')}{unreadChats > 0 ? ` (${unreadChats})` : ''}
             </button>
             <button type="button" onClick={onEdit} className={adminBtnSecondaryClass}>{t('admin.aptEdit')}</button>
-            <button type="button" onClick={onDelete} className={adminBtnDangerClass}>{t('admin.aptDelete')}</button>
+            {onDelete ? (
+              <button type="button" onClick={onDelete} className={adminBtnDangerClass}>{t('admin.aptDelete')}</button>
+            ) : null}
             <button type="button" onClick={onClose} className="px-2 text-xl text-secondary hover:text-foreground">✕</button>
           </div>
         </div>

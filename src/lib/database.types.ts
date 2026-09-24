@@ -1681,6 +1681,13 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      get_staff_salaries: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: number;
+          salary_eur: number | null;
+        }[];
+      };
       publish_building_document: {
         Args: { p_document_id: string };
         Returns: Database['public']['Tables']['building_documents']['Row'];

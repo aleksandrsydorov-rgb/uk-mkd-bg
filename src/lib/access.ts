@@ -9,8 +9,7 @@ export interface StaffRecord {
   name: string;
   role: string;
   phone: string | null;
-  salary_eur: number | null;
-  active: boolean;
+  active: boolean | null;
   email?: string | null;
 }
 
@@ -43,13 +42,17 @@ export async function resolveAccess(
   if (propsRes.error) throw propsRes.error;
 
   let staff: StaffRecord | null = null;
-  const staffRes = await supabase.from('staff').select('*').ilike('email', pattern).limit(5);
+  const staffRes = await supabase
+    .from('staff')
+    .select('id, name, role, phone, active, email')
+    .ilike('email', pattern)
+    .limit(5);
 
   if (staffRes.error) {
     if (!isMissingColumn(staffRes.error, 'email')) throw staffRes.error;
   } else {
     const rows = (staffRes.data as StaffRecord[]) ?? [];
-    staff = rows.find((s) => s.active !== false) ?? null;
+    staff = rows.find((s) => s.active === true) ?? null;
   }
 
   const properties = (propsRes.data as Property[]) ?? [];

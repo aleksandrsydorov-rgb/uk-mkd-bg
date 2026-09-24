@@ -551,7 +551,10 @@ function AdminPortal() {
         supabase.from('properties').select('*').order('apartment_number', { ascending: true }),
         supabase.from('requests').select('*').order('created_at', { ascending: false }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }),
-        supabase.from('staff').select('*').order('name', { ascending: true }),
+        supabase
+          .from('staff')
+          .select('id, name, role, phone, email, active')
+          .order('name', { ascending: true }),
         supabase.from('uk_expenses').select('*').order('expense_date', { ascending: false }),
         supabase.from('meter_readings').select('*').order('reading_date', { ascending: false }),
         supabase.from('apartment_guests').select('*').order('created_at', { ascending: true }),
@@ -608,10 +611,29 @@ function AdminPortal() {
         setPollVoteHistory((histRes.data as PollVoteHistory[]) ?? []);
       }
 
+      let staffRows: StaffMember[] = ((staffRes.data as Omit<StaffMember, 'salary_eur'>[]) ?? [])
+        .map((member) => ({
+          ...member,
+          active: member.active === true,
+          salary_eur: null,
+        }));
+
+      if (showStaffSalary && staffActive) {
+        const salaryRes = await supabase.rpc('get_staff_salaries');
+        if (salaryRes.error) throw salaryRes.error;
+        const salaries = new Map(
+          (salaryRes.data ?? []).map((row) => [row.id, row.salary_eur] as const),
+        );
+        staffRows = staffRows.map((member) => ({
+          ...member,
+          salary_eur: salaries.get(member.id) ?? null,
+        }));
+      }
+
       setProperties((propsRes.data as Property[]) ?? []);
       setRequests((reqsRes.data as Request[]) ?? []);
       setAnnouncements((annsRes.data as Announcement[]) ?? []);
-      setStaff((staffRes.data as StaffMember[]) ?? []);
+      setStaff(staffRows);
       setMeterReadings((metersRes.data as MeterReading[]) ?? []);
       const elMetersRes = await supabase.from('electricity_meters').select('*').order('created_at', { ascending: false });
       if (elMetersRes.error) {

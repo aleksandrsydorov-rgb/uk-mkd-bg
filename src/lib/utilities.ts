@@ -124,7 +124,7 @@ export const STAFF_ROLE_ENGINEER = 'инженер';
 export const STAFF_ROLE_CLEANER = 'уборщик';
 
 export function exactStaffRole(role?: string | null) {
-  return (role ?? '').trim().toLowerCase();
+  return role ?? '';
 }
 
 export function canSeeWaterAdmin(role?: string | null) {

@@ -194,7 +194,7 @@ export const OWNER_DOC_GROUPS: { id: string; categories: DocumentCategory[] }[] 
 ];
 
 export function canManageBuildingGovernance(role?: string | null, active?: boolean | null) {
-  return active !== false && (role ?? '').trim().toLowerCase() === STAFF_ROLE_ADMIN;
+  return active === true && role === STAFF_ROLE_ADMIN;
 }
 
 export function meetingStartsAt(meeting: Pick<GeneralMeeting, 'meeting_date' | 'meeting_time'>): Date {

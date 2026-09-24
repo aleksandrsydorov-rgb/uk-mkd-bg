@@ -55,32 +55,24 @@ export function applySupportCharge(debt: number, overpayment: number, amount: nu
 }
 
 export function isUkAdminRole(role?: string | null) {
-  const r = (role ?? '').trim().toLowerCase();
-  if (!r) return false;
-  return /админ|administr|управляющ|директор|председател|управител|менедж|\bmanager\b|(^|\s)ук(\s|$)/.test(r);
+  return role === 'администрация';
 }
 
 export function isUkAccountantRole(role?: string | null) {
-  const r = (role ?? '').trim().toLowerCase();
-  if (!r) return false;
-  return /бухгалтер|account|кассир|счетовод/.test(r);
+  return role === 'бухгалтер';
 }
 
-/** Admin and accountant (and empty legacy roles) can take support-fee payments. */
+/** Exact active-role gating is resolved by the caller; only these roles may manage support fees. */
 export function canRecordSupportPayments(role?: string | null) {
-  const r = (role ?? '').trim();
-  if (!r) return true;
-  return isUkAdminRole(r) || isUkAccountantRole(r);
+  return isUkAdminRole(role) || isUkAccountantRole(role);
 }
 
-/** Only administrator sets the €/m² rate. Empty role is treated as admin for setup. */
+/** Only the exact canonical administration role sets the €/m² rate. */
 export function canSetSupportRate(role?: string | null) {
-  const r = (role ?? '').trim();
-  if (!r) return true;
-  return isUkAdminRole(r);
+  return isUkAdminRole(role);
 }
 
-/** Only administrator publishes expenses for owners. Empty role is treated as admin for setup. */
+/** Only the exact canonical administration role publishes expenses for owners. */
 export function canApproveUkExpenses(role?: string | null) {
   return canSetSupportRate(role);
 }

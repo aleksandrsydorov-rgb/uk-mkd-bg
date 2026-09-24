@@ -66,6 +66,7 @@ import {
   canApproveUkExpenses,
   canRecordSupportPayments,
   canSetSupportRate,
+  isUkAccountantRole,
   isUkAdminRole,
   monthlySupportFee,
   type SupportFeeEntry,
@@ -332,11 +333,17 @@ function AdminPortal() {
   const showElectricityFinance = canSeeElectricityFinance(staffRole);
   const canEditStaff = isUkAdminRole(staffRole);
   const canManageCriticalAccess = staffActive && isUkAdminRole(staffRole);
+  const canReadPropertyDirectory = staffActive && (
+    isUkAdminRole(staffRole) || isUkAccountantRole(staffRole) || staffRole === 'инженер'
+  );
+  const canReadSupportFinance = staffActive && canRecordSupportPayments(staffRole);
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
       { id: 'overview', label: t('admin.overview'), items: ['обзор'] },
-      { id: 'objects', label: t('admin.menuObjects'), items: ['квартиры', 'смены'] },
+      ...(canManageCriticalAccess
+        ? [{ id: 'objects', label: t('admin.menuObjects'), items: ['квартиры', 'смены'] as AdminSection[] }]
+        : []),
       {
         id: 'utilities',
         label: t('admin.menuUtilities'),
@@ -348,14 +355,28 @@ function AdminPortal() {
       {
         id: 'finance',
         label: t('admin.menuFinance'),
-        items: ['такса', ...(showCapital ? (['капремонт'] as const) : []), 'расходы', 'отчётность'],
+        items: [
+          ...(canReadSupportFinance ? (['такса'] as const) : []),
+          ...(showCapital ? (['капремонт'] as const) : []),
+          'расходы',
+          ...(canReadSupportFinance ? (['отчётность'] as const) : []),
+        ],
       },
-      { id: 'comms', label: t('admin.menuComm'), items: ['заявки', 'объявления', 'опросы', 'чат'] },
+      {
+        id: 'comms',
+        label: t('admin.menuComm'),
+        items: [
+          ...(canManageCriticalAccess ? (['заявки'] as const) : []),
+          'объявления',
+          'опросы',
+          ...(canManageCriticalAccess ? (['чат'] as const) : []),
+        ],
+      },
       { id: 'docs', label: t('admin.menuDocs'), items: ['документы'] },
       { id: 'system', label: t('admin.menuSystem'), items: ['персонал', 'настройки'] },
     ];
     return groups.filter((group) => group.items.length > 0);
-  }, [t, showWater, showCapital]);
+  }, [t, showWater, showCapital, canManageCriticalAccess, canReadSupportFinance]);
   const visibleSectionSet = useMemo(() => {
     const keys = new Set<AdminSection>();
     for (const group of MENU_GROUPS) {
@@ -545,12 +566,19 @@ function AdminPortal() {
     setLoading(true);
     setError(null);
     try {
+      const emptyList = <T,>() => Promise.resolve({ data: [] as T[], error: null });
       const [
         propsRes, reqsRes, annsRes, staffRes, expRes, metersRes, guestsRes, petsRes, chatRes,
         pollsRes, optRes, voteRes, histRes,
       ] = await Promise.all([
-        supabase.from('properties').select('*').order('apartment_number', { ascending: true }),
-        supabase.from('requests').select('*').order('created_at', { ascending: false }),
+        canManageCriticalAccess
+          ? supabase.from('properties').select('*').order('apartment_number', { ascending: true })
+          : canReadPropertyDirectory
+            ? supabase.rpc('list_staff_property_directory')
+            : emptyList<Property>(),
+        canManageCriticalAccess
+          ? supabase.from('requests').select('*').order('created_at', { ascending: false })
+          : emptyList<Request>(),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }),
         supabase
           .from('staff')
@@ -558,13 +586,21 @@ function AdminPortal() {
           .order('name', { ascending: true }),
         supabase.from('uk_expenses').select('*').order('expense_date', { ascending: false }),
         supabase.from('meter_readings').select('*').order('reading_date', { ascending: false }),
-        supabase.from('apartment_guests').select('*').order('created_at', { ascending: true }),
+        canManageCriticalAccess
+          ? supabase.from('apartment_guests').select('*').order('created_at', { ascending: true })
+          : emptyList<ApartmentGuest>(),
         supabase.from('apartment_pets').select('*').order('created_at', { ascending: true }),
-        supabase.from('chat_messages').select('*').order('created_at', { ascending: true }),
+        canManageCriticalAccess
+          ? supabase.from('chat_messages').select('*').order('created_at', { ascending: true })
+          : emptyList<ChatMessage>(),
         supabase.from('polls').select('*').order('created_at', { ascending: false }),
         supabase.from('poll_options').select('*').order('sort_order', { ascending: true }),
-        supabase.from('poll_votes').select('*'),
-        supabase.from('poll_vote_history').select('*').order('created_at', { ascending: false }),
+        canManageCriticalAccess
+          ? supabase.from('poll_votes').select('*')
+          : emptyList<PollVote>(),
+        canManageCriticalAccess
+          ? supabase.from('poll_vote_history').select('*').order('created_at', { ascending: false })
+          : emptyList<PollVoteHistory>(),
       ]);
 
       if (propsRes.error) throw propsRes.error;
@@ -647,10 +683,12 @@ function AdminPortal() {
       if (!petsRes.error) setAllPets((petsRes.data as ApartmentPet[]) ?? []);
       setAllChatMessages((chatRes.data as ChatMessage[]) ?? []);
 
-      const trRes = await supabase
-        .from('owner_transfers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const trRes = canManageCriticalAccess
+        ? await supabase
+          .from('owner_transfers')
+          .select('*')
+          .order('created_at', { ascending: false })
+        : { data: [] as OwnerTransfer[], error: null };
       if (trRes.error) {
         if (!isMissingRelation(trRes.error, 'owner_transfers')) throw trRes.error;
         setOwnerTransfers([]);
@@ -659,11 +697,13 @@ function AdminPortal() {
       }
 
       const settingsRes = await supabase.from('building_settings').select('*').eq('id', 1).maybeSingle();
-      const ledgerRes = await supabase
-        .from('support_fee_ledger')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200);
+      const ledgerRes = canReadSupportFinance
+        ? await supabase
+          .from('support_fee_ledger')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200)
+        : { data: [] as SupportFeeEntry[], error: null };
 
       if (settingsRes.error && isMissingRelation(settingsRes.error, 'building_settings')) {
         setSupportFeeMissing(true);
@@ -1013,6 +1053,10 @@ function AdminPortal() {
 
   async function handleSendChat(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     if (!selectedChatProperty) return;
     const msg = chatInput.trim();
     if (!msg && !chatFile) return;
@@ -1660,6 +1704,10 @@ function AdminPortal() {
 
   async function handleSaveAnn(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     setError(null);
     try {
       const { error } = await supabase.from('announcements').insert({
@@ -1676,6 +1724,10 @@ function AdminPortal() {
   }
 
   async function handleDeleteAnn(id: number) {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return false;
+    }
     if (!confirm(t('confirm.deleteAnn'))) return false;
     try {
       const { error } = await supabase.from('announcements').delete().eq('id', id);
@@ -2026,6 +2078,10 @@ function AdminPortal() {
   }
 
   function startNewPoll() {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     setPollForm({
       title: '',
       body: '',
@@ -2042,6 +2098,10 @@ function AdminPortal() {
 
   async function handleSavePoll(e: React.FormEvent) {
     e.preventDefault();
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     setError(null);
     const title = pollForm.title.trim();
     const options = pollForm.options.map((o) => o.trim()).filter(Boolean);
@@ -2091,25 +2151,16 @@ function AdminPortal() {
   }
 
   async function handleTogglePoll(poll: Poll) {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     try {
-      if (poll.status === 'открыт') {
-        const options = pollOptions.filter((o) => o.poll_id === poll.id);
-        const votes = pollVotes.filter((v) => v.poll_id === poll.id);
-        const tally = tallyPoll(options, votes, properties);
-        const accepted = tally.accepted;
-        const { error } = await supabase.from('polls').update({
-          status: 'закрыт',
-          result: accepted ? 'принято' : 'не принято',
-          result_option_id: accepted ? tally.winner?.option.id ?? null : null,
-        }).eq('id', poll.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('polls').update({
-          status: 'открыт',
-          result: 'идёт',
-        }).eq('id', poll.id);
-        if (error) throw error;
-      }
+      const { error } = await supabase.rpc('set_poll_lifecycle', {
+        p_poll_id: poll.id,
+        p_close: poll.status === 'открыт',
+      });
+      if (error) throw error;
       await loadAll();
     } catch (err: any) {
       setError(err?.message ?? 'Ошибка смены статуса');
@@ -2117,6 +2168,10 @@ function AdminPortal() {
   }
 
   async function handleDeletePoll(id: number) {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return false;
+    }
     if (!confirm(t('confirm.deletePoll'))) return false;
     try {
       const { error } = await supabase.from('polls').delete().eq('id', id);
@@ -2186,6 +2241,10 @@ function AdminPortal() {
   }
 
   async function handleUpdateRequestStatus(reqId: number, newStatus: string) {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     try {
       const { error } = await supabase.from('requests').update({ status: newStatus }).eq('id', reqId);
       if (error) throw error;
@@ -2196,6 +2255,10 @@ function AdminPortal() {
   }
 
   async function handleDeleteRequest(id: number) {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
     if (!confirm(t('confirm.deleteRequest'))) return false;
     try {
       const { error } = await supabase.from('requests').delete().eq('id', id);
@@ -2320,6 +2383,7 @@ function AdminPortal() {
             <AdminPageHeader title={t('admin.overview')} secondary={t('admin.overviewLead')} />
 
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              {canReadPropertyDirectory ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.apartments')}
@@ -2327,6 +2391,8 @@ function AdminPortal() {
                 secondary={t('admin.kpiAllObjects')}
                 onClick={() => navigateAdminSection('квартиры')}
               />
+              ) : null}
+              {canManageCriticalAccess ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.activeReq')}
@@ -2335,6 +2401,8 @@ function AdminPortal() {
                 alert={activeRequests.length > 0}
                 onClick={() => navigateAdminSection('заявки')}
               />
+              ) : null}
+              {canReadSupportFinance ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.kpiDebtTitle')}
@@ -2343,6 +2411,7 @@ function AdminPortal() {
                 alert={totalDebt > 0}
                 onClick={() => navigateAdminSection('такса')}
               />
+              ) : null}
               <AdminMetricCard
                 align="center"
                 label={t('admin.kpiPollsTitle')}
@@ -2384,20 +2453,24 @@ function AdminPortal() {
               <AdminCard pad className="!p-3 md:!p-4">
                 <h2 className="text-sm font-semibold text-foreground">{t('admin.quickActions')}</h2>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => { navigateAdminSection('объявления'); setShowAnnForm(true); }}
-                    className={adminBtnPrimaryClass}
-                  >
-                    {t('admin.quickAnnounce')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { startNewPoll(); navigateAdminSection('опросы'); }}
-                    className={adminBtnSecondaryClass}
-                  >
-                    {t('admin.quickPoll')}
-                  </button>
+                  {canManageCriticalAccess ? (
+                    <button
+                      type="button"
+                      onClick={() => { navigateAdminSection('объявления'); setShowAnnForm(true); }}
+                      className={adminBtnPrimaryClass}
+                    >
+                      {t('admin.quickAnnounce')}
+                    </button>
+                  ) : null}
+                  {canManageCriticalAccess ? (
+                    <button
+                      type="button"
+                      onClick={() => { startNewPoll(); navigateAdminSection('опросы'); }}
+                      className={adminBtnSecondaryClass}
+                    >
+                      {t('admin.quickPoll')}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => { navigateAdminSection('расходы'); setShowExpenseForm(true); }}
@@ -3936,11 +4009,11 @@ function AdminPortal() {
             <AdminPageHeader
               title={t('admin.polls')}
               secondary={t('admin.pollsLeadAdmin')}
-              action={
+              action={canManageCriticalAccess ? (
                 <AdminPrimaryButton type="button" onClick={startNewPoll}>
                   + {t('admin.quickPoll')}
                 </AdminPrimaryButton>
-              }
+              ) : undefined}
             />
             <p className="text-xs text-muted">{t('account.pollsNotMeeting')}</p>
             <AdminCard>
@@ -4141,9 +4214,11 @@ function AdminPortal() {
                         <AdminSecondaryButton type="button" onClick={() => setPollDetailId(null)}>
                           {t('common.close')}
                         </AdminSecondaryButton>
+                        {canManageCriticalAccess ? (
                         <button type="button" onClick={() => handleTogglePoll(selectedPoll)} className={adminBtnSecondaryClass}>
                           {selectedPoll.status === 'открыт' ? t('admin.pollClose') : t('admin.pollReopen')}
                         </button>
+                        ) : null}
                       </div>
                     </div>
                     <PollDetails poll={selectedPoll} options={detailOptions} votes={detailVotes} properties={properties} />
@@ -4187,11 +4262,13 @@ function AdminPortal() {
                         </AdminTableShell>
                       )
                     )}
+                    {canManageCriticalAccess ? (
                     <div className="border-t border-border pt-3">
                       <button type="button" onClick={() => handleDeletePoll(selectedPoll.id)} className="text-sm text-danger hover:underline">
                         {t('common.delete')}
                       </button>
                     </div>
+                    ) : null}
                   </div>
               ) : null}
             </AdminCard>
@@ -4209,11 +4286,11 @@ function AdminPortal() {
             <AdminPageHeader
               title={t('admin.announcements')}
               secondary={t('admin.announcementsLead')}
-              action={
+              action={canManageCriticalAccess ? (
                 <AdminPrimaryButton type="button" onClick={() => setShowAnnForm(true)}>
                   + {t('admin.quickAnnounce')}
                 </AdminPrimaryButton>
-              }
+              ) : undefined}
             />
             {showAnnForm && (
               <form onSubmit={handleSaveAnn} className={adminFormPanelClass}>
@@ -4308,11 +4385,13 @@ function AdminPortal() {
                   </div>
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                     <p className="whitespace-pre-wrap text-sm text-secondary">{selectedAnn.body}</p>
+                    {canManageCriticalAccess ? (
                     <div className="border-t border-border pt-4">
                       <button type="button" onClick={() => handleDeleteAnn(selectedAnn.id)} className="text-sm text-danger hover:underline">
                         {t('common.delete')}
                       </button>
                     </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

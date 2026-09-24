@@ -1832,6 +1832,14 @@ export interface Database {
           accepted: boolean;
         }[];
       };
+      list_staff_property_directory: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['properties']['Row'][];
+      };
+      set_poll_lifecycle: {
+        Args: { p_poll_id: number; p_close: boolean };
+        Returns: Database['public']['Tables']['polls']['Row'];
+      };
       get_poll_tallies: {
         Args: Record<string, never>;
         Returns: {

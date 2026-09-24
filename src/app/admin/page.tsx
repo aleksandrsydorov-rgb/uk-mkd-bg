@@ -69,6 +69,7 @@ import {
   isUkAccountantRole,
   isUkAdminRole,
   monthlySupportFee,
+  supportPaymentIdempotencySignature,
   type SupportFeeEntry,
 } from '@/lib/finance';
 import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
@@ -411,6 +412,7 @@ function AdminPortal() {
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
   const [paySaving, setPaySaving] = useState(false);
+  const supportPayKeyRef = useRef<{ key: string; sig: string } | null>(null);
   const [rateSaving, setRateSaving] = useState(false);
   const [chargeYear, setChargeYear] = useState(String(new Date().getFullYear()));
   const [chargeSaving, setChargeSaving] = useState(false);
@@ -1941,15 +1943,27 @@ function AdminPortal() {
       setError('Сумма должна быть больше нуля');
       return;
     }
+    const note = payNote.trim();
+    const sig = supportPaymentIdempotencySignature({
+      mode: 'regular',
+      propertyId: property.id,
+      amount,
+      note,
+    });
+    if (!supportPayKeyRef.current || supportPayKeyRef.current.sig !== sig) {
+      supportPayKeyRef.current = { key: crypto.randomUUID(), sig };
+    }
     setPaySaving(true);
     setError(null);
     try {
       const { error } = await supabase.rpc('record_support_payment', {
         p_property_id: property.id,
         p_amount: amount,
-        p_note: payNote.trim() || null,
+        p_note: note || null,
+        p_idempotency_key: supportPayKeyRef.current.key,
       });
       if (error) throw error;
+      supportPayKeyRef.current = null;
       setPayAmount('');
       setPayNote('');
       await loadAll();
@@ -1961,6 +1975,8 @@ function AdminPortal() {
       if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
         setError('Выполните supabase/support_fee.sql в SQL Editor.');
+      } else if (msg.toLowerCase().includes('idempotency key conflict')) {
+        setError(t('admin.errIdempotency'));
       } else {
         setError(msg || 'Не удалось записать оплату');
       }

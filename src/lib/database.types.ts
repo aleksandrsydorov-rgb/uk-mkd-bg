@@ -753,6 +753,7 @@ export interface Database {
           recorded_by: string | null;
           debt_after: number | null;
           overpayment_after: number | null;
+          idempotency_key: string | null;
         };
         Insert: {
           id?: number;
@@ -765,6 +766,7 @@ export interface Database {
           recorded_by?: string | null;
           debt_after?: number | null;
           overpayment_after?: number | null;
+          idempotency_key?: string | null;
         };
         Update: {
           id?: number;
@@ -777,6 +779,7 @@ export interface Database {
           recorded_by?: string | null;
           debt_after?: number | null;
           overpayment_after?: number | null;
+          idempotency_key?: string | null;
         };
         Relationships: [];
       };
@@ -1794,6 +1797,10 @@ export interface Database {
         Args: { p_meeting_id: string };
         Returns: Database['public']['Tables']['general_meetings']['Row'];
       };
+      mark_general_meeting_held: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
       set_general_meeting_online_url: {
         Args: { p_meeting_id: string; p_url: string };
         Returns: undefined;
@@ -1867,7 +1874,12 @@ export interface Database {
         Returns: boolean;
       };
       record_support_payment: {
-        Args: { p_property_id: number; p_amount: number; p_note: string | null };
+        Args: {
+          p_property_id: number;
+          p_amount: number;
+          p_note: string | null;
+          p_idempotency_key: string;
+        };
         Returns: Json;
       };
       charge_support_fee: {
@@ -1918,6 +1930,7 @@ export interface Database {
           p_amount: number;
           p_billing_year: number;
           p_note: string | null;
+          p_idempotency_key: string;
         };
         Returns: Json;
       };

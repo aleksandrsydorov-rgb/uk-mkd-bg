@@ -26,6 +26,24 @@ function roundMoney(n: number) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+/** Matches record_support_payment_internal note normalization. */
+export const SUPPORT_PAYMENT_DEFAULT_NOTE = 'Оплата таксы поддержки';
+
+export function supportPaymentIdempotencySignature(input: {
+  mode: 'regular' | 'year';
+  propertyId: number;
+  amount: number;
+  note?: string | null;
+  billingYear?: number | null;
+}) {
+  const amount = roundMoney(input.amount).toFixed(2);
+  const note = (input.note ?? '').trim() || SUPPORT_PAYMENT_DEFAULT_NOTE;
+  if (input.mode === 'year') {
+    return `year|${input.propertyId}|${amount}|${input.billingYear ?? ''}|${note}`;
+  }
+  return `regular|${input.propertyId}|${amount}|${note}`;
+}
+
 export function annualSupportFee(area: number | null | undefined, rate: number) {
   return roundMoney(Number(area ?? 0) * rate);
 }

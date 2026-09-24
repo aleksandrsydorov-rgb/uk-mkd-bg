@@ -257,7 +257,6 @@ export function AdminDocumentsDecisions({
         is_urgent: form.is_urgent,
         absentee_voting_enabled: form.absentee_voting_enabled,
         online_meeting_url: form.online_meeting_url.trim() || null,
-        status: 'draft',
       })
       .select('*')
       .single();
@@ -569,8 +568,10 @@ export function AdminDocumentsDecisions({
 
   async function markHeld() {
     if (!canWrite || !selected) return;
-    const { error: updErr } = await supabase.from('general_meetings').update({ status: 'held' }).eq('id', selected.id);
-    if (updErr) setError(updErr.message);
+    const { error: rpcErr } = await supabase.rpc('mark_general_meeting_held', {
+      p_meeting_id: selected.id,
+    });
+    if (rpcErr) setError(rpcErr.message);
     else await load();
   }
 

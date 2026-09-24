@@ -27,6 +27,13 @@ import {
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
+import {
+  CHAT_FILES_BUCKET,
+  REQUEST_PHOTOS_BUCKET,
+  chatFilePath,
+  requestPhotoPath,
+  uploadPrivateFile,
+} from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import {
   type SupportFeeAllocation,
@@ -420,15 +427,16 @@ export default function AccountPage() {
           setTransfers((trData as OwnerTransfer[]) ?? []);
         }
 
-        const settingsRes = await supabase.from('building_settings').select('*').eq('id', 1).maybeSingle();
+        const settingsRes = await supabase.rpc('read_building_settings');
+        const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
         if (settingsRes.error) {
           if (!isMissingRelation(settingsRes.error, 'building_settings')) throw settingsRes.error;
           setSupportRate(DEFAULT_SUPPORT_RATE);
         } else {
-          const rate = Number(settingsRes.data?.support_rate_eur_per_sqm_year ?? DEFAULT_SUPPORT_RATE);
+          const rate = Number(settingsRow?.support_rate_eur_per_sqm_year ?? DEFAULT_SUPPORT_RATE);
           setSupportRate(rate > 0 ? rate : DEFAULT_SUPPORT_RATE);
-          setElectricityMode(parseElectricityMode(settingsRes.data?.electricity_mode));
-          setWaterMode(parseWaterMode(settingsRes.data?.water_mode));
+          setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
+          setWaterMode(parseWaterMode(settingsRow?.water_mode));
         }
 
         const waterTariffRes = await supabase
@@ -740,7 +748,10 @@ export default function AccountPage() {
     try {
       await markOwnerMessagesRead(property.id);
       let photoUrl: string | null = null;
-      if (chatFile) photoUrl = await uploadPhotoIfAny(chatFile, 'chat');
+      if (chatFile) {
+        const path = chatFilePath(property.id, chatFile.name);
+        photoUrl = await uploadPrivateFile(supabase, CHAT_FILES_BUCKET, path, chatFile);
+      }
       const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
         property_id: property.id,
         sender: 'owner',
@@ -1109,18 +1120,10 @@ export default function AccountPage() {
   // ===================================================================
   // ЗАЯВКИ
   // ===================================================================
-  async function uploadPhotoIfAny(file: File | null, folder?: string) {
+  async function uploadRequestPhoto(file: File | null) {
     if (!file || !property) return null;
-    const fileExt = file.name.split('.').pop();
-    const safeExt = fileExt ? fileExt.toLowerCase() : 'jpg';
-    const prefix = folder ? `${folder}/` : '';
-    const filePath = `${prefix}${property.id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${safeExt}`;
-    const { data: uploadData, error: uploadErr } = await supabase.storage
-      .from('request-photos')
-      .upload(filePath, file, { upsert: true });
-    if (uploadErr) throw uploadErr;
-    const publicUrl = supabase.storage.from('request-photos').getPublicUrl(uploadData.path).data.publicUrl;
-    return publicUrl;
+    const path = requestPhotoPath(property.id, file.name);
+    return uploadPrivateFile(supabase, REQUEST_PHOTOS_BUCKET, path, file);
   }
 
   async function handleCreateRequest(e: React.FormEvent) {
@@ -1133,7 +1136,7 @@ export default function AccountPage() {
     setError(null);
     try {
       let photoUrl: string | null = null;
-      if (photo) photoUrl = await uploadPhotoIfAny(photo);
+      if (photo) photoUrl = await uploadRequestPhoto(photo);
 
       const { error: insertErr } = await supabase.from('requests').insert({
         property_id: property.id,

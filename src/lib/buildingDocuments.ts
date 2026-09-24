@@ -1,7 +1,7 @@
 import { STAFF_ROLE_ADMIN } from '@/lib/utilities';
 import type { Translate } from '@/i18n/translate';
 
-/** Private legal archive. Not the public request-photos bucket. */
+/** Private legal archive. Separate from request, chat, expense, and poll files. */
 export const BUILDING_DOCUMENTS_BUCKET = 'building-documents';
 
 export type MeetingMode = 'in_person' | 'hybrid';

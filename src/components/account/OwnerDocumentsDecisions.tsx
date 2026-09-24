@@ -143,7 +143,11 @@ export function OwnerDocumentsDecisions({
     const parts = formatIdealPartsPercent(m.represented_ideal_parts_percent, locale);
     const open = openId === m.id;
     const successor = successorMeeting(meetings, m.id);
-    const invitation = fileOf(m.id, 'invitation') ?? fileOf(m.id, 'cancellation_notice');
+    const invitation = fileOf(m.id, 'invitation');
+    const cancellationNotice = fileOf(m.id, 'cancellation_notice');
+    const agendaDocument = fileOf(m.id, 'agenda');
+    const minutes = fileOf(m.id, 'minutes');
+    const appendix = fileOf(m.id, 'appendix');
     return (
       <article key={m.id} className="rounded-xl border border-border bg-background px-3 py-3">
         <p className="text-sm font-medium text-foreground">{m.title || t('docs.generalMeeting')}</p>
@@ -176,30 +180,38 @@ export function OwnerDocumentsDecisions({
         <div className="mt-2 flex flex-wrap gap-2">
           {upcomingCard ? (
             <>
-              <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(fileOf(m.id, 'invitation'))}>
-                {t('docs.invitation')}
-              </button>
-              <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(fileOf(m.id, 'agenda'))}>
-                {t('docs.agendaTitle')}
-              </button>
+              {invitation ? (
+                <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(invitation)}>
+                  {t('docs.invitation')}
+                </button>
+              ) : null}
+              {agendaDocument ? (
+                <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(agendaDocument)}>
+                  {t('docs.agendaTitle')}
+                </button>
+              ) : null}
             </>
           ) : m.status === 'cancelled' ? (
-            invitation ? (
-              <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(invitation)}>
+            invitation || cancellationNotice ? (
+              <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(invitation ?? cancellationNotice)}>
                 {t('docs.invitation')}
               </button>
             ) : null
           ) : (
             <>
-              <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(fileOf(m.id, 'minutes'))}>
-                {t('docs.minutes')}
-              </button>
+              {minutes ? (
+                <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(minutes)}>
+                  {t('docs.minutes')}
+                </button>
+              ) : null}
               <button type="button" className="text-xs text-accent hover:underline" onClick={() => { setTab('decisions'); }}>
                 {t('docs.tabDecisions')}
               </button>
-              <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(fileOf(m.id, 'appendix'))}>
-                {t('docs.appendices')}
-              </button>
+              {appendix ? (
+                <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(appendix)}>
+                  {t('docs.appendices')}
+                </button>
+              ) : null}
             </>
           )}
           <button type="button" className="text-xs text-accent hover:underline" onClick={() => setOpenId(open ? null : m.id)}>
@@ -289,6 +301,7 @@ export function OwnerDocumentsDecisions({
             {filteredDecisions.length === 0 ? <EmptyState title={t('docs.emptyDecisions')} /> : null}
             {filteredDecisions.map((d) => {
               const meeting = meetings.find((m) => m.id === d.meeting_id);
+              const minutes = fileOf(d.meeting_id, 'minutes');
               const open = decisionId === d.id;
               return (
                 <article key={d.id} className="rounded-xl border border-border bg-background px-3 py-3">
@@ -306,13 +319,15 @@ export function OwnerDocumentsDecisions({
                     <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm text-secondary">
                       <p className="whitespace-pre-wrap text-foreground">{d.decision_text}</p>
                       {meeting ? <p>{meeting.title}</p> : null}
-                      <button
-                        type="button"
-                        className="text-xs text-accent hover:underline"
-                        onClick={() => void openDocument(fileOf(d.meeting_id, 'minutes'))}
-                      >
-                        {t('docs.openMinutes')}
-                      </button>
+                      {minutes ? (
+                        <button
+                          type="button"
+                          className="text-xs text-accent hover:underline"
+                          onClick={() => void openDocument(minutes)}
+                        >
+                          {t('docs.openMinutes')}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </article>

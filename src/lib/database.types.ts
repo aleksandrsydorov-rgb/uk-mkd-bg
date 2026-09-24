@@ -1836,6 +1836,17 @@ export interface Database {
         Args: Record<string, never>;
         Returns: Database['public']['Tables']['properties']['Row'][];
       };
+      read_building_settings: {
+        Args: Record<string, never>;
+        Returns: {
+          id: number;
+          electricity_mode: string | null;
+          water_mode: string | null;
+          updated_at: string;
+          updated_by: string | null;
+          support_rate_eur_per_sqm_year: number | null;
+        }[];
+      };
       set_poll_lifecycle: {
         Args: { p_poll_id: number; p_close: boolean };
         Returns: Database['public']['Tables']['polls']['Row'];

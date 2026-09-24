@@ -75,6 +75,16 @@ import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrl
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { AdminReports } from '@/components/AdminReports';
 import { ChatMedia } from '@/components/ChatMedia';
+import { SignedStorageLink } from '@/components/SignedStorageMedia';
+import {
+  CHAT_FILES_BUCKET,
+  EXPENSE_RECEIPTS_BUCKET,
+  POLL_IMAGES_BUCKET,
+  chatFilePath,
+  expenseReceiptPath,
+  pollImagePath,
+  uploadPrivateFile,
+} from '@/lib/privateMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
@@ -696,7 +706,7 @@ function AdminPortal() {
         setOwnerTransfers((trRes.data as OwnerTransfer[]) ?? []);
       }
 
-      const settingsRes = await supabase.from('building_settings').select('*').eq('id', 1).maybeSingle();
+      const settingsRes = await supabase.rpc('read_building_settings');
       const ledgerRes = canReadSupportFinance
         ? await supabase
           .from('support_fee_ledger')
@@ -705,6 +715,7 @@ function AdminPortal() {
           .limit(200)
         : { data: [] as SupportFeeEntry[], error: null };
 
+      const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
       if (settingsRes.error && isMissingRelation(settingsRes.error, 'building_settings')) {
         setSupportFeeMissing(true);
         setSupportRate(DEFAULT_SUPPORT_RATE);
@@ -712,11 +723,13 @@ function AdminPortal() {
       } else if (settingsRes.error) {
         throw settingsRes.error;
       } else {
-        const rate = Number(settingsRes.data?.support_rate_eur_per_sqm_year ?? DEFAULT_SUPPORT_RATE);
-        setSupportRate(rate > 0 ? rate : DEFAULT_SUPPORT_RATE);
-        setSupportRateInput(String(rate > 0 ? rate : DEFAULT_SUPPORT_RATE));
-        setElectricityMode(parseElectricityMode(settingsRes.data?.electricity_mode));
-        setWaterMode(parseWaterMode(settingsRes.data?.water_mode));
+        const rate = settingsRow?.support_rate_eur_per_sqm_year;
+        if (rate != null && Number(rate) > 0) {
+          setSupportRate(Number(rate));
+          setSupportRateInput(String(rate));
+        }
+        setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
+        setWaterMode(parseWaterMode(settingsRow?.water_mode));
         setSupportFeeMissing(false);
       }
 
@@ -1069,13 +1082,8 @@ function AdminPortal() {
       markUkChatSeen(selectedChatProperty.id);
       let photoUrl: string | null = null;
       if (chatFile) {
-        const ext = chatFile.name.split('.').pop()?.toLowerCase() || 'bin';
-        const filePath = `chat/${selectedChatProperty.id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('request-photos')
-          .upload(filePath, chatFile, { upsert: true });
-        if (uploadErr) throw uploadErr;
-        photoUrl = supabase.storage.from('request-photos').getPublicUrl(uploadData.path).data.publicUrl;
+        const filePath = chatFilePath(selectedChatProperty.id, chatFile.name);
+        photoUrl = await uploadPrivateFile(supabase, CHAT_FILES_BUCKET, filePath, chatFile);
       }
       const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
         property_id: selectedChatProperty.id,
@@ -1672,7 +1680,7 @@ function AdminPortal() {
         electricity_mode: mode,
         updated_at: new Date().toISOString(),
         updated_by: sessionEmail,
-      });
+      }).select('id');
       if (error) throw error;
       setElectricityMode(mode);
     } catch (e: any) {
@@ -1694,7 +1702,7 @@ function AdminPortal() {
         water_mode: mode,
         updated_at: new Date().toISOString(),
         updated_by: sessionEmail,
-      });
+      }).select('id');
       if (error) throw error;
       setWaterMode(mode);
     } catch (e: any) {
@@ -1770,13 +1778,8 @@ function AdminPortal() {
   async function uploadExpensePhotos(expenseId: number, files: File[]) {
     const urls: string[] = [];
     for (const file of files) {
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const filePath = `uk-expenses/${expenseId}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from('request-photos')
-        .upload(filePath, file, { upsert: true });
-      if (uploadErr) throw uploadErr;
-      urls.push(supabase.storage.from('request-photos').getPublicUrl(uploadData.path).data.publicUrl);
+      const filePath = expenseReceiptPath(expenseId, file.name);
+      urls.push(await uploadPrivateFile(supabase, EXPENSE_RECEIPTS_BUCKET, filePath, file));
     }
     return urls;
   }
@@ -1905,7 +1908,7 @@ function AdminPortal() {
         support_rate_eur_per_sqm_year: rate,
         updated_at: new Date().toISOString(),
         updated_by: sessionEmail,
-      });
+      }).select('id');
       if (error) {
         if (isMissingRelation(error, 'building_settings')) {
           setSupportFeeMissing(true);
@@ -2132,15 +2135,9 @@ function AdminPortal() {
       );
       if (optErr) throw optErr;
       if (pollPhoto) {
-        const ext = pollPhoto.name.split('.').pop()?.toLowerCase() || 'jpg';
-        const filePath = `polls/${pollId}/${Date.now()}.${ext}`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('request-photos')
-          .upload(filePath, pollPhoto, { upsert: true });
-        if (!uploadErr && uploadData) {
-          const publicUrl = supabase.storage.from('request-photos').getPublicUrl(uploadData.path).data.publicUrl;
-          await supabase.from('polls').update({ photo_url: publicUrl }).eq('id', pollId);
-        }
+        const filePath = pollImagePath(pollId, pollPhoto.name);
+        const storedPath = await uploadPrivateFile(supabase, POLL_IMAGES_BUCKET, filePath, pollPhoto);
+        await supabase.from('polls').update({ photo_url: storedPath }).eq('id', pollId);
       }
       setShowPollForm(false);
       setPollPhoto(null);
@@ -3101,9 +3098,9 @@ function AdminPortal() {
                     </div>
                     <p className="whitespace-pre-wrap text-sm text-secondary">{requestDetail.description || '—'}</p>
                     {requestDetail.photo_url ? (
-                      <a href={requestDetail.photo_url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
+                      <SignedStorageLink stored={requestDetail.photo_url} className="text-sm text-accent hover:underline">
                         {t('form.photo')}
-                      </a>
+                      </SignedStorageLink>
                     ) : null}
                     <div className="text-xs text-muted">{formatOwnerDateTime(requestDetail.created_at, locale)}</div>
                     <div>
@@ -5524,8 +5521,9 @@ function ApartmentDetailModal({
                     <div className="flex gap-2 mt-2">
                       <span className="text-xs text-muted">{labelCategory(r.category, t)} · {labelPriority(r.priority, t)}</span>
                       {r.photo_url && (
-                        <a href={r.photo_url} target="_blank" rel="noreferrer"
-                          className="text-xs text-accent hover:underline">📷 Фото</a>
+                        <SignedStorageLink stored={r.photo_url} className="text-xs text-accent hover:underline">
+                          📷 Фото
+                        </SignedStorageLink>
                       )}
                     </div>
                     <div className="text-xs text-muted mt-1">

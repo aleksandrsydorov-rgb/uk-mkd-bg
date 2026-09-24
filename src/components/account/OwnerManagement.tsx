@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, t
 import { useI18n } from '@/i18n/I18nProvider';
 import { labelCategory, labelPriority } from '@/i18n/labels';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
+import { SignedStorageLink } from '@/components/SignedStorageMedia';
 import { ChatMedia } from '@/components/ChatMedia';
 import { expensePhotoUrls } from '@/lib/expenses';
 import { formatEur } from '@/lib/utilities';
@@ -247,9 +248,9 @@ export function OwnerManagement({
                     <div className="mt-3 space-y-2 border-t border-border pt-3 text-sm text-secondary">
                       <p className="whitespace-pre-wrap">{r.description}</p>
                       {r.photo_url ? (
-                        <a className="text-accent hover:underline" href={r.photo_url} target="_blank" rel="noreferrer">
+                        <SignedStorageLink stored={r.photo_url} className="text-accent hover:underline">
                           {t('account.viewPhoto')}
-                        </a>
+                        </SignedStorageLink>
                       ) : null}
                     </div>
                   ) : null}

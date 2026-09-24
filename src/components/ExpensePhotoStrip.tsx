@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '@/i18n/I18nProvider';
+import { SignedStorageImage } from '@/components/SignedStorageMedia';
 
 export function ExpensePhotoStrip({ urls, size = 'md' }: { urls: string[]; size?: 'sm' | 'md' }) {
   const { t } = useI18n();
@@ -9,14 +10,12 @@ export function ExpensePhotoStrip({ urls, size = 'md' }: { urls: string[]; size?
   return (
     <div className="flex flex-wrap gap-2">
       {urls.map((url) => (
-        <a key={url} href={url} target="_blank" rel="noreferrer" className="block">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={url}
-            alt={t('photo.receipt')}
-            className={`${box} rounded-lg border border-border object-cover`}
-          />
-        </a>
+        <SignedStorageImage
+          key={url}
+          stored={url}
+          alt={t('photo.receipt')}
+          className={`${box} rounded-lg border border-border object-cover`}
+        />
       ))}
     </div>
   );

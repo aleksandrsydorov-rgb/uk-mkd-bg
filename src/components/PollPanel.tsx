@@ -10,6 +10,7 @@ import {
   type PollVote,
 } from '@/lib/polls';
 import { useI18n } from '@/i18n/I18nProvider';
+import { SignedStorageImage } from '@/components/SignedStorageMedia';
 
 function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return null;
@@ -40,8 +41,8 @@ export function PollDetails({
   return (
     <div className="space-y-3">
       {poll.photo_url && (
-        <img
-          src={poll.photo_url}
+        <SignedStorageImage
+          stored={poll.photo_url}
           alt={poll.title}
           className="w-full max-h-64 object-cover rounded-xl border border-border"
         />

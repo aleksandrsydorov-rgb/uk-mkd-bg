@@ -1,3 +1,5 @@
+import { formatEur } from '@/lib/utilities';
+
 export type SupportFeePricingRule = 'early_full_payment' | 'late' | 'standard';
 export type SupportFeeQualification = 'not_checked' | 'qualified' | 'not_qualified';
 export type SupportFeePolicyStatus = 'draft' | 'published' | 'closed';
@@ -88,8 +90,8 @@ export function sofiaCalendarYear(at: Date = new Date()): number {
   return Number(parts.find((p) => p.type === 'year')?.value ?? at.getFullYear());
 }
 
-export function formatEurAmount(n: number | null | undefined): string {
-  return `${(Number(n) || 0).toFixed(2)} €`;
+export function formatEurAmount(n: number | null | undefined, locale?: string): string {
+  return formatEur(Number(n) || 0, locale);
 }
 
 export function moneyDelta(percent: number, ofBase: number): number {

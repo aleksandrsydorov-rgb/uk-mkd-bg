@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { labelLedgerKind } from '@/i18n/labels';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
   currentElectricityTariff,
@@ -23,6 +25,16 @@ import {
   todayIsoDate,
   type UtilityBalance,
 } from '@/lib/utilities';
+import {
+  AdminPageHeader,
+  AdminMetricCard,
+  AdminEmptyState,
+  AdminInlineAlert,
+  adminCardClass,
+  adminFieldClass,
+  type AdminUtilityTab,
+} from '@/components/admin/AdminUi';
+import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 
 type PropertyOption = {
   id: number;
@@ -34,33 +46,34 @@ function aptNumber(value: string | number | null | undefined) {
   return String(value ?? '');
 }
 
-const fieldClass =
-  'w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-placeholder';
-const cardClass = 'rounded-[14px] border border-border bg-surface p-5 shadow-card';
+const fieldClass = adminFieldClass;
+const cardClass = `${adminCardClass} p-4 md:p-5`;
 
 function firstRow<T>(data: T[] | T | null | undefined): T | null {
   if (!data) return null;
   return Array.isArray(data) ? (data[0] ?? null) : data;
 }
 
-function ledgerKindLabel(kind: string, t: (path: string) => string) {
-  if (kind === 'charge') return t('admin.kindCharge');
-  if (kind === 'payment') return t('admin.kindPayment');
-  if (kind === 'adjustment_debit') return t('admin.kindAdjDebit');
-  if (kind === 'adjustment_credit') return t('admin.kindAdjCredit');
-  return kind;
-}
-
 export function AdminElectricityFinance({
   supabase,
   properties,
   staffRole,
+  embedded = false,
+  panel,
+  focusPropertyId,
+  onPropertyChange,
+  onOpenTab,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
   staffRole: string;
+  embedded?: boolean;
+  panel?: 'overview' | 'tariff' | 'finance';
+  focusPropertyId?: number | '';
+  onPropertyChange?: (id: number | '') => void;
+  onOpenTab?: (tab: AdminUtilityTab) => void;
 }) {
-  const { t, dateLocale, locale } = useI18n();
+  const { t, locale } = useI18n();
   const canSee = canSeeElectricityFinance(staffRole);
   const canTariff = canManageElectricityTariff(staffRole);
   const canFinance = canSee;
@@ -74,6 +87,11 @@ export function AdminElectricityFinance({
   );
 
   const [propertyId, setPropertyId] = useState<number | ''>(sorted[0]?.id ?? '');
+
+  useEffect(() => {
+    if (focusPropertyId == null || focusPropertyId === '') return;
+    setPropertyId((current) => (current === focusPropertyId ? current : focusPropertyId));
+  }, [focusPropertyId]);
   const [tariffs, setTariffs] = useState<ElectricityTariff[]>([]);
   const [charges, setCharges] = useState<ElectricityCharge[]>([]);
   const [ledger, setLedger] = useState<ElectricityLedger[]>([]);
@@ -242,30 +260,56 @@ export function AdminElectricityFinance({
   const tone = balanceTone(balance.balance_eur);
   const statusLabel =
     tone === 'debt' ? t('admin.balDebt') : tone === 'over' ? t('admin.balOver') : t('admin.balSettled');
+  const showTariff = !panel || panel === 'tariff';
+  const showFinance = !panel || panel === 'finance';
+
+  if (panel === 'overview') {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <AdminMetricCard
+          label={t('admin.utilTabTariff')}
+          value={
+            listLoading
+              ? t('common.loading')
+              : tariff
+                ? formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)
+                : '—'
+          }
+          secondary={
+            tariff
+              ? `${t('account.elNight')} ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)}`
+              : t('admin.noTariff')
+          }
+          onClick={() => onOpenTab?.('tariff')}
+        />
+        <AdminMetricCard
+          label={t('admin.electricityBalance')}
+          value={propLoading ? t('common.loading') : formatEur(Math.abs(balance.balance_eur), locale)}
+          secondary={statusLabel}
+          alert={tone === 'debt'}
+          onClick={() => onOpenTab?.('finance')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <div className={cardClass}>
-        <h2 className="text-lg font-semibold text-accent">{t('admin.electricityFinance')}</h2>
-        <p className="mt-1 text-sm text-secondary">{t('admin.electricityLead')}</p>
-        <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
-        <select
-          className={`${fieldClass} mt-1 max-w-xl`}
-          value={propertyId === '' ? '' : String(propertyId)}
-          onChange={(e) => {
-            setPropertyId(e.target.value ? Number(e.target.value) : '');
+      {!embedded && <AdminPageHeader title={t('admin.electricityFinance')} secondary={t('admin.electricityLead')} />}
+      {showFinance && !embedded && <div className={cardClass}>
+        <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
+        <ApartmentCombobox
+          className="mt-1 max-w-xl"
+          properties={sorted}
+          value={propertyId}
+          onChange={(id) => {
+            setPropertyId(id);
+            onPropertyChange?.(id);
             setSuccess(null);
             setError(null);
           }}
-        >
-          {sorted.length === 0 && <option value="">{t('form.pickApt')}</option>}
-          {sorted.map((p) => (
-            <option key={p.id} value={p.id}>
-              {t('form.aptOwner', { n: aptNumber(p.apartment_number), owner: p.owner_name ?? '—' })}
-            </option>
-          ))}
-        </select>
-      </div>
+        />
+      </div>}
 
       {error && (
         <div className="rounded-xl border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger">{error}</div>
@@ -274,24 +318,26 @@ export function AdminElectricityFinance({
         <div className="rounded-xl border border-success/25 bg-success-bg px-4 py-3 text-sm text-success">{success}</div>
       )}
 
-      {canTariff && (
+      {showTariff && canTariff && (
         <div className={cardClass}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.electricityTariff')}</p>
           {listLoading ? (
             <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
           ) : tariff ? (
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <p className="text-2xl font-semibold text-foreground">{formatElectricityTariff(Number(tariff.day_price_eur_per_kwh))}</p>
-              <p className="text-2xl font-semibold text-foreground">{formatElectricityTariff(Number(tariff.night_price_eur_per_kwh))}</p>
+              <p className="text-2xl font-semibold text-foreground">{formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)}</p>
+              <p className="text-2xl font-semibold text-foreground">{formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)}</p>
               <p className="text-xs text-muted">{t('account.elDay')}</p>
               <p className="text-xs text-muted">{t('account.elNight')}</p>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-secondary">{t('admin.noTariff')}</p>
+            <div className="mt-3">
+              <AdminEmptyState title={t('admin.noTariff')} />
+            </div>
           )}
           {tariff && (
             <p className="mt-1 text-sm text-muted">
-              {t('admin.validFrom')}: {tariff.valid_from}
+              {t('admin.validFrom')}: {formatOwnerDate(tariff.valid_from)}
             </p>
           )}
           <form onSubmit={handleTariff} className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -305,7 +351,9 @@ export function AdminElectricityFinance({
           </form>
           <p className="mt-2 text-xs text-muted">{t('admin.tariffImmutable')}</p>
           {tariffs.length === 0 ? (
-            <p className="mt-3 text-sm text-secondary">{t('admin.noTariffHistory')}</p>
+            <div className="mt-3">
+              <AdminEmptyState title={t('admin.noTariffHistory')} />
+            </div>
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[28rem] text-sm">
@@ -320,9 +368,9 @@ export function AdminElectricityFinance({
                 <tbody>
                   {tariffs.map((row) => (
                     <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{row.valid_from}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.day_price_eur_per_kwh))}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.night_price_eur_per_kwh))}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.valid_from)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.day_price_eur_per_kwh), locale)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.night_price_eur_per_kwh), locale)}</td>
                       <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
                     </tr>
                   ))}
@@ -333,7 +381,7 @@ export function AdminElectricityFinance({
         </div>
       )}
 
-      {canFinance && (
+      {showFinance && canFinance && (
         <div className="grid gap-4 lg:grid-cols-2">
           <div className={cardClass}>
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.electricityBalance')}</p>
@@ -342,18 +390,18 @@ export function AdminElectricityFinance({
             ) : (
               <>
                 <p className={`mt-2 text-2xl font-semibold ${tone === 'debt' ? 'text-danger' : tone === 'over' ? 'text-success' : 'text-foreground'}`}>
-                  {formatEur(Math.abs(balance.balance_eur))}
+                  {formatEur(Math.abs(balance.balance_eur), locale)}
                 </p>
                 <p className="text-sm text-secondary">{statusLabel}</p>
                 <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
                   <dt className="text-muted">{t('admin.charged')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.charged_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.charged_eur, locale)}</dd>
                   <dt className="text-muted">{t('admin.paid')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.paid_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.paid_eur, locale)}</dd>
                   <dt className="text-muted">{t('admin.adjDebit')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.adjustments_debit_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.adjustments_debit_eur, locale)}</dd>
                   <dt className="text-muted">{t('admin.adjCredit')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.adjustments_credit_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.adjustments_credit_eur, locale)}</dd>
                 </dl>
               </>
             )}
@@ -371,10 +419,13 @@ export function AdminElectricityFinance({
         </div>
       )}
 
+      {showFinance && (
       <div className={cardClass}>
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.elChargeHistory')}</p>
         {charges.length === 0 ? (
-          <p className="mt-3 text-sm text-secondary">{t('account.utilNoReadings')}</p>
+          <div className="mt-3">
+            <AdminEmptyState title={t('account.utilNoReadings')} />
+          </div>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
@@ -391,12 +442,12 @@ export function AdminElectricityFinance({
               <tbody>
                 {charges.map((row) => (
                   <tr key={row.id} className="border-t border-border">
-                    <td className="py-2 pr-3 tabular-nums">{row.reading_date}</td>
-                    <td className="py-2 pr-3 tabular-nums">{formatKwh(Number(row.consumption_day), locale)}</td>
-                    <td className="py-2 pr-3 tabular-nums">{formatKwh(Number(row.consumption_night), locale)}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.reading_date)}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatKwh(Number(row.consumption_day), locale)} {t('account.kwh')}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatKwh(Number(row.consumption_night), locale)} {t('account.kwh')}</td>
                     <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.day_tariff_eur_per_kwh), locale)}</td>
                     <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.night_tariff_eur_per_kwh), locale)}</td>
-                    <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.total_amount_eur))}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.total_amount_eur), locale)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -404,12 +455,15 @@ export function AdminElectricityFinance({
           </div>
         )}
       </div>
+      )}
 
-      {canFinance && (
+      {showFinance && canFinance && (
         <div className={cardClass}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.elOpsHistory')}</p>
           {ledger.length === 0 ? (
-            <p className="mt-3 text-sm text-secondary">{t('account.utilNoElLedger')}</p>
+            <div className="mt-3">
+              <AdminEmptyState title={t('account.utilNoElLedger')} />
+            </div>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[28rem] text-sm">
@@ -424,9 +478,9 @@ export function AdminElectricityFinance({
                 <tbody>
                   {ledger.map((row) => (
                     <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{new Date(row.created_at).toLocaleDateString(dateLocale)}</td>
-                      <td className="py-2 pr-3">{ledgerKindLabel(row.kind, t)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur))}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.created_at)}</td>
+                      <td className="py-2 pr-3">{labelLedgerKind(row.kind, t)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur), locale)}</td>
                       <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
                     </tr>
                   ))}

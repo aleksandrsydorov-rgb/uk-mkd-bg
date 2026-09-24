@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { labelLedgerKind, labelReadingStatus } from '@/i18n/labels';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
   balanceTone,
@@ -29,6 +31,19 @@ import {
   type WaterReading,
   type WaterTariff,
 } from '@/lib/utilities';
+import {
+  AdminPageHeader,
+  AdminCard,
+  AdminMetricCard,
+  AdminTabBar,
+  AdminEmptyState,
+  adminCardClass,
+  adminFieldClass,
+  AdminInlineAlert,
+  parseAdminUtilityTab,
+  type AdminUtilityTab,
+} from '@/components/admin/AdminUi';
+import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 
 type PropertyOption = {
   id: number;
@@ -40,21 +55,11 @@ function aptNumber(value: string | number | null | undefined) {
   return String(value ?? '');
 }
 
-const fieldClass =
-  'w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-placeholder';
-const cardClass = 'rounded-[14px] border border-border bg-surface p-5 shadow-card';
+const fieldClass = adminFieldClass;
 
 function firstRow<T>(data: T[] | T | null | undefined): T | null {
   if (!data) return null;
   return Array.isArray(data) ? (data[0] ?? null) : data;
-}
-
-function ledgerKindLabel(kind: string, t: (path: string) => string) {
-  if (kind === 'charge') return t('admin.kindCharge');
-  if (kind === 'payment') return t('admin.kindPayment');
-  if (kind === 'adjustment_debit') return t('admin.kindAdjDebit');
-  if (kind === 'adjustment_credit') return t('admin.kindAdjCredit');
-  return kind;
 }
 
 export function AdminWater({
@@ -65,6 +70,8 @@ export function AdminWater({
   waterMode = DEFAULT_WATER_MODE,
   canChangeWaterMode = false,
   onSaveWaterMode,
+  tab,
+  onTabChange,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
@@ -73,13 +80,26 @@ export function AdminWater({
   waterMode?: WaterMode;
   canChangeWaterMode?: boolean;
   onSaveWaterMode?: (mode: WaterMode) => void;
+  tab?: string | null;
+  onTabChange?: (tab: AdminUtilityTab) => void;
 }) {
-  const { t, dateLocale, locale } = useI18n();
+  const { t, locale } = useI18n();
   const canSee = canSeeWaterAdmin(staffRole);
   const canMeter = canAssignWaterMeter(staffRole);
   const canTariff = canManageWaterTariff(staffRole);
   const canFinance = canManageWaterFinance(staffRole);
   const canSubmit = waterMode !== 'disabled' && canSubmitWaterStaff(staffRole, staffActive);
+  const waterTabs = useMemo(() => {
+    const items: { id: AdminUtilityTab; label: string }[] = [
+      { id: 'overview', label: t('admin.utilTabOverview') },
+      { id: 'meter', label: t('admin.utilTabMeter') },
+      { id: 'readings', label: t('admin.utilTabReadings') },
+    ];
+    if (canTariff) items.push({ id: 'tariff', label: t('admin.utilTabTariff') });
+    if (canFinance) items.push({ id: 'finance', label: t('admin.utilTabFinance') });
+    return items;
+  }, [t, canTariff, canFinance]);
+  const allowedWaterTabs = useMemo(() => waterTabs.map((item) => item.id), [waterTabs]);
 
   const sorted = useMemo(
     () =>
@@ -122,6 +142,10 @@ export function AdminWater({
   const [submitValue, setSubmitValue] = useState('');
   const [submitDate, setSubmitDate] = useState(todayIsoDate());
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [localTab, setLocalTab] = useState<AdminUtilityTab>('overview');
+  const activeTab = onTabChange
+    ? parseAdminUtilityTab(tab, allowedWaterTabs)
+    : parseAdminUtilityTab(localTab, allowedWaterTabs);
 
   const payKeyRef = useRef(crypto.randomUUID());
   const submitKeyRef = useRef(crypto.randomUUID());
@@ -129,6 +153,20 @@ export function AdminWater({
   useEffect(() => {
     if (propertyId === '' && sorted[0]) setPropertyId(sorted[0].id);
   }, [propertyId, sorted]);
+
+  useEffect(() => {
+    if (!staffRole) return;
+    if (!onTabChange) {
+      if (!allowedWaterTabs.includes(localTab)) setLocalTab('overview');
+      return;
+    }
+    if (tab && !allowedWaterTabs.includes(tab as AdminUtilityTab)) onTabChange('overview');
+  }, [onTabChange, tab, allowedWaterTabs, localTab, staffRole]);
+
+  function selectTab(next: AdminUtilityTab) {
+    if (onTabChange) onTabChange(next);
+    else setLocalTab(next);
+  }
 
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
   const meterById = useMemo(() => new Map(meters.map((m) => [m.id, m])), [meters]);
@@ -401,81 +439,114 @@ export function AdminWater({
 
   if (!canSee) {
     return (
-      <div className={cardClass}>
+      <AdminCard>
         <p className="text-sm text-secondary">{t('admin.waterNoAccess')}</p>
-      </div>
+      </AdminCard>
     );
   }
 
   const tone = balanceTone(balance.balance_eur);
   const statusLabel =
     tone === 'debt' ? t('admin.balDebt') : tone === 'over' ? t('admin.balOver') : t('admin.balSettled');
+  const waterModeLabel =
+    waterMode === 'staff_only'
+      ? t('admin.elModeStaffOnly')
+      : waterMode === 'disabled'
+        ? t('admin.elModeDisabled')
+        : t('admin.elModeOwnerAndStaff');
+  const retiredMeters = meters.filter((m) => m.retired_at);
 
   return (
     <div className="space-y-4">
-      <div className={cardClass}>
-        <h2 className="text-lg font-semibold text-accent">{t('admin.water')}</h2>
-        <p className="mt-1 text-sm text-secondary">{t('admin.waterLead')}</p>
+      <AdminPageHeader title={t('admin.water')} secondary={t('admin.waterLead')} />
+      <AdminCard>
+        <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.waterMode')}</p>
+        <p className="mt-1 text-sm font-medium text-foreground">{waterModeLabel}</p>
         {canChangeWaterMode && (
-          <div className="mt-4 rounded-[14px] border border-border bg-background px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.waterMode')}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {([
-                ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
-                ['staff_only', t('admin.elModeStaffOnly')],
-                ['disabled', t('admin.elModeDisabled')],
-              ] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onSaveWaterMode?.(id)}
-                  className={`rounded-full border px-3 py-1.5 text-sm ${
-                    waterMode === id
-                      ? 'border-accent/25 bg-accent-bg text-accent'
-                      : 'border-border text-secondary hover:bg-hover'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {([
+              ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
+              ['staff_only', t('admin.elModeStaffOnly')],
+              ['disabled', t('admin.elModeDisabled')],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onSaveWaterMode?.(id)}
+                className={`rounded-full border px-3 py-1.5 text-sm ${
+                  waterMode === id
+                    ? 'border-accent/25 bg-accent-bg text-accent'
+                    : 'border-border text-secondary hover:bg-hover'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         )}
         {waterMode === 'disabled' && (
           <p className="mt-3 text-sm text-secondary">{t('account.utilErrDisabled')}</p>
         )}
         <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
-        <select
-          className={`${fieldClass} mt-1 max-w-xl`}
-          value={propertyId === '' ? '' : String(propertyId)}
-          onChange={(e) => {
-            setPropertyId(e.target.value ? Number(e.target.value) : '');
+        <ApartmentCombobox
+          className="mt-1 max-w-xl"
+          properties={sorted}
+          value={propertyId}
+          onChange={(id) => {
+            setPropertyId(id);
             setSuccess(null);
             setError(null);
           }}
-        >
-          {sorted.length === 0 && <option value="">{t('form.pickApt')}</option>}
-          {sorted.map((p) => (
-            <option key={p.id} value={p.id}>
-              {t('form.aptOwner', { n: aptNumber(p.apartment_number), owner: p.owner_name ?? '—' })}
-            </option>
-          ))}
-        </select>
-      </div>
+        />
+      </AdminCard>
 
-      {error && (
-        <div className="rounded-xl border border-danger/25 bg-danger-bg px-4 py-3 text-sm text-danger">{error}</div>
-      )}
-      {success && (
-        <div className="rounded-xl border border-success/25 bg-success-bg px-4 py-3 text-sm text-success">{success}</div>
+      {error && <AdminInlineAlert tone="danger">{error}</AdminInlineAlert>}
+      {success && <AdminInlineAlert tone="success">{success}</AdminInlineAlert>}
+
+      <AdminTabBar tabs={waterTabs} active={activeTab} onChange={(id) => selectTab(id as AdminUtilityTab)} />
+
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <AdminMetricCard label={t('admin.waterMode')} value={waterModeLabel} />
+          <AdminMetricCard
+            label={t('admin.utilTabMeter')}
+            value={activeMeter ? activeMeter.meter_number : '—'}
+            secondary={activeMeter ? undefined : t('admin.noWaterMeter')}
+            onClick={() => selectTab('meter')}
+          />
+          <AdminMetricCard
+            label={t('admin.lastReading')}
+            value={lastReading ? formatM3(Number(lastReading.current_value), locale) : '—'}
+            secondary={lastReading ? formatOwnerDate(lastReading.reading_date) : t('admin.noReadings')}
+            onClick={() => selectTab('readings')}
+          />
+          <AdminMetricCard
+            label={t('admin.currentTariff')}
+            value={tariff ? formatEur(Number(tariff.price_eur_per_m3), locale) : '—'}
+            secondary={tariff ? undefined : t('admin.noTariff')}
+            onClick={canTariff ? () => selectTab('tariff') : undefined}
+          />
+          {canFinance && (
+            <AdminMetricCard
+              label={t('admin.waterBalance')}
+              value={formatEur(Math.abs(balance.balance_eur), locale)}
+              secondary={statusLabel}
+              alert={tone === 'debt'}
+              onClick={() => selectTab('finance')}
+            />
+          )}
+        </div>
       )}
 
-      <div className={cardClass}>
+      {activeTab === 'meter' && (
+      <div className={adminCardClass + ' p-4 md:p-5'}>
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterStatus')}</p>
         {meterLoading ? (
           <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
         ) : !activeMeter ? (
-          <p className="mt-3 text-sm text-secondary">{t('admin.noWaterMeter')}</p>
+          <div className="mt-3">
+            <AdminEmptyState title={t('admin.noWaterMeter')} />
+          </div>
         ) : (
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
@@ -484,7 +555,7 @@ export function AdminWater({
             </div>
             <div>
               <div className="text-[11px] text-muted">{t('admin.installedAt')}</div>
-              <div className="mt-0.5 tabular-nums">{activeMeter.installed_at}</div>
+              <div className="mt-0.5 tabular-nums">{formatOwnerDate(activeMeter.installed_at)}</div>
             </div>
             <div>
               <div className="text-[11px] text-muted">{t('admin.initialReading')}</div>
@@ -506,12 +577,12 @@ export function AdminWater({
             </div>
             <div>
               <div className="text-[11px] text-muted">{t('admin.lastReadingDate')}</div>
-              <div className="mt-0.5 tabular-nums">{lastReading?.reading_date ?? '—'}</div>
+              <div className="mt-0.5 tabular-nums">{formatOwnerDate(lastReading?.reading_date)}</div>
             </div>
             <div>
               <div className="text-[11px] text-muted">{t('admin.currentTariff')}</div>
               <div className="mt-0.5 tabular-nums">
-                {tariff ? `${formatEur(Number(tariff.price_eur_per_m3))} / m³` : t('admin.noTariff')}
+                {tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / m³` : t('admin.noTariff')}
               </div>
             </div>
           </div>
@@ -572,30 +643,57 @@ export function AdminWater({
             </div>
           </form>
         )}
-      </div>
 
-      {canSubmit && (
-        <div className={cardClass}>
+        <p className="mt-5 text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.utilMeterHistory')}</p>
+        {retiredMeters.length === 0 ? (
+          <div className="mt-3">
+            <AdminEmptyState title={t('admin.utilNoMeterHistory')} />
+          </div>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[28rem] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted">
+                  <th className="py-2 pr-3">{t('admin.meterNumber')}</th>
+                  <th className="py-2 pr-3">{t('admin.installedAt')}</th>
+                  <th className="py-2 pr-3">{t('admin.initialReading')}</th>
+                  <th className="py-2 pr-3">{t('admin.date')}</th>
+                  <th className="py-2 pr-3">{t('admin.note')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {retiredMeters.map((row) => (
+                  <tr key={row.id} className="border-t border-border">
+                    <td className="py-2 pr-3 tabular-nums">{row.meter_number}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.installed_at)}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.initial_reading), locale)}</td>
+                    <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.retired_at)}</td>
+                    <td className="py-2 pr-3 text-secondary">{row.replacement_reason ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
+
+      {activeTab === 'readings' && canSubmit && (
+        <div className={adminCardClass + ' p-4 md:p-5'}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilSubmitTitle')}</p>
           <form onSubmit={handleSubmitReading} className="mt-4 grid gap-3 sm:grid-cols-3">
             <label className="block text-sm text-secondary sm:col-span-3">
               {t('admin.pickProperty')}
-              <select
-                className={`${fieldClass} mt-1`}
-                value={propertyId === '' ? '' : String(propertyId)}
-                onChange={(e) => {
-                  setPropertyId(e.target.value ? Number(e.target.value) : '');
+              <ApartmentCombobox
+                className="mt-1"
+                properties={sorted}
+                value={propertyId}
+                onChange={(id) => {
+                  setPropertyId(id);
                   setSuccess(null);
                   setError(null);
                 }}
-              >
-                {sorted.length === 0 && <option value="">{t('form.pickApt')}</option>}
-                {sorted.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {t('form.aptOwner', { n: aptNumber(p.apartment_number), owner: p.owner_name ?? '—' })}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <input
               className={fieldClass}
@@ -626,19 +724,19 @@ export function AdminWater({
         </div>
       )}
 
-      {canTariff && (
-        <div className={cardClass}>
+      {activeTab === 'tariff' && canTariff && (
+        <div className={adminCardClass + ' p-4 md:p-5'}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.tariffTitle')}</p>
           {tariffLoading ? (
             <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
           ) : (
             <p className="mt-2 text-2xl font-semibold text-foreground">
-              {tariff ? `${formatEur(Number(tariff.price_eur_per_m3))} / m³` : t('admin.noTariff')}
+              {tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / m³` : t('admin.noTariff')}
             </p>
           )}
           {tariff && (
             <p className="mt-1 text-sm text-muted">
-              {t('admin.validFrom')}: {tariff.valid_from}
+              {t('admin.validFrom')}: {formatOwnerDate(tariff.valid_from)}
             </p>
           )}
           <form onSubmit={handleTariff} className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -665,8 +763,8 @@ export function AdminWater({
                 <tbody>
                   {tariffs.map((row) => (
                     <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{row.valid_from}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.price_eur_per_m3))}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.valid_from)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.price_eur_per_m3), locale)}</td>
                       <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
                     </tr>
                   ))}
@@ -677,32 +775,32 @@ export function AdminWater({
         </div>
       )}
 
-      {canFinance && (
+      {activeTab === 'finance' && canFinance && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className={cardClass}>
+          <div className={adminCardClass + ' p-4 md:p-5'}>
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterBalance')}</p>
             {meterLoading ? (
               <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
             ) : (
               <>
                 <p className={`mt-2 text-2xl font-semibold ${tone === 'debt' ? 'text-danger' : tone === 'over' ? 'text-success' : 'text-foreground'}`}>
-                  {formatEur(Math.abs(balance.balance_eur))}
+                  {formatEur(Math.abs(balance.balance_eur), locale)}
                 </p>
                 <p className="text-sm text-secondary">{statusLabel}</p>
                 <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
                   <dt className="text-muted">{t('admin.charged')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.charged_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.charged_eur, locale)}</dd>
                   <dt className="text-muted">{t('admin.paid')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.paid_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.paid_eur, locale)}</dd>
                   <dt className="text-muted">{t('admin.adjDebit')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.adjustments_debit_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.adjustments_debit_eur, locale)}</dd>
                   <dt className="text-muted">{t('admin.adjCredit')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.adjustments_credit_eur)}</dd>
+                  <dd className="tabular-nums">{formatEur(balance.adjustments_credit_eur, locale)}</dd>
                 </dl>
               </>
             )}
           </div>
-          <div className={cardClass}>
+          <div className={adminCardClass + ' p-4 md:p-5'}>
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterPayment')}</p>
             <form onSubmit={handlePay} className="mt-4 space-y-3">
               <input className={fieldClass} type="number" min="0.01" step="0.01" placeholder={t('admin.amountEur')} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} required />
@@ -715,10 +813,13 @@ export function AdminWater({
         </div>
       )}
 
-      <div className={cardClass}>
+      {activeTab === 'readings' && (
+      <div className={adminCardClass + ' p-4 md:p-5'}>
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.readingHistory')}</p>
         {readings.length === 0 ? (
-          <p className="mt-3 text-sm text-secondary">{t('admin.noReadings')}</p>
+          <div className="mt-3">
+            <AdminEmptyState title={t('admin.noReadings')} />
+          </div>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
@@ -740,14 +841,14 @@ export function AdminWater({
                   const reversed = row.status === 'reversed';
                   return (
                     <tr key={row.id} className={`border-t border-border ${reversed ? 'text-muted line-through' : ''}`}>
-                      <td className="py-2 pr-3 tabular-nums">{row.reading_date}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.reading_date)}</td>
                       <td className="py-2 pr-3">{meterById.get(row.meter_id)?.meter_number ?? '—'}</td>
                       <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.previous_value), locale)}</td>
                       <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.current_value), locale)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.consumption_m3), locale)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.tariff_eur_per_m3))}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.charge_amount_eur))}</td>
-                      <td className="py-2 pr-3">{row.status}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.consumption_m3), locale)} {t('account.m3')}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.tariff_eur_per_m3), locale)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.charge_amount_eur), locale)}</td>
+                      <td className="py-2 pr-3">{labelReadingStatus(row.status, t)}</td>
                       <td className="py-2 pr-3">
                         {row.submitted_via === 'staff'
                           ? t('account.elByStaff')
@@ -763,12 +864,15 @@ export function AdminWater({
           </div>
         )}
       </div>
+      )}
 
-      {canFinance && (
-        <div className={cardClass}>
+      {activeTab === 'finance' && canFinance && (
+        <div className={adminCardClass + ' p-4 md:p-5'}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterLedger')}</p>
           {ledger.length === 0 ? (
-            <p className="mt-3 text-sm text-secondary">{t('admin.noWaterLedger')}</p>
+            <div className="mt-3">
+              <AdminEmptyState title={t('admin.noWaterLedger')} />
+            </div>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[28rem] text-sm">
@@ -783,9 +887,9 @@ export function AdminWater({
                 <tbody>
                   {ledger.map((row) => (
                     <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{new Date(row.created_at).toLocaleDateString(dateLocale)}</td>
-                      <td className="py-2 pr-3">{ledgerKindLabel(row.kind, t)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur))}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.created_at)}</td>
+                      <td className="py-2 pr-3">{labelLedgerKind(row.kind, t)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur), locale)}</td>
                       <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
                     </tr>
                   ))}

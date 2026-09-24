@@ -14,6 +14,23 @@ import {
   type SupportFeeAnnualPolicy,
   type SupportFeeAssessment,
 } from '@/lib/supportFeeAnnual';
+import {
+  AdminEmptyState,
+  AdminTableShell,
+  adminCardClass,
+  adminFieldClass,
+  adminTableCellClass,
+  adminTableHeadRowClass,
+  adminTableRowClass,
+} from '@/components/admin/AdminUi';
+import { StatusBadge } from '@/components/account/ownerUi';
+
+function formatPolicyPercent(raw: string | number, locale: string) {
+  const v = Number(String(raw).replace(',', '.'));
+  if (!Number.isFinite(v)) return '—';
+  const loc = locale === 'en' ? 'en-US' : locale === 'bg' ? 'bg-BG' : 'ru-RU';
+  return new Intl.NumberFormat(loc, { maximumFractionDigits: 2 }).format(v);
+}
 
 type PropertyLite = {
   id: number;
@@ -32,6 +49,7 @@ export function AdminSupportFeeAnnual({
   canRate,
   onReload,
   onError,
+  panel = 'all',
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyLite[];
@@ -40,8 +58,9 @@ export function AdminSupportFeeAnnual({
   canRate: boolean;
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
+  panel?: 'all' | 'policy' | 'register';
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const defaultYear = sofiaCalendarYear() + 1;
   const [year, setYear] = useState(String(defaultYear));
   const [enabled, setEnabled] = useState(true);
@@ -63,6 +82,8 @@ export function AdminSupportFeeAnnual({
   const inc = Number(String(increase).replace(',', '.')) || 0;
   const early = Math.round(sampleBase * (1 - disc / 100) * 100) / 100;
   const late = Math.round(sampleBase * (1 + inc / 100) * 100) / 100;
+  const earlyPct = Math.round((100 - disc) * 100) / 100;
+  const latePct = Math.round((100 + inc) * 100) / 100;
   const current = policies.find((p) => p.billing_year === y);
   const status = String(current?.status ?? (current ? 'draft' : 'draft'));
   const isDraft = !current || status === 'draft';
@@ -180,32 +201,29 @@ export function AdminSupportFeeAnnual({
     }
   }
 
+  const showPolicy = panel === 'all' || panel === 'policy';
+  const showRegister = panel === 'all' || panel === 'register';
+
   return (
     <div className="space-y-4">
-      <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
+      {showPolicy && (
+      <div className={`${adminCardClass} p-4 md:p-5`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
             {t('admin.sfYearlyPolicy')} · {year}
           </p>
-          <span
-            className={`rounded-full border px-2.5 py-1 text-xs ${
-              isPublished
-                ? 'border-accent/25 bg-accent-bg text-accent'
-                : isClosed
-                  ? 'border-border bg-surface-secondary text-secondary'
-                  : 'border-border text-muted'
-            }`}
-          >
-            {t('admin.sfPolicyStatus')}: {statusLabel()}
-          </span>
+          <StatusBadge
+            label={statusLabel()}
+            tone={isPublished ? 'info' : isClosed ? 'neutral' : 'warning'}
+          />
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           {yearChoices.map((choice) => (
             <button
               key={choice}
               type="button"
               onClick={() => setYear(String(choice))}
-              className={`rounded-full border px-3 py-1 text-sm ${
+              className={`shrink-0 rounded-full border px-3 py-1 text-sm ${
                 choice === y ? 'border-accent/30 bg-accent-bg text-accent' : 'border-border text-secondary'
               }`}
             >
@@ -223,7 +241,7 @@ export function AdminSupportFeeAnnual({
                 max={2100}
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
-                className="mt-1 block w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                className={`mt-1 block w-28 ${adminFieldClass}`}
               />
             </label>
             <label className="flex items-center gap-2 text-sm text-secondary">
@@ -247,7 +265,7 @@ export function AdminSupportFeeAnnual({
                 step="0.01"
                 value={discount}
                 onChange={(e) => setDiscount(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                className={`mt-1 block w-full ${adminFieldClass}`}
               />
             </label>
             <label className="text-sm text-secondary">
@@ -259,7 +277,7 @@ export function AdminSupportFeeAnnual({
                 step="0.01"
                 value={increase}
                 onChange={(e) => setIncrease(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                className={`mt-1 block w-full ${adminFieldClass}`}
               />
             </label>
           </div>
@@ -267,11 +285,11 @@ export function AdminSupportFeeAnnual({
           <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
             <div>
               <div className="text-muted">{t('admin.sfDiscountLabel')}</div>
-              <div className="font-semibold">{Number(discount).toFixed(0)}%</div>
+              <div className="font-semibold">{formatPolicyPercent(discount, locale)}%</div>
             </div>
             <div>
               <div className="text-muted">{t('admin.sfIncreaseLabel')}</div>
-              <div className="font-semibold">{Number(increase).toFixed(0)}%</div>
+              <div className="font-semibold">{formatPolicyPercent(increase, locale)}%</div>
             </div>
           </div>
         )}
@@ -285,22 +303,24 @@ export function AdminSupportFeeAnnual({
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-3 text-sm">
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
-            <div className="text-muted">{t('account.sfBase')}</div>
-            <div className="font-semibold">{formatEurAmount(sampleBase)}</div>
+            <div className="text-muted">{t('admin.sfBase100', { p: formatPolicyPercent(100, locale) })}</div>
+            <div className="font-semibold tabular-nums">{formatEurAmount(sampleBase, locale)}</div>
           </div>
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
-            <div className="text-muted">
+            <div className="text-muted">{t('admin.sfEarlyPay', { p: formatPolicyPercent(earlyPct, locale) })}</div>
+            <div className="text-xs text-muted">
               {t('admin.sfUntilDate', {
                 d: current?.early_payment_deadline
                   ? formatSofiaDate(current.early_payment_deadline)
                   : `31.12.${Number(year) - 1}`,
               })}
             </div>
-            <div className="font-semibold text-accent">{formatEurAmount(early)}</div>
+            <div className="font-semibold tabular-nums text-success">{formatEurAmount(early, locale)}</div>
           </div>
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
-            <div className="text-muted">{t('admin.sfFromDate', { d: sofiaYearStartLabel(y) })}</div>
-            <div className="font-semibold">{formatEurAmount(late)}</div>
+            <div className="text-muted">{t('admin.sfLatePay', { p: formatPolicyPercent(latePct, locale) })}</div>
+            <div className="text-xs text-muted">{t('admin.sfFromDate', { d: sofiaYearStartLabel(y) })}</div>
+            <div className="font-semibold tabular-nums">{formatEurAmount(late, locale)}</div>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -334,44 +354,65 @@ export function AdminSupportFeeAnnual({
           </button>
         </div>
       </div>
+      )}
 
-      <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 overflow-x-auto">
+      {showRegister && (
+      <div className="space-y-4">
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.sfPropertyView')} · {year}</p>
-        <table className="mt-3 w-full text-sm">
+        {properties.length === 0 ? (
+          <AdminEmptyState title={t('admin.feeNoLedger')} />
+        ) : (
+        <AdminTableShell>
+        <table className="w-full min-w-[48rem] text-sm">
           <thead>
-            <tr className="text-left text-muted border-b border-border">
-              <th className="py-2 pr-2">{t('form.colApt')}</th>
-              <th className="py-2 pr-2">{t('account.sfBase')}</th>
-              <th className="py-2 pr-2">{t('admin.sfRule')}</th>
-              <th className="py-2 pr-2">{t('account.sfFinal')}</th>
-              <th className="py-2 pr-2">{t('account.sfFromBalance')}</th>
-              <th className="py-2 pr-2">{t('account.sfRemainingDue')}</th>
+            <tr className={adminTableHeadRowClass}>
+              <th className={adminTableCellClass}>{t('form.colApt')}</th>
+              <th className={adminTableCellClass}>{t('form.colOwner')}</th>
+              <th className={adminTableCellClass}>{t('account.sfBase')}</th>
+              <th className={adminTableCellClass}>{t('account.sfFinal')}</th>
+              <th className={adminTableCellClass}>{t('account.sfFromBalance')}</th>
+              <th className={adminTableCellClass}>{t('account.sfRemainingDue')}</th>
+              <th className={adminTableCellClass}>{t('admin.status')}</th>
             </tr>
           </thead>
           <tbody>
             {properties.slice(0, 80).map((p) => {
               const a = assessments.find((x) => x.property_id === p.id);
+              const debt = Number(p.debt ?? 0);
+              const over = Number(p.overpayment ?? 0);
               return (
-                <tr key={p.id} className="border-b border-border/60">
-                  <td className="py-2 pr-2">№ {p.apartment_number}</td>
-                  <td className="py-2 pr-2 tabular-nums">{a ? formatEurAmount(a.base_amount) : formatEurAmount(annualSupportFee(p.area_sqm, supportRate))}</td>
-                  <td className="py-2 pr-2">
-                    {a
-                      ? a.pricing_rule === 'early_full_payment'
-                        ? t('account.sfPaidEarly')
-                        : a.pricing_rule === 'late'
-                          ? t('account.sfPriceAfterYearStart')
-                          : t('account.sfStandardFee')
-                      : '—'}
+                <tr key={p.id} className={adminTableRowClass}>
+                  <td className={adminTableCellClass}>№ {p.apartment_number}</td>
+                  <td className={adminTableCellClass}>{p.owner_name ?? '—'}</td>
+                  <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.base_amount, locale) : formatEurAmount(annualSupportFee(p.area_sqm, supportRate), locale)}</td>
+                  <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.final_amount, locale) : '—'}</td>
+                  <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.applied_credit_amount, locale) : '—'}</td>
+                  <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.remaining_due, locale) : '—'}</td>
+                  <td className={adminTableCellClass}>
+                    {debt > 0 ? (
+                      <StatusBadge label={`${t('admin.balDebt')} ${formatEurAmount(debt, locale)}`} tone="danger" />
+                    ) : over > 0 ? (
+                      <StatusBadge label={`${t('admin.balOver')} ${formatEurAmount(over, locale)}`} tone="success" />
+                    ) : (
+                      <StatusBadge label={t('admin.balSettled')} tone="neutral" />
+                    )}
+                    {a ? (
+                      <div className="mt-1 text-xs text-muted">
+                        {a.pricing_rule === 'early_full_payment'
+                          ? t('account.sfPaidEarly')
+                          : a.pricing_rule === 'late'
+                            ? t('account.sfPriceAfterYearStart')
+                            : t('account.sfStandardFee')}
+                      </div>
+                    ) : null}
                   </td>
-                  <td className="py-2 pr-2 tabular-nums">{a ? formatEurAmount(a.final_amount) : '—'}</td>
-                  <td className="py-2 pr-2 tabular-nums">{a ? formatEurAmount(a.applied_credit_amount) : '—'}</td>
-                  <td className="py-2 pr-2 tabular-nums">{a ? formatEurAmount(a.remaining_due) : '—'}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        </AdminTableShell>
+        )}
         {canPay ? (
           <form
             className="mt-4 grid gap-2 sm:grid-cols-4"
@@ -403,7 +444,7 @@ export function AdminSupportFeeAnnual({
               required
               value={corrId}
               onChange={(e) => setCorrId(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              className={adminFieldClass}
             >
               <option value="">{t('form.pickApt')}</option>
               {assessments.map((a) => {
@@ -422,14 +463,14 @@ export function AdminSupportFeeAnnual({
               value={corrAmt}
               onChange={(e) => setCorrAmt(e.target.value)}
               placeholder={t('admin.sfCorrectionAmount')}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              className={adminFieldClass}
             />
             <input
               required
               value={corrReason}
               onChange={(e) => setCorrReason(e.target.value)}
               placeholder={t('admin.sfCorrectionReason')}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              className={adminFieldClass}
             />
             <button type="submit" disabled={saving} className="rounded-full border border-border px-4 py-2 text-sm disabled:opacity-50">
               {t('common.save')}
@@ -437,6 +478,7 @@ export function AdminSupportFeeAnnual({
           </form>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

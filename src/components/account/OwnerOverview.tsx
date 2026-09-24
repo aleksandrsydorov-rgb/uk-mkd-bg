@@ -305,7 +305,7 @@ export function OwnerOverview({
     attention.push({
       key: 'meeting',
       title: t('docs.attentionMeeting'),
-      detail: new Date(upcomingMeeting.meeting_date).toLocaleDateString(dateLocale),
+      detail: formatOwnerDate(upcomingMeeting.meeting_date, dateLocale),
       onClick: onOpenDocuments,
     });
   }
@@ -391,7 +391,7 @@ export function OwnerOverview({
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-foreground">{t('docs.overviewUpcoming')}</span>
                 <span className="block text-xs text-secondary">
-                  {new Date(upcomingMeeting.meeting_date).toLocaleDateString(dateLocale)}
+                  {formatOwnerDate(upcomingMeeting.meeting_date, dateLocale)}
                   {upcomingMeeting.meeting_time ? ` · ${upcomingMeeting.meeting_time.slice(0, 5)}` : ''}
                 </span>
               </span>

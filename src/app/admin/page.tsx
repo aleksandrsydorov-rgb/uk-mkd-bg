@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef, useCallback, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, Suspense, type ReactNode } from 'react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
   isMissingRelation,
   isPollAcceptingVotes,
-  pollCategoryClass,
   pollDecisionLabel,
   tallyPoll,
   type Poll,
@@ -17,16 +16,49 @@ import {
   type PollVoteHistory,
 } from '@/lib/polls';
 import { PollDetails, PollOptionBars } from '@/components/PollPanel';
-import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
+import { listingStatus, transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
-import { labelCategory, labelListing, labelOccupancy, labelOccupantKind, labelPriority, labelRequestStatus, labelTransfer } from '@/i18n/labels';
+import { labelCategory, labelExpenseStatus, labelListing, labelOccupancy, labelOccupantKind, labelOwnerType, labelPollCategory, labelPollDecision, labelPollStatus, labelPriority, labelRequestStatus, labelStaffRole, labelTransfer } from '@/i18n/labels';
+import { StatusBadge } from '@/components/account/ownerUi';
+import {
+  AdminPageHeader,
+  AdminCard,
+  AdminMetricCard,
+  AdminTableShell,
+  AdminFilterBar,
+  AdminEmptyState,
+  AdminPrimaryButton,
+  AdminSecondaryButton,
+  AdminInlineAlert,
+  AdminTabBar,
+  parseAdminUtilityTab,
+  type AdminUtilityTab,
+  adminFieldClass,
+  adminFormPanelClass,
+  adminTableHeadRowClass,
+  adminTableRowClass,
+  adminTableCellClass,
+  adminModalOverlayClass,
+  adminModalPanelClass,
+  adminModalHeaderClass,
+  adminBtnPrimaryClass,
+  adminBtnSecondaryClass,
+  adminBtnTertiaryClass,
+  adminBtnDangerClass,
+  adminCardClass,
+} from '@/components/admin/AdminUi';
+import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
+import { readBulkAccrualSummary } from '@/lib/bulkAccrual';
+import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
+import { formatIdealPartsPercent } from '@/lib/propertyBook';
+import { ownerVisibleError } from '@/lib/ownerError';
 import {
   DEFAULT_SUPPORT_RATE,
   STAFF_ROLE_OPTIONS,
@@ -34,6 +66,7 @@ import {
   canApproveUkExpenses,
   canRecordSupportPayments,
   canSetSupportRate,
+  isUkAdminRole,
   monthlySupportFee,
   type SupportFeeEntry,
 } from '@/lib/finance';
@@ -56,6 +89,7 @@ import {
   DEFAULT_WATER_MODE,
   formatKwh,
   formatM3,
+  formatEur,
   type WaterMode,
 } from '@/lib/utilities';
 import {
@@ -64,6 +98,8 @@ import {
   canSubmitElectricityStaff,
   canManageElectricityMeter,
   activeElectricityMeter,
+  electricityActiveMeterReadings,
+  pairElectricityReadings,
   displayElectricityMeterNumber,
   parseElectricityMode,
   DEFAULT_ELECTRICITY_MODE,
@@ -178,6 +214,7 @@ type AdminSection =
   | 'счётчики'
   | 'вода'
   | 'персонал'
+  | 'настройки'
   | 'такса'
   | 'электроэнергия'
   | 'капремонт'
@@ -188,10 +225,68 @@ type AdminSection =
   | 'отчётность'
   | 'чат';
 
+const ADMIN_SECTIONS: readonly AdminSection[] = [
+  'обзор',
+  'квартиры',
+  'смены',
+  'заявки',
+  'счётчики',
+  'вода',
+  'персонал',
+  'настройки',
+  'такса',
+  'электроэнергия',
+  'капремонт',
+  'расходы',
+  'опросы',
+  'документы',
+  'объявления',
+  'отчётность',
+  'чат',
+] as const;
+
+const DEFAULT_ADMIN_SECTION: AdminSection = 'обзор';
+
+function isAdminSection(value: string | null | undefined): value is AdminSection {
+  return Boolean(value && (ADMIN_SECTIONS as readonly string[]).includes(value));
+}
+
+type AdminMenuItem = { key: AdminSection; label: string; icon: string };
+type AdminMenuGroup = { id: string; label: string; items: AdminSection[] };
+
+function NavChevron({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden>
+      <path
+        d={open ? 'M4 6.25 8 10.25 12 6.25' : 'M6.25 4 10.25 8 6.25 12'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function NavGroupIcon({ id }: { id: string }) {
+  const paths: Record<string, string> = {
+    objects: 'M3 13.5V6.2L8 3l5 3.2v7.3M6.5 13.5V8.5h3v5',
+    utilities: 'M8.5 2.5 4.5 9h3L7 13.5 12 7H9l.5-4.5',
+    finance: 'M3 12.5V4.5M5.5 12.5V7.5M8 12.5V5.5M10.5 12.5V8.5M13 12.5V6.5',
+    comms: 'M3 4.5h10v6.2H6.2L3.5 13V4.5z',
+    docs: 'M4 2.5h5.2L12.5 6v7.5h-8.5zM9 2.8V6h3.1',
+    system: 'M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM8 2.5v1.2M8 12.3v1.2M3.4 4.2l.9.9M11.7 10.9l.9.9M2.5 8h1.2M12.3 8h1.2M3.4 11.8l.9-.9M11.7 5.1l.9-.9',
+  };
+  return (
+    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden>
+      <path d={paths[id] ?? paths.objects} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function formatUkDate(dateStr: string) {
-  const [y, m, d] = dateStr.slice(0, 10).split('-');
-  if (!y || !m || !d) return dateStr;
-  return `${d}.${m}.${y}`;
+  return formatOwnerDate(dateStr);
 }
 
 function expenseYearOf(dateStr: string) {
@@ -199,58 +294,78 @@ function expenseYearOf(dateStr: string) {
   return Number.isFinite(y) && y > 0 ? y : 0;
 }
 
-export default function AdminPage() {
+function AdminPortal() {
   const router = useRouter();
-  const { t, dateLocale, locale } = useI18n();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { t, locale } = useI18n();
+  const money = (n: number | null | undefined) => formatEur(Number(n) || 0, locale);
   const [supabase] = useState(() => createBrowserClient());
-  const MENU_ITEMS: { key: AdminSection; label: string; icon: string }[] = [
-    { key: 'обзор', label: t('admin.overview'), icon: '📊' },
-    { key: 'квартиры', label: t('admin.apartments'), icon: '🏠' },
-    { key: 'смены', label: t('admin.transfers'), icon: '🔁' },
-    { key: 'заявки', label: t('admin.requests'), icon: '📋' },
-    { key: 'счётчики', label: t('admin.meters'), icon: '⚡' },
-    { key: 'вода', label: t('admin.water'), icon: '💧' },
-    { key: 'персонал', label: t('admin.staff'), icon: '👷' },
-    { key: 'такса', label: t('admin.fee'), icon: '💶' },
-    { key: 'электроэнергия', label: t('admin.electricityFinance'), icon: '⚡' },
-    { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
-    { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
-    { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
-    { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
-    { key: 'документы', label: t('admin.docsMenu'), icon: '📁' },
-    { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
-    { key: 'чат', label: t('admin.chat'), icon: '💬' },
-  ];
-  const TOP_MENU: AdminSection[] = ['обзор', 'чат'];
+  const MENU_ITEMS: AdminMenuItem[] = useMemo(
+    () => [
+      { key: 'обзор', label: t('admin.overview'), icon: '📊' },
+      { key: 'квартиры', label: t('admin.apartments'), icon: '🏠' },
+      { key: 'смены', label: t('admin.transfers'), icon: '🔁' },
+      { key: 'заявки', label: t('admin.requests'), icon: '📋' },
+      { key: 'счётчики', label: t('admin.meters'), icon: '⚡' },
+      { key: 'вода', label: t('admin.water'), icon: '💧' },
+      { key: 'персонал', label: t('admin.staff'), icon: '👷' },
+      { key: 'настройки', label: t('admin.settings'), icon: '⚙️' },
+      { key: 'такса', label: t('admin.fee'), icon: '💶' },
+      { key: 'электроэнергия', label: t('admin.electricityFinance'), icon: '⚡' },
+      { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
+      { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
+      { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
+      { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
+      { key: 'документы', label: t('admin.docsMenu'), icon: '📁' },
+      { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
+      { key: 'чат', label: t('admin.chat'), icon: '💬' },
+    ],
+    [t],
+  );
+  const menuByKey = useMemo(() => new Map(MENU_ITEMS.map((item) => [item.key, item])), [MENU_ITEMS]);
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
   const [staffActive, setStaffActive] = useState(false);
   const showWater = canSeeWaterAdmin(staffRole);
   const showCapital = canSeeCapitalAdmin(staffRole);
   const showElectricityFinance = canSeeElectricityFinance(staffRole);
-  const MENU_GROUPS: { id: string; label: string; icon: string; items: AdminSection[] }[] = [
-    {
-      id: 'house',
-      label: t('admin.house'),
-      icon: '🏠',
-      items: showWater
-        ? ['квартиры', 'смены', 'счётчики', 'вода', 'персонал']
-        : ['квартиры', 'смены', 'счётчики', 'персонал'],
-    },
-    {
-      id: 'finance',
-      label: t('admin.menuFinance'),
-      icon: '💶',
-      items: [
-        'такса',
-        ...(showElectricityFinance ? (['электроэнергия'] as const) : []),
-        ...(showCapital ? (['капремонт'] as const) : []),
-        'расходы',
-        'отчётность',
-      ],
-    },
-    { id: 'work', label: t('admin.work'), icon: '🛠️', items: ['заявки', 'документы', 'опросы', 'объявления'] },
-  ];
+  const canEditStaff = isUkAdminRole(staffRole);
+  const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
+  const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
+    const groups: AdminMenuGroup[] = [
+      { id: 'overview', label: t('admin.overview'), items: ['обзор'] },
+      { id: 'objects', label: t('admin.menuObjects'), items: ['квартиры', 'смены'] },
+      {
+        id: 'utilities',
+        label: t('admin.menuUtilities'),
+        items: [
+          ...(showWater ? (['вода'] as const) : []),
+          'электроэнергия',
+        ],
+      },
+      {
+        id: 'finance',
+        label: t('admin.menuFinance'),
+        items: ['такса', ...(showCapital ? (['капремонт'] as const) : []), 'расходы', 'отчётность'],
+      },
+      { id: 'comms', label: t('admin.menuComm'), items: ['заявки', 'объявления', 'опросы', 'чат'] },
+      { id: 'docs', label: t('admin.menuDocs'), items: ['документы'] },
+      { id: 'system', label: t('admin.menuSystem'), items: ['персонал', 'настройки'] },
+    ];
+    return groups.filter((group) => group.items.length > 0);
+  }, [t, showWater, showCapital]);
+  const visibleSectionSet = useMemo(() => {
+    const keys = new Set<AdminSection>();
+    for (const group of MENU_GROUPS) {
+      for (const key of group.items) keys.add(key);
+    }
+    return keys;
+  }, [MENU_GROUPS]);
+  const financeGroup = useMemo(
+    () => MENU_GROUPS.find((group) => group.id === 'finance'),
+    [MENU_GROUPS],
+  );
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [authReady, setAuthReady] = useState(false);
@@ -267,10 +382,9 @@ export default function AdminPage() {
   const [rateSaving, setRateSaving] = useState(false);
   const [chargeYear, setChargeYear] = useState(String(new Date().getFullYear()));
   const [chargeSaving, setChargeSaving] = useState(false);
-  // ---------- STATE ----------
-  const [activeMenu, setActiveMenu] = useState<AdminSection>('обзор');
+  const [feeChargeExisting, setFeeChargeExisting] = useState<number | null>(null);
+  const [feeBulkResult, setFeeBulkResult] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [openMenuGroups, setOpenMenuGroups] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -311,10 +425,12 @@ export default function AdminPage() {
   const [reqAptFilter, setReqAptFilter] = useState<string>('');
   const [reqSearch, setReqSearch] = useState('');
   const [reqFiltersOpen, setReqFiltersOpen] = useState(false);
+  const [requestDetailId, setRequestDetailId] = useState<number | null>(null);
+  const [annDetailId, setAnnDetailId] = useState<number | null>(null);
+  const [pollDetailId, setPollDetailId] = useState<number | null>(null);
 
   // ---------- ФИЛЬТРЫ СЧЁТЧИКОВ ----------
-  const [meterAptFilter, setMeterAptFilter] = useState<string>('');
-  const [meterTypeFilter, setMeterTypeFilter] = useState<string>('');
+  const [meterAptFilter] = useState<string>('');
 
   // ---------- ДЕТАЛЬНЫЙ ПРОСМОТР КВАРТИРЫ ----------
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
@@ -388,6 +504,8 @@ export default function AdminPage() {
   const [expenseYearFilter, setExpenseYearFilter] = useState<number | 'all'>(
     new Date().getFullYear()
   );
+  const [expenseStatusFilter, setExpenseStatusFilter] = useState<'all' | 'pending' | 'published'>('all');
+  const [expenseDetailId, setExpenseDetailId] = useState<number | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     expense_date: new Date().toISOString().slice(0, 10),
     amount: '',
@@ -546,12 +664,31 @@ export default function AdminPage() {
       } else {
         setLedger((ledgerRes.data as SupportFeeEntry[]) ?? []);
       }
-    } catch (e: any) {
-      setError(e?.message ?? 'Ошибка загрузки');
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!/^\d{4}$/.test(chargeYear.trim())) {
+      setFeeChargeExisting(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from('support_fee_ledger')
+      .select('id', { count: 'exact', head: true })
+      .eq('kind', 'charge')
+      .eq('period', chargeYear.trim())
+      .then(({ count }) => {
+        if (!cancelled) setFeeChargeExisting(count ?? 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chargeYear, chargeSaving, supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -561,14 +698,14 @@ export default function AdminPage() {
         const email = normalizeEmail(data.user?.email ?? '');
 
         if (!email) {
-          router.replace('/account');
+          router.replace('/');
           return;
         }
 
         const access = await resolveAccess(email, supabase);
         if (cancelled) return;
         if (!access.isStaff) {
-          router.replace('/account');
+          router.replace(access.isOwner ? '/account' : '/');
           return;
         }
         setSessionEmail(email);
@@ -576,10 +713,10 @@ export default function AdminPage() {
         setStaffActive(access.staff?.active === true);
         setHasCabinet(access.isOwner);
         setAllowed(true);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          setError(e?.message ?? 'Нет доступа');
-          router.replace('/account');
+          setError(ownerVisibleError(e, t('admin.errGeneric')));
+          router.replace('/');
         }
       } finally {
         if (!cancelled) setAuthReady(true);
@@ -610,6 +747,127 @@ export default function AdminPage() {
     if (allowed) loadAll();
   }, [allowed]);
 
+  const sectionQuery = searchParams.get('section');
+  const activeMenu: AdminSection = useMemo(() => {
+    if (sectionQuery === 'счётчики' && visibleSectionSet.has('электроэнергия')) return 'электроэнергия';
+    if (isAdminSection(sectionQuery) && visibleSectionSet.has(sectionQuery)) return sectionQuery;
+    return DEFAULT_ADMIN_SECTION;
+  }, [sectionQuery, visibleSectionSet]);
+  const activeNavGroup = useMemo(() => {
+    const group = MENU_GROUPS.find((item) => item.id !== 'overview' && item.items.includes(activeMenu));
+    return group?.id ?? null;
+  }, [MENU_GROUPS, activeMenu]);
+  const [navGroupOverride, setNavGroupOverride] = useState<{ section: AdminSection; groupId: string | null } | null>(null);
+  const openNavGroup = navGroupOverride?.section === activeMenu ? navGroupOverride.groupId : activeNavGroup;
+
+  function toggleNavGroup(id: string) {
+    setNavGroupOverride({ section: activeMenu, groupId: openNavGroup === id ? null : id });
+  }
+
+  const closeMobileNav = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  const navigateAdminSection = useCallback(
+    (key: AdminSection) => {
+      if (!visibleSectionSet.has(key)) {
+        closeMobileNav();
+        return;
+      }
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('section', key);
+      params.delete('tab');
+      const qs = params.toString();
+      if (qs !== searchParams.toString()) {
+        router.push(`${pathname}?${qs}`, { scroll: false });
+      }
+      closeMobileNav();
+    },
+    [closeMobileNav, pathname, router, searchParams, visibleSectionSet],
+  );
+
+  const openUtilityTab = useCallback(
+    (key: 'вода' | 'электроэнергия', nextTab: AdminUtilityTab) => {
+      if (!visibleSectionSet.has(key)) {
+        closeMobileNav();
+        return;
+      }
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('section', key);
+      params.set('tab', nextTab);
+      const qs = params.toString();
+      if (qs !== searchParams.toString()) {
+        router.push(`${pathname}?${qs}`, { scroll: false });
+      }
+      closeMobileNav();
+    },
+    [closeMobileNav, pathname, router, searchParams, visibleSectionSet],
+  );
+
+  const openSectionTab = useCallback(
+    (key: AdminSection, nextTab: string) => {
+      if (!visibleSectionSet.has(key)) {
+        closeMobileNav();
+        return;
+      }
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('section', key);
+      params.set('tab', nextTab);
+      const qs = params.toString();
+      if (qs !== searchParams.toString()) {
+        router.push(`${pathname}?${qs}`, { scroll: false });
+      }
+      closeMobileNav();
+    },
+    [closeMobileNav, pathname, router, searchParams, visibleSectionSet],
+  );
+
+  useEffect(() => {
+    if (!allowed || !authReady) return;
+    if (sectionQuery === 'счётчики') {
+      const params = new URLSearchParams(searchParams.toString());
+      if (visibleSectionSet.has('электроэнергия')) {
+        params.set('section', 'электроэнергия');
+        params.set('tab', 'meter');
+      } else {
+        params.delete('section');
+        params.delete('tab');
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      return;
+    }
+    if (sectionQuery == null || sectionQuery === '') return;
+    if (isAdminSection(sectionQuery) && visibleSectionSet.has(sectionQuery)) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('section');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [allowed, authReady, pathname, router, searchParams, sectionQuery, visibleSectionSet]);
+
+  useEffect(() => {
+    if (!allowed || !authReady || !staffRole || sectionQuery !== 'электроэнергия') return;
+    const raw = searchParams.get('tab');
+    if (!raw) return;
+    const allowedTabs = ['overview', 'meter', 'readings', ...(showElectricityFinance ? ['tariff', 'finance'] : [])];
+    if (allowedTabs.includes(raw)) return;
+    openUtilityTab('электроэнергия', 'overview');
+  }, [allowed, authReady, openUtilityTab, searchParams, sectionQuery, showElectricityFinance, staffRole]);
+
+  useEffect(() => {
+    if (!allowed || !authReady) return;
+    if (sectionQuery !== 'такса' && sectionQuery !== 'капремонт') return;
+    const raw = searchParams.get('tab');
+    if (!raw) return;
+    const allowedTabs = sectionQuery === 'такса'
+      ? ['overview', 'policy', 'operations', 'register']
+      : ['overview', 'charges', 'operations'];
+    if (allowedTabs.includes(raw)) return;
+    openSectionTab(sectionQuery, 'overview');
+  }, [allowed, authReady, openSectionTab, searchParams, sectionQuery]);
+
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
     const apply = () => setSidebarOpen(mq.matches);
@@ -618,13 +876,6 @@ export default function AdminPage() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
-  useEffect(() => {
-    const group = MENU_GROUPS.find((g) => g.items.includes(activeMenu));
-    if (!group) return;
-    setOpenMenuGroups((prev) => (prev.includes(group.id) ? prev : [...prev, group.id]));
-  }, [activeMenu]); // eslint-disable-line
-
-  // ---------- ЗАГРУЗКА СПИСКА ЧАТОВ ----------
   useEffect(() => {
     setUkChatSeen(loadUkChatSeenMap());
   }, []);
@@ -909,15 +1160,6 @@ export default function AdminPage() {
     }
   }
 
-  function occupancyBadgeClass(status: string | null) {
-    switch (status) {
-      case 'owner': return 'bg-accent-bg text-accent border-accent/25';
-      case 'standby': return 'bg-warning-bg text-warning border-warning/25';
-      case 'rented': return 'bg-accent-bg text-accent border-accent/25';
-      default: return 'bg-accent-bg text-accent border-accent/25';
-    }
-  }
-
   async function exportRegistry(format: 'csv' | 'pdf') {
     const rows = [...properties].sort((a, b) =>
       String(a.apartment_number).localeCompare(String(b.apartment_number), undefined, { numeric: true }),
@@ -962,7 +1204,7 @@ export default function AdminPage() {
       `kniga-zues-${stamp}.pdf`,
       buildRegistryPdfHtml({
         title: t('registry.book'),
-        generated: `${t('admin.pdfGenerated')}: ${new Date().toLocaleString(dateLocale)}`,
+        generated: `${t('admin.pdfGenerated')}: ${formatOwnerDateTime(new Date().toISOString(), locale)}`,
         hint: t('registry.exportHint'),
         headers,
         rows: data,
@@ -1106,18 +1348,6 @@ export default function AdminPage() {
 
     return result;
   }, [requests, reqStatusFilter, reqCategoryFilter, reqPriorityFilter, reqAptFilter, reqSearch]);
-
-  // ---------- ФИЛЬТРАЦИЯ СЧЁТЧИКОВ ----------
-  const filteredMeters = useMemo(() => {
-    let result = [...meterReadings];
-    if (meterAptFilter !== '') {
-      result = result.filter((m) => String(m.property_id) === meterAptFilter);
-    }
-    if (meterTypeFilter !== '') {
-      result = result.filter((m) => m.meter_type === meterTypeFilter);
-    }
-    return result;
-  }, [meterReadings, meterAptFilter, meterTypeFilter]);
 
   // ---------- CRUD ----------
   function startEditProp(p: Property) {
@@ -1406,13 +1636,16 @@ export default function AdminPage() {
   }
 
   async function handleDeleteAnn(id: number) {
-    if (!confirm('Удалить объявление?')) return;
+    if (!confirm(t('confirm.deleteAnn'))) return false;
     try {
       const { error } = await supabase.from('announcements').delete().eq('id', id);
       if (error) throw error;
+      setAnnDetailId((current) => (current === id ? null : current));
       await loadAll();
+      return true;
     } catch (e: any) {
       setError(e?.message ?? 'Ошибка удаления');
+      return false;
     }
   }
 
@@ -1637,15 +1870,7 @@ export default function AdminPage() {
     }
   }
 
-  async function chargeSupportForProperty(propertyId: number, year: string) {
-    const { error } = await supabase.rpc('charge_support_fee', {
-      p_property_id: propertyId,
-      p_period: year,
-    });
-    if (error) throw error;
-  }
-
-  async function handleChargeSupport(propertyIds: number[]) {
+  async function handleChargeSupportBulk() {
     if (!canRecordSupportPayments(staffRole)) {
       setError('Начислять таксу могут администратор и бухгалтер.');
       return;
@@ -1655,39 +1880,35 @@ export default function AdminPage() {
       setError('Укажите год начисления, например 2026.');
       return;
     }
-    const targets = properties.filter((p) => propertyIds.includes(p.id));
-    if (targets.length === 0) return;
-    if (!confirm(
-      targets.length === 1
-        ? t('confirm.chargeOne', {
-            amount: annualSupportFee(targets[0].area_sqm, supportRate).toFixed(2),
-            apt: targets[0].apartment_number,
-            year,
-          })
-        : t('confirm.chargeMany', { n: targets.length, year }),
-    )) return;
+    const total = properties.length;
+    if (total === 0) return;
+    const existingCount = feeChargeExisting ?? 0;
+    const will = Math.max(0, total - existingCount);
+    if (!confirm(t('confirm.bulkSupport', { year, total, existing: existingCount, will }))) return;
     setChargeSaving(true);
     setError(null);
+    setFeeBulkResult(null);
     try {
-      for (const property of targets) {
-        try {
-          await chargeSupportForProperty(property.id, year);
-        } catch (err: unknown) {
-          const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code ?? '') : '';
-          const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
-          if (code === '23505' || msg.includes('support_fee_ledger_charge_period') || msg.includes('duplicate')) {
-            continue;
-          }
-          throw err;
-        }
+      const { data, error } = await supabase.rpc('charge_support_fee_bulk', { p_period: year });
+      if (error) throw error;
+      const summary = readBulkAccrualSummary(data);
+      if (!summary) {
+        setError(t('admin.errGeneric'));
+        return;
       }
+      const base = t('admin.bulkResult', { created: summary.created, skipped: summary.skipped_existing });
+      setFeeBulkResult(
+        summary.not_applied > 0 ? `${base} ${t('admin.bulkNotApplied', { n: summary.not_applied })}` : base,
+      );
       await loadAll();
     } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
       if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
         setSupportFeeMissing(true);
         setError('Выполните supabase/support_fee.sql в SQL Editor.');
+      } else if (/could not find the function/i.test(msg)) {
+        setError(t('admin.bulkUnavailable'));
       } else {
-        const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
         setError(msg || 'Не удалось начислить таксу');
       }
     } finally {
@@ -1716,15 +1937,23 @@ export default function AdminPage() {
 
   async function handleSaveStaff(e: React.FormEvent) {
     e.preventDefault();
+    if (!canEditStaff) return;
     setError(null);
-    const payload = {
+    const payload: {
+      name: string;
+      role: string;
+      phone: string | null;
+      email: string | null;
+      active: boolean;
+      salary_eur?: number | null;
+    } = {
       name: staffForm.name.trim(),
       role: staffForm.role.trim(),
       phone: staffForm.phone.trim() || null,
       email: staffForm.email.trim() ? normalizeEmail(staffForm.email) : null,
-      salary_eur: Number(staffForm.salary_eur) || null,
       active: staffForm.active,
     };
+    if (showStaffSalary) payload.salary_eur = Number(staffForm.salary_eur) || null;
     try {
       if (editingStaff) {
         const { error } = await supabase.from('staff').update(payload).eq('id', editingStaff.id);
@@ -1735,24 +1964,20 @@ export default function AdminPage() {
       }
       setShowStaffForm(false);
       await loadAll();
-    } catch (e: any) {
-      const msg = e?.message ?? 'Ошибка сохранения';
-      setError(
-        msg.includes('email')
-          ? `${msg} Выполните supabase/staff_email.sql в SQL Editor.`
-          : msg
-      );
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
     }
   }
 
   async function handleDeleteStaff(id: number) {
-    if (!confirm('Удалить сотрудника?')) return;
+    if (!canEditStaff) return;
+    if (!confirm(t('confirm.deleteStaff'))) return;
     try {
       const { error } = await supabase.from('staff').delete().eq('id', id);
       if (error) throw error;
       await loadAll();
-    } catch (e: any) {
-      setError(e?.message ?? 'Ошибка удаления');
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
     }
   }
 
@@ -1848,13 +2073,17 @@ export default function AdminPage() {
   }
 
   async function handleDeletePoll(id: number) {
-    if (!confirm('Удалить опрос и все голоса?')) return;
+    if (!confirm(t('confirm.deletePoll'))) return false;
     try {
       const { error } = await supabase.from('polls').delete().eq('id', id);
       if (error) throw error;
+      setPollDetailId((current) => (current === id ? null : current));
+      setExpandedPollHistory((current) => (current === id ? null : current));
       await loadAll();
+      return true;
     } catch (err: any) {
       setError(err?.message ?? 'Ошибка удаления');
+      return false;
     }
   }
 
@@ -1915,13 +2144,16 @@ export default function AdminPage() {
   }
 
   async function handleDeleteRequest(id: number) {
-    if (!confirm('Удалить заявку?')) return;
+    if (!confirm(t('confirm.deleteRequest'))) return false;
     try {
       const { error } = await supabase.from('requests').delete().eq('id', id);
       if (error) throw error;
+      setRequestDetailId((current) => (current === id ? null : current));
       await loadAll();
+      return true;
     } catch (e: any) {
       setError(e?.message ?? 'Ошибка удаления');
+      return false;
     }
   }
 
@@ -1968,138 +2200,187 @@ export default function AdminPage() {
         const rentedCount = properties.filter((p) => p.occupancy_status === 'rented').length;
         const standbyCount = properties.filter((p) => p.occupancy_status === 'standby').length;
         const ownerCount = properties.filter((p) => p.occupancy_status === 'owner' || !p.occupancy_status).length;
-        const petsCount = properties.filter((p) => p.pet_info && p.pet_info.trim() !== '').length;
-        const forSaleCount = properties.filter((p) => listingStatus(p.status) === 'на продаже').length;
         const debtCount = properties.filter((p) => Number(p.debt ?? 0) > 0).length;
-        const attention = [
-          totalUnreadChats > 0 && { key: 'чат' as AdminSection, label: 'чаты', value: totalUnreadChats },
-          activeRequests.length > 0 && { key: 'заявки' as AdminSection, label: 'заявки', value: activeRequests.length },
-          openPollsCount > 0 && { key: 'опросы' as AdminSection, label: 'опросы', value: openPollsCount },
-          pendingTransfersCount > 0 && { key: 'смены' as AdminSection, label: 'смены', value: pendingTransfersCount },
-          pendingUkExpenses.length > 0 && { key: 'расходы' as AdminSection, label: 'расходы на проверке', value: pendingUkExpenses.length },
-          totalDebt > 0 && { key: 'такса' as AdminSection, label: 'долг', value: `${totalDebt.toFixed(0)} €` },
-        ].filter(Boolean) as { key: AdminSection; label: string; value: string | number }[];
+        const attention: {
+          key: AdminSection;
+          title: string;
+          detail: string;
+          badge: string;
+          tone: 'danger' | 'warning' | 'info';
+        }[] = [];
+        if (activeRequests.length > 0) {
+          attention.push({
+            key: 'заявки',
+            title: t('admin.activeReq'),
+            detail: t('admin.attnReqDetail', { n: activeRequests.length }),
+            badge: String(activeRequests.length),
+            tone: 'warning',
+          });
+        }
+        if (pendingTransfersCount > 0) {
+          attention.push({
+            key: 'смены',
+            title: t('admin.transfers'),
+            detail: t('admin.attnTransferDetail', { n: pendingTransfersCount }),
+            badge: String(pendingTransfersCount),
+            tone: 'warning',
+          });
+        }
+        if (pendingUkExpenses.length > 0) {
+          attention.push({
+            key: 'расходы',
+            title: t('admin.expenses'),
+            detail: t('admin.attnExpenseDetail', { n: pendingUkExpenses.length }),
+            badge: String(pendingUkExpenses.length),
+            tone: 'warning',
+          });
+        }
+        if (totalDebt > 0) {
+          attention.push({
+            key: 'такса',
+            title: t('admin.kpiDebtTitle'),
+            detail: t('admin.attnDebtDetail', { n: debtCount }),
+            badge: money(totalDebt),
+            tone: 'danger',
+          });
+        }
+        if (openPollsCount > 0) {
+          attention.push({
+            key: 'опросы',
+            title: t('admin.kpiPollsTitle'),
+            detail: t('admin.attnPollDetail', { n: openPollsCount }),
+            badge: String(openPollsCount),
+            tone: 'info',
+          });
+        }
+        if (totalUnreadChats > 0) {
+          attention.push({
+            key: 'чат',
+            title: t('admin.chat'),
+            detail: t('admin.attnChatDetail', { n: totalUnreadChats }),
+            badge: String(totalUnreadChats),
+            tone: 'info',
+          });
+        }
 
         return (
-          <div className="space-y-4">
-            {attention.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {attention.map((item) => (
-                  <button
-                    key={item.key + String(item.label)}
-                    type="button"
-                    onClick={() => setActiveMenu(item.key)}
-                    className="rounded-full border border-warning/25 bg-warning-bg px-3 py-1.5 text-xs text-warning hover:bg-warning-bg"
-                  >
-                    {item.label}: <span className="font-semibold">{item.value}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="space-y-3">
+            <AdminPageHeader title={t('admin.overview')} secondary={t('admin.overviewLead')} />
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <OverviewGroup
-                title={t('admin.house')}
-                hint={`${totalArea.toFixed(0)} м² · ${supportRate} €/м²`}
-                actionLabel={t('admin.apartments')}
-                onAction={() => setActiveMenu('квартиры')}
-              >
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <Metric label={t('admin.apts')} value={String(properties.length)} />
-                  <Metric label={t('admin.forSale')} value={String(forSaleCount)} alert={forSaleCount > 0} />
-                  <Metric label={t('admin.withPets')} value={String(petsCount)} />
-                  <Metric label={t('admin.owner')} value={String(ownerCount)} />
-                  <Metric label={t('admin.tenants')} value={String(rentedCount)} />
-                  <Metric label={t('admin.away')} value={String(standbyCount)} />
-                </div>
-              </OverviewGroup>
-
-              <OverviewGroup
-                title={t('admin.fee')}
-                actionLabel={t('admin.publish')}
-                onAction={() => setActiveMenu('такса')}
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <Metric label={t('admin.debt')} value={`${totalDebt.toFixed(2)} €`} alert={totalDebt > 0} />
-                  <Metric label={t('admin.overpay')} value={`${totalOverpayment.toFixed(2)} €`} />
-                  <Metric label={t('admin.withDebt')} value={String(debtCount)} alert={debtCount > 0} />
-                  <Metric label={t('admin.feeYear')} value={`${annualSupportTotal.toFixed(0)} €`} />
-                </div>
-              </OverviewGroup>
-
-              <OverviewGroup
-                title={t('admin.work')}
-                hint={`${staff.filter((s) => s.active).length}`}
-                actionLabel={t('admin.requests')}
-                onAction={() => setActiveMenu('заявки')}
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <Metric label={t('admin.activeReq')} value={String(activeRequests.length)} alert={activeRequests.length > 0} />
-                  <Metric label={t('admin.unread')} value={String(totalUnreadChats)} alert={totalUnreadChats > 0} />
-                  <Metric label={t('admin.openPolls')} value={String(openPollsCount)} alert={openPollsCount > 0} />
-                  <Metric label={t('admin.ukSpend')} value={`${totalUkExpenses.toFixed(0)} €`} />
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setActiveMenu('чат')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.chats')}</button>
-                  <button type="button" onClick={() => setActiveMenu('опросы')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.polls')}</button>
-                  <button type="button" onClick={() => setActiveMenu('расходы')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.expenses')}</button>
-                  <button type="button" onClick={() => setActiveMenu('персонал')} className="rounded-full border border-border px-3 py-1 text-xs text-secondary hover:bg-hover">{t('admin.staff')}</button>
-                </div>
-              </OverviewGroup>
-
-              <OverviewGroup title={t('admin.floors')} hint={t('admin.floorDebtHint')}>
-                {uniqueFloors.length === 0 ? (
-                  <p className="text-sm text-muted">{t('common.noData')}</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                    {uniqueFloors.map((floor) => {
-                      const floorApts = properties.filter((p) => Number(p.floor) === floor);
-                      const floorDebt = floorApts.reduce((s, p) => s + Number(p.debt ?? 0), 0);
-                      return (
-                        <div key={floor} className="rounded-lg bg-surface px-2.5 py-2">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-sm text-foreground">{floor} этаж</span>
-                            <span className="text-xs text-muted">{t('account.aptsShort', { n: floorApts.length })}</span>
-                          </div>
-                          <div className={`mt-0.5 text-xs ${floorDebt > 0 ? 'text-warning' : 'text-success'}`}>
-                            {floorDebt.toFixed(0)} €
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </OverviewGroup>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <AdminMetricCard
+                align="center"
+                label={t('admin.apartments')}
+                value={String(properties.length)}
+                secondary={t('admin.kpiAllObjects')}
+                onClick={() => navigateAdminSection('квартиры')}
+              />
+              <AdminMetricCard
+                align="center"
+                label={t('admin.activeReq')}
+                value={String(activeRequests.length)}
+                secondary={t('admin.kpiNeedWork')}
+                alert={activeRequests.length > 0}
+                onClick={() => navigateAdminSection('заявки')}
+              />
+              <AdminMetricCard
+                align="center"
+                label={t('admin.kpiDebtTitle')}
+                value={money(totalDebt)}
+                secondary={t('admin.kpiDebtHomes', { n: debtCount })}
+                alert={totalDebt > 0}
+                onClick={() => navigateAdminSection('такса')}
+              />
+              <AdminMetricCard
+                align="center"
+                label={t('admin.kpiPollsTitle')}
+                value={String(openPollsCount)}
+                secondary={t('admin.kpiPollsHint')}
+                onClick={() => navigateAdminSection('опросы')}
+              />
             </div>
 
-            <OverviewGroup
-              title={t('admin.recentRequests')}
-              actionLabel={t('common.all')}
-              onAction={() => setActiveMenu('заявки')}
-            >
-              {requests.length === 0 ? (
-                <p className="text-sm text-muted">{t('admin.noRequests')}</p>
-              ) : (
-                <div className="divide-y divide-white/5">
-                  {requests.slice(0, 5).map((r) => (
-                    <div key={r.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm text-foreground">{r.subject}</div>
-                        <div className="truncate text-xs text-muted">
-                          {propertyFullById(r.property_id ?? 0)} · {labelPriority(r.priority, t)}
-                        </div>
-                      </div>
-                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
-                        r.status === 'новая' ? 'border-accent/25 text-accent' :
-                        r.status === 'в работе' ? 'border-yellow-500/30 text-warning' :
-                        r.status === 'выполнена' ? 'border-accent/25 text-accent' :
-                        'border-danger/25 text-danger'
-                      }`}>{r.status}</span>
-                    </div>
-                  ))}
+            <div className="grid gap-3 lg:grid-cols-2">
+              <AdminCard pad className="!p-3 md:!p-4">
+                <h2 className="text-sm font-semibold text-foreground">{t('admin.attentionTitle')}</h2>
+                {attention.length === 0 ? (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium text-foreground">{t('admin.attentionOkTitle')}</p>
+                    <p className="mt-0.5 text-sm text-secondary">{t('admin.attentionOkText')}</p>
+                  </div>
+                ) : (
+                  <div className="mt-1 divide-y divide-border">
+                    {attention.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => navigateAdminSection(item.key)}
+                        className="flex w-full items-center gap-3 py-2 text-left hover:bg-hover/40"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-foreground">{item.title}</span>
+                          <span className="block text-xs text-secondary">{item.detail}</span>
+                        </span>
+                        <StatusBadge label={item.badge} tone={item.tone} />
+                        <span className="text-sm text-muted" aria-hidden>→</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </AdminCard>
+
+              <AdminCard pad className="!p-3 md:!p-4">
+                <h2 className="text-sm font-semibold text-foreground">{t('admin.quickActions')}</h2>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => { navigateAdminSection('объявления'); setShowAnnForm(true); }}
+                    className={adminBtnPrimaryClass}
+                  >
+                    {t('admin.quickAnnounce')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { startNewPoll(); navigateAdminSection('опросы'); }}
+                    className={adminBtnSecondaryClass}
+                  >
+                    {t('admin.quickPoll')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { navigateAdminSection('расходы'); setShowExpenseForm(true); }}
+                    className={adminBtnSecondaryClass}
+                  >
+                    {t('admin.quickExpense')}
+                  </button>
                 </div>
-              )}
-            </OverviewGroup>
+              </AdminCard>
+            </div>
+
+            <AdminCard pad className="!p-3 md:!p-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-foreground">{t('admin.occComplex')}</h2>
+                <button
+                  type="button"
+                  onClick={() => navigateAdminSection('квартиры')}
+                  className={adminBtnTertiaryClass}
+                >
+                  {t('admin.apartments')}
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  [t('admin.occOwnersLive'), ownerCount],
+                  [t('admin.occRentedShort'), rentedCount],
+                  [t('admin.occUnused'), standbyCount],
+                ].map(([label, count]) => (
+                  <div key={String(label)} className={`${adminCardClass} flex h-full flex-col items-center justify-center px-2 py-2.5 text-center`}>
+                    <span className="break-words text-xs leading-tight text-muted">{label}</span>
+                    <span className="mt-1 text-xl font-semibold tabular-nums leading-none text-foreground">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </AdminCard>
           </div>
         );
       }
@@ -2110,34 +2391,29 @@ export default function AdminPage() {
       case 'квартиры':
         return (
           <div className="md:rounded-2xl md:border md:border-border md:bg-surface md:p-6">
-            <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
-              <div>
-                <h2 className="text-lg font-semibold text-accent">{t('admin.apartments')}</h2>
-                <span className="text-sm text-secondary">
-                  {t('admin.shownOf', { n: filteredProperties.length, total: properties.length })}
-                </span>
-                <p className="mt-1 text-xs text-muted">{t('registry.exportHint')}</p>
-              </div>
-              <div className="flex gap-2">
-                {aptActiveFiltersCount > 0 && (
-                  <button onClick={clearAptFilters}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
-                    {t('admin.resetN', { n: aptActiveFiltersCount })}
-                  </button>
-                )}
-                <button onClick={startNewProp}
-                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                  {t('admin.addPlus')}
-                </button>
-                <button type="button" onClick={() => exportRegistry('csv')}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
-                  {t('registry.exportCsv')}
-                </button>
-                <button type="button" onClick={() => exportRegistry('pdf')}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
-                  {t('registry.exportPdf')}
-                </button>
-              </div>
+            <div className="mb-3 hidden md:mb-4 md:block">
+              <AdminPageHeader
+                title={t('admin.apartments')}
+                secondary={`${t('admin.apartmentsLead')} ${t('admin.shownOf', { n: filteredProperties.length, total: properties.length })}`}
+                action={
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {aptActiveFiltersCount > 0 && (
+                      <button type="button" onClick={clearAptFilters} className={adminBtnSecondaryClass}>
+                        {t('admin.resetN', { n: aptActiveFiltersCount })}
+                      </button>
+                    )}
+                    <button type="button" onClick={startNewProp} className={adminBtnPrimaryClass}>
+                      {t('admin.addPlus')}
+                    </button>
+                    <button type="button" onClick={() => exportRegistry('csv')} className={adminBtnSecondaryClass}>
+                      {t('registry.exportCsv')}
+                    </button>
+                    <button type="button" onClick={() => exportRegistry('pdf')} className={adminBtnSecondaryClass}>
+                      {t('registry.exportPdf')}
+                    </button>
+                  </div>
+                }
+              />
             </div>
 
             <div className="mb-3 flex gap-2 md:hidden">
@@ -2164,92 +2440,67 @@ export default function AdminPage() {
 
             {/* ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ */}
             {showPropForm && (
-              <form onSubmit={handleSaveProp}
-                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-accent">
+              <form onSubmit={handleSaveProp} className={`mb-4 ${adminFormPanelClass}`}>
+                <h3 className="text-sm font-semibold text-foreground">
                   {editingProp ? t('admin.editApt') : t('admin.newApt')}
                 </h3>
+                <p className="text-xs font-medium text-muted">{t('admin.aptGroupObject')}</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  <input className={adminFieldClass}
                     placeholder={t('admin.phAptNo')} value={propForm.apartment_number}
                     onChange={(e) => setPropForm({ ...propForm, apartment_number: e.target.value })} required />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  <input className={adminFieldClass}
                     placeholder={t('admin.phFloor')} type="number" value={propForm.floor}
                     onChange={(e) => setPropForm({ ...propForm, floor: e.target.value })} />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  <input className={adminFieldClass}
                     placeholder={t('admin.phArea')} type="number" value={propForm.area_sqm}
                     onChange={(e) => setPropForm({ ...propForm, area_sqm: e.target.value })} />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder={t('admin.phOwner')} value={propForm.owner_name}
-                    onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })} required />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Email" type="email" value={propForm.owner_email}
-                    onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })} required />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder={t('admin.phPhone')} value={propForm.owner_phone}
-                    onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })} />
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    value={propForm.owner_type}
-                    onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}>
-                    <option value="физическое лицо">{t('ownerType.personShort')}</option>
-                    <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
-                  </select>
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder={t('admin.phCompany')} value={propForm.company_name}
-                    onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })} />
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  <select className={adminFieldClass}
                     value={propForm.status}
                     onChange={(e) => setPropForm({ ...propForm, status: e.target.value })}>
                     <option value="в собственности">{t('account.owned')}</option>
                     <option value="на продаже">{t('account.forSale')}</option>
                   </select>
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  <select className={adminFieldClass}
                     value={propForm.occupancy_status}
                     onChange={(e) => setPropForm({ ...propForm, occupancy_status: e.target.value })}>
                     <option value="owner">{t('status.occOwner')}</option>
                     <option value="standby">{t('status.occStandby')}</option>
                     <option value="rented">{t('status.occRented')}</option>
                   </select>
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    value={propForm.occupant_kind}
-                    onChange={(e) => setPropForm({ ...propForm, occupant_kind: e.target.value })}>
-                    <option value="owner">{t('registry.occupantOwner')}</option>
-                    <option value="tenant">{t('registry.occupantTenant')}</option>
-                    <option value="user">{t('registry.occupantUser')}</option>
+                </div>
+                <p className="text-xs font-medium text-muted">{t('admin.aptGroupOwner')}</p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.phOwner')} value={propForm.owner_name}
+                    onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })} required />
+                  <input className={adminFieldClass}
+                    placeholder="Email" type="email" value={propForm.owner_email}
+                    onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })} required />
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.phPhone')} value={propForm.owner_phone}
+                    onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })} />
+                </div>
+                <p className="text-xs font-medium text-muted">{t('admin.aptGroupMore')}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <select className={adminFieldClass}
+                    value={propForm.owner_type}
+                    onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}>
+                    <option value="физическое лицо">{t('ownerType.personShort')}</option>
+                    <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
                   </select>
-                  {(propForm.occupant_kind === 'tenant' || propForm.occupant_kind === 'user') && (
-                    <>
-                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                        placeholder={t('registry.occupantName')} value={propForm.occupant_name}
-                        onChange={(e) => setPropForm({ ...propForm, occupant_name: e.target.value })} />
-                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                        placeholder={t('registry.occupantPhone')} value={propForm.occupant_phone}
-                        onChange={(e) => setPropForm({ ...propForm, occupant_phone: e.target.value })} />
-                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                        placeholder={t('registry.occupantEmail')} type="email" value={propForm.occupant_email}
-                        onChange={(e) => setPropForm({ ...propForm, occupant_email: e.target.value })} />
-                      <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                        type="date" value={propForm.occupant_until}
-                        onChange={(e) => setPropForm({ ...propForm, occupant_until: e.target.value })}
-                        title={t('registry.occupantUntil')} />
-                    </>
-                  )}
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.phCompany')} value={propForm.company_name}
+                    onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })} />
                 </div>
                 {editingProp ? (
                   <p className="text-xs text-secondary">
-                    {t('admin.debt')}: {Number(editingProp.debt ?? 0).toFixed(2)} € · {t('admin.overpay')}: {Number(editingProp.overpayment ?? 0).toFixed(2)} €
+                    {t('admin.debt')}: {money(editingProp.debt)} · {t('admin.overpay')}: {money(editingProp.overpayment)}
                   </p>
                 ) : null}
-                <input className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  placeholder={t('account.pets')} value={propForm.pet_info}
-                  onChange={(e) => setPropForm({ ...propForm, pet_info: e.target.value })} />
-                <div className="flex gap-2">
-                  <button type="submit"
-                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                    {t('common.save')}
-                  </button>
-                  <button type="button" onClick={() => setShowPropForm(false)}
-                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" className={adminBtnPrimaryClass}>{t('common.save')}</button>
+                  <button type="button" onClick={() => setShowPropForm(false)} className={adminBtnSecondaryClass}>
                     {t('common.cancel')}
                   </button>
                 </div>
@@ -2257,7 +2508,7 @@ export default function AdminPage() {
             )}
 
             {/* ПАНЕЛЬ ФИЛЬТРОВ */}
-            <div className={`mb-4 rounded-xl border border-border bg-surface p-3 space-y-3 md:p-4 ${aptFiltersOpen ? 'block' : 'hidden'} md:block`}>
+            <AdminFilterBar className={`mb-4 ${aptFiltersOpen ? 'block' : 'hidden'} md:block`}>
               <div className="hidden items-center gap-2 text-sm text-secondary md:flex">
                 <span className="font-medium text-secondary">{t('common.filters')}</span>
                 {aptActiveFiltersCount > 0 && (
@@ -2266,7 +2517,7 @@ export default function AdminPage() {
                   </span>
                 )}
               </div>
-              <input className="hidden w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-placeholder md:block"
+              <input className={`hidden md:block ${adminFieldClass}`}
                 placeholder={t('admin.searchApts')}
                 value={aptSearch} onChange={(e) => setAptSearch(e.target.value)} />
               {aptActiveFiltersCount > 0 && (
@@ -2290,7 +2541,7 @@ export default function AdminPage() {
                 </select>
 
                 <select value={aptOccupancyFilter} onChange={(e) => setAptOccupancyFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                  className={adminFieldClass}>
                   <option value="">{t('form.anyMode')}</option>
                   <option value="owner">{t('status.occOwner')}</option>
                   <option value="standby">{t('status.occStandby')}</option>
@@ -2338,152 +2589,106 @@ export default function AdminPage() {
                   <option value="owner_asc">{t('form.sortOwner')}</option>
                 </select>
               </div>
-            </div>
+            </AdminFilterBar>
 
             {/* СПИСОК КВАРТИР — МОБИЛЬНЫЕ КАРТОЧКИ */}
             <div className="space-y-2 md:hidden">
-              {filteredProperties.map((p) => (
+              {filteredProperties.map((p) => {
+                const ownerPrimary = (p.owner_name ?? '').trim() || (p.owner_email ?? '').trim() || '—';
+                const debtN = Number(p.debt ?? 0);
+                const overN = Number(p.overpayment ?? 0);
+                return (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => setDetailProperty(p)}
-                  className="w-full rounded-xl border border-border bg-surface p-3 text-left"
+                  className={`${adminCardClass} w-full p-3 text-left`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-semibold text-foreground">№ {p.apartment_number}</div>
-                      <div className="truncate text-sm text-secondary">{p.owner_name}</div>
+                      <div className="truncate text-sm text-secondary">{ownerPrimary}</div>
                     </div>
-                    <div className={`shrink-0 text-sm font-medium ${Number(p.debt) > 0 ? 'text-danger' : 'text-muted'}`}>
-                      {Number(p.debt ?? 0).toFixed(0)} €
-                    </div>
+                    <StatusBadge label={occupancyLabel(p.occupancy_status)} tone={p.occupancy_status === 'standby' ? 'warning' : 'info'} />
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                    <span className={`rounded-full border px-2 py-0.5 ${occupancyBadgeClass(p.occupancy_status)}`}>
-                      {occupancyLabel(p.occupancy_status)}
-                    </span>
-                    <span className="rounded-full border border-border px-2 py-0.5 text-secondary">
-                      {p.floor} {t('common.floor')} · {p.area_sqm} {t('common.sqm')}
-                    </span>
+                  <div className="mt-1 text-xs text-muted">
+                    {p.area_sqm ?? '—'} {t('common.sqm')} · {p.floor ?? '—'} {t('common.floor')}
                   </div>
+                  <div className={`mt-1 text-sm ${debtN > 0 ? 'font-medium text-danger' : 'text-secondary'}`}>
+                    {debtN > 0 ? money(p.debt) : overN > 0 ? money(p.overpayment) : t('admin.aptNoDebt')}
+                  </div>
+                  <div className="mt-1 text-xs text-accent">{t('admin.aptDetails')} →</div>
                 </button>
-              ))}
+                );
+              })}
             </div>
 
             {/* ТАБЛИЦА КВАРТИР */}
-            <div className="hidden overflow-x-auto md:block">
+            <AdminTableShell className="hidden md:block">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-secondary border-b border-border">
-                    <th className="py-2 px-3">{t('form.colApt')}</th>
-                    <th className="py-2 px-3">{t('form.colFloor')}</th>
-                    <th className="py-2 px-3">{t('form.colArea')}</th>
-                    <th className="py-2 px-3">{t('form.colOwner')}</th>
-                    <th className="py-2 px-3">{t('form.colStatus')}</th>
-                    <th className="py-2 px-3">{t('account.colType')}</th>
-                    <th className="py-2 px-3">{t('account.debt')}</th>
-                    <th className="py-2 px-3">{t('account.overpay')}</th>
-                    <th className="py-2 px-3">{t('form.colFeeYear')}</th>
-                    <th className="py-2 px-3">{t('form.colMode')}</th>
-                    <th className="py-2 px-3">{t('form.colGuests')}</th>
-                    <th className="py-2 px-3">{t('form.colPets')}</th>
-                    <th className="py-2 px-3">{t('account.requests')}</th>
-                    <th className="py-2 px-3">{t('form.colChat')}</th>
-                    <th className="py-2 px-3"></th>
+                  <tr className={adminTableHeadRowClass}>
+                    <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                    <th className={adminTableCellClass}>{t('form.colOwner')}</th>
+                    <th className={adminTableCellClass}>{t('form.colArea')}</th>
+                    <th className={adminTableCellClass}>{t('form.colFloor')}</th>
+                    <th className={adminTableCellClass}>{t('form.colMode')}</th>
+                    <th className={adminTableCellClass}>{t('account.debt')}</th>
+                    <th className={adminTableCellClass}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredProperties.map((p) => {
-                    const g = guestsForProperty(p.id);
-                    const reqs = requestsForProperty(p.id);
-                    const chats = chatForProperty(p.id);
-                    const unreadChats = chats.filter((m) => isNewOwnerMessage(m, chats, ukChatSeen[String(p.id)])).length;
-                    const annualFee = annualSupportFee(p.area_sqm, supportRate);
-                    const listing = listingStatus(p.status);
+                    const ownerName = (p.owner_name ?? '').trim();
+                    const ownerMail = (p.owner_email ?? '').trim();
+                    const debtN = Number(p.debt ?? 0);
+                    const overN = Number(p.overpayment ?? 0);
                     return (
-                      <tr key={p.id} className="border-b border-border hover:bg-surface">
-                        <td className="py-2 px-3 text-foreground font-medium">{p.apartment_number}</td>
-                        <td className="py-2 px-3 text-secondary">{p.floor}</td>
-                        <td className="py-2 px-3 text-secondary">{p.area_sqm} м²</td>
-                        <td className="py-2 px-3">
-                          <div className="text-foreground">{p.owner_name}</div>
-                          <div className="text-xs text-muted">{p.owner_email}</div>
+                      <tr
+                        key={p.id}
+                        className={`${adminTableRowClass} cursor-pointer`}
+                        onClick={() => setDetailProperty(p)}
+                      >
+                        <td className={`${adminTableCellClass} font-semibold text-foreground`}>№ {p.apartment_number}</td>
+                        <td className={adminTableCellClass}>
+                          <div className="text-foreground">{ownerName || ownerMail || '—'}</div>
+                          {ownerName && ownerMail ? <div className="text-xs text-muted">{ownerMail}</div> : null}
                         </td>
-                        <td className="py-2 px-3">
-                          <span className={`inline-flex min-w-[5.5rem] flex-col items-center rounded-full border px-2 py-1 text-center text-[11px] leading-tight ${listingStatusClass(listing)}`}>
-                            {labelListing(listing, t)}
-                          </span>
+                        <td className={`${adminTableCellClass} text-secondary`}>{p.area_sqm ?? '—'} {t('common.sqm')}</td>
+                        <td className={`${adminTableCellClass} text-secondary`}>{p.floor ?? '—'} {t('common.floor')}</td>
+                        <td className={adminTableCellClass}>
+                          <StatusBadge
+                            label={occupancyLabel(p.occupancy_status)}
+                            tone={p.occupancy_status === 'standby' ? 'warning' : 'info'}
+                          />
                         </td>
-                        <td className="py-2 px-3 text-secondary text-xs">{p.owner_type === 'юридическое лицо' ? t('ownerType.companyShort') : t('ownerType.personShort')}</td>
-                        <td className="py-2 px-3">
-                          <span className={Number(p.debt) > 0 ? 'text-danger font-medium' : 'text-muted'}>
-                            {Number(p.debt ?? 0).toFixed(2)} €
-                          </span>
+                        <td className={`${adminTableCellClass} ${debtN > 0 ? 'font-medium text-danger' : 'text-secondary'}`}>
+                          {debtN > 0 ? money(p.debt) : overN > 0 ? money(p.overpayment) : t('admin.aptNoDebt')}
                         </td>
-                        <td className="py-2 px-3">
-                          <span className={Number(p.overpayment) > 0 ? 'text-success' : 'text-muted'}>
-                            {Number(p.overpayment ?? 0).toFixed(2)} €
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-secondary text-xs">{annualFee.toFixed(2)} €</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-xs rounded-full px-2 py-1 border ${occupancyBadgeClass(p.occupancy_status)}`}>
-                            {occupancyLabel(p.occupancy_status)}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3">
-                          {g.length > 0 ? (
-                            <span className="text-accent text-xs">{g.length} чел.</span>
-                          ) : (
-                            <span className="text-muted text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-secondary text-xs">
-                          {p.pet_info ? '🐾' : '—'}
-                        </td>
-                        <td className="py-2 px-3">
-                          {reqs.length > 0 ? (
-                            <span className="text-xs text-secondary">{reqs.length}</span>
-                          ) : (
-                            <span className="text-muted text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3">
-                          {chats.length > 0 ? (
-                            <span className="text-xs text-secondary">
-                              {chats.length} сообщ.
-                              {unreadChats > 0 && (
-                                <span className="ml-1 text-danger font-medium">({unreadChats} нов.)</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-muted text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3">
-                          <div className="flex gap-1">
-                            <button onClick={() => setDetailProperty(p)} title="Детали"
-                              className="rounded px-2 py-1 text-xs bg-success-bg hover:bg-success-bg text-accent">
-                              👁
-                            </button>
-                            <button onClick={() => startEditProp(p)} title="Редактировать"
-                              className="rounded px-2 py-1 text-xs bg-hover hover:bg-hover text-secondary">✎</button>
-                            <button onClick={() => handleDeleteProp(p.id)} title="Удалить"
-                              className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">✕</button>
-                          </div>
+                        <td className={adminTableCellClass}>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDetailProperty(p); }}
+                            className={adminBtnTertiaryClass}
+                          >
+                            {t('admin.aptDetails')} →
+                          </button>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
+            </AdminTableShell>
 
-            {filteredProperties.length === 0 && (
-              <div className="text-center text-sm text-muted py-8">
-                {t('admin.noAptsFilter')}
-              </div>
-            )}
+            {properties.length === 0 ? (
+              <AdminEmptyState
+                title={t('admin.aptNone')}
+                action={<button type="button" onClick={startNewProp} className={adminBtnPrimaryClass}>{t('admin.addPlus')}</button>}
+              />
+            ) : filteredProperties.length === 0 ? (
+              <AdminEmptyState title={t('admin.noAptsFilter')} />
+            ) : null}
 
             {/* МОДАЛЬНОЕ ОКНО — ДЕТАЛЬНЫЙ ПРОСМОТР КВАРТИРЫ */}
             {detailProperty && (
@@ -2498,8 +2703,10 @@ export default function AdminPage() {
                 supportRate={supportRate}
                 onClose={() => setDetailProperty(null)}
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
-                onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); setActiveMenu('чат'); }}
+                onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); navigateAdminSection('чат'); }}
                 onChanged={loadAll}
+                onDelete={() => { void handleDeleteProp(detailProperty.id); }}
+                onOpenTransfer={() => { setDetailProperty(null); navigateAdminSection('смены'); }}
                 onTakePayment={() => {
                   setPayPropertyId(detailProperty.id);
                   const debt = Number(detailProperty.debt ?? 0);
@@ -2509,7 +2716,7 @@ export default function AdminPage() {
                       : String(monthlySupportFee(detailProperty.area_sqm, supportRate)),
                   );
                   setDetailProperty(null);
-                  setActiveMenu('такса');
+                  navigateAdminSection('такса');
                 }}
               />
             )}
@@ -2521,13 +2728,11 @@ export default function AdminPage() {
       // =============================================================
       case 'смены':
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <h2 className="text-lg font-semibold text-accent mb-1">{t('admin.transfers')}</h2>
-            <p className="text-sm text-secondary mb-4">
-              {t('admin.transferLead')}
-            </p>
+          <div className="space-y-4">
+            <AdminPageHeader title={t('admin.transfers')} secondary={t('admin.transferLead')} />
+            <AdminCard>
             {ownerTransfers.length === 0 ? (
-              <div className="text-sm text-muted">{t('admin.noTransfers')}</div>
+              <AdminEmptyState title={t('admin.noTransfers')} />
             ) : (
               <div className="space-y-3">
                 {ownerTransfers.map((tr) => (
@@ -2546,7 +2751,7 @@ export default function AdminPage() {
                           <div className="mt-1 text-xs text-danger">{t('form.reason', { n: tr.reject_reason })}</div>
                         )}
                         <div className="mt-2 text-xs text-muted">
-                          {new Date(tr.created_at).toLocaleString(dateLocale)}
+                          {formatOwnerDateTime(tr.created_at, locale)}
                           {tr.decided_by ? ` · ${tr.decided_by}` : ''}
                         </div>
                       </div>
@@ -2576,26 +2781,31 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
+            </AdminCard>
           </div>
         );
 
-      case 'заявки':
+      case 'заявки': {
+        const requestDetail = requests.find((r) => r.id === requestDetailId) ?? null;
+        const requestStatusTone = (status: string | null): 'warning' | 'info' | 'success' | 'danger' => {
+          if (status === 'в работе') return 'info';
+          if (status === 'выполнена') return 'success';
+          if (status === 'отклонена') return 'danger';
+          return 'warning';
+        };
         return (
-          <div className="md:rounded-2xl md:border md:border-border md:bg-surface md:p-6">
-            <div className="mb-3 hidden items-center justify-between md:mb-4 md:flex">
-              <div>
-                <h2 className="text-lg font-semibold text-accent">{t('admin.requests')}</h2>
-                <span className="text-sm text-secondary">
-                  {t('admin.shownOf', { n: filteredRequests.length, total: requests.length })}
-                </span>
-              </div>
-              {reqActiveFiltersCount > 0 && (
-                <button onClick={clearReqFilters}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
+          <div className="space-y-4 md:rounded-2xl md:border md:border-border md:bg-surface md:p-6">
+            <AdminPageHeader
+              title={t('admin.requests')}
+              secondary={`${t('admin.requestsLead')} ${t('admin.shownOf', { n: filteredRequests.length, total: requests.length })}`}
+              action={
+                reqActiveFiltersCount > 0 ? (
+                  <AdminSecondaryButton type="button" onClick={clearReqFilters}>
                     {t('admin.resetN', { n: reqActiveFiltersCount })}
-                </button>
-              )}
-            </div>
+                  </AdminSecondaryButton>
+                ) : undefined
+              }
+            />
 
             <div className="mb-3 flex gap-2 md:hidden">
               <input className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2.5 text-base text-foreground placeholder:text-placeholder"
@@ -2616,13 +2826,13 @@ export default function AdminPage() {
             </div>
 
             {/* ПАНЕЛЬ ФИЛЬТРОВ ЗАЯВОК */}
-            <div className={`mb-4 rounded-xl border border-border bg-surface p-3 space-y-3 md:p-4 ${reqFiltersOpen ? 'block' : 'hidden'} md:block`}>
-              <input className="hidden w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-placeholder md:block"
+            <AdminFilterBar className={`mb-4 ${reqFiltersOpen ? 'block' : 'hidden'} md:block`}>
+              <input className={`${adminFieldClass} hidden md:block`}
                 placeholder={t('common.search')}
                 value={reqSearch} onChange={(e) => setReqSearch(e.target.value)} />
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <select value={reqStatusFilter} onChange={(e) => setReqStatusFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                  className={adminFieldClass}>
                   <option value="">{t('form.allStatuses')}</option>
                   <option value="новая">{t('status.reqNew')}</option>
                   <option value="в работе">{t('status.reqWork')}</option>
@@ -2630,7 +2840,7 @@ export default function AdminPage() {
                   <option value="отклонена">{t('status.reqReject')}</option>
                 </select>
                 <select value={reqCategoryFilter} onChange={(e) => setReqCategoryFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                  className={adminFieldClass}>
                   <option value="">{t('form.allCategories')}</option>
                   <option value="сантехника">{t('cat.plumbing')}</option>
                   <option value="электрика">{t('cat.electric')}</option>
@@ -2639,66 +2849,150 @@ export default function AdminPage() {
                   <option value="другое">{t('cat.other')}</option>
                 </select>
                 <select value={reqPriorityFilter} onChange={(e) => setReqPriorityFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
+                  className={adminFieldClass}>
                   <option value="">{t('form.anyPriority')}</option>
                   <option value="низкий">{t('status.prioLow')}</option>
                   <option value="средний">{t('status.prioMid')}</option>
                   <option value="высокий">{t('status.prioHigh')}</option>
                 </select>
-                <select value={reqAptFilter} onChange={(e) => setReqAptFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
-                  <option value="">{t('form.allApts')}</option>
-                  {properties.map((p) => (
-                    <option key={p.id} value={String(p.id)}>
-                      {t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}
-                    </option>
-                  ))}
-                </select>
+                <ApartmentCombobox
+                  properties={properties}
+                  value={reqAptFilter ? Number(reqAptFilter) : ''}
+                  onChange={(id) => setReqAptFilter(id === '' ? '' : String(id))}
+                />
               </div>
-            </div>
+            </AdminFilterBar>
 
-            {/* СПИСОК ЗАЯВОК */}
-            <div className="space-y-3">
-              {filteredRequests.length === 0 && <div className="text-sm text-muted">{t('form.noRequestsFound')}</div>}
-              {filteredRequests.map((r) => (
-                <div key={r.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-foreground font-medium">{r.subject}</div>
-                      <div className="text-sm text-secondary mt-1">{r.description}</div>
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <span className="text-xs text-muted">{propertyFullById(r.property_id ?? 0)}</span>
-                        <span className="text-xs rounded-full bg-hover px-2 py-0.5 text-secondary border border-border">{labelCategory(r.category, t)}</span>
-                        <span className={`text-xs rounded-full px-2 py-0.5 border ${priorityClass(r.priority)}`}>
-                          {labelPriority(r.priority, t)}
-                        </span>
-                        {r.photo_url && (
-                          <a href={r.photo_url} target="_blank" rel="noreferrer"
-                            className="text-xs text-accent hover:underline">{t('form.photo')}</a>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted mt-2">
-                        {new Date(r.created_at).toLocaleString(dateLocale)}
-                      </div>
+            {requests.length === 0 ? (
+              <AdminEmptyState title={t('account.noRequestsYet')} />
+            ) : filteredRequests.length === 0 ? (
+              <AdminEmptyState title={t('admin.noAptsFilter')} />
+            ) : (
+              <>
+                <div className="space-y-2 md:hidden">
+                  {filteredRequests.map((r) => {
+                    const preview = String(r.description ?? '').replace(/\s+/g, ' ').trim();
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setRequestDetailId(r.id)}
+                        className="w-full rounded-[14px] border border-border bg-surface p-3 text-left shadow-card"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs text-muted">{formatOwnerDateTime(r.created_at, locale)}</span>
+                          <StatusBadge label={labelRequestStatus(r.status, t)} tone={requestStatusTone(r.status)} />
+                        </div>
+                        <div className="mt-1 truncate text-sm font-medium text-foreground">{r.subject || '—'}</div>
+                        {preview ? <div className="truncate text-xs text-secondary">{preview}</div> : null}
+                        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
+                          <span className="truncate">{propertyFullById(r.property_id ?? 0)}</span>
+                          {r.photo_url ? <span className="shrink-0">{t('admin.reqPhoto')}</span> : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <AdminTableShell className="hidden md:block">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead>
+                      <tr className={adminTableHeadRowClass}>
+                        <th className={adminTableCellClass}>{t('admin.date')}</th>
+                        <th className={adminTableCellClass}>{t('admin.aptLabel')}</th>
+                        <th className={adminTableCellClass}>{t('account.subject')}</th>
+                        <th className={adminTableCellClass}>{t('admin.status')}</th>
+                        <th className={adminTableCellClass}>{t('admin.reqPhoto')}</th>
+                        <th className={adminTableCellClass}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRequests.map((r) => {
+                        const preview = String(r.description ?? '').replace(/\s+/g, ' ').trim();
+                        return (
+                          <tr key={r.id} className={adminTableRowClass}>
+                            <td className={`${adminTableCellClass} whitespace-nowrap text-xs text-muted`}>
+                              {formatOwnerDateTime(r.created_at, locale)}
+                            </td>
+                            <td className={adminTableCellClass}>{propertyFullById(r.property_id ?? 0)}</td>
+                            <td className={adminTableCellClass}>
+                              <div className="max-w-md truncate font-medium text-foreground">{r.subject || '—'}</div>
+                              {preview ? <div className="max-w-md truncate text-xs text-secondary">{preview}</div> : null}
+                            </td>
+                            <td className={adminTableCellClass}>
+                              <StatusBadge label={labelRequestStatus(r.status, t)} tone={requestStatusTone(r.status)} />
+                            </td>
+                            <td className={`${adminTableCellClass} text-xs text-muted`}>{r.photo_url ? t('admin.reqPhoto') : '—'}</td>
+                            <td className={adminTableCellClass}>
+                              <button type="button" onClick={() => setRequestDetailId(r.id)} className={adminBtnTertiaryClass}>
+                                {t('admin.reqDetails')}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </AdminTableShell>
+              </>
+            )}
+            {requestDetail ? (
+              <div className={adminModalOverlayClass} onClick={() => setRequestDetailId(null)}>
+                <div className={`${adminModalPanelClass} max-w-lg`} onClick={(e) => e.stopPropagation()}>
+                  <div className={adminModalHeaderClass}>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-lg font-semibold text-foreground">{requestDetail.subject || '—'}</h3>
+                      <p className="mt-0.5 text-sm text-secondary">{propertyFullById(requestDetail.property_id ?? 0)}</p>
                     </div>
-                    <div className="text-right flex flex-col items-end gap-2">
-                      <select value={r.status ?? 'новая'}
-                        onChange={(e) => handleUpdateRequestStatus(r.id, e.target.value)}
-                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground">
+                    <button type="button" onClick={() => setRequestDetailId(null)} className={adminBtnSecondaryClass}>
+                      {t('common.close')}
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge label={labelRequestStatus(requestDetail.status, t)} tone={requestStatusTone(requestDetail.status)} />
+                      <span className="text-xs text-muted">{labelCategory(requestDetail.category, t)}</span>
+                      <span className={`text-xs rounded-full border px-2 py-0.5 ${priorityClass(requestDetail.priority)}`}>
+                        {labelPriority(requestDetail.priority, t)}
+                      </span>
+                    </div>
+                    <div className="text-sm text-foreground">
+                      <div>{requestDetail.owner_name || '—'}</div>
+                      {requestDetail.owner_phone ? (
+                        <div className="text-secondary">{t('form.tel', { n: requestDetail.owner_phone })}</div>
+                      ) : null}
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm text-secondary">{requestDetail.description || '—'}</p>
+                    {requestDetail.photo_url ? (
+                      <a href={requestDetail.photo_url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
+                        {t('form.photo')}
+                      </a>
+                    ) : null}
+                    <div className="text-xs text-muted">{formatOwnerDateTime(requestDetail.created_at, locale)}</div>
+                    <div>
+                      <label className="mb-1 block text-xs text-secondary">{t('admin.status')}</label>
+                      <select
+                        value={requestDetail.status ?? 'новая'}
+                        onChange={(e) => handleUpdateRequestStatus(requestDetail.id, e.target.value)}
+                        className={adminFieldClass}
+                      >
                         <option value="новая">{t('status.reqNew')}</option>
                         <option value="в работе">{t('status.reqWork')}</option>
                         <option value="выполнена">{t('status.reqDone')}</option>
                         <option value="отклонена">{t('status.reqReject')}</option>
                       </select>
-                      <button onClick={() => handleDeleteRequest(r.id)}
-                        className="text-xs text-danger hover:text-danger">{t('common.delete')}</button>
+                    </div>
+                    <div className="border-t border-border pt-4">
+                      <button type="button" onClick={() => handleDeleteRequest(requestDetail.id)} className="text-sm text-danger hover:underline">
+                        {t('common.delete')}
+                      </button>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : null}
           </div>
         );
+      }
 
       // =============================================================
       // СЧЁТЧИКИ
@@ -2713,6 +3007,8 @@ export default function AdminPage() {
             waterMode={waterMode}
             canChangeWaterMode={staffRole.trim().toLowerCase() === 'администрация'}
             onSaveWaterMode={handleSaveWaterMode}
+            tab={searchParams.get('tab')}
+            onTabChange={(next) => openUtilityTab('вода', next)}
           />
         );
 
@@ -2722,6 +3018,8 @@ export default function AdminPage() {
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
+            tab={searchParams.get('tab')}
+            onTabChange={(next) => openSectionTab('капремонт', next)}
           />
         );
 
@@ -2735,57 +3033,58 @@ export default function AdminPage() {
           />
         );
 
-      case 'электроэнергия':
-        return (
-          <AdminElectricityFinance
-            supabase={supabase}
-            properties={properties}
-            staffRole={staffRole}
-          />
-        );
-
-      case 'счётчики': {
+      case 'счётчики':
+      case 'электроэнергия': {
         const canElSubmit =
           electricityMode !== 'disabled' && canSubmitElectricityStaff(staffRole, staffActive);
+        const canChangeElMode = staffRole.trim().toLowerCase() === 'администрация';
+        const elModeLabel =
+          electricityMode === 'staff_only'
+            ? t('admin.elModeStaffOnly')
+            : electricityMode === 'disabled'
+              ? t('admin.elModeDisabled')
+              : t('admin.elModeOwnerAndStaff');
+        const elTabItems: { id: AdminUtilityTab; label: string }[] = [
+          { id: 'overview', label: t('admin.utilTabOverview') },
+          { id: 'meter', label: t('admin.utilTabMeter') },
+          { id: 'readings', label: t('admin.utilTabReadings') },
+        ];
+        if (showElectricityFinance) {
+          elTabItems.push(
+            { id: 'tariff', label: t('admin.utilTabTariff') },
+            { id: 'finance', label: t('admin.utilTabFinance') },
+          );
+        }
+        const elTab = parseAdminUtilityTab(
+          sectionQuery === 'счётчики' ? 'meter' : searchParams.get('tab'),
+          elTabItems.map((item) => item.id),
+        );
+        const selectedElId = elMeterPropertyId || (properties[0] ? String(properties[0].id) : '');
+        const selectedElMeters = electricityMeters.filter((m) => String(m.property_id) === selectedElId);
+        const activeEl = activeElectricityMeter(selectedElMeters);
+        const elPairs = pairElectricityReadings(
+          meterReadings.filter((m) => String(m.property_id) === selectedElId),
+          electricityMeters,
+        );
+        const elSnapshot = electricityActiveMeterReadings(elPairs, activeEl);
+        const retiredEl = selectedElMeters.filter((m) => m.retired_at);
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h2 className="text-lg font-semibold text-accent">{t('admin.meters')}</h2>
-              {canElSubmit && (
-                <button onClick={() => setShowMeterForm(true)}
-                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                  + {t('account.elSubmit')}
-                </button>
-              )}
-            </div>
-
-            {staffRole.trim().toLowerCase() === 'администрация' && (
-              <div className="mb-4 space-y-3">
-                <div className="rounded-[14px] border border-border bg-background px-4 py-3">
-                  <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.waterMode')}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {([
-                      ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
-                      ['staff_only', t('admin.elModeStaffOnly')],
-                      ['disabled', t('admin.elModeDisabled')],
-                    ] as const).map(([id, label]) => (
-                      <button
-                        key={`water-${id}`}
-                        type="button"
-                        onClick={() => void handleSaveWaterMode(id)}
-                        className={`rounded-full border px-3 py-1.5 text-sm ${
-                          waterMode === id
-                            ? 'border-accent/25 bg-accent-bg text-accent'
-                            : 'border-border text-secondary hover:bg-hover'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-[14px] border border-border bg-background px-4 py-3">
-                <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.electricityMode')}</p>
+          <div className="space-y-4">
+            <AdminPageHeader
+              title={t('admin.electricityFinance')}
+              secondary={t('admin.electricityLead')}
+              action={
+                elTab === 'readings' && canElSubmit ? (
+                  <AdminPrimaryButton type="button" onClick={() => setShowMeterForm(true)}>
+                    + {t('account.elSubmit')}
+                  </AdminPrimaryButton>
+                ) : undefined
+              }
+            />
+            <AdminCard>
+              <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.electricityMode')}</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{elModeLabel}</p>
+              {canChangeElMode && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {([
                     ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
@@ -2806,42 +3105,62 @@ export default function AdminPage() {
                     </button>
                   ))}
                 </div>
-                </div>
+              )}
+              {electricityMode === 'disabled' && (
+                <p className="mt-3 text-sm text-secondary">{t('account.elErrDisabled')}</p>
+              )}
+              <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
+              <ApartmentCombobox
+                className="mt-1 max-w-xl"
+                properties={properties}
+                value={selectedElId ? Number(selectedElId) : ''}
+                onChange={(id) => {
+                  setElMeterPropertyId(id === '' ? '' : String(id));
+                  setShowElAssign(false);
+                  setShowElReplace(false);
+                }}
+              />
+            </AdminCard>
+
+            <AdminTabBar
+              tabs={elTabItems}
+              active={elTab}
+              onChange={(id) => openUtilityTab('электроэнергия', id as AdminUtilityTab)}
+            />
+
+            {elTab === 'overview' && (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
+                <AdminMetricCard
+                  label={t('admin.utilTabMeter')}
+                  value={activeEl ? displayElectricityMeterNumber(activeEl.meter_number) : '—'}
+                  secondary={activeEl ? undefined : t('admin.noElectricityMeter')}
+                  onClick={() => openUtilityTab('электроэнергия', 'meter')}
+                />
+                <AdminMetricCard
+                  label={t('admin.elLastDay')}
+                  value={elSnapshot.currentDay != null ? formatKwh(elSnapshot.currentDay, locale) : '—'}
+                  secondary={elSnapshot.readingDate ? formatOwnerDate(elSnapshot.readingDate) : t('admin.noReadings')}
+                  onClick={() => openUtilityTab('электроэнергия', 'readings')}
+                />
+                <AdminMetricCard
+                  label={t('admin.elLastNight')}
+                  value={elSnapshot.currentNight != null ? formatKwh(elSnapshot.currentNight, locale) : '—'}
+                  onClick={() => openUtilityTab('электроэнергия', 'readings')}
+                />
               </div>
             )}
 
-            {electricityMode === 'disabled' && (
-              <p className="mb-4 text-sm text-secondary">{t('account.elErrDisabled')}</p>
-            )}
-
-            {(() => {
+            {elTab === 'meter' && (() => {
               const canElMeter = canManageElectricityMeter(staffRole, staffActive);
-              const selectedElId = elMeterPropertyId || meterAptFilter || (properties[0] ? String(properties[0].id) : '');
-              const activeEl = activeElectricityMeter(
-                electricityMeters.filter((m) => String(m.property_id) === selectedElId),
-              );
-              const fieldClass = 'rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground';
+              const fieldClass = adminFieldClass;
               return (
-                <div className="mb-4 rounded-[14px] border border-border bg-background px-4 py-3">
+                <div className="rounded-[14px] border border-border bg-background px-4 py-3">
                   <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.elMeter')}</p>
-                  <select
-                    className={`${fieldClass} mt-2 max-w-xl`}
-                    value={selectedElId}
-                    onChange={(e) => {
-                      setElMeterPropertyId(e.target.value);
-                      setShowElAssign(false);
-                      setShowElReplace(false);
-                    }}
-                  >
-                    {properties.length === 0 && <option value="">{t('form.pickApt')}</option>}
-                    {properties.map((p) => (
-                      <option key={p.id} value={String(p.id)}>
-                        {t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}
-                      </option>
-                    ))}
-                  </select>
                   {!activeEl ? (
-                    <p className="mt-3 text-sm text-secondary">{t('admin.noElectricityMeter')}</p>
+                    <div className="mt-3">
+                      <AdminEmptyState title={t('admin.noElectricityMeter')} />
+                    </div>
                   ) : (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
                       <div>
@@ -2850,7 +3169,7 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <div className="text-[11px] text-muted">{t('account.elInstalledAt')}</div>
-                        <div className="mt-0.5 tabular-nums">{new Date(activeEl.installed_at).toLocaleDateString(dateLocale)}</div>
+                        <div className="mt-0.5 tabular-nums">{formatOwnerDate(activeEl.installed_at)}</div>
                       </div>
                       <div>
                         <div className="text-[11px] text-muted">{t('account.elInitialDay')}</div>
@@ -2917,51 +3236,57 @@ export default function AdminPage() {
                       </div>
                     </form>
                   )}
+                  <p className="mt-5 text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.utilMeterHistory')}</p>
+                  {retiredEl.length === 0 ? (
+                    <div className="mt-3">
+                      <AdminEmptyState title={t('admin.utilNoMeterHistory')} />
+                    </div>
+                  ) : (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full min-w-[28rem] text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-muted">
+                            <th className="py-2 pr-3">{t('account.elMeterNumber')}</th>
+                            <th className="py-2 pr-3">{t('account.elInstalledAt')}</th>
+                            <th className="py-2 pr-3">{t('account.elInitialDay')}</th>
+                            <th className="py-2 pr-3">{t('account.elInitialNight')}</th>
+                            <th className="py-2 pr-3">{t('admin.date')}</th>
+                            <th className="py-2 pr-3">{t('admin.note')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {retiredEl.map((row) => (
+                            <tr key={row.id} className="border-t border-border">
+                              <td className="py-2 pr-3 tabular-nums">{displayElectricityMeterNumber(row.meter_number)}</td>
+                              <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.installed_at)}</td>
+                              <td className="py-2 pr-3 tabular-nums">{formatKwh(Number(row.initial_day_reading), locale)}</td>
+                              <td className="py-2 pr-3 tabular-nums">{formatKwh(Number(row.initial_night_reading), locale)}</td>
+                              <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.retired_at)}</td>
+                              <td className="py-2 pr-3 text-secondary">{row.replacement_reason ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               );
             })()}
 
-            <div className="mb-4 rounded-[14px] border border-border bg-surface p-4 shadow-card">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <select value={meterAptFilter} onChange={(e) => setMeterAptFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
-                  <option value="">{t('form.allApts')}</option>
-                  {properties.map((p) => (
-                    <option key={p.id} value={String(p.id)}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
-                  ))}
-                </select>
-                <select value={meterTypeFilter} onChange={(e) => setMeterTypeFilter(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
-                  <option value="">Все типы</option>
-                  <option value="electricity_day">Э/э день</option>
-                  <option value="electricity_night">Э/э ночь</option>
-                  <option value="cold_water">Холодная вода</option>
-                </select>
-                {(meterAptFilter !== '' || meterTypeFilter !== '') && (
-                  <button onClick={() => { setMeterAptFilter(''); setMeterTypeFilter(''); }}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary hover:bg-hover">
-                    Сбросить
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {showMeterForm && canElSubmit && (
+            {elTab === 'readings' && showMeterForm && canElSubmit && (
               <form onSubmit={handleSaveMeter}
                 className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-accent">{t('account.meterTabElectricity')}</h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    value={meterForm.property_id}
-                    onChange={(e) => {
+                  <ApartmentCombobox
+                    required
+                    properties={properties}
+                    value={meterForm.property_id ? Number(meterForm.property_id) : ''}
+                    onChange={(id) => {
                       meterIdempotencyRef.current = null;
-                      setMeterForm({ ...meterForm, property_id: e.target.value });
-                    }} required>
-                    <option value="">{t('form.pickApt')}</option>
-                    {properties.map((p) => (
-                      <option key={p.id} value={p.id}>{t('form.aptOwner', { n: p.apartment_number, owner: p.owner_name ?? '' })}</option>
-                    ))}
-                  </select>
+                      setMeterForm({ ...meterForm, property_id: id === '' ? '' : String(id) });
+                    }}
+                  />
                   <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
                     placeholder={t('admin.elDayReading')} type="number" step="0.001" value={meterForm.day}
                     onChange={(e) => {
@@ -2994,51 +3319,62 @@ export default function AdminPage() {
               </form>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-secondary border-b border-border">
-                    <th className="py-2 px-3">{t('admin.aptLabel')}</th>
-                    <th className="py-2 px-3">{t('account.elMeter')}</th>
-                    <th className="py-2 px-3">Тип</th>
-                    <th className="py-2 px-3">Показание</th>
-                    <th className="py-2 px-3">Дата</th>
-                    <th className="py-2 px-3">{t('account.elSubmittedBy')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMeters.slice(0, 100).map((m) => (
-                    <tr key={m.id} className="border-b border-border hover:bg-surface">
-                      <td className="py-2 px-3 text-foreground">{propertyNameById(m.property_id)}</td>
-                      <td className="py-2 px-3 text-secondary">
-                        {displayElectricityMeterNumber(electricityMeters.find((em) => em.id === m.electricity_meter_id)?.meter_number) || '—'}
-                      </td>
-                      <td className="py-2 px-3 text-secondary">
-                        {m.meter_type === 'electricity_day' ? 'Э/э день' :
-                         m.meter_type === 'electricity_night' ? 'Э/э ночь' : 'Вода'}
-                      </td>
-                      <td className="py-2 px-3 text-foreground">
-                        {m.meter_type === 'cold_water'
-                          ? formatM3(Number(m.value), locale)
-                          : formatKwh(Number(m.value), locale)}
-                      </td>
-                      <td className="py-2 px-3 text-secondary">
-                        {new Date(m.reading_date).toLocaleDateString(dateLocale)}
-                      </td>
-                      <td className="py-2 px-3 text-secondary">
-                        {m.submitted_source === 'owner'
-                          ? t('account.elByOwner')
-                          : m.submitted_source === 'staff'
-                            ? t('account.elByStaff')
-                            : (m.submitted_by ?? '—')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {filteredMeters.length === 0 && (
-              <div className="text-center text-sm text-muted py-4">Показаний не найдено.</div>
+            {elTab === 'readings' && (
+              elPairs.length === 0 ? (
+                <AdminEmptyState title={t('admin.noReadings')} />
+              ) : (
+                <AdminTableShell>
+                  <table className="w-full min-w-[40rem] text-sm">
+                    <thead>
+                      <tr className={adminTableHeadRowClass}>
+                        <th className={adminTableCellClass}>{t('admin.date')}</th>
+                        <th className={adminTableCellClass}>{t('account.elMeter')}</th>
+                        <th className={adminTableCellClass}>{t('account.elDay')}</th>
+                        <th className={adminTableCellClass}>{t('account.elNight')}</th>
+                        <th className={adminTableCellClass}>{t('account.elConsDay')}</th>
+                        <th className={adminTableCellClass}>{t('account.elConsNight')}</th>
+                        <th className={adminTableCellClass}>{t('account.elSubmittedBy')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {elPairs.slice(0, 100).map((row) => (
+                        <tr key={row.key} className={adminTableRowClass}>
+                          <td className={adminTableCellClass}>{formatOwnerDate(row.reading_date)}</td>
+                          <td className={adminTableCellClass}>{displayElectricityMeterNumber(row.meter_number) || '—'}</td>
+                          <td className={adminTableCellClass}>{row.day != null ? `${formatKwh(row.day, locale)} ${t('account.kwh')}` : '—'}</td>
+                          <td className={adminTableCellClass}>{row.night != null ? `${formatKwh(row.night, locale)} ${t('account.kwh')}` : '—'}</td>
+                          <td className={adminTableCellClass}>{row.consumptionDay != null ? `${formatKwh(row.consumptionDay, locale)} ${t('account.kwh')}` : '—'}</td>
+                          <td className={adminTableCellClass}>{row.consumptionNight != null ? `${formatKwh(row.consumptionNight, locale)} ${t('account.kwh')}` : '—'}</td>
+                          <td className={adminTableCellClass}>
+                            {row.source === 'owner'
+                              ? t('account.elByOwner')
+                              : row.source === 'staff'
+                                ? t('account.elByStaff')
+                                : (row.submitted_by ?? '—')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </AdminTableShell>
+              )
+            )}
+
+            {showElectricityFinance && (
+              <div className={elTab === 'overview' || elTab === 'tariff' || elTab === 'finance' ? undefined : 'hidden'}>
+                <AdminElectricityFinance
+                  supabase={supabase}
+                  properties={properties}
+                  staffRole={staffRole}
+                  embedded
+                  panel={elTab === 'tariff' ? 'tariff' : elTab === 'finance' ? 'finance' : 'overview'}
+                  focusPropertyId={selectedElId ? Number(selectedElId) : ''}
+                  onPropertyChange={(id) => {
+                    if (id !== '') setElMeterPropertyId(String(id));
+                  }}
+                  onOpenTab={(next) => openUtilityTab('электроэнергия', next)}
+                />
+              </div>
             )}
           </div>
         );
@@ -3055,77 +3391,75 @@ export default function AdminPage() {
             ? totalUkExpenses
             : expensesByYear.get(expenseYearFilter)?.total ?? 0;
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-accent">Расходы УК</h2>
-                <div className="text-sm text-secondary mt-1">
-                  Опубликовано {expenseYearFilter === 'all' ? 'всего' : expenseYearFilter}: {visibleTotal.toFixed(2)} €
-                  {pendingUkExpenses.length > 0 && (
-                    <span className="ml-2 text-warning">
-                      · на проверке {pendingUkExpenses.length} ({pendingUkExpenses.reduce((s, x) => s + Number(x.amount ?? 0), 0).toFixed(2)} €)
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {t('admin.expenseHint')}
-                </p>
-              </div>
-              <button onClick={startNewExpense}
-                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                + Добавить
-              </button>
+          <div className="space-y-4">
+            <AdminPageHeader
+              title={t('admin.expenses')}
+              secondary={`${t('admin.expenseHint')} · ${t('admin.expensePublished')} ${expenseYearFilter === 'all' ? t('admin.expenseAllYears') : expenseYearFilter}: ${money(visibleTotal)}${
+                pendingUkExpenses.length > 0
+                  ? ` · ${t('admin.expensePending')} ${pendingUkExpenses.length}`
+                  : ''
+              }`}
+              action={
+                <AdminPrimaryButton type="button" onClick={startNewExpense}>
+                  + {t('admin.addPlus')}
+                </AdminPrimaryButton>
+              }
+            />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <AdminMetricCard label={t('admin.expensePublished')} value={money(visibleTotal)} />
+              <AdminMetricCard
+                label={t('admin.expensePending')}
+                value={String(pendingUkExpenses.length)}
+                alert={pendingUkExpenses.length > 0}
+              />
             </div>
-            <div className="flex flex-wrap gap-2 mb-5">
-              <button
-                onClick={() => setExpenseYearFilter('all')}
-                className={`rounded-lg px-3 py-1.5 text-sm border ${
-                  expenseYearFilter === 'all'
-                    ? 'bg-accent-bg text-accent border-accent/25'
-                    : 'bg-surface text-secondary border-border hover:text-foreground'
-                }`}
-              >
-                Все годы
-              </button>
-              {expenseYears.map((year) => {
-                const total = expensesByYear.get(year)?.total ?? 0;
-                return (
-                  <button
-                    key={year}
-                    onClick={() => setExpenseYearFilter(year)}
-                    className={`rounded-lg px-3 py-1.5 text-sm border ${
-                      expenseYearFilter === year
-                        ? 'bg-accent-bg text-accent border-accent/25'
-                        : 'bg-surface text-secondary border-border hover:text-foreground'
-                    }`}
+            <AdminFilterBar>
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <label className="text-sm text-secondary">
+                  {t('admin.reportsYear')}
+                  <select
+                    className={`${adminFieldClass} mt-1`}
+                    value={expenseYearFilter === 'all' ? 'all' : String(expenseYearFilter)}
+                    onChange={(e) => setExpenseYearFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                   >
-                    {year}
-                    <span className="ml-2 text-xs text-muted">{total.toFixed(2)} €</span>
-                    {(expensesByYear.get(year)?.pendingTotal ?? 0) > 0 && (
-                      <span className="ml-1 text-xs text-warning">+{expensesByYear.get(year)?.pendingTotal.toFixed(0)}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                    <option value="all">{t('admin.expenseAllYears')}</option>
+                    {expenseYears.map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-secondary">
+                  {t('admin.status')}
+                  <select
+                    className={`${adminFieldClass} mt-1`}
+                    value={expenseStatusFilter}
+                    onChange={(e) => setExpenseStatusFilter(e.target.value as 'all' | 'pending' | 'published')}
+                  >
+                    <option value="all">{t('admin.expAllStatuses')}</option>
+                    <option value="pending">{t('status.expPending')}</option>
+                    <option value="published">{t('status.expPublished')}</option>
+                  </select>
+                </label>
+              </div>
+            </AdminFilterBar>
             {showExpenseForm && (
               <form onSubmit={handleSaveExpense}
                 className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-accent">
-                  {editingExpense ? 'Редактировать расход' : 'Новый расход'}
+                  {editingExpense ? t('admin.expEdit') : t('admin.expNew')}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <input type="date" required
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                    className={adminFieldClass}
                     value={expenseForm.expense_date}
                     onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })} />
                   <input type="number" step="0.01" min="0.01" required
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Сумма (€)" value={expenseForm.amount}
+                    className={adminFieldClass}
+                    placeholder={t('admin.expAmountPh')} value={expenseForm.amount}
                     onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} />
                   <input
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground sm:col-span-2"
-                    placeholder="Куда потрачено (ремонт, уборка, материалы...)"
+                    className={`${adminFieldClass} sm:col-span-2`}
+                    placeholder={t('admin.expTitlePh')}
                     value={expenseForm.title}
                     onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
                     required
@@ -3133,7 +3467,7 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <p className="mb-2 text-xs text-secondary">
-                    Фото чека и покупки — до {MAX_EXPENSE_PHOTOS} шт.
+                    {t('admin.expPhotos', { n: MAX_EXPENSE_PHOTOS })}
                   </p>
                   {(expenseExistingUrls.length > 0 || expensePhotoFiles.length > 0) && (
                     <div className="mb-2 flex flex-wrap gap-2">
@@ -3184,90 +3518,140 @@ export default function AdminPage() {
                   <button type="submit"
                     className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
                     {editingExpense && isExpensePublished(editingExpense) && canApproveUkExpenses(staffRole)
-                      ? 'Сохранить'
-                      : 'Отправить на утверждение'}
+                      ? t('admin.expSavePublished')
+                      : t('admin.expSubmitReview')}
                   </button>
                   <button type="button" onClick={() => { setShowExpenseForm(false); setEditingExpense(null); setExpensePhotoFiles([]); }}
                     className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
-                    Отмена
+                    {t('common.cancel')}
                   </button>
                 </div>
               </form>
             )}
             {ukExpenses.length === 0 && !showExpenseForm ? (
-              <div className="text-center text-sm text-muted py-4">Расходов пока нет.</div>
+              <AdminEmptyState title={t('admin.expNone')} />
             ) : (
               <div className="space-y-6">
                 {yearsToShow.map((year) => {
                   const group = expensesByYear.get(year);
-                  const items = group?.items ?? [];
+                  const items = (group?.items ?? []).filter((exp) => {
+                    if (expenseStatusFilter === 'all') return true;
+                    const published = isExpensePublished(exp);
+                    return expenseStatusFilter === 'published' ? published : !published;
+                  });
                   return (
                     <div key={year}>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="mb-2 flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-accent">{year}</h3>
                         <span className="text-sm text-secondary">
-                          опубликовано {(group?.total ?? 0).toFixed(2)} €
+                          {t('admin.expensePublished')} {money(group?.total ?? 0)}
                           {(group?.pendingTotal ?? 0) > 0 && (
-                            <span className="ml-2 text-warning">на проверке {(group?.pendingTotal ?? 0).toFixed(2)} €</span>
+                            <span className="ml-2 text-warning">{t('admin.expensePending')} {money(group?.pendingTotal ?? 0)}</span>
                           )}
                         </span>
                       </div>
                       {items.length === 0 ? (
-                        <div className="text-sm text-muted py-2">За {year} год расходов нет.</div>
+                        <AdminEmptyState title={t('admin.expNoneYear', { year })} />
                       ) : (
-                        <div className="space-y-2">
-                          {items.map((exp) => {
-                            const published = isExpensePublished(exp);
-                            const photos = expensePhotoUrls(exp);
-                            return (
-                              <div key={exp.id} className="rounded-xl border border-border bg-surface p-3">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-sm font-medium text-foreground">{exp.title?.trim() || 'Без названия'}</span>
-                                      <span className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                                        published
-                                          ? 'border-accent/25 text-accent'
-                                          : 'border-warning/25 text-warning'
-                                      }`}>
-                                        {published ? 'опубликован' : 'на проверке'}
-                                      </span>
+                        <>
+                          <div className="hidden md:block">
+                            <AdminTableShell>
+                              <table className="w-full min-w-[40rem] text-sm">
+                                <thead>
+                                  <tr className={adminTableHeadRowClass}>
+                                    <th className={adminTableCellClass}>{t('admin.date')}</th>
+                                    <th className={adminTableCellClass}>{t('admin.pdfTitle')}</th>
+                                    <th className={adminTableCellClass}>{t('admin.amount')}</th>
+                                    <th className={adminTableCellClass}>{t('admin.status')}</th>
+                                    <th className={adminTableCellClass} />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((exp) => {
+                                    const published = isExpensePublished(exp);
+                                    const photos = expensePhotoUrls(exp);
+                                    const open = expenseDetailId === exp.id;
+                                    return (
+                                      <tr key={exp.id} className={adminTableRowClass}>
+                                        <td className={adminTableCellClass}>{formatUkDate(exp.expense_date)}</td>
+                                        <td className={adminTableCellClass}>
+                                          <div>{exp.title?.trim() || t('admin.expUntitled')}</div>
+                                          {open && (
+                                            <div className="mt-2 space-y-2">
+                                              <div className="text-xs text-muted">
+                                                {exp.created_by || t('common.uk')}
+                                                {exp.approved_by ? ` · ${t('admin.expApprovedBy', { name: exp.approved_by })}` : ''}
+                                              </div>
+                                              {photos.length > 0 && <ExpensePhotoStrip urls={photos} size="sm" />}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td className={`${adminTableCellClass} tabular-nums`}>{money(exp.amount)}</td>
+                                        <td className={adminTableCellClass}>
+                                          <StatusBadge label={labelExpenseStatus(published, t)} tone={published ? 'info' : 'warning'} />
+                                        </td>
+                                        <td className={adminTableCellClass}>
+                                          <div className="flex flex-wrap justify-end gap-1">
+                                            <button type="button" onClick={() => setExpenseDetailId(open ? null : exp.id)} className="rounded px-2 py-1 text-xs text-accent hover:bg-hover">
+                                              {t('admin.expDetails')}
+                                            </button>
+                                            {!published && canApproveUkExpenses(staffRole) && (
+                                              <button type="button" onClick={() => handleApproveExpense(exp)} className="rounded-full bg-accent-bg px-3 py-1 text-xs text-accent">
+                                                {t('admin.expPublish')}
+                                              </button>
+                                            )}
+                                            {(!published || canApproveUkExpenses(staffRole)) && (
+                                              <button type="button" onClick={() => startEditExpense(exp)} className="rounded px-2 py-1 text-xs bg-hover text-secondary">✎</button>
+                                            )}
+                                            <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="rounded px-2 py-1 text-xs bg-danger-bg text-danger">✕</button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </AdminTableShell>
+                          </div>
+                          <div className="space-y-2 md:hidden">
+                            {items.map((exp) => {
+                              const published = isExpensePublished(exp);
+                              const photos = expensePhotoUrls(exp);
+                              const open = expenseDetailId === exp.id;
+                              return (
+                                <div key={exp.id} className="rounded-xl border border-border bg-surface p-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <div className="text-sm font-medium">{exp.title?.trim() || t('admin.expUntitled')}</div>
+                                      <div className="mt-1 text-xs text-muted">{formatUkDate(exp.expense_date)}</div>
                                     </div>
-                                    <div className="mt-1 text-xs text-muted">
-                                      {formatUkDate(exp.expense_date)} · {exp.created_by || 'УК'}
-                                      {exp.approved_by ? ` · утвердил ${exp.approved_by}` : ''}
-                                    </div>
-                                    {photos.length > 0 && (
-                                      <div className="mt-2">
-                                        <ExpensePhotoStrip urls={photos} size="sm" />
-                                      </div>
+                                    <div className="text-sm font-semibold tabular-nums">{money(exp.amount)}</div>
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <StatusBadge label={labelExpenseStatus(published, t)} tone={published ? 'info' : 'warning'} />
+                                    <button type="button" onClick={() => setExpenseDetailId(open ? null : exp.id)} className="text-xs text-accent">
+                                      {t('admin.expDetails')}
+                                    </button>
+                                    {!published && canApproveUkExpenses(staffRole) && (
+                                      <button type="button" onClick={() => handleApproveExpense(exp)} className="text-xs text-accent">
+                                        {t('admin.expPublish')}
+                                      </button>
                                     )}
+                                    {(!published || canApproveUkExpenses(staffRole)) && (
+                                      <button type="button" onClick={() => startEditExpense(exp)} className="text-xs text-secondary">✎</button>
+                                    )}
+                                    <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-xs text-danger">✕</button>
                                   </div>
-                                  <div className="flex shrink-0 flex-col items-end gap-2">
-                                    <div className="text-sm font-semibold text-foreground">{Number(exp.amount).toFixed(2)} €</div>
-                                    <div className="flex flex-wrap justify-end gap-1">
-                                      {!published && canApproveUkExpenses(staffRole) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleApproveExpense(exp)}
-                                          className="rounded-full bg-accent-bg px-3 py-1 text-xs text-accent"
-                                        >
-                                          Опубликовать
-                                        </button>
-                                      )}
-                                      {( !published || canApproveUkExpenses(staffRole) ) && (
-                                        <button type="button" onClick={() => startEditExpense(exp)}
-                                          className="rounded px-2 py-1 text-xs bg-hover text-secondary">✎</button>
-                                      )}
-                                      <button type="button" onClick={() => handleDeleteExpense(exp.id)}
-                                        className="rounded px-2 py-1 text-xs bg-danger-bg text-danger">✕</button>
+                                  {open && photos.length > 0 && (
+                                    <div className="mt-2">
+                                      <ExpensePhotoStrip urls={photos} size="sm" />
                                     </div>
-                                  </div>
+                                  )}
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              );
+                            })}
+                          </div>
+                        </>
                       )}
                     </div>
                   );
@@ -3283,171 +3667,267 @@ export default function AdminPage() {
       // =============================================================
       case 'персонал':
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-accent">Персонал</h2>
-              <button onClick={startNewStaff}
-                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                + Добавить
-              </button>
-            </div>
-            {showStaffForm && (
-              <form onSubmit={handleSaveStaff}
-                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-accent">
-                  {editingStaff ? 'Редактировать сотрудника' : 'Новый сотрудник'}
+          <div className="min-w-0 space-y-4">
+            <AdminPageHeader
+              title={t('admin.staff')}
+              secondary={t('admin.staffLead')}
+              action={canEditStaff ? (
+                <AdminPrimaryButton type="button" onClick={startNewStaff}>
+                  + {t('admin.addPlus')}
+                </AdminPrimaryButton>
+              ) : undefined}
+            />
+            {canEditStaff && showStaffForm && (
+              <form onSubmit={handleSaveStaff} className={adminFormPanelClass}>
+                <h3 className="text-sm font-semibold text-foreground">
+                  {editingStaff ? t('admin.staffEdit') : t('admin.staffNew')}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Имя" value={staffForm.name}
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.staffNamePh')} value={staffForm.name}
                     onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required />
-                  <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  <select className={adminFieldClass}
                     value={staffForm.role}
                     onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required>
-                    <option value="" disabled>Должность</option>
+                    <option value="" disabled>{t('admin.staffRolePh')}</option>
                     {STAFF_ROLE_OPTIONS.map((role) => (
-                      <option key={role.value} value={role.value}>{role.label}</option>
+                      <option key={role.value} value={role.value}>{labelStaffRole(role.value, t)}</option>
                     ))}
                   </select>
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Email для входа" type="email" value={staffForm.email}
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.staffEmailPh')} type="email" value={staffForm.email}
                     onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Телефон" value={staffForm.phone}
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.staffPhonePh')} value={staffForm.phone}
                     onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} />
-                  <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Зарплата (€/мес)" type="number" value={staffForm.salary_eur}
-                    onChange={(e) => setStaffForm({ ...staffForm, salary_eur: e.target.value })} />
+                  {showStaffSalary ? (
+                    <input className={adminFieldClass}
+                      placeholder={t('admin.staffSalaryPh')} type="number" value={staffForm.salary_eur}
+                      onChange={(e) => setStaffForm({ ...staffForm, salary_eur: e.target.value })} />
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm text-secondary">
                     <input type="checkbox" checked={staffForm.active}
                       onChange={(e) => setStaffForm({ ...staffForm, active: e.target.checked })} />
-                    Активен
+                    {t('admin.staffActive')}
                   </label>
                 </div>
-                <div className="flex gap-2">
-                  <button type="submit"
-                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                    Сохранить
-                  </button>
-                  <button type="button" onClick={() => setShowStaffForm(false)}
-                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
-                    Отмена
-                  </button>
+                <div className="flex flex-wrap gap-2">
+                  <AdminPrimaryButton type="submit">{t('common.save')}</AdminPrimaryButton>
+                  <AdminSecondaryButton type="button" onClick={() => setShowStaffForm(false)}>
+                    {t('common.cancel')}
+                  </AdminSecondaryButton>
                 </div>
               </form>
             )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-secondary border-b border-border">
-                    <th className="py-2 px-3">Имя</th>
-                    <th className="py-2 px-3">Должность</th>
-                    <th className="py-2 px-3">Email</th>
-                    <th className="py-2 px-3">Телефон</th>
-                    <th className="py-2 px-3">Зарплата</th>
-                    <th className="py-2 px-3">Статус</th>
-                    <th className="py-2 px-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
+            {staff.length === 0 ? (
+              <AdminEmptyState title={t('admin.staffEmpty')} />
+            ) : (
+              <>
+                <div className="space-y-2 md:hidden">
                   {staff.map((s) => (
-                    <tr key={s.id} className="border-b border-border hover:bg-surface">
-                      <td className="py-2 px-3 text-foreground">{s.name}</td>
-                      <td className="py-2 px-3 text-secondary">{s.role}</td>
-                      <td className="py-2 px-3 text-secondary">{s.email ?? '—'}</td>
-                      <td className="py-2 px-3 text-secondary">{s.phone ?? '—'}</td>
-                      <td className="py-2 px-3 text-foreground">
-                        {s.salary_eur ? `${Number(s.salary_eur).toFixed(2)} €` : '—'}
-                      </td>
-                      <td className="py-2 px-3">
-                        <span className={s.active ? 'text-accent' : 'text-muted'}>
-                          {s.active ? 'Активен' : 'Неактивен'}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3">
-                        <div className="flex gap-1">
-                          <button onClick={() => startEditStaff(s)}
-                            className="rounded px-2 py-1 text-xs bg-hover hover:bg-hover text-secondary">✎</button>
-                          <button onClick={() => handleDeleteStaff(s.id)}
-                            className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">✕</button>
+                    <div key={s.id} className="rounded-[14px] border border-border bg-surface p-3 shadow-card">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-foreground">{s.name}</div>
+                          <div className="text-xs text-secondary">{labelStaffRole(s.role, t)}</div>
                         </div>
-                      </td>
-                    </tr>
+                        <StatusBadge label={s.active ? t('admin.staffActive') : t('admin.staffInactive')} tone={s.active ? 'success' : 'neutral'} />
+                      </div>
+                      <div className="mt-1 text-xs text-muted">
+                        {[s.phone, s.email].filter(Boolean).join(' · ') || '—'}
+                      </div>
+                      {showStaffSalary ? (
+                        <div className="mt-1 text-sm text-foreground">{s.salary_eur ? money(s.salary_eur) : '—'}</div>
+                      ) : null}
+                      {canEditStaff ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <button type="button" onClick={() => startEditStaff(s)} className={adminBtnTertiaryClass}>{t('admin.staffEdit')}</button>
+                          <button type="button" onClick={() => handleDeleteStaff(s.id)} className="text-sm text-danger hover:underline">{t('common.delete')}</button>
+                        </div>
+                      ) : null}
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+                <AdminTableShell className="hidden md:block">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead>
+                      <tr className={adminTableHeadRowClass}>
+                        <th className={adminTableCellClass}>{t('admin.staffNamePh')}</th>
+                        <th className={adminTableCellClass}>{t('admin.staffRolePh')}</th>
+                        <th className={adminTableCellClass}>{t('admin.staffEmailPh')}</th>
+                        <th className={adminTableCellClass}>{t('admin.staffPhonePh')}</th>
+                        {showStaffSalary ? <th className={adminTableCellClass}>{t('admin.staffSalaryPh')}</th> : null}
+                        <th className={adminTableCellClass}>{t('admin.status')}</th>
+                        {canEditStaff ? <th className={adminTableCellClass} /> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staff.map((s) => (
+                        <tr key={s.id} className={adminTableRowClass}>
+                          <td className={`${adminTableCellClass} font-medium text-foreground`}>{s.name}</td>
+                          <td className={adminTableCellClass}>{labelStaffRole(s.role, t)}</td>
+                          <td className={adminTableCellClass}>{s.email ?? '—'}</td>
+                          <td className={adminTableCellClass}>{s.phone ?? '—'}</td>
+                          {showStaffSalary ? (
+                            <td className={adminTableCellClass}>{s.salary_eur ? money(s.salary_eur) : '—'}</td>
+                          ) : null}
+                          <td className={adminTableCellClass}>
+                            <StatusBadge label={s.active ? t('admin.staffActive') : t('admin.staffInactive')} tone={s.active ? 'success' : 'neutral'} />
+                          </td>
+                          {canEditStaff ? (
+                            <td className={adminTableCellClass}>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <button type="button" onClick={() => startEditStaff(s)} className={adminBtnTertiaryClass}>{t('admin.staffEdit')}</button>
+                                <button type="button" onClick={() => handleDeleteStaff(s.id)} className="text-sm text-danger hover:underline">{t('common.delete')}</button>
+                              </div>
+                            </td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </AdminTableShell>
+              </>
+            )}
           </div>
         );
+
+      case 'настройки': {
+        const moduleModeLabel = (mode: string) =>
+          mode === 'staff_only'
+            ? t('admin.elModeStaffOnly')
+            : mode === 'disabled'
+              ? t('admin.elModeDisabled')
+              : t('admin.elModeOwnerAndStaff');
+        const canRate = canSetSupportRate(staffRole);
+        return (
+          <div className="min-w-0 space-y-4">
+            <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
+            <AdminCard className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsFinance')}</h3>
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{t('admin.feeCurrentRate')}</p>
+              <p className="text-xl font-semibold text-foreground">
+                {money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span>
+              </p>
+              {canRate ? (
+                <form onSubmit={handleSaveSupportRate} className="flex flex-wrap items-end gap-2">
+                  <label className="text-sm text-secondary">
+                    {t('admin.feeNewRate')}
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={supportRateInput}
+                      onChange={(e) => setSupportRateInput(e.target.value)}
+                      className={`${adminFieldClass} mt-1 w-36`}
+                    />
+                  </label>
+                  <AdminPrimaryButton type="submit" disabled={rateSaving || supportFeeMissing}>
+                    {rateSaving ? t('admin.feeSaving') : t('admin.feeSaveRate')}
+                  </AdminPrimaryButton>
+                </form>
+              ) : (
+                <p className="text-xs text-muted">{t('admin.feeAdminOnlyRate')}</p>
+              )}
+              <p className="text-xs text-muted">{t('admin.settingsRateAlso')}</p>
+            </AdminCard>
+            <AdminCard className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-muted">{t('admin.waterMode')}</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{moduleModeLabel(waterMode)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted">{t('admin.electricityMode')}</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{moduleModeLabel(electricityMode)}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted">{t('admin.settingsModesReadOnly')}</p>
+            </AdminCard>
+          </div>
+        );
+      }
 
       // =============================================================
       // ОПРОСЫ
       // =============================================================
-      case 'опросы':
+      case 'опросы': {
+        const selectedPoll = polls.find((p) => p.id === pollDetailId) ?? null;
+        const detailOptions = selectedPoll
+          ? pollOptions.filter((o) => o.poll_id === selectedPoll.id).sort((a, b) => a.sort_order - b.sort_order)
+          : [];
+        const detailVotes = selectedPoll ? pollVotes.filter((v) => v.poll_id === selectedPoll.id) : [];
+        const detailHistory = selectedPoll ? pollVoteHistory.filter((h) => h.poll_id === selectedPoll.id) : [];
+        const detailDecision = selectedPoll
+          ? pollDecisionLabel(selectedPoll, tallyPoll(detailOptions, detailVotes, properties).accepted)
+          : 'идёт';
         return (
-          <div className="space-y-6">
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-accent">Опросы жильцов</h2>
-                <button onClick={startNewPoll}
-                  className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                  + Новый опрос
-                </button>
-              </div>
+          <div className="space-y-4">
+            <AdminPageHeader
+              title={t('admin.polls')}
+              secondary={t('admin.pollsLeadAdmin')}
+              action={
+                <AdminPrimaryButton type="button" onClick={startNewPoll}>
+                  + {t('admin.quickPoll')}
+                </AdminPrimaryButton>
+              }
+            />
+            <p className="text-xs text-muted">{t('account.pollsNotMeeting')}</p>
+            <AdminCard>
               {showPollForm && (
-                <form onSubmit={handleSavePoll}
-                  className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
-                  <h3 className="text-sm font-semibold text-accent">Вынести на рассмотрение</h3>
+                <form onSubmit={handleSavePoll} className={`${adminFormPanelClass} mb-6`}>
+                  <h3 className="text-sm font-semibold text-foreground">{t('admin.pollFormTitle')}</h3>
                   <select
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                    className={adminFieldClass}
                     value={pollForm.category}
                     onChange={(e) => setPollForm({ ...pollForm, category: e.target.value as PollCategory })}
                   >
-                    <option value="ремонт">Ремонт</option>
-                    <option value="покупка">Покупка</option>
-                    <option value="опрос">Опрос</option>
+                    <option value="ремонт">{labelPollCategory('ремонт', t)}</option>
+                    <option value="покупка">{labelPollCategory('покупка', t)}</option>
+                    <option value="опрос">{labelPollCategory('опрос', t)}</option>
                   </select>
-                  <input className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Что купить или отремонтировать?" value={pollForm.title}
+                  <input className={adminFieldClass}
+                    placeholder={t('admin.pollWhatPh')} value={pollForm.title}
                     onChange={(e) => setPollForm({ ...pollForm, title: e.target.value })} required />
-                  <textarea className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    placeholder="Пояснение для жильцов" rows={3} value={pollForm.body}
+                  <textarea className={adminFieldClass}
+                    placeholder={t('admin.pollBodyPh')} rows={3} value={pollForm.body}
                     onChange={(e) => setPollForm({ ...pollForm, body: e.target.value })} />
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div>
-                      <label className="text-xs text-secondary mb-1 block">Начало голосования</label>
+                      <label className="text-xs text-secondary mb-1 block">{t('admin.pollStarts')}</label>
                       <input type="date"
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                        className={adminFieldClass}
                         value={pollForm.voting_starts}
                         onChange={(e) => setPollForm({ ...pollForm, voting_starts: e.target.value })} />
                     </div>
                     <div>
-                      <label className="text-xs text-secondary mb-1 block">Окончание голосования</label>
+                      <label className="text-xs text-secondary mb-1 block">{t('admin.pollEnds')}</label>
                       <input type="date"
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                        className={adminFieldClass}
                         value={pollForm.deadline}
                         onChange={(e) => setPollForm({ ...pollForm, deadline: e.target.value })} />
                     </div>
                     <div>
-                      <label className="text-xs text-secondary mb-1 block">Бюджет (€)</label>
+                      <label className="text-xs text-secondary mb-1 block">{t('admin.pollBudget')}</label>
                       <input type="number" step="0.01" min="0"
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                        className={adminFieldClass}
                         placeholder="0.00" value={pollForm.budget_eur}
                         onChange={(e) => setPollForm({ ...pollForm, budget_eur: e.target.value })} />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-secondary mb-1 block">Фото</label>
+                    <label className="text-xs text-secondary mb-1 block">{t('admin.pollPhoto')}</label>
                     <input type="file" accept="image/*"
                       className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary"
                       onChange={(e) => setPollPhoto(e.target.files?.[0] ?? null)} />
                   </div>
                   <div className="space-y-2">
-                    <div className="text-xs text-secondary">Варианты ответа</div>
+                    <div className="text-xs text-secondary">{t('admin.pollOptions')}</div>
                     {pollForm.options.map((opt, i) => (
                       <div key={i} className="flex gap-2">
                         <input
-                          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                          className={adminFieldClass}
                           value={opt}
                           onChange={(e) => {
                             const next = [...pollForm.options];
@@ -3468,174 +3948,309 @@ export default function AdminPage() {
                     ))}
                     <button type="button"
                       onClick={() => setPollForm({ ...pollForm, options: [...pollForm.options, ''] })}
-                      className="text-xs text-accent hover:text-accent-hover">
-                      + Добавить вариант
+                      className={adminBtnTertiaryClass}>
+                      + {t('admin.pollAddOption')}
                     </button>
                   </div>
-                  <div className="flex gap-2">
-                    <button type="submit"
-                      className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                      Опубликовать
-                    </button>
-                    <button type="button" onClick={() => setShowPollForm(false)}
-                      className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
-                      Отмена
-                    </button>
+                  <div className="flex flex-wrap gap-2">
+                    <AdminPrimaryButton type="submit">{t('admin.pollPublish')}</AdminPrimaryButton>
+                    <AdminSecondaryButton type="button" onClick={() => setShowPollForm(false)}>
+                      {t('common.cancel')}
+                    </AdminSecondaryButton>
                   </div>
                 </form>
               )}
               {polls.length === 0 && !showPollForm && (
-                <div className="text-sm text-muted">Опросов нет. Создайте голосование по покупке или ремонту.</div>
+                <AdminEmptyState title={t('account.noPolls')} />
               )}
-              <div className="space-y-4">
-                {polls.map((poll) => {
-                  const options = pollOptions
-                    .filter((o) => o.poll_id === poll.id)
-                    .sort((a, b) => a.sort_order - b.sort_order);
-                  const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
-                  const history = pollVoteHistory.filter((h) => h.poll_id === poll.id);
-                  const open = isPollAcceptingVotes(poll);
-                  const tally = tallyPoll(options, votesForPoll, properties);
-                  const decision = pollDecisionLabel(poll, tally.accepted);
-                  return (
-                    <div key={poll.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <span className={`text-xs rounded-full px-2 py-0.5 border ${pollCategoryClass(poll.category)}`}>
-                              {poll.category}
-                            </span>
-                            <span className={`text-xs ${open ? 'text-accent' : 'text-muted'}`}>
-                              {poll.status}
-                            </span>
-                            <span className={`text-xs ${
-                              decision === 'принято' ? 'text-accent' :
-                              decision === 'не принято' ? 'text-danger' : 'text-secondary'
-                            }`}>
-                              {decision}
-                            </span>
+              {polls.length > 0 && (
+                <>
+                  <div className="space-y-2 md:hidden">
+                    {polls.map((poll) => {
+                      const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
+                      const options = pollOptions.filter((o) => o.poll_id === poll.id);
+                      const tally = tallyPoll(options, votesForPoll, properties);
+                      const decision = pollDecisionLabel(poll, tally.accepted);
+                      return (
+                        <button
+                          key={poll.id}
+                          type="button"
+                          onClick={() => setPollDetailId(poll.id)}
+                          className="w-full rounded-[14px] border border-border bg-surface p-3 text-left"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="truncate text-sm font-medium text-foreground">{poll.title}</span>
+                            <StatusBadge
+                              label={labelPollStatus(poll.status, t)}
+                              tone={poll.status === 'открыт' ? 'info' : 'neutral'}
+                            />
                           </div>
-                          <h3 className="text-foreground font-semibold">{poll.title}</h3>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleTogglePoll(poll)}
-                            className="rounded px-2 py-1 text-xs bg-hover hover:bg-hover text-secondary">
-                            {poll.status === 'открыт' ? 'Закрыть' : 'Открыть'}
-                          </button>
-                          <button onClick={() => handleDeletePoll(poll.id)}
-                            className="rounded px-2 py-1 text-xs bg-danger-bg hover:bg-danger-bg text-danger">
-                            Удалить
-                          </button>
+                          <div className="mt-1 text-xs text-muted">
+                            {formatOwnerDate(poll.voting_starts, locale)} – {formatOwnerDate(poll.deadline, locale)}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-secondary">{t('admin.pollVotesN', { n: votesForPoll.length })}</span>
+                            <StatusBadge
+                              label={labelPollDecision(decision, t)}
+                              tone={decision === 'принято' ? 'success' : decision === 'не принято' ? 'danger' : 'warning'}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <AdminTableShell className="hidden md:block">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead>
+                        <tr className={adminTableHeadRowClass}>
+                          <th className={adminTableCellClass}>{t('account.subject')}</th>
+                          <th className={adminTableCellClass}>{t('admin.status')}</th>
+                          <th className={adminTableCellClass}>{t('admin.pollColVotes')}</th>
+                          <th className={adminTableCellClass}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {polls.map((poll) => {
+                          const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
+                          const options = pollOptions.filter((o) => o.poll_id === poll.id);
+                          const tally = tallyPoll(options, votesForPoll, properties);
+                          const decision = pollDecisionLabel(poll, tally.accepted);
+                          return (
+                            <tr key={poll.id} className={adminTableRowClass}>
+                              <td className={adminTableCellClass}>
+                                <div className="font-medium text-foreground">{poll.title}</div>
+                                <div className="text-xs text-muted">
+                                  {labelPollCategory(poll.category, t)} · {formatOwnerDate(poll.voting_starts, locale)} – {formatOwnerDate(poll.deadline, locale)}
+                                </div>
+                              </td>
+                              <td className={adminTableCellClass}>
+                                <div className="flex flex-wrap gap-1">
+                                  <StatusBadge
+                                    label={labelPollStatus(poll.status, t)}
+                                    tone={poll.status === 'открыт' ? 'info' : 'neutral'}
+                                  />
+                                  <StatusBadge
+                                    label={labelPollDecision(decision, t)}
+                                    tone={decision === 'принято' ? 'success' : decision === 'не принято' ? 'danger' : 'warning'}
+                                  />
+                                </div>
+                              </td>
+                              <td className={`${adminTableCellClass} text-secondary`}>
+                                {t('admin.pollVotesN', { n: votesForPoll.length })}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                <button type="button" onClick={() => setPollDetailId(poll.id)} className={adminBtnTertiaryClass}>
+                                  {t('admin.annOpen')}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </AdminTableShell>
+                </>
+              )}
+              {selectedPoll ? (
+                  <div className="mt-4 space-y-3 border-t border-border pt-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-base font-semibold text-foreground">{selectedPoll.title}</h3>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <StatusBadge label={labelPollCategory(selectedPoll.category, t)} />
+                          <StatusBadge
+                            label={labelPollStatus(selectedPoll.status, t)}
+                            tone={selectedPoll.status === 'открыт' ? 'info' : 'neutral'}
+                          />
+                          <StatusBadge
+                            label={labelPollDecision(detailDecision, t)}
+                            tone={detailDecision === 'принято' ? 'success' : detailDecision === 'не принято' ? 'danger' : 'warning'}
+                          />
                         </div>
                       </div>
-                      <PollDetails poll={poll} options={options} votes={votesForPoll} properties={properties} />
-                      <div className="mt-3">
-                        <PollOptionBars poll={poll} options={options} votes={votesForPoll} properties={properties} alwaysShowStats />
+                      <div className="flex flex-wrap gap-2">
+                        <AdminSecondaryButton type="button" onClick={() => setPollDetailId(null)}>
+                          {t('common.close')}
+                        </AdminSecondaryButton>
+                        <button type="button" onClick={() => handleTogglePoll(selectedPoll)} className={adminBtnSecondaryClass}>
+                          {selectedPoll.status === 'открыт' ? t('admin.pollClose') : t('admin.pollReopen')}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedPollHistory(expandedPollHistory === poll.id ? null : poll.id)}
-                        className="mt-3 text-xs text-accent hover:text-accent-hover"
-                      >
-                        {expandedPollHistory === poll.id ? 'Скрыть историю' : `История голосования (${history.length})`}
-                      </button>
-                      {expandedPollHistory === poll.id && (
-                        <div className="mt-2 overflow-x-auto">
-                          {history.length === 0 ? (
-                            <div className="text-xs text-muted">Записей пока нет.</div>
-                          ) : (
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-left text-muted border-b border-border">
-                                  <th className="py-1 pr-2">Когда</th>
-                                  <th className="py-1 pr-2">{t('admin.aptLabel')}</th>
-                                  <th className="py-1 pr-2">Голос</th>
-                                  <th className="py-1 text-right">Вес, м²</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {history.map((h) => (
-                                  <tr key={h.id} className="border-b border-border text-secondary">
-                                    <td className="py-1 pr-2">
-                                      {new Date(h.created_at).toLocaleString(dateLocale)}
-                                    </td>
-                                    <td className="py-1 pr-2">{propertyNameById(h.property_id)}</td>
-                                    <td className="py-1 pr-2">
-                                      {options.find((o) => o.id === h.option_id)?.label ?? h.option_id}
-                                    </td>
-                                    <td className="py-1 text-right">{Number(h.weight ?? 0).toFixed(1)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                      )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                    <PollDetails poll={selectedPoll} options={detailOptions} votes={detailVotes} properties={properties} />
+                    <PollOptionBars poll={selectedPoll} options={detailOptions} votes={detailVotes} properties={properties} alwaysShowStats />
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPollHistory(expandedPollHistory === selectedPoll.id ? null : selectedPoll.id)}
+                      className={adminBtnTertiaryClass}
+                    >
+                      {expandedPollHistory === selectedPoll.id
+                        ? t('admin.pollHideHistory')
+                        : t('admin.pollHistory', { n: detailHistory.length })}
+                    </button>
+                    {expandedPollHistory === selectedPoll.id && (
+                      detailHistory.length === 0 ? (
+                        <AdminEmptyState title={t('admin.pollNoHistory')} />
+                      ) : (
+                        <AdminTableShell>
+                          <table className="w-full min-w-[520px] text-xs">
+                            <thead>
+                              <tr className={adminTableHeadRowClass}>
+                                <th className={adminTableCellClass}>{t('admin.pollWhen')}</th>
+                                <th className={adminTableCellClass}>{t('admin.aptLabel')}</th>
+                                <th className={adminTableCellClass}>{t('admin.pollVote')}</th>
+                                <th className={`${adminTableCellClass} text-right`}>{t('admin.pollWeight')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {detailHistory.map((h) => (
+                                <tr key={h.id} className={adminTableRowClass}>
+                                  <td className={adminTableCellClass}>{formatOwnerDateTime(h.created_at, locale)}</td>
+                                  <td className={adminTableCellClass}>{propertyNameById(h.property_id)}</td>
+                                  <td className={adminTableCellClass}>
+                                    {detailOptions.find((o) => o.id === h.option_id)?.label ?? h.option_id}
+                                  </td>
+                                  <td className={`${adminTableCellClass} text-right`}>{formatM3(Number(h.weight ?? 0), locale)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </AdminTableShell>
+                      )
+                    )}
+                    <div className="border-t border-border pt-3">
+                      <button type="button" onClick={() => handleDeletePoll(selectedPoll.id)} className="text-sm text-danger hover:underline">
+                        {t('common.delete')}
+                      </button>
+                    </div>
+                  </div>
+              ) : null}
+            </AdminCard>
           </div>
         );
+      }
 
       // =============================================================
       // ОБЪЯВЛЕНИЯ
       // =============================================================
-      case 'объявления':
+      case 'объявления': {
+        const selectedAnn = announcements.find((a) => a.id === annDetailId) ?? null;
         return (
-          <div className="rounded-[14px] border border-border bg-surface shadow-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-accent">Объявления</h2>
-              <button onClick={() => setShowAnnForm(true)}
-                className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                + Создать
-              </button>
-            </div>
+          <div className="space-y-4">
+            <AdminPageHeader
+              title={t('admin.announcements')}
+              secondary={t('admin.announcementsLead')}
+              action={
+                <AdminPrimaryButton type="button" onClick={() => setShowAnnForm(true)}>
+                  + {t('admin.quickAnnounce')}
+                </AdminPrimaryButton>
+              }
+            />
             {showAnnForm && (
-              <form onSubmit={handleSaveAnn}
-                className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-accent">Новое объявление</h3>
-                <input className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  placeholder="Заголовок" value={annForm.title}
+              <form onSubmit={handleSaveAnn} className={adminFormPanelClass}>
+                <h3 className="text-sm font-semibold text-foreground">{t('admin.annNew')}</h3>
+                <input className={adminFieldClass}
+                  placeholder={t('admin.annTitlePh')} value={annForm.title}
                   onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })} required />
-                <textarea className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  placeholder="Текст объявления" rows={4} value={annForm.body}
+                <textarea className={adminFieldClass}
+                  placeholder={t('admin.annBodyPh')} rows={4} value={annForm.body}
                   onChange={(e) => setAnnForm({ ...annForm, body: e.target.value })} required />
-                <input className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                  placeholder="От кого" value={annForm.created_by}
+                <input className={adminFieldClass}
+                  placeholder={t('admin.annFromPh')} value={annForm.created_by}
                   onChange={(e) => setAnnForm({ ...annForm, created_by: e.target.value })} />
-                <div className="flex gap-2">
-                  <button type="submit"
-                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-                    Опубликовать
-                  </button>
-                  <button type="button" onClick={() => setShowAnnForm(false)}
-                    className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-secondary hover:bg-hover">
-                    Отмена
-                  </button>
+                <div className="flex flex-wrap gap-2">
+                  <AdminPrimaryButton type="submit">{t('admin.pollPublish')}</AdminPrimaryButton>
+                  <AdminSecondaryButton type="button" onClick={() => setShowAnnForm(false)}>
+                    {t('common.cancel')}
+                  </AdminSecondaryButton>
                 </div>
               </form>
             )}
-            <div className="space-y-3">
-              {announcements.length === 0 && <div className="text-sm text-muted">Объявлений нет.</div>}
-              {announcements.map((a) => (
-                <div key={a.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-foreground font-semibold">{a.title}</h3>
-                    <button onClick={() => handleDeleteAnn(a.id)}
-                      className="text-xs text-danger hover:text-danger">Удалить</button>
+            {announcements.length === 0 ? (
+              <AdminEmptyState title={t('account.noAnnouncements')} />
+            ) : (
+              <>
+                <div className="space-y-2 md:hidden">
+                  {announcements.map((a) => {
+                    const preview = String(a.body ?? '').replace(/\s+/g, ' ').trim();
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setAnnDetailId(a.id)}
+                        className="w-full rounded-[14px] border border-border bg-surface p-3 text-left shadow-card"
+                      >
+                        <div className="truncate text-sm font-medium text-foreground">{a.title}</div>
+                        <div className="mt-1 text-xs text-muted">{formatOwnerDateTime(a.created_at, locale)}</div>
+                        {preview ? <div className="mt-1 line-clamp-2 text-xs text-secondary">{preview}</div> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <AdminTableShell className="hidden md:block">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead>
+                      <tr className={adminTableHeadRowClass}>
+                        <th className={adminTableCellClass}>{t('admin.annTitlePh')}</th>
+                        <th className={adminTableCellClass}>{t('admin.date')}</th>
+                        <th className={adminTableCellClass}>{t('account.description')}</th>
+                        <th className={adminTableCellClass}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {announcements.map((a) => {
+                        const preview = String(a.body ?? '').replace(/\s+/g, ' ').trim();
+                        return (
+                          <tr key={a.id} className={adminTableRowClass}>
+                            <td className={`${adminTableCellClass} font-medium text-foreground`}>{a.title}</td>
+                            <td className={`${adminTableCellClass} whitespace-nowrap text-xs text-muted`}>
+                              {formatOwnerDateTime(a.created_at, locale)}
+                            </td>
+                            <td className={adminTableCellClass}>
+                              <div className="max-w-md truncate text-secondary">{preview || '—'}</div>
+                            </td>
+                            <td className={adminTableCellClass}>
+                              <button type="button" onClick={() => setAnnDetailId(a.id)} className={adminBtnTertiaryClass}>
+                                {t('admin.annOpen')}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </AdminTableShell>
+              </>
+            )}
+            {selectedAnn ? (
+              <div className={adminModalOverlayClass} onClick={() => setAnnDetailId(null)}>
+                <div className={`${adminModalPanelClass} max-w-lg`} onClick={(e) => e.stopPropagation()}>
+                  <div className={adminModalHeaderClass}>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-foreground">{selectedAnn.title}</h3>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {selectedAnn.created_by ? `${t('admin.annFrom', { name: selectedAnn.created_by })} · ` : ''}
+                        {formatOwnerDateTime(selectedAnn.created_at, locale)}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setAnnDetailId(null)} className={adminBtnSecondaryClass}>
+                      {t('common.close')}
+                    </button>
                   </div>
-                  <p className="text-sm text-secondary whitespace-pre-wrap">{a.body}</p>
-                  <div className="mt-2 text-xs text-muted">
-                    {a.created_by && `От: ${a.created_by} · `}
-                    {new Date(a.created_at).toLocaleString(dateLocale)}
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                    <p className="whitespace-pre-wrap text-sm text-secondary">{selectedAnn.body}</p>
+                    <div className="border-t border-border pt-4">
+                      <button type="button" onClick={() => handleDeleteAnn(selectedAnn.id)} className="text-sm text-danger hover:underline">
+                        {t('common.delete')}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : null}
           </div>
         );
+      }
 
       case 'отчётность':
         return (
@@ -3647,6 +4262,7 @@ export default function AdminPage() {
             staff={staff}
             supportRate={supportRate}
             years={expenseYears}
+            showSalary={showStaffSalary}
           />
         );
 
@@ -3668,14 +4284,16 @@ export default function AdminPage() {
               }`}
             >
               <div className="px-4 py-3 border-b border-border bg-surface">
-                <h2 className="text-sm font-semibold text-accent">
+                <h2 className="text-sm font-semibold text-foreground">
                   {t('admin.dialogs')}{' '}
                   {totalUnreadChats > 0 && t('admin.dialogsNew', { n: totalUnreadChats })}
                 </h2>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {chatProperties.length === 0 ? (
-                  <div className="p-4 text-sm text-muted">{t('admin.noDialogs')}</div>
+                  <div className="p-4">
+                    <AdminEmptyState title={t('admin.noDialogs')} />
+                  </div>
                 ) : (
                   chatProperties.map((item) => (
                     <button key={item.property.id}
@@ -3744,8 +4362,8 @@ export default function AdminPage() {
                   </div>
                   <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3 md:p-4">
                     {chatMessages.length === 0 ? (
-                      <div className="flex h-full items-center justify-center text-sm text-muted">
-                        {t('admin.noChatMessages')}
+                      <div className="flex h-full items-center justify-center p-4">
+                        <AdminEmptyState title={t('admin.noChatMessages')} />
                       </div>
                     ) : (
                       chatMessages.map((m) => {
@@ -3765,8 +4383,7 @@ export default function AdminPage() {
                                 <div className="whitespace-pre-wrap break-words">{m.message}</div>
                               ) : null}
                               <div className={`mt-1 text-[10px] ${isUk ? 'text-secondary' : 'text-secondary'}`}>
-                                {new Date(m.created_at).toLocaleString(dateLocale,
-                                  { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                {formatOwnerDateTime(m.created_at, locale)}
                                 {!isUk && isNewOwnerMessage(m, chatMessages, ukChatSeen[String(selectedChatProperty.id)]) && (
                                   <span className="ml-2 text-danger">● {t('account.newMsg')}</span>
                                 )}
@@ -3838,16 +4455,58 @@ export default function AdminPage() {
         const canPay = canRecordSupportPayments(staffRole);
         const canRate = canSetSupportRate(staffRole);
         const selectedPay = properties.find((p) => p.id === Number(payPropertyId));
-        const yearCharges = ledger.filter((e) => e.kind === 'charge' && e.period === chargeYear);
         const yearPayments = ledger.filter((e) => e.kind === 'payment').reduce((s, e) => s + Number(e.amount), 0);
+        const feeBulkTotal = properties.length;
+        const feeBulkExisting = feeChargeExisting ?? 0;
+        const feeBulkWill = Math.max(0, feeBulkTotal - feeBulkExisting);
+        const feeTabs = [
+          { id: 'overview', label: t('admin.feeTabOverview') },
+          { id: 'policy', label: t('admin.feeTabPolicy') },
+          { id: 'operations', label: t('admin.feeTabOperations') },
+          { id: 'register', label: t('admin.feeTabRegister') },
+        ] as const;
+        const feeRaw = searchParams.get('tab');
+        const feeTab = feeTabs.some((item) => item.id === feeRaw) ? feeRaw : 'overview';
         return (
           <div className="space-y-4">
+            <AdminPageHeader title={t('admin.fee')} secondary={t('admin.feeLead')} />
             {supportFeeMissing && (
-              <div className="rounded-2xl border border-warning/25 bg-warning-bg px-4 py-3 text-sm text-warning">
-                Нет таблиц в базе. Выполните <span className="font-mono text-warning">supabase/support_fee.sql</span> в SQL Editor.
+              <AdminInlineAlert tone="warning">{t('admin.feeMissingTables')}</AdminInlineAlert>
+            )}
+            <AdminTabBar
+              tabs={[...feeTabs]}
+              active={feeTab ?? 'overview'}
+              onChange={(id) => openSectionTab('такса', id)}
+            />
+            {feeTab === 'overview' && (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <AdminMetricCard
+                  label={t('admin.feeCurrentRate')}
+                  value={money(supportRate)}
+                  secondary={t('admin.feePerSqm')}
+                  onClick={() => openSectionTab('такса', 'operations')}
+                />
+                <AdminMetricCard
+                  label={t('admin.feeYear')}
+                  value={money(annualSupportTotal)}
+                  secondary={String(new Date().getFullYear())}
+                  onClick={() => openSectionTab('такса', 'policy')}
+                />
+                <AdminMetricCard
+                  label={t('admin.debt')}
+                  value={money(totalDebt)}
+                  alert={totalDebt > 0}
+                  onClick={() => openSectionTab('такса', 'register')}
+                />
+                <AdminMetricCard
+                  label={t('admin.overpay')}
+                  value={money(totalOverpayment)}
+                  onClick={() => openSectionTab('такса', 'register')}
+                />
               </div>
             )}
 
+            <div className={feeTab === 'policy' || feeTab === 'register' ? undefined : 'hidden'}>
             <AdminSupportFeeAnnual
               supabase={supabase}
               properties={properties}
@@ -3856,19 +4515,23 @@ export default function AdminPage() {
               canRate={canRate}
               onReload={loadAll}
               onError={setError}
+              panel={feeTab === 'register' ? 'register' : 'policy'}
             />
+            </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            {feeTab === 'operations' && (
+            <>
+            <div className="grid gap-4">
               <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Ставка таксы</p>
-                <div className="mt-1 text-3xl font-semibold text-foreground">{supportRate} € <span className="text-base font-normal text-muted">/ м² в год</span></div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feeCurrentRate')}</p>
+                <div className="mt-1 text-xl font-semibold text-foreground">{money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span></div>
                 <p className="mt-2 text-sm text-muted">
-                  По дому {annualSupportTotal.toFixed(2)} € в год
+                  {t('admin.feeYear')}: {money(annualSupportTotal)}
                 </p>
                 {canRate ? (
                   <form onSubmit={handleSaveSupportRate} className="mt-4 flex flex-wrap items-end gap-2">
                     <label className="text-sm text-secondary">
-                      Новая ставка
+                      {t('admin.feeNewRate')}
                       <input
                         type="number"
                         min="0.01"
@@ -3883,58 +4546,78 @@ export default function AdminPage() {
                       disabled={rateSaving || supportFeeMissing}
                       className="rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      {rateSaving ? 'Сохранение…' : 'Сохранить ставку'}
+                      {rateSaving ? t('admin.feeSaving') : t('admin.feeSaveRate')}
                     </button>
                   </form>
                 ) : (
-                  <p className="mt-3 text-xs text-muted">Ставку меняет только администратор.</p>
+                  <p className="mt-3 text-xs text-muted">{t('admin.feeAdminOnlyRate')}</p>
                 )}
               </div>
 
-              <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Начисление за год</p>
-                <p className="mt-2 text-sm text-secondary">
-                  Добавляет годовую таксу в долг (переплата гасится первой). Повторно за тот же год не начисляется.
-                </p>
-                <div className="mt-4 flex flex-wrap items-end gap-2">
-                  <label className="text-sm text-secondary">
-                    Год
-                    <input
-                      type="number"
-                      min="2020"
-                      max="2100"
-                      value={chargeYear}
-                      onChange={(e) => setChargeYear(e.target.value)}
-                      className="mt-1 block w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={chargeSaving || !canPay || supportFeeMissing}
-                    onClick={() => handleChargeSupport(properties.map((p) => p.id))}
-                    className="rounded-full border border-border bg-surface-secondary px-4 py-2 text-sm text-secondary hover:bg-hover disabled:opacity-50"
-                  >
-                    {chargeSaving ? 'Начисление…' : `Начислить всем (${chargeYear})`}
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-muted">{t('admin.chargedApts', { year: chargeYear, n: yearCharges.length })}</p>
-              </div>
             </div>
+            <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.bulkTitle')}</p>
+              <p className="mt-2 text-sm text-secondary">{t('admin.feeChargeHint')}</p>
+              <div className="mt-4 flex flex-wrap items-end gap-2">
+                <label className="text-sm text-secondary">
+                  {t('admin.sfYear')}
+                  <input
+                    type="number"
+                    min="2020"
+                    max="2100"
+                    value={chargeYear}
+                    onChange={(e) => {
+                      setChargeYear(e.target.value);
+                      setFeeBulkResult(null);
+                    }}
+                    className="mt-1 block w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-muted">{t('admin.bulkTotal')}</dt>
+                  <dd className="font-medium tabular-nums">{feeBulkTotal}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">{t('admin.bulkExisting')}</dt>
+                  <dd className="font-medium tabular-nums">{feeChargeExisting == null ? '—' : feeBulkExisting}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">{t('admin.bulkWill')}</dt>
+                  <dd className="font-medium tabular-nums">{feeChargeExisting == null ? '—' : feeBulkWill}</dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                disabled={chargeSaving || !canPay || supportFeeMissing || feeBulkTotal === 0}
+                onClick={() => void handleChargeSupportBulk()}
+                className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+              >
+                {chargeSaving ? t('admin.feeCharging') : t('admin.bulkChargeAll')}
+              </button>
+              {feeBulkResult ? <p className="mt-3 text-sm text-secondary">{feeBulkResult}</p> : null}
+            </div>
+            </>
+            )}
 
+            {feeTab === 'operations' && (
             <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Принять оплату таксы</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feePayTitle')}</p>
               {!canPay && (
-                <p className="mt-2 text-sm text-warning">Принимать оплату могут администратор и бухгалтер.</p>
+                <p className="mt-2 text-sm text-warning">{t('admin.feePayWho')}</p>
               )}
+              <p className="mt-2 text-sm text-secondary">{t('admin.feeWillRecord')}</p>
               <form onSubmit={handleRecordSupportPayment} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="text-sm text-secondary sm:col-span-2">
                   {t('admin.aptLabel')}
-                  <select
+                  <ApartmentCombobox
+                    className="mt-1"
                     required
                     disabled={!canPay}
+                    properties={properties}
                     value={payPropertyId}
-                    onChange={(e) => {
-                      const id = e.target.value ? Number(e.target.value) : '';
+                    onChange={(id) => {
                       setPayPropertyId(id);
                       const p = properties.find((x) => x.id === id);
                       if (!p) return;
@@ -3943,18 +4626,10 @@ export default function AdminPage() {
                         debt > 0 ? debt.toFixed(2) : String(monthlySupportFee(p.area_sqm, supportRate)),
                       );
                     }}
-                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  >
-                    <option value="">{t('form.pickApt')}</option>
-                    {properties.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        № {p.apartment_number} · {p.owner_name ?? 'без владельца'} · долг {Number(p.debt ?? 0).toFixed(2)} €
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="text-sm text-secondary">
-                  Сумма €
+                  {t('admin.feeAmount')}
                   <input
                     required
                     disabled={!canPay}
@@ -3967,12 +4642,12 @@ export default function AdminPage() {
                   />
                 </label>
                 <label className="text-sm text-secondary">
-                  Комментарий
+                  {t('admin.note')}
                   <input
                     disabled={!canPay}
                     value={payNote}
                     onChange={(e) => setPayNote(e.target.value)}
-                    placeholder="Наличные, банк…"
+                    placeholder={t('admin.feeNotePh')}
                     className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                   />
                 </label>
@@ -3980,15 +4655,15 @@ export default function AdminPage() {
                   <div className="sm:col-span-2 flex flex-wrap gap-2 text-xs">
                     <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
                       onClick={() => setPayAmount(Number(selectedPay.debt ?? 0) > 0 ? Number(selectedPay.debt).toFixed(2) : '0.01')}>
-                      Весь долг
+                      {t('admin.feeAllDebt')}
                     </button>
                     <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
                       onClick={() => setPayAmount(String(monthlySupportFee(selectedPay.area_sqm, supportRate)))}>
-                      Месяц
+                      {t('admin.feeMonth')}
                     </button>
                     <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
                       onClick={() => setPayAmount(String(annualSupportFee(selectedPay.area_sqm, supportRate)))}>
-                      Год
+                      {t('admin.feeOneYear')}
                     </button>
                   </div>
                 )}
@@ -3998,59 +4673,74 @@ export default function AdminPage() {
                     disabled={!canPay || paySaving || supportFeeMissing}
                     className="rounded-full bg-accent hover:bg-accent-hover px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
-                    {paySaving ? 'Запись…' : 'Внести оплату'}
+                    {paySaving ? t('admin.feePaying') : t('admin.feePaySubmit')}
                   </button>
                 </div>
               </form>
             </div>
+            )}
 
+            {feeTab === 'operations' && (
             <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">Журнал таксы</p>
-                <p className="text-xs text-muted">Оплаты в журнале: {yearPayments.toFixed(2)} €</p>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feeLedger')}</p>
+                <p className="text-xs text-muted">{t('admin.kindPayment')}: {money(yearPayments)}</p>
               </div>
               {ledger.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">Записей пока нет.</p>
+                <div className="mt-3"><AdminEmptyState title={t('admin.feeNoLedger')} /></div>
               ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="mt-3">
+                  <AdminTableShell>
+                  <table className="w-full min-w-[40rem] text-sm">
                     <thead>
-                      <tr className="text-left text-muted border-b border-border">
-                        <th className="py-2 pr-3">Дата</th>
-                        <th className="py-2 pr-3">{t('form.colApt')}</th>
-                        <th className="py-2 pr-3">Тип</th>
-                        <th className="py-2 pr-3">Сумма</th>
-                        <th className="py-2 pr-3">После</th>
-                        <th className="py-2 pr-3">Кто</th>
+                      <tr className={adminTableHeadRowClass}>
+                        <th className={adminTableCellClass}>{t('admin.date')}</th>
+                        <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                        <th className={adminTableCellClass}>{t('admin.kind')}</th>
+                        <th className={adminTableCellClass}>{t('admin.amount')}</th>
+                        <th className={adminTableCellClass}>{t('admin.debt')}</th>
+                        <th className={adminTableCellClass}>{t('admin.overpay')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {ledger.slice(0, 40).map((row) => {
                         const apt = properties.find((p) => p.id === row.property_id);
+                        const debtAfter = Number(row.debt_after ?? 0);
+                        const overAfter = Number(row.overpayment_after ?? 0);
                         return (
-                          <tr key={row.id} className="border-b border-border">
-                            <td className="py-2 pr-3 text-secondary">
-                              {new Date(row.created_at).toLocaleString(dateLocale)}
+                          <tr key={row.id} className={adminTableRowClass}>
+                            <td className={adminTableCellClass}>
+                              {formatOwnerDateTime(row.created_at, locale)}
                             </td>
-                            <td className="py-2 pr-3 text-foreground">{apt?.apartment_number ?? row.property_id}</td>
-                            <td className="py-2 pr-3">
-                              <span className={row.kind === 'payment' ? 'text-accent' : 'text-warning'}>
-                                {row.kind === 'payment' ? 'оплата' : `начисление ${row.period ?? ''}`}
-                              </span>
+                            <td className={adminTableCellClass}>{apt?.apartment_number ?? row.property_id}</td>
+                            <td className={adminTableCellClass}>
+                              {row.kind === 'payment' ? t('admin.kindPayment') : `${t('admin.kindCharge')}${row.period ? ` ${row.period}` : ''}`}
                             </td>
-                            <td className="py-2 pr-3 text-foreground">{Number(row.amount).toFixed(2)} €</td>
-                            <td className="py-2 pr-3 text-secondary text-xs">
-                              долг {Number(row.debt_after ?? 0).toFixed(2)} · +{Number(row.overpayment_after ?? 0).toFixed(2)}
+                            <td className={`${adminTableCellClass} tabular-nums`}>{money(row.amount)}</td>
+                            <td className={adminTableCellClass}>
+                              {debtAfter > 0 ? (
+                                <StatusBadge label={money(debtAfter)} tone="danger" />
+                              ) : (
+                                <span className="text-muted">{money(0)}</span>
+                              )}
                             </td>
-                            <td className="py-2 pr-3 text-muted text-xs">{row.recorded_by ?? '—'}</td>
+                            <td className={adminTableCellClass}>
+                              {overAfter > 0 ? (
+                                <StatusBadge label={money(overAfter)} tone="success" />
+                              ) : (
+                                <span className="text-muted">{money(0)}</span>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                  </AdminTableShell>
                 </div>
               )}
             </div>
+            )}
           </div>
         );
       }
@@ -4058,6 +4748,58 @@ export default function AdminPage() {
       default:
         return null;
     }
+  }
+
+  function navBadge(key: AdminSection) {
+    if (key === 'смены') return pendingTransfersCount;
+    if (key === 'опросы') return openPollsCount;
+    if (key === 'чат') return totalUnreadChats;
+    if (key === 'заявки') return activeRequests.length;
+    if (key === 'расходы') return pendingUkExpenses.length;
+    return 0;
+  }
+
+  function renderNavButton(key: AdminSection, nested: boolean) {
+    const item = menuByKey.get(key);
+    if (!item) return null;
+    const active = activeMenu === key;
+    const badge = navBadge(key);
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={() => navigateAdminSection(key)}
+        title={item.label}
+        className={`flex w-full min-w-0 items-center overflow-hidden rounded-lg border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+          sidebarOpen ? (nested ? 'h-8 gap-2 pl-8 pr-2' : 'h-9 gap-2.5 px-2.5') : 'h-9 justify-center px-0'
+        } ${
+          active
+            ? 'border-accent/25 bg-accent-bg text-accent'
+            : 'border-transparent text-secondary hover:bg-hover hover:text-foreground'
+        }`}
+      >
+        <span className="relative flex h-5 w-5 flex-shrink-0 items-center justify-center text-base leading-none">
+          {item.icon}
+          {!sidebarOpen && badge > 0 ? (
+            <span className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${key === 'чат' ? 'bg-danger' : 'bg-warning'}`} />
+          ) : null}
+        </span>
+        {sidebarOpen ? (
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="truncate text-left">{item.label}</span>
+            {badge > 0 ? (
+              <span
+                className={`ml-auto min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-semibold ${
+                  key === 'чат' ? 'bg-danger text-white' : 'bg-warning text-gray-900'
+                }`}
+              >
+                {badge}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+      </button>
+    );
   }
 
   if (!authReady) {
@@ -4111,129 +4853,37 @@ export default function AdminPage() {
           </button>
         </div>
         <nav className="min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-2">
-          {TOP_MENU.map((key) => {
-            const item = MENU_ITEMS.find((m) => m.key === key)!;
-            const active = activeMenu === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setActiveMenu(key);
-                  if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
-                  active
-                    ? 'bg-accent-bg text-accent border border-accent/25'
-                    : 'text-secondary hover:bg-hover hover:text-foreground border border-transparent'
-                }`}
-                title={item.label}
-              >
-                <span className="relative text-lg flex-shrink-0">
-                  {item.icon}
-                  {!sidebarOpen && key === 'чат' && totalUnreadChats > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger" />
-                  )}
-                </span>
-                {sidebarOpen && (
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="truncate">{item.label}</span>
-                    {key === 'чат' && totalUnreadChats > 0 && (
-                      <span className="ml-auto bg-danger text-white text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                        {totalUnreadChats}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-          {MENU_GROUPS.map((group) => {
-            const childActive = group.items.includes(activeMenu);
-            const expanded = sidebarOpen && openMenuGroups.includes(group.id);
-            const badge =
-              group.id === 'house'
-                ? pendingTransfersCount
-                : group.id === 'finance'
-                  ? pendingUkExpenses.length
-                  : openPollsCount;
-            return (
-              <div key={group.id} className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!sidebarOpen) {
-                      setSidebarOpen(true);
-                      setOpenMenuGroups((prev) => (prev.includes(group.id) ? prev : [...prev, group.id]));
-                      return;
-                    }
-                    setOpenMenuGroups((prev) =>
-                      prev.includes(group.id) ? prev.filter((id) => id !== group.id) : [...prev, group.id],
-                    );
-                  }}
-                  className={`flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-xs font-medium uppercase tracking-wide ${
-                    childActive && !expanded
-                      ? 'text-accent'
-                      : 'text-muted hover:text-foreground/60'
-                  }`}
-                  title={group.label}
-                >
-                  <span className="relative text-lg normal-case tracking-normal flex-shrink-0">
-                    {group.icon}
-                    {!sidebarOpen && badge > 0 && (
-                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-warning" />
-                    )}
-                  </span>
-                  {sidebarOpen && (
-                    <>
+          {sidebarOpen ? (
+            <>
+              {renderNavButton('обзор', false)}
+              {MENU_GROUPS.filter((group) => group.id !== 'overview' && group.items.length > 0).map((group) => {
+                const expanded = openNavGroup === group.id;
+                return (
+                  <div key={group.id} className="space-y-0.5">
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => toggleNavGroup(group.id)}
+                      className={`flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                        expanded ? 'bg-hover text-foreground' : 'text-secondary hover:bg-hover hover:text-foreground'
+                      }`}
+                    >
+                      <NavGroupIcon id={group.id} />
                       <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
-                      {badge > 0 && (
-                        <span className="shrink-0 rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-gray-900">
-                          {badge}
-                        </span>
-                      )}
-                      <span className="shrink-0 text-muted">{expanded ? '▾' : '▸'}</span>
-                    </>
-                  )}
-                </button>
-                {expanded &&
-                  group.items.map((key) => {
-                    const item = MENU_ITEMS.find((m) => m.key === key)!;
-                    const active = activeMenu === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          setActiveMenu(key);
-                          if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
-                        }}
-                        className={`mt-0.5 flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl border px-3 py-2 pl-10 text-sm transition-all ${
-                          active
-                            ? 'border-accent/25 bg-accent-bg text-accent'
-                            : 'border-transparent text-secondary hover:bg-hover hover:text-foreground'
-                        }`}
-                      >
-                        <span className="text-base flex-shrink-0">{item.icon}</span>
-                        <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
-                          <span className="truncate">{item.label}</span>
-                          {key === 'смены' && pendingTransfersCount > 0 && (
-                            <span className="ml-auto bg-warning text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                              {pendingTransfersCount}
-                            </span>
-                          )}
-                          {key === 'опросы' && openPollsCount > 0 && (
-                            <span className="ml-auto bg-warning text-gray-900 text-xs rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                              {openPollsCount}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })}
+                      <NavChevron open={expanded} />
+                    </button>
+                    {expanded ? <div className="space-y-0.5">{group.items.map((key) => renderNavButton(key, true))}</div> : null}
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            MENU_GROUPS.map((group) => (
+              <div key={group.id} className="space-y-0.5">
+                {group.items.map((key) => renderNavButton(key, false))}
               </div>
-            );
-          })}
+            ))
+          )}
         </nav>
         <div className="space-y-2 border-t border-border p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {sidebarOpen ? (
@@ -4290,7 +4940,7 @@ export default function AdminPage() {
           <div className="min-w-0">
             <p className="truncate text-xs font-bold tracking-[0.02em] text-foreground">{t('brand.name')}</p>
             <h1 className="truncate text-base font-semibold md:text-lg">
-              {MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
+              {menuByKey.get(activeMenu)?.label}
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -4309,11 +4959,12 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
-        <div className={activeMenu === 'чат' ? 'p-0 md:p-6' : 'p-4 md:p-8'}>
+        <div className={activeMenu === 'чат' ? 'p-0 md:p-4' : 'mx-auto w-full max-w-7xl p-3 md:px-6 md:py-5'}>
           {error && (
-            <div className="mb-4 rounded-xl border border-danger/25 bg-danger-bg p-4 text-danger">
-              {error}
-              <button onClick={() => setError(null)} className="ml-3 text-xs text-danger hover:text-danger">✕</button>
+            <div className="mb-4">
+              <AdminInlineAlert tone="danger" onDismiss={() => setError(null)}>
+                {error}
+              </AdminInlineAlert>
             </div>
           )}
           {renderContent()}
@@ -4323,29 +4974,26 @@ export default function AdminPage() {
         items={[
           { key: 'обзор', label: t('admin.overview'), icon: '📊' },
           { key: 'чат', label: t('account.tabChat'), icon: '💬', badge: totalUnreadChats || undefined },
-          { key: '__house', label: t('admin.house'), icon: '🏠', badge: pendingTransfersCount || undefined },
+          { key: 'заявки', label: t('admin.requests'), icon: '📋', badge: activeRequests.length || undefined },
           { key: '__finance', label: t('admin.menuFinance'), icon: '💶', badge: pendingUkExpenses.length || undefined },
         ]}
         activeKey={
-          MENU_GROUPS.find((g) => g.id === 'house')?.items.includes(activeMenu)
-            ? '__house'
-            : MENU_GROUPS.find((g) => g.id === 'finance')?.items.includes(activeMenu)
-              ? '__finance'
-              : activeMenu
+          financeGroup?.items.includes(activeMenu)
+            ? '__finance'
+            : activeMenu === 'заявки' || activeMenu === 'чат' || activeMenu === 'обзор'
+              ? activeMenu
+              : '__more'
         }
-        moreActive={Boolean(MENU_GROUPS.find((g) => g.id === 'work')?.items.includes(activeMenu))}
+        moreActive={!['обзор', 'чат', 'заявки', ...(financeGroup?.items ?? [])].includes(activeMenu)}
         onSelect={(key) => {
-          const house = MENU_GROUPS.find((g) => g.id === 'house');
-          const finance = MENU_GROUPS.find((g) => g.id === 'finance');
-          if (key === '__house' && house) {
-            if (!house.items.includes(activeMenu)) setActiveMenu(house.items[0]);
+          if (key === '__finance') {
+            const first = financeGroup?.items[0];
+            if (first && financeGroup && !financeGroup.items.includes(activeMenu)) {
+              navigateAdminSection(first);
+            }
             return;
           }
-          if (key === '__finance' && finance) {
-            if (!finance.items.includes(activeMenu)) setActiveMenu(finance.items[0]);
-            return;
-          }
-          setActiveMenu(key as AdminSection);
+          if (isAdminSection(key)) navigateAdminSection(key);
         }}
         onMore={() => {
           setSidebarOpen(true);
@@ -4356,68 +5004,29 @@ export default function AdminPage() {
   );
 }
 
+export default function AdminPage() {
+  const { t } = useI18n();
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+          <div className="text-lg text-secondary">{t('admin.loading')}</div>
+        </div>
+      }
+    >
+      <AdminPortal />
+    </Suspense>
+  );
+}
+
 // =====================================================================
 // КАРТОЧКА СТАТИСТИКИ
 // =====================================================================
-function OverviewGroup({
-  title,
-  hint,
-  actionLabel,
-  onAction,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <section className="rounded-[14px] border border-border bg-surface shadow-card p-4 md:p-5">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
-        </div>
-        {onAction && (
-          <button
-            type="button"
-            onClick={onAction}
-            className="shrink-0 rounded-full border border-border px-3 py-1 text-xs text-accent hover:bg-hover"
-          >
-            {actionLabel ?? 'Открыть'}
-          </button>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  alert = false,
-}: {
-  label: string;
-  value: string;
-  alert?: boolean;
-}) {
-  return (
-    <div className="rounded-xl bg-surface-secondary px-3 py-2.5">
-      <div className="text-[11px] text-muted">{label}</div>
-      <div className={`mt-0.5 text-lg font-semibold tabular-nums ${alert ? 'text-danger' : 'text-foreground'}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 // =====================================================================
 // МОДАЛЬНОЕ ОКНО — ДЕТАЛЬНЫЙ ПРОСМОТР ВСЕХ ДАННЫХ КВАРТИРЫ
 // =====================================================================
 function ApartmentDetailModal({
-  property, requests, meterReadings, guests, pets, chatMessages, chatSeenAt, supportRate, onClose, onEdit, onOpenChat, onTakePayment, onChanged,
+  property, requests, meterReadings, guests, pets, chatMessages, chatSeenAt, supportRate, onClose, onEdit, onOpenChat, onTakePayment, onChanged, onDelete, onOpenTransfer,
 }: {
   property: Property;
   requests: Request[];
@@ -4432,8 +5041,10 @@ function ApartmentDetailModal({
   onOpenChat: () => void;
   onTakePayment: () => void;
   onChanged: () => Promise<void> | void;
+  onDelete: () => void;
+  onOpenTransfer: () => void;
 }) {
-  const { t, dateLocale, locale } = useI18n();
+  const { t, locale } = useI18n();
   const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
   const [waterTariffPrice, setWaterTariffPrice] = useState<number | null>(null);
@@ -4573,55 +5184,50 @@ function ApartmentDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,25,30,0.25)] p-4" onClick={onClose}>
-      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-border bg-surface shadow-[0_4px_16px_rgba(0,0,0,0.04)]"
+    <div className={adminModalOverlayClass} onClick={onClose}>
+      <div className={`${adminModalPanelClass} max-w-4xl`}
         onClick={(e) => e.stopPropagation()}>
         {/* ШАПКА */}
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between flex-shrink-0">
-          <div>
-            <h3 className="text-xl font-semibold text-accent">
-              {t('picker.apt', { n: property.apartment_number })} — {property.owner_name}
+        <div className={adminModalHeaderClass}>
+          <div className="min-w-0">
+            <h3 className="text-lg font-semibold text-foreground">
+              {t('picker.apt', { n: property.apartment_number })}
             </h3>
-            <div className="text-xs text-muted mt-1">
-              {property.owner_email}{property.owner_phone && ` · ${property.owner_phone}`}
-              {' · '}
-              <span className={
-                property.occupancy_status === 'owner' ? 'text-accent' :
-                property.occupancy_status === 'standby' ? 'text-warning' : 'text-accent'
-              }>
-                {property.occupancy_status === 'owner' ? 'Собственник' :
-                 property.occupancy_status === 'standby' ? 'В отъезде' : 'Арендаторы'}
-              </span>
+            <p className="mt-0.5 truncate text-sm text-secondary">
+              {(property.owner_name ?? '').trim() || (property.owner_email ?? '').trim() || '—'}
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>{property.area_sqm ?? '—'} {t('common.sqm')} · {property.floor ?? '—'} {t('common.floor')}</span>
+              <StatusBadge
+                label={labelOccupancy(property.occupancy_status, t)}
+                tone={property.occupancy_status === 'standby' ? 'warning' : 'info'}
+              />
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={onOpenChat}
-              className="rounded-lg border border-accent/25 bg-accent-bg px-3 py-1.5 text-xs text-accent hover:bg-hover">
-              💬 Чат {unreadChats > 0 && `(${unreadChats})`}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button type="button" onClick={onOpenChat} className={adminBtnSecondaryClass}>
+              {t('admin.tabChat')}{unreadChats > 0 ? ` (${unreadChats})` : ''}
             </button>
-            <button onClick={onEdit}
-              className="rounded-lg border border-border bg-hover px-3 py-1.5 text-xs text-secondary hover:bg-hover">
-              ✎ Редактировать
-            </button>
-            <button onClick={onClose} className="text-secondary hover:text-foreground text-xl px-2">✕</button>
+            <button type="button" onClick={onEdit} className={adminBtnSecondaryClass}>{t('admin.aptEdit')}</button>
+            <button type="button" onClick={onDelete} className={adminBtnDangerClass}>{t('admin.aptDelete')}</button>
+            <button type="button" onClick={onClose} className="px-2 text-xl text-secondary hover:text-foreground">✕</button>
           </div>
         </div>
 
-        {/* ВКЛАДКИ */}
-        <div className="px-6 pt-3 border-b border-border flex gap-1 flex-shrink-0 overflow-x-auto">
+        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 py-2">
           {[
-            { key: 'инфо', label: 'Инфо', count: null },
-            { key: 'финансы', label: 'Финансы', count: null },
-            { key: 'счётчики', label: 'Счётчики', count: meterReadings.length },
-            { key: 'заявки', label: 'Заявки', count: requests.length },
-            { key: 'жильцы', label: t('registry.household'), count: guests.length + pets.length },
-            { key: 'чат', label: 'Чат', count: chatMessages.length },
+            { key: 'инфо', label: t('admin.tabObject'), count: null },
+            { key: 'жильцы', label: t('admin.tabStay'), count: guests.length + pets.length },
+            { key: 'финансы', label: t('admin.tabFinance'), count: null },
+            { key: 'счётчики', label: t('admin.tabMeters'), count: meterReadings.length },
+            { key: 'заявки', label: t('admin.tabRequests'), count: requests.length },
+            { key: 'чат', label: t('admin.tabChat'), count: chatMessages.length },
           ].map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
-              className={`px-4 py-2 text-sm rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${
+            <button key={tab.key} onClick={() => setActiveTab(tab.key as 'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат')}
+              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm ${
                 activeTab === tab.key
-                  ? 'border-accent text-accent bg-surface'
-                  : 'border-transparent text-secondary hover:text-foreground'
+                  ? 'bg-accent text-white'
+                  : 'text-secondary hover:bg-hover'
               }`}>
               {tab.label}
               {tab.count !== null && tab.count > 0 && (
@@ -4637,43 +5243,20 @@ function ApartmentDetailModal({
         <div className="flex-1 overflow-y-auto p-6">
           {/* ИНФО */}
           {activeTab === 'инфо' && (
-            <div className="space-y-3 text-sm">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <InfoRow label={t('admin.phAptNo')} value={String(property.apartment_number ?? '—')} />
-                <InfoRow label="Этаж" value={String(property.floor ?? '—')} />
-                <InfoRow label="Площадь" value={`${property.area_sqm ?? '—'} м²`} />
-                <InfoRow label="Статус" value={listingStatus(property.status)} />
-                <InfoRow label="Владелец" value={property.owner_name ?? '—'} />
-                <InfoRow label="Тип собственника" value={property.owner_type ?? '—'} />
-                <InfoRow label="Email" value={property.owner_email ?? '—'} />
-                <InfoRow label="Телефон" value={property.owner_phone ?? '—'} />
-                {property.company_name && <InfoRow label="Компания" value={property.company_name} />}
-                <InfoRow label={t('registry.occupantKind')} value={labelOccupantKind(property.occupant_kind, t)} />
-                {normalizeOccupantKind(property.occupant_kind) !== 'owner' && (
-                  <>
-                    <InfoRow label={t('registry.occupantName')} value={property.occupant_name ?? '—'} />
-                    <InfoRow label={t('registry.occupantPhone')} value={property.occupant_phone ?? '—'} />
-                    <InfoRow label={t('registry.occupantEmail')} value={property.occupant_email ?? '—'} />
-                    <InfoRow label={t('registry.occupantUntil')} value={property.occupant_until ? String(property.occupant_until).slice(0, 10) : '—'} />
-                  </>
-                )}
-              </div>
-              <div className="mt-4 rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                <div className="text-secondary text-xs mb-2">Режим проживания</div>
-                <div className={`text-lg font-medium ${
-                  property.occupancy_status === 'owner' ? 'text-accent' :
-                  property.occupancy_status === 'standby' ? 'text-warning' : 'text-accent'
-                }`}>
-                  {property.occupancy_status === 'owner' ? '🏠 Собственник проживает' :
-                   property.occupancy_status === 'standby' ? '✈️ В отъезде' : '👥 Арендаторы'}
-                </div>
-              </div>
-              {property.pet_info && (
-                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="text-secondary text-xs mb-1">🐾 Питомцы</div>
-                  <div className="text-foreground">{property.pet_info}</div>
-                </div>
-              )}
+            <div className="grid gap-2 text-sm sm:grid-cols-2">
+              <InfoRow label={t('admin.phAptNo')} value={String(property.apartment_number ?? '—')} />
+              <InfoRow label={t('admin.phFloor')} value={String(property.floor ?? '—')} />
+              <InfoRow label={t('admin.phArea')} value={`${property.area_sqm ?? '—'} ${t('common.sqm')}`} />
+              <InfoRow label={t('form.colStatus')} value={labelListing(listingStatus(property.status), t)} />
+              <InfoRow label={t('admin.phOwner')} value={property.owner_name ?? '—'} />
+              <InfoRow label={t('account.colType')} value={labelOwnerType(property.owner_type, t) || '—'} />
+              <InfoRow label="Email" value={property.owner_email ?? '—'} />
+              <InfoRow label={t('admin.phPhone')} value={property.owner_phone ?? '—'} />
+              {property.company_name ? <InfoRow label={t('admin.phCompany')} value={property.company_name} /> : null}
+              <InfoRow
+                label={t('admin.idealParts')}
+                value={formatIdealPartsPercent(property.ideal_parts_percent, locale) ?? '—'}
+              />
             </div>
           )}
 
@@ -4681,50 +5264,50 @@ function ApartmentDetailModal({
           {activeTab === 'финансы' && (
             <div className="space-y-4 text-sm">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="text-secondary text-xs">Задолженность</div>
-                  <div className={`text-2xl font-bold mt-1 ${
-                    Number(property.debt) > 0 ? 'text-danger' : 'text-accent'
+                <div className={`${adminCardClass} p-3`}>
+                  <div className="text-secondary text-xs">{t('admin.kpiDebtTitle')}</div>
+                  <div className={`mt-1 text-lg font-semibold ${
+                    Number(property.debt) > 0 ? 'text-danger' : 'text-foreground'
                   }`}>
-                    {Number(property.debt ?? 0).toFixed(2)} €
+                    {formatEur(Number(property.debt ?? 0), locale)}
                   </div>
                 </div>
-                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="text-secondary text-xs">Переплата</div>
-                  <div className={`text-2xl font-bold mt-1 ${
-                    Number(property.overpayment) > 0 ? 'text-accent' : 'text-muted'
+                <div className={`${adminCardClass} p-3`}>
+                  <div className="text-secondary text-xs">{t('admin.overpay')}</div>
+                  <div className={`mt-1 text-lg font-semibold ${
+                    Number(property.overpayment) > 0 ? 'text-foreground' : 'text-muted'
                   }`}>
-                    {Number(property.overpayment ?? 0).toFixed(2)} €
+                    {formatEur(Number(property.overpayment ?? 0), locale)}
                   </div>
                 </div>
-                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="text-secondary text-xs">Такса поддержки (годовая)</div>
-                  <div className="text-xl font-semibold text-foreground mt-1">
-                    {annualFee.toFixed(2)} €
+                <div className={`${adminCardClass} p-3`}>
+                  <div className="text-secondary text-xs">{t('admin.feeYear')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {formatEur(annualFee, locale)}
                   </div>
                   <div className="text-xs text-muted mt-1">
                     {supportRate} €/м² × {property.area_sqm} м²
                   </div>
                 </div>
-                <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                  <div className="text-secondary text-xs">Такса поддержки (мес.)</div>
-                  <div className="text-xl font-semibold text-foreground mt-1">
-                    {monthlyFee.toFixed(2)} €
+                <div className={`${adminCardClass} p-3`}>
+                  <div className="text-secondary text-xs">{t('account.feeMonth')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {formatEur(monthlyFee, locale)}
                   </div>
                 </div>
               </div>
-              <div className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
+              <div className={`${adminCardClass} p-3`}>
                 <div className="text-secondary text-xs mb-2">Тарифы</div>
                 <div className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
-                  <div>Э/э день: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh)) : '—'}</div>
-                  <div>Э/э ночь: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh)) : '—'}</div>
-                  <div>Вода: {waterTariffPrice == null || Number.isNaN(waterTariffPrice) ? '—' : `${waterTariffPrice.toFixed(2)} €/м³`}</div>
+                  <div>{t('admin.elDayShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh), locale) : '—'}</div>
+                  <div>{t('admin.elNightShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh), locale) : '—'}</div>
+                  <div>{t('admin.water')}: {waterTariffPrice == null || Number.isNaN(waterTariffPrice) ? '—' : `${formatEur(waterTariffPrice, locale)}/м³`}</div>
                   <div>Такса: {supportRate} €/м²·год</div>
                 </div>
                 <button
                   type="button"
                   onClick={onTakePayment}
-                  className="mt-3 rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white"
+                  className={`${adminBtnPrimaryClass} mt-3`}
                 >
                   Принять оплату таксы
                 </button>
@@ -4736,7 +5319,7 @@ function ApartmentDetailModal({
           {activeTab === 'счётчики' && (
             <div>
               {meterReadings.length === 0 ? (
-                <div className="text-sm text-muted">Показаний счётчиков нет.</div>
+                <AdminEmptyState title={t('admin.noMeterRows')} />
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -4753,11 +5336,11 @@ function ApartmentDetailModal({
                         <td className="py-2 px-3 text-foreground">{meterTypeLabel(m.meter_type)}</td>
                         <td className="py-2 px-3 text-foreground">
                           {m.meter_type === 'cold_water'
-                            ? formatM3(Number(m.value), locale)
-                            : formatKwh(Number(m.value), locale)}
+                            ? `${formatM3(Number(m.value), locale)} ${t('account.m3')}`
+                            : `${formatKwh(Number(m.value), locale)} ${t('account.kwh')}`}
                         </td>
                         <td className="py-2 px-3 text-secondary">
-                          {new Date(m.reading_date).toLocaleDateString(dateLocale)}
+                          {formatOwnerDate(m.reading_date)}
                         </td>
                         <td className="py-2 px-3 text-secondary">{m.submitted_by ?? '—'}</td>
                       </tr>
@@ -4772,18 +5355,20 @@ function ApartmentDetailModal({
           {activeTab === 'заявки' && (
             <div className="space-y-3">
               {requests.length === 0 ? (
-                <div className="text-sm text-muted">Заявок нет.</div>
+                <AdminEmptyState title={t('admin.noRequestRows')} />
               ) : (
                 requests.map((r) => (
                   <div key={r.id} className="rounded-xl border border-border bg-surface p-3">
                     <div className="flex items-center justify-between">
                       <div className="text-foreground font-medium text-sm">{r.subject}</div>
-                      <span className={`text-xs rounded-full px-2 py-1 border ${
-                        r.status === 'новая' ? 'bg-accent-bg text-accent border-accent/25' :
-                        r.status === 'в работе' ? 'bg-warning-bg text-warning border-warning/25' :
-                        r.status === 'выполнена' ? 'bg-accent-bg text-accent border-accent/25' :
-                        'bg-danger-bg text-danger border-danger/25'
-                      }`}>{labelRequestStatus(r.status, t)}</span>
+                      <StatusBadge
+                        label={labelRequestStatus(r.status, t)}
+                        tone={
+                          r.status === 'новая' ? 'info' :
+                          r.status === 'в работе' ? 'warning' :
+                          r.status === 'выполнена' ? 'success' : 'danger'
+                        }
+                      />
                     </div>
                     <div className="text-sm text-secondary mt-1">{r.description}</div>
                     <div className="flex gap-2 mt-2">
@@ -4794,7 +5379,7 @@ function ApartmentDetailModal({
                       )}
                     </div>
                     <div className="text-xs text-muted mt-1">
-                      {new Date(r.created_at).toLocaleString(dateLocale)}
+                      {formatOwnerDateTime(r.created_at, locale)}
                     </div>
                   </div>
                 ))
@@ -4804,9 +5389,40 @@ function ApartmentDetailModal({
 
           {/* ЖИЛЬЦЫ */}
           {activeTab === 'жильцы' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
+              <div className={`${adminCardClass} p-3`}>
+                <p className="text-xs text-muted">{t('admin.aptStayNow')}</p>
+                <div className="mt-1">
+                  <StatusBadge
+                    label={labelOccupancy(property.occupancy_status, t)}
+                    tone={property.occupancy_status === 'standby' ? 'warning' : 'info'}
+                  />
+                </div>
+                {property.occupancy_status !== 'rented' && property.occupancy_status !== 'standby' ? (
+                  <p className="mt-2 text-sm text-foreground">
+                    {(property.owner_name ?? '').trim() || '—'}
+                    <span className="text-secondary"> · {t('admin.aptOwnerLine')}</span>
+                  </p>
+                ) : null}
+                {property.occupancy_status === 'rented' || normalizeOccupantKind(property.occupant_kind) !== 'owner' ? (
+                  <div className="mt-2 text-sm">
+                    <p className="text-foreground">{property.occupant_name || '—'}</p>
+                    <p className="text-xs text-secondary">{labelOccupantKind(property.occupant_kind, t)}</p>
+                    {property.occupant_phone ? <p className="text-xs text-muted">{property.occupant_phone}</p> : null}
+                    {property.occupant_email ? <p className="text-xs text-muted">{property.occupant_email}</p> : null}
+                  </div>
+                ) : null}
+                {property.occupancy_status === 'standby' ? (
+                  <p className="mt-2 text-sm text-secondary">{t('admin.aptStandbyNote')}</p>
+                ) : null}
+                <button type="button" onClick={onOpenTransfer} className={`${adminBtnTertiaryClass} mt-2`}>
+                  {t('admin.aptTransferGo')} →
+                </button>
+              </div>
               <div>
-                <h4 className="mb-2 text-sm font-semibold text-accent">{t('registry.household')}</h4>
+                <h4 className="mb-2 text-sm font-semibold text-foreground">
+                  {property.occupancy_status === 'owner' || !property.occupancy_status ? t('admin.aptCoResidents') : t('admin.aptResidents')}
+                </h4>
                 <p className="mb-3 text-xs text-muted">{t('registry.householdHint')}</p>
                 <form onSubmit={handleAddGuest} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <input
@@ -4905,10 +5521,10 @@ function ApartmentDetailModal({
                           {g.is_permanent ? t('common.yes') : t('common.no')}
                         </td>
                         <td className="py-2 px-3 text-secondary text-xs">
-                          {g.check_in ? new Date(g.check_in).toLocaleDateString(dateLocale) : '—'}
+                          {g.check_in ? formatOwnerDate(g.check_in) : '—'}
                         </td>
                         <td className="py-2 px-3 text-secondary text-xs">
-                          {g.check_out ? new Date(g.check_out).toLocaleDateString(dateLocale) : '—'}
+                          {g.check_out ? formatOwnerDate(g.check_out) : '—'}
                         </td>
                         <td className="py-2 px-3">
                           <button type="button" onClick={() => handleRemoveGuest(g.id)} className="text-xs text-danger">
@@ -4975,7 +5591,7 @@ function ApartmentDetailModal({
           {activeTab === 'чат' && (
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {chatMessages.length === 0 ? (
-                <div className="text-sm text-muted">Нет сообщений.</div>
+                <AdminEmptyState title={t('admin.noChatRows')} />
               ) : (
                 chatMessages.map((m) => {
                   const isOwner = m.sender === 'owner';
@@ -4996,7 +5612,7 @@ function ApartmentDetailModal({
                           <div className="whitespace-pre-wrap break-words">{m.message}</div>
                         ) : null}
                         <div className="text-[10px] text-muted mt-1">
-                          {new Date(m.created_at).toLocaleString(dateLocale)}
+                          {formatOwnerDateTime(m.created_at, locale)}
                           {isOwner && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (
                             <span className="ml-2 text-danger">● не прочитано</span>
                           )}

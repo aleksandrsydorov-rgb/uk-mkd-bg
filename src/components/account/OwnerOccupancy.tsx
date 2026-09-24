@@ -5,6 +5,7 @@ import { labelOccupantKind } from '@/i18n/labels';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { OccupantKind } from '@/lib/registry';
 import type { ApartmentPet } from '@/lib/registry';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { displayedPropertyOwners, type PropertyRegistryPerson } from '@/lib/propertyBook';
 import { useEffect, useState } from 'react';
@@ -234,7 +235,8 @@ export function OwnerOccupancy({
 
   function fmtDate(raw: string | null | undefined) {
     if (!raw) return null;
-    return new Date(raw).toLocaleDateString(dateLocale);
+    const formatted = formatOwnerDate(raw, dateLocale);
+    return formatted === '—' ? null : formatted;
   }
 
   function stayLabel(g: OccupancyGuest) {

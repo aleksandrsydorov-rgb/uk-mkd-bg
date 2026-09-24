@@ -41,8 +41,19 @@ export function emptyBalance(): UtilityBalance {
   };
 }
 
-export function formatEur(n: number) {
-  return `${Number(n).toFixed(2)} €`;
+/** Display-only money. Without locale keeps a stable 2-decimal string for existing callers. */
+export function formatMoneyNumber(n: number, locale?: string) {
+  const value = Number(n);
+  const safe = Number.isFinite(value) ? value : 0;
+  if (!locale) return safe.toFixed(2);
+  return new Intl.NumberFormat(numberFormatLocale(locale), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(safe);
+}
+
+export function formatEur(n: number, locale?: string) {
+  return `${formatMoneyNumber(n, locale)} €`;
 }
 
 export const WATER_VOLUME_DECIMALS = 1;

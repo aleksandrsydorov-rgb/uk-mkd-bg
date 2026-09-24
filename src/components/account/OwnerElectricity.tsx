@@ -6,6 +6,7 @@ import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { isMissingRelation } from '@/lib/polls';
 import { MeterFinanceStatus, meterKpiCardClass, meterKpiGridClass } from '@/components/account/MeterFinanceStatus';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { emptyBalance, formatKwh, todayIsoDate, type UtilityBalance } from '@/lib/utilities';
 import type { FinanceTab } from '@/components/account/OwnerUtilities';
 import {
@@ -172,7 +173,7 @@ export function OwnerElectricity({
             <p className="font-medium text-foreground">{t('account.elMeter')}</p>
             <p className="mt-1">{t('account.elMeterShort', { n: displayElectricityMeterNumber(meter.meter_number) })}</p>
             <p className="mt-0.5">
-              {t('account.elInstalledAt')}: {new Date(meter.installed_at).toLocaleDateString(dateLocale)}
+              {t('account.elInstalledAt')}: {formatOwnerDate(meter.installed_at, dateLocale)}
             </p>
             <p className="mt-0.5">
               {t('account.elInitialDay')}: {formatKwh(Number(meter.initial_day_reading), locale)} {t('account.kwh')}
@@ -208,7 +209,7 @@ export function OwnerElectricity({
           <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.utilLastReading')}</div>
             <div className="mt-1 text-sm font-semibold text-foreground">
-              {shown.readingDate ? new Date(shown.readingDate).toLocaleDateString(dateLocale) : '—'}
+              {shown.readingDate ? formatOwnerDate(shown.readingDate, dateLocale) : '—'}
             </div>
           </div>
           {onOpenFinance ? (
@@ -328,7 +329,7 @@ export function OwnerElectricity({
                 {pairs.map((row) => (
                   <tr key={row.key} className="text-secondary">
                     <td className="whitespace-nowrap px-2 py-1.5">
-                      {row.reading_date ? new Date(row.reading_date).toLocaleDateString(dateLocale) : '—'}
+                      {row.reading_date ? formatOwnerDate(row.reading_date, dateLocale) : '—'}
                     </td>
                     <td className="whitespace-nowrap px-2 py-1.5">
                       {row.meter_number ? t('account.elMeterShort', { n: displayElectricityMeterNumber(row.meter_number) }) : '—'}

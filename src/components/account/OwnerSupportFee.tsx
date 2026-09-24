@@ -14,10 +14,6 @@ import {
   type SupportFeeYearPreview,
 } from '@/lib/supportFeeAnnual';
 
-function fmtDate(iso: string | null | undefined, locale: string): string {
-  return formatOwnerDate(iso, locale);
-}
-
 export function OwnerSupportFee({
   supabase,
   propertyId,
@@ -98,7 +94,7 @@ export function OwnerSupportFee({
               <dd className="font-semibold">{formatEurAmount(preview.base_amount)}</dd>
             </div>
             <div>
-              <dt className="text-muted">{t('account.sfEarlyIfPaidBy', { d: fmtDate(preview.early_deadline_at, dateLocale) })}</dt>
+              <dt className="text-muted">{t('account.sfEarlyIfPaidBy', { d: formatOwnerDate(preview.early_deadline_at, dateLocale) })}</dt>
               <dd className="font-semibold text-accent">{formatEurAmount(preview.early_amount)}</dd>
             </div>
             <div>
@@ -172,7 +168,7 @@ export function OwnerSupportFee({
                       <div className="rounded-xl bg-surface-secondary px-3 py-2 text-secondary">
                         {t('account.sfEarlyCondition', {
                           n: formatEurAmount(a.early_amount),
-                          d: fmtDate(a.early_deadline_at, dateLocale),
+                          d: formatOwnerDate(a.early_deadline_at, dateLocale),
                         })}
                       </div>
                       <p className="text-secondary">
@@ -241,7 +237,7 @@ export function OwnerSupportFee({
                         {a.pricing_rule === 'early_full_payment'
                           ? t('account.sfWhyEarly', {
                               year: a.billing_year,
-                              d: fmtDate(a.early_deadline_at, dateLocale),
+                              d: formatOwnerDate(a.early_deadline_at, dateLocale),
                               pct: Number(a.discount_percent).toFixed(0),
                             })
                           : a.pricing_rule === 'late'
@@ -269,7 +265,7 @@ export function OwnerSupportFee({
                         </p>
                       ) : null}
                       <p className="text-xs text-muted">
-                        {t('account.sfCheckedAt')}: {fmtDate(a.qualification_checked_at, dateLocale)}
+                        {t('account.sfCheckedAt')}: {formatOwnerDate(a.qualification_checked_at, dateLocale)}
                       </p>
                     </div>
                   ) : null}

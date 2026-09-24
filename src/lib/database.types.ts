@@ -1848,6 +1848,10 @@ export interface Database {
         Args: { p_property_id: number; p_period: string };
         Returns: Json;
       };
+      charge_support_fee_bulk: {
+        Args: { p_period: string };
+        Returns: Json;
+      };
       upsert_support_fee_annual_policy: {
         Args: {
           p_billing_year: number;
@@ -2059,6 +2063,14 @@ export interface Database {
           p_due_date: string | null;
         };
         Returns: Database['public']['Tables']['capital_repair_assessments']['Row'][];
+      };
+      charge_capital_repair_bulk: {
+        Args: {
+          p_assessment_id: string;
+          p_amount_eur: number;
+          p_note: string | null;
+        };
+        Returns: Json;
       };
       charge_capital_repair: {
         Args: {

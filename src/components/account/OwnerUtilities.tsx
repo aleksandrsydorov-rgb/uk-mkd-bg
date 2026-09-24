@@ -443,7 +443,7 @@ export function OwnerUtilities({
               <p className="mt-0.5 text-sm text-secondary">
                 {t('account.utilInstalled')}:{' '}
                 <span className="font-medium text-foreground">
-                  {new Date(meter.installed_at).toLocaleDateString(dateLocale)}
+                  {formatOwnerDate(meter.installed_at, dateLocale)}
                 </span>
               </p>
             </>
@@ -465,7 +465,7 @@ export function OwnerUtilities({
             <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(lastCurrent ?? previousDisplay, locale)} {t('account.m3')}</div>
             <div className="mt-0.5 text-[11px] text-muted">
               {lastActive
-                ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)
+                ? formatOwnerDate(lastActive.reading_date, dateLocale)
                 : t('account.utilInitialHint')}
             </div>
           </div>
@@ -500,7 +500,7 @@ export function OwnerUtilities({
             </div>
             <div className="mt-0.5 text-[11px] text-muted">
               {lastActive
-                ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)
+                ? formatOwnerDate(lastActive.reading_date, dateLocale)
                 : t('account.utilNoReadings')}
             </div>
           </div>
@@ -511,7 +511,7 @@ export function OwnerUtilities({
             <div className="mt-1 text-lg font-semibold text-foreground">{formatM3(previousDisplay, locale)} {t('account.m3')}</div>
             <div className="mt-0.5 text-[11px] text-muted">
               {lastActive
-                ? new Date(lastActive.reading_date).toLocaleDateString(dateLocale)
+                ? formatOwnerDate(lastActive.reading_date, dateLocale)
                 : t('account.utilInitialHint')}
             </div>
           </div>
@@ -650,7 +650,7 @@ export function OwnerUtilities({
                   return (
                     <tr key={row.id} className={reversed ? 'text-muted' : 'text-secondary'}>
                       <td className="whitespace-nowrap px-2 py-1.5">
-                        {new Date(row.reading_date).toLocaleDateString(dateLocale)}
+                        {formatOwnerDate(row.reading_date, dateLocale)}
                         {reversed ? ` · ${t('account.utilReversed')}` : ''}
                       </td>
                       <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.previous_value), locale)}</td>
@@ -749,7 +749,7 @@ export function OwnerUtilities({
                     {readings.map((row) => (
                       <tr key={row.id} className={row.status === 'reversed' ? 'text-muted' : 'text-secondary'}>
                         <td className="whitespace-nowrap px-2 py-1.5">
-                          {new Date(row.reading_date).toLocaleDateString(dateLocale)}
+                          {formatOwnerDate(row.reading_date, dateLocale)}
                           {row.status === 'reversed' ? ` · ${t('account.utilReversed')}` : ''}
                         </td>
                         <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3), locale)} {t('account.m3')}</td>
@@ -819,7 +819,7 @@ export function OwnerUtilities({
                   <tbody>
                     {electricityCharges.map((row) => (
                       <tr key={row.id} className="text-secondary">
-                        <td className="whitespace-nowrap px-2 py-1.5">{new Date(row.reading_date).toLocaleDateString(dateLocale)}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5">{formatOwnerDate(row.reading_date, dateLocale)}</td>
                         <td className="whitespace-nowrap px-2 py-1.5">{formatKwh(Number(row.consumption_day), locale)}</td>
                         <td className="whitespace-nowrap px-2 py-1.5">{formatKwh(Number(row.consumption_night), locale)}</td>
                         <td className="whitespace-nowrap px-2 py-1.5">{formatElectricityTariff(Number(row.day_tariff_eur_per_kwh), locale)}</td>
@@ -898,8 +898,8 @@ export function OwnerUtilities({
                       <p className="text-sm font-medium text-foreground">{a.title}</p>
                       {a.description ? <p className="mt-0.5 text-xs text-secondary">{a.description}</p> : null}
                       <p className="mt-1 text-xs text-muted">
-                        {a.decision_date ? `${t('account.utilDecision')}: ${new Date(a.decision_date).toLocaleDateString(dateLocale)}` : ''}
-                        {a.due_date ? ` · ${t('account.utilDue')}: ${new Date(a.due_date).toLocaleDateString(dateLocale)}` : ''}
+                        {a.decision_date ? `${t('account.utilDecision')}: ${formatOwnerDate(a.decision_date, dateLocale)}` : ''}
+                        {a.due_date ? ` · ${t('account.utilDue')}: ${formatOwnerDate(a.due_date, dateLocale)}` : ''}
                         {` · ${a.status}`}
                       </p>
                     </div>

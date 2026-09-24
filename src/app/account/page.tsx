@@ -15,7 +15,6 @@ import {
   type PollVote,
 } from '@/lib/polls';
 import { BrandMark } from '@/components/BrandMark';
-import { LoginScreen } from '@/components/LoginScreen';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
 import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
 import {
@@ -63,6 +62,7 @@ import {
   type PropertyAbsencePeriod,
   type PropertyRegistryPerson,
 } from '@/lib/propertyBook';
+import { formatOwnerDate } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { ownerMgmtParam, ownerSectionParam, parseOwnerNav } from '@/lib/ownerNav';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -149,10 +149,6 @@ export default function AccountPage() {
   ];
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
-  const [emailInput, setEmailInput] = useState<string>('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
 
@@ -267,7 +263,6 @@ export default function AccountPage() {
         const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
         if (authenticatedEmail && !cancelled) {
           setDevEmail(authenticatedEmail);
-          setEmailInput(authenticatedEmail);
         }
       } finally {
         if (!cancelled) setAuthReady(true);
@@ -281,42 +276,17 @@ export default function AccountPage() {
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (!devEmail) router.replace('/');
+  }, [authReady, devEmail, router]);
+
+  useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
     const apply = () => setSidebarOpen(mq.matches);
     apply();
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    const email = normalizeEmail(emailInput);
-    if (!email || !passwordInput) return;
-    setLoginLoading(true);
-    setLoginError('');
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: passwordInput,
-      });
-      if (error) {
-        setLoginError(ownerVisibleError(error, t('err.noAccess')));
-        return;
-      }
-      const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
-      if (!authenticatedEmail) {
-        setLoginError(t('err.noAccess'));
-        return;
-      }
-      setEmailInput(authenticatedEmail);
-      setDevEmail(authenticatedEmail);
-      setPasswordInput('');
-    } catch (err: unknown) {
-      setLoginError(ownerVisibleError(err, t('err.noAccess')));
-    } finally {
-      setLoginLoading(false);
-    }
-  }
 
   async function handleLogout() {
     try {
@@ -325,9 +295,6 @@ export default function AccountPage() {
       // Local session is still cleared below.
     } finally {
       setDevEmail('');
-      setEmailInput('');
-      setPasswordInput('');
-      setLoginError('');
       setIsStaff(false);
       setProperties([]);
       setSelectedPropertyId(null);
@@ -1417,12 +1384,12 @@ export default function AccountPage() {
           )}
           {current && (
             <div className="text-xs text-muted mt-1">
-              {t('account.fromDate', { d: new Date(current.reading_date).toLocaleDateString(dateLocale) })}
+              {t('account.fromDate', { d: formatOwnerDate(current.reading_date, dateLocale) })}
             </div>
           )}
           {previous && (
             <div className="text-xs text-muted">
-              {t('account.prevDate', { d: new Date(previous.reading_date).toLocaleDateString(dateLocale) })}
+              {t('account.prevDate', { d: formatOwnerDate(previous.reading_date, dateLocale) })}
             </div>
           )}
         </div>
@@ -1836,7 +1803,7 @@ export default function AccountPage() {
                   {propertyLedger.slice(0, 8).map((row) => (
                     <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
                       <span className="text-secondary">
-                        {new Date(row.created_at).toLocaleDateString(dateLocale)}
+                        {formatOwnerDate(row.created_at, dateLocale)}
                       </span>
                       <span className={row.kind === 'payment' ? 'text-accent' : 'text-warning'}>
                         {row.kind === 'payment' ? '+' : `${t('account.charge')} `}
@@ -2055,27 +2022,13 @@ export default function AccountPage() {
   // ===================================================================
   // ЭКРАН ВХОДА
   // ===================================================================
-  if (!authReady) {
+  if (!authReady || !devEmail) {
     return (
       <div className="relative min-h-dvh bg-background text-foreground flex items-center justify-center px-4">
         <div className="rounded-[14px] border border-border bg-surface shadow-card p-6 text-center text-secondary">
           {t('common.loading')}
         </div>
       </div>
-    );
-  }
-
-  if (!devEmail) {
-    return (
-      <LoginScreen
-        email={emailInput}
-        onEmailChange={setEmailInput}
-        password={passwordInput}
-        onPasswordChange={setPasswordInput}
-        loginError={loginError}
-        loginLoading={loginLoading}
-        onSubmit={handleLogin}
-      />
     );
   }
 

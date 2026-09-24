@@ -48,6 +48,59 @@ export function labelPriority(raw: string | null | undefined, t: Translate) {
   return t('status.prioMid');
 }
 
+function warnUnknownLabel(kind: string, value: string) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(`[label] unknown ${kind}:`, value);
+  }
+}
+
+export function labelStaffRole(raw: string | null | undefined, t: Translate) {
+  const r = (raw ?? '').trim().toLowerCase();
+  if (r === 'администрация') return t('admin.roleAdmin');
+  if (r === 'бухгалтер') return t('admin.roleAccountant');
+  if (r === 'инженер') return t('admin.roleEngineer');
+  if (r === 'уборщик') return t('admin.roleCleaner');
+  if (!r) return '—';
+  warnUnknownLabel('staff role', r);
+  return t('admin.roleUnknown');
+}
+
+export function labelLedgerKind(kind: string | null | undefined, t: Translate) {
+  if (kind === 'charge') return t('admin.kindCharge');
+  if (kind === 'payment') return t('admin.kindPayment');
+  if (kind === 'adjustment_debit') return t('admin.kindAdjDebit');
+  if (kind === 'adjustment_credit') return t('admin.kindAdjCredit');
+  if (!kind) return '—';
+  warnUnknownLabel('ledger kind', kind);
+  return t('admin.kindUnknown');
+}
+
+export function labelReadingStatus(status: string | null | undefined, t: Translate) {
+  if (status === 'reversed') return t('account.utilReversed');
+  if (status === 'active') return t('admin.readingActive');
+  if (!status) return '—';
+  warnUnknownLabel('reading status', status);
+  return t('admin.valueUnknown');
+}
+
+export function labelAssessmentStatus(status: string | null | undefined, t: Translate) {
+  if (status === 'active') return t('admin.statusActive');
+  if (status === 'closed') return t('admin.sfStatusClosed');
+  if (status === 'draft') return t('admin.sfStatusDraft');
+  if (!status) return '—';
+  warnUnknownLabel('assessment status', status);
+  return t('admin.valueUnknown');
+}
+
+export function labelDocumentStatus(status: string | null | undefined, t: Translate) {
+  if (status === 'draft') return t('docs.draft');
+  if (status === 'published') return t('docs.statusPublished');
+  if (status === 'archived') return t('docs.statusHeld');
+  if (!status) return '—';
+  warnUnknownLabel('document status', status);
+  return t('admin.valueUnknown');
+}
+
 export function labelPollDecision(raw: string, t: Translate) {
   if (raw === 'принято') return t('status.pollAccepted');
   if (raw === 'не принято') return t('status.pollRejected');
@@ -77,6 +130,15 @@ export function labelPollCategory(raw: string | null | undefined, t: Translate) 
   if (raw === 'покупка') return t('pollCat.buy');
   if (raw === 'ремонт') return t('pollCat.repair');
   return t('pollCat.poll');
+}
+
+export function labelPollStatus(raw: string | null | undefined, t: Translate) {
+  if ((raw ?? '').trim() === 'открыт') return t('status.pollOpen');
+  if ((raw ?? '').trim() === 'закрыт') return t('status.pollClosed');
+  const value = (raw ?? '').trim();
+  if (!value) return '—';
+  warnUnknownLabel('poll status', value);
+  return t('admin.valueUnknown');
 }
 
 export function labelOwnerType(raw: string | null | undefined, t: Translate) {

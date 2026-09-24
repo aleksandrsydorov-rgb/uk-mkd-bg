@@ -53,7 +53,9 @@ export function labelAttendanceStatus(raw: string, t: Translate) {
   if (raw === 'declared') return t('docs.attendanceDeclared');
   if (raw === 'rejected') return t('docs.attendanceRejected');
   if (raw === 'requires_representation_confirmation') return t('docs.attendanceNeedsRep');
-  return raw;
+  if (!raw) return '—';
+  if (process.env.NODE_ENV !== 'production') console.warn('[label] unknown attendance:', raw);
+  return t('admin.valueUnknown');
 }
 
 export function labelQuorumCalcStatus(raw: string, t: Translate) {
@@ -88,7 +90,10 @@ export function nextPendingAgendaItem(items: MeetingAgendaItem[]) {
 
 export function labelMajorityRule(rule: string, t: Translate) {
   const preset = MAJORITY_PRESETS.find((p) => p.id === rule);
-  return preset ? t(preset.labelKey) : rule;
+  if (preset) return t(preset.labelKey);
+  if (!rule) return '—';
+  if (process.env.NODE_ENV !== 'production') console.warn('[label] unknown majority:', rule);
+  return t('admin.valueUnknown');
 }
 
 export const VOTE_CHOICES: ProtocolVote[] = ['for', 'against', 'abstain'];

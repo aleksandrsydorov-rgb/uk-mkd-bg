@@ -11,8 +11,12 @@ import {
   labelOccupancy,
   labelPriority,
   labelRequestStatus,
+  labelStaffRole,
 } from '@/i18n/labels';
 import type { Translate } from '@/i18n/translate';
+import { AdminPageHeader, AdminCard, AdminFilterBar, AdminInlineAlert, AdminPrimaryButton, adminFieldClass } from '@/components/admin/AdminUi';
+import { formatOwnerDateTime } from '@/lib/ownerFormat';
+import { formatEur } from '@/lib/utilities';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 type Request = Database['public']['Tables']['requests']['Row'];
@@ -47,10 +51,6 @@ function ledgerInPeriod(entry: SupportFeeEntry, year: number, quarter: number) {
     return String(entry.period ?? '').includes(String(year)) || entry.created_at.slice(0, 4) === String(year);
   }
   return dateInPeriod(entry.created_at, year, quarter);
-}
-
-function money(n: number) {
-  return `${n.toFixed(2)} €`;
 }
 
 function sortApts(properties: Property[]) {
@@ -113,6 +113,7 @@ export function AdminReports({
   staff,
   supportRate,
   years,
+  showSalary = false,
 }: {
   properties: Property[];
   requests: Request[];
@@ -121,8 +122,10 @@ export function AdminReports({
   staff: StaffRow[];
   supportRate: number;
   years: number[];
+  showSalary?: boolean;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, locale } = useI18n();
+  const money = (n: number) => formatEur(n, locale);
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [quarter, setQuarter] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -159,7 +162,7 @@ export function AdminReports({
   }
 
   function generatedLine() {
-    return `${t('admin.pdfGenerated')}: ${new Date().toLocaleString(dateLocale)} · ${periodLabel}`;
+    return `${t('admin.pdfGenerated')}: ${formatOwnerDateTime(new Date().toISOString(), locale)} · ${periodLabel}`;
   }
 
   function occupancy(p: Property) {
@@ -178,26 +181,37 @@ export function AdminReports({
         const exp = ukExpenses
           .filter((e) => isExpensePublished(e) && dateInPeriod(e.expense_date, yearNum, quarter))
           .reduce((s, e) => s + Number(e.amount ?? 0), 0);
-        const salary = staff.filter((s) => s.active).reduce((s, x) => s + Number(x.salary_eur ?? 0), 0);
+        const salary = showSalary
+          ? staff.filter((s) => s.active).reduce((s, x) => s + Number(x.salary_eur ?? 0), 0)
+          : 0;
         const activeReq = requests.filter((r) => r.status !== 'выполнена' && r.status !== 'отклонена' && dateInPeriod(r.created_at, yearNum, quarter)).length;
+        const summaryKpis = [
+          { label: t('admin.apts'), value: String(apts.length) },
+          { label: t('form.colArea'), value: `${area.toFixed(1)} ${t('common.sqm')}` },
+          { label: t('admin.debt'), value: money(debt) },
+          { label: t('admin.overpay'), value: money(over) },
+          { label: t('admin.feeYear'), value: money(annualSupportFee(area, supportRate)) },
+          { label: t('admin.ukSpend'), value: money(exp) },
+          { label: t('admin.activeReq'), value: String(activeReq) },
+        ];
+        if (showSalary) summaryKpis.push({ label: t('admin.staff'), value: money(salary) });
         const body =
-          kpiGrid([
-            { label: t('admin.apts'), value: String(apts.length) },
-            { label: t('form.colArea'), value: `${area.toFixed(1)} ${t('common.sqm')}` },
-            { label: t('admin.debt'), value: money(debt) },
-            { label: t('admin.overpay'), value: money(over) },
-            { label: t('admin.feeYear'), value: money(annualSupportFee(area, supportRate)) },
-            { label: t('admin.ukSpend'), value: money(exp) },
-            { label: t('admin.activeReq'), value: String(activeReq) },
-            { label: t('admin.staff'), value: money(salary) },
-          ]) +
+          kpiGrid(summaryKpis) +
           table(
-            [t('admin.pdfStaff'), t('admin.pdfRole'), t('admin.pdfSalary')],
-            staff.map((s) => [
-              escapeHtml(s.name),
-              escapeHtml(s.role || '—'),
-              escapeHtml(`${money(Number(s.salary_eur ?? 0))} · ${s.active ? t('admin.pdfActive') : t('admin.pdfInactive')}`),
-            ]),
+            showSalary
+              ? [t('admin.pdfStaff'), t('admin.pdfRole'), t('admin.pdfSalary')]
+              : [t('admin.pdfStaff'), t('admin.pdfRole'), t('admin.status')],
+            staff.map((s) => showSalary
+              ? [
+                  escapeHtml(s.name),
+                  escapeHtml(labelStaffRole(s.role, t)),
+                  escapeHtml(`${money(Number(s.salary_eur ?? 0))} · ${s.active ? t('admin.pdfActive') : t('admin.pdfInactive')}`),
+                ]
+              : [
+                  escapeHtml(s.name),
+                  escapeHtml(labelStaffRole(s.role, t)),
+                  escapeHtml(s.active ? t('admin.pdfActive') : t('admin.pdfInactive')),
+                ]),
           );
         return wrapReport(t, `${t('admin.reportSummary')} · ${periodLabel}`, generatedLine(), body);
       },
@@ -324,16 +338,16 @@ export function AdminReports({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[14px] border border-border bg-surface shadow-card px-4 py-3">
-        <p className="text-sm text-secondary">{t('admin.reportsLead')}</p>
-        {pdfError && <p className="mt-2 text-sm text-danger">{pdfError}</p>}
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+      <AdminPageHeader title={t('admin.reports')} secondary={t('admin.reportsLead')} />
+      <AdminFilterBar>
+        {pdfError && <AdminInlineAlert tone="danger">{pdfError}</AdminInlineAlert>}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="flex flex-col gap-1 text-sm text-secondary">
             <span>{t('admin.reportsYear')}</span>
             <select
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-foreground"
+              className={adminFieldClass}
             >
               {yearOptions.map((n) => (
                 <option key={n} value={String(n)}>
@@ -362,23 +376,28 @@ export function AdminReports({
             </div>
           </div>
         </div>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {cards.map((card) => (
-          <div key={card.id} className="rounded-[14px] border border-border bg-surface shadow-card p-4">
-            <h2 className="text-sm font-semibold text-accent">{card.title}</h2>
-            <p className="mt-1 text-sm text-muted">{card.hint}</p>
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void run(card.id, `mkd-${card.id}-${periodKey}.pdf`, card.build())}
-              className="mt-4 rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
-            >
-              {busy === card.id ? t('common.preparingPdf') : t('common.downloadPdf')}
-            </button>
-          </div>
-        ))}
-      </div>
+      </AdminFilterBar>
+      <AdminCard>
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.repCatalog')}</p>
+        <div className="mt-2 divide-y divide-border">
+          {cards.map((card) => (
+            <div key={card.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground">{card.title}</h2>
+                <p className="text-sm text-muted">{card.hint}</p>
+              </div>
+              <AdminPrimaryButton
+                type="button"
+                disabled={busy !== null}
+                className="shrink-0 self-start sm:self-center"
+                onClick={() => void run(card.id, `mkd-${card.id}-${periodKey}.pdf`, card.build())}
+              >
+                {busy === card.id ? t('common.preparingPdf') : t('common.downloadPdf')}
+              </AdminPrimaryButton>
+            </div>
+          ))}
+        </div>
+      </AdminCard>
     </div>
   );
 }

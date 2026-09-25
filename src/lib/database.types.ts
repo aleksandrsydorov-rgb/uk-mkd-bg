@@ -1275,6 +1275,171 @@ export interface Database {
         };
         Relationships: [];
       };
+      tariff_catalog: {
+        Row: {
+          id: string;
+          tariff_key: string;
+          module_key: string;
+          default_name: string;
+          unit_code: string;
+          currency: string;
+          calculation_type: string;
+          billing_period: string | null;
+          application_basis: string;
+          governance_type: string;
+          component_keys: string[];
+          active: boolean;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          tariff_key: string;
+          module_key: string;
+          default_name: string;
+          unit_code: string;
+          currency?: string;
+          calculation_type: string;
+          billing_period?: string | null;
+          application_basis: string;
+          governance_type: string;
+          component_keys: string[];
+          active?: boolean;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          tariff_key?: string;
+          module_key?: string;
+          default_name?: string;
+          unit_code?: string;
+          currency?: string;
+          calculation_type?: string;
+          billing_period?: string | null;
+          application_basis?: string;
+          governance_type?: string;
+          component_keys?: string[];
+          active?: boolean;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Relationships: [];
+      };
+      tariff_versions: {
+        Row: {
+          id: string;
+          tariff_id: string;
+          valid_from: string;
+          status: string;
+          basis_type: string;
+          basis_reference: string | null;
+          basis_date: string | null;
+          basis_note: string;
+          decision_id: string | null;
+          published_at: string;
+          published_by: string | null;
+          legacy_author: string | null;
+          idempotency_key: string;
+          payload_fingerprint: string;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          cancellation_reason: string | null;
+          cancellation_idempotency_key: string | null;
+        };
+        Insert: {
+          id?: string;
+          tariff_id: string;
+          valid_from: string;
+          status: string;
+          basis_type: string;
+          basis_reference?: string | null;
+          basis_date?: string | null;
+          basis_note: string;
+          decision_id?: string | null;
+          published_at?: string;
+          published_by?: string | null;
+          legacy_author?: string | null;
+          idempotency_key: string;
+          payload_fingerprint: string;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          cancellation_reason?: string | null;
+          cancellation_idempotency_key?: string | null;
+        };
+        Update: {
+          id?: string;
+          tariff_id?: string;
+          valid_from?: string;
+          status?: string;
+          basis_type?: string;
+          basis_reference?: string | null;
+          basis_date?: string | null;
+          basis_note?: string;
+          decision_id?: string | null;
+          published_at?: string;
+          published_by?: string | null;
+          legacy_author?: string | null;
+          idempotency_key?: string;
+          payload_fingerprint?: string;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          cancellation_reason?: string | null;
+          cancellation_idempotency_key?: string | null;
+        };
+        Relationships: [];
+      };
+      tariff_rate_items: {
+        Row: {
+          version_id: string;
+          component_key: string;
+          rate: number;
+        };
+        Insert: {
+          version_id: string;
+          component_key: string;
+          rate: number;
+        };
+        Update: {
+          version_id?: string;
+          component_key?: string;
+          rate?: number;
+        };
+        Relationships: [];
+      };
+      tariff_legacy_links: {
+        Row: {
+          id: string;
+          tariff_key: string;
+          legacy_source: string;
+          legacy_row_id: string | null;
+          legacy_key: string | null;
+          version_id: string | null;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          tariff_key: string;
+          legacy_source: string;
+          legacy_row_id?: string | null;
+          legacy_key?: string | null;
+          version_id?: string | null;
+          note?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          tariff_key?: string;
+          legacy_source?: string;
+          legacy_row_id?: string | null;
+          legacy_key?: string | null;
+          version_id?: string | null;
+          note?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       water_tariffs: {
         Row: {
           id: string;
@@ -2029,6 +2194,104 @@ export interface Database {
       current_staff_id: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      list_tariffs: {
+        Args: {
+          p_module_key?: string | null;
+          p_active_only?: boolean;
+          p_limit?: number;
+        };
+        Returns: {
+          tariff_id: string;
+          tariff_key: string;
+          module_key: string;
+          default_name: string;
+          unit_code: string;
+          currency: string;
+          calculation_type: string;
+          billing_period: string | null;
+          application_basis: string;
+          governance_type: string;
+          component_keys: string[];
+          active: boolean;
+          current_version_id: string | null;
+          current_valid_from: string | null;
+          current_rates: Record<string, number> | null;
+          current_basis_type: string | null;
+          current_basis_note: string | null;
+          current_basis_date: string | null;
+          current_published_at: string | null;
+          current_legacy_author: string | null;
+          nearest_future_version_id: string | null;
+          nearest_future_valid_from: string | null;
+          nearest_future_rates: Record<string, number> | null;
+          nearest_future_basis_type: string | null;
+          nearest_future_basis_note: string | null;
+          nearest_future_basis_date: string | null;
+          nearest_future_published_at: string | null;
+        }[];
+      };
+      list_tariff_history: {
+        Args: {
+          p_tariff_id: string;
+          p_status?: string | null;
+          p_valid_from_from?: string | null;
+          p_valid_from_to?: string | null;
+          p_cursor_valid_from?: string | null;
+          p_cursor_id?: string | null;
+          p_limit?: number;
+        };
+        Returns: {
+          version_id: string;
+          tariff_id: string;
+          valid_from: string;
+          status: string;
+          rates: Record<string, number> | null;
+          basis_type: string;
+          basis_reference: string | null;
+          basis_date: string | null;
+          basis_note: string;
+          decision_id: string | null;
+          published_at: string;
+          published_by: string | null;
+          legacy_author: string | null;
+          cancelled_at: string | null;
+          cancellation_reason: string | null;
+        }[];
+      };
+      publish_tariff_version: {
+        Args: {
+          p_tariff_id: string;
+          p_rates: Record<string, number>;
+          p_basis_type: string;
+          p_basis_note: string;
+          p_idempotency_key: string;
+          p_application_year?: number | null;
+          p_valid_from?: string | null;
+          p_basis_reference?: string | null;
+          p_basis_date?: string | null;
+          p_decision_id?: string | null;
+        };
+        Returns: {
+          version_id: string;
+          tariff_id: string;
+          valid_from: string;
+          status: string;
+          rates: Record<string, number> | null;
+          published_at: string;
+        }[];
+      };
+      cancel_future_tariff_version: {
+        Args: {
+          p_version_id: string;
+          p_reason: string;
+          p_cancellation_idempotency_key: string;
+        };
+        Returns: {
+          version_id: string;
+          status: string;
+          cancelled_at: string | null;
+        }[];
       };
       list_work_orders_admin: {
         Args: Record<string, never>;

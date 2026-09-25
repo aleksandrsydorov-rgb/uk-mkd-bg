@@ -1,0 +1,28 @@
+Tariff Core v1 — Package 1 local audit notes
+===========================================
+
+Migrations (NOT applied):
+- 20260926030000_tariff_core_schema_rpc.sql
+- 20260926030100_tariff_core_backfill.sql
+
+Pre-apply patch:
+- tariff_rates_json: no authenticated EXECUTE
+- cancel transition: only cancellation fields mutable
+- utility basis_type: supplier_notice | invoice | other
+- cancel idempotency: key + version + normalized reason
+- backfill preflight: abort on duplicate legacy valid_from
+
+Live billing unchanged:
+- water_tariffs / set_water_tariff
+- electricity_tariffs / set_electricity_tariff
+- building_settings.support_rate_eur_per_sqm_year / set_support_rate_eur_per_sqm_year
+
+PRODUCTION VERIFICATION REQUIRED before apply:
+1. module_catalog keys support_fee / water / electricity
+2. general_meeting_decisions exists (FK)
+3. water_tariffs / electricity_tariffs / building_settings present
+4. No duplicate valid_from in legacy water/electricity tariffs
+5. After apply: authenticated has no DML on Core tables; no EXECUTE on tariff_rates_json
+6. has_staff_role exact matches for администрация / бухгалтер
+7. Europe/Sofia date semantics
+8. building_modules.enabled for publish gate

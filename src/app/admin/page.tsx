@@ -94,12 +94,14 @@ import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFina
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
 import { AdminWorkOrders } from '@/components/admin/AdminWorkOrders';
 import { AdminMyTasks } from '@/components/admin/AdminMyTasks';
+import { AdminTariffs } from '@/components/admin/AdminTariffs';
 import {
   canSeeMyWorkOrders,
   canSeeWorkOrdersAdmin,
   REQUEST_WORK_CATEGORIES,
   type MyWorkClaimProfile,
 } from '@/lib/workOrders';
+import { canViewTariffCore } from '@/lib/tariffs';
 import {
   canSeeCapitalAdmin,
   canSeeWaterAdmin,
@@ -255,6 +257,7 @@ type AdminSection =
   | 'документы'
   | 'объявления'
   | 'отчётность'
+  | 'тарифы'
   | 'чат'
   | 'рабочие_задачи'
   | 'мои_задачи';
@@ -276,6 +279,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'документы',
   'объявления',
   'отчётность',
+  'тарифы',
   'чат',
   'рабочие_задачи',
   'мои_задачи',
@@ -354,6 +358,7 @@ function AdminPortal() {
       { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
       { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
       { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
+      { key: 'тарифы', label: t('admin.tariffsCore'), icon: '📑' },
       { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
       { key: 'документы', label: t('admin.docsMenu'), icon: '📁' },
       { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
@@ -391,6 +396,7 @@ function AdminPortal() {
   const canChangeBuildingModules = staffActive && isUkAdminRole(staffRole);
   const showWorkOrdersAdmin = canSeeWorkOrdersAdmin(staffRole, staffActive);
   const showMyTasks = canSeeMyWorkOrders(staffRole, staffActive, workClaimProfile);
+  const showTariffCore = canViewTariffCore(staffRole, staffActive);
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
@@ -416,6 +422,7 @@ function AdminPortal() {
           ...(canReadSupportFinance && showSupportFee ? (['такса'] as const) : []),
           ...(showCapital ? (['капремонт'] as const) : []),
           'расходы',
+          ...(showTariffCore ? (['тарифы'] as const) : []),
           ...(canReadSupportFinance ? (['отчётность'] as const) : []),
         ],
       },
@@ -451,6 +458,7 @@ function AdminPortal() {
     showDocumentsNav,
     canManageCriticalAccess,
     canReadSupportFinance,
+    showTariffCore,
   ]);
   const visibleSectionSet = useMemo(() => {
     const keys = new Set<AdminSection>();
@@ -4732,6 +4740,16 @@ function AdminPortal() {
           </div>
         );
       }
+
+      case 'тарифы':
+        return (
+          <AdminTariffs
+            supabase={supabase}
+            locale={locale}
+            staffRole={staffRole}
+            staffActive={staffActive}
+          />
+        );
 
       case 'отчётность':
         return (

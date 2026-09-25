@@ -2449,6 +2449,23 @@ export interface Database {
         Args: { p_work_order_id: string };
         Returns: Database['public']['Tables']['work_orders']['Row'];
       };
+      return_request_to_work: {
+        Args: { p_request_id: number };
+        Returns: Database['public']['Tables']['requests']['Row'];
+      };
+      list_request_work_orders: {
+        Args: { p_request_id: number };
+        Returns: {
+          id: string;
+          title: string;
+          status: string;
+          assigned_staff_id: number | null;
+          assignee_name: string | null;
+          completed_at: string | null;
+          completion_note: string | null;
+          created_at: string;
+        }[];
+      };
       complete_work_order: {
         Args: { p_work_order_id: string; p_completion_note?: string | null };
         Returns: Database['public']['Tables']['work_orders']['Row'];

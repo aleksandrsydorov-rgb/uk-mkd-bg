@@ -532,6 +532,19 @@ function AdminPortal() {
   const [reqSearch, setReqSearch] = useState('');
   const [reqFiltersOpen, setReqFiltersOpen] = useState(false);
   const [requestDetailId, setRequestDetailId] = useState<number | null>(null);
+  const [requestLinkedWos, setRequestLinkedWos] = useState<
+    {
+      id: string;
+      title: string;
+      status: string;
+      assigned_staff_id: number | null;
+      assignee_name: string | null;
+      completed_at: string | null;
+      completion_note: string | null;
+      created_at: string;
+    }[]
+  >([]);
+  const [requestLifecycleBusy, setRequestLifecycleBusy] = useState(false);
   const [annDetailId, setAnnDetailId] = useState<number | null>(null);
   const [pollDetailId, setPollDetailId] = useState<number | null>(null);
 
@@ -1232,8 +1245,15 @@ function AdminPortal() {
   );
   const annualSupportTotal = totalArea * supportRate;
   const activeRequests = useMemo(
-    () => requests.filter((r) => r.status !== 'выполнена' && r.status !== 'отклонена'),
-    [requests]
+    () =>
+      requests.filter(
+        (r) => r.status !== 'выполнена' && r.status !== 'отклонена',
+      ),
+    [requests],
+  );
+  const newRequestsCount = useMemo(
+    () => requests.filter((r) => r.status === 'новая').length,
+    [requests],
   );
   const totalSalary = useMemo(
     () => staff.filter((s) => s.active).reduce((sum, s) => sum + Number(s.salary_eur ?? 0), 0),
@@ -2438,6 +2458,54 @@ function AdminPortal() {
     }
   }
 
+  async function handleReturnRequestToWork(reqId: number) {
+    if (!canManageCriticalAccess) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    if (!confirm(t('admin.reqReturnAsk'))) return;
+    setRequestLifecycleBusy(true);
+    setError(null);
+    try {
+      const { error } = await supabase.rpc('return_request_to_work', { p_request_id: reqId });
+      if (error) throw error;
+      await loadAll();
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
+    } finally {
+      setRequestLifecycleBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (requestDetailId == null) {
+      setRequestLinkedWos([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('list_request_work_orders', {
+          p_request_id: requestDetailId,
+        });
+        if (cancelled) return;
+        if (error) {
+          if (!isMissingRelation(error, 'list_request_work_orders')) {
+            // Non-fatal for modal if migration not applied yet.
+          }
+          setRequestLinkedWos([]);
+          return;
+        }
+        setRequestLinkedWos((data as typeof requestLinkedWos) ?? []);
+      } catch {
+        if (!cancelled) setRequestLinkedWos([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestDetailId, supabase, requests]);
+
   async function handleDeleteRequest(id: number) {
     if (!canManageCriticalAccess) {
       setError(t('admin.errNoAccess'));
@@ -3117,6 +3185,12 @@ function AdminPortal() {
           if (status === 'отклонена') return 'danger';
           return 'warning';
         };
+        const woStatusLabel = (status: string) => {
+          if (status === 'completed') return t('admin.woStatusCompletedShort');
+          if (status === 'in_progress') return t('admin.woStatusProgressShort');
+          if (status === 'cancelled') return t('admin.woStatusCancelledShort');
+          return t('admin.woStatusOpenShort');
+        };
         return (
           <div className="space-y-4 md:rounded-2xl md:border md:border-border md:bg-surface md:p-6">
             <AdminPageHeader
@@ -3293,6 +3367,48 @@ function AdminPortal() {
                     ) : null}
                     <div className="text-xs text-muted">{formatOwnerDateTime(requestDetail.created_at, locale)}</div>
                     <div>
+                      <p className="mb-2 text-xs font-medium text-secondary">{t('admin.reqLinkedWorkOrders')}</p>
+                      {requestLinkedWos.length === 0 ? (
+                        <p className="text-sm text-muted">{t('admin.reqNoLinkedWo')}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {requestLinkedWos.map((wo) => (
+                            <div
+                              key={wo.id}
+                              className="rounded-[12px] border border-border bg-surface-secondary/80 p-3 text-sm text-secondary"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-medium text-foreground">{wo.title}</span>
+                                <StatusBadge label={woStatusLabel(wo.status)} tone={wo.status === 'completed' ? 'success' : 'info'} />
+                              </div>
+                              <p className="mt-1 text-xs text-muted">
+                                {wo.assignee_name || t('admin.woUnassigned')}
+                                {wo.completed_at
+                                  ? ` · ${formatOwnerDateTime(wo.completed_at, locale)}`
+                                  : ''}
+                              </p>
+                              {wo.completion_note ? (
+                                <p className="mt-1 whitespace-pre-wrap text-sm">{wo.completion_note}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {requestDetail.status === 'выполнена' &&
+                    canManageCriticalAccess &&
+                    requestLinkedWos.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        <AdminSecondaryButton
+                          type="button"
+                          disabled={requestLifecycleBusy}
+                          onClick={() => void handleReturnRequestToWork(requestDetail.id)}
+                        >
+                          {t('admin.reqReturnToWork')}
+                        </AdminSecondaryButton>
+                      </div>
+                    ) : null}
+                    <div>
                       <label className="mb-1 block text-xs text-secondary">{t('admin.status')}</label>
                       <select
                         value={requestDetail.status ?? 'новая'}
@@ -3306,7 +3422,9 @@ function AdminPortal() {
                       </select>
                     </div>
                     <div className="border-t border-border pt-4 space-y-3">
-                      {showWorkOrdersAdmin ? (
+                      {showWorkOrdersAdmin &&
+                      requestDetail.status !== 'выполнена' &&
+                      requestDetail.status !== 'отклонена' ? (
                         <AdminSecondaryButton
                           type="button"
                           onClick={() => {
@@ -5253,7 +5371,7 @@ function AdminPortal() {
     if (key === 'смены') return pendingTransfersCount;
     if (key === 'опросы') return openPollsCount;
     if (key === 'чат') return totalUnreadChats;
-    if (key === 'заявки') return activeRequests.length;
+    if (key === 'заявки') return newRequestsCount;
     if (key === 'расходы') return pendingUkExpenses.length;
     return 0;
   }
@@ -5476,7 +5594,7 @@ function AdminPortal() {
             ? [{ key: 'чат' as const, label: t('account.tabChat'), icon: '💬', badge: totalUnreadChats || undefined }]
             : []),
           ...(showRequests
-            ? [{ key: 'заявки' as const, label: t('admin.requests'), icon: '📋', badge: activeRequests.length || undefined }]
+            ? [{ key: 'заявки' as const, label: t('admin.requests'), icon: '📋', badge: newRequestsCount || undefined }]
             : []),
           { key: '__finance', label: t('admin.menuFinance'), icon: '💶', badge: pendingUkExpenses.length || undefined },
         ]}

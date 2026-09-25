@@ -52,10 +52,11 @@ import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
 import {
-  buildingModulesFromRows,
+  buildingModulesFromV2Rows,
   emptyBuildingModulesState,
   isBuildingModuleEnabled,
   type BuildingModulesState,
+  type BuildingModuleV2Row,
 } from '@/lib/modules';
 import {
   currentElectricityTariff,
@@ -151,16 +152,6 @@ export default function AccountPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
   const [supabase] = useState(() => createClient());
-  const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = [
-    { key: 'обзор', label: t('account.overview'), icon: '▦' },
-    { key: 'квартира', label: t('account.apt'), icon: '🏠' },
-    { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
-    { key: 'финансы', label: t('account.finance'), icon: '💰' },
-    { key: 'счётчики', label: t('account.meters'), icon: '⚡' },
-    { key: 'документы', label: t('account.docsMenu'), icon: '📁' },
-    { key: 'опросы', label: t('account.polls'), icon: '🗳️' },
-    { key: 'ук', label: t('account.mgmtTitle'), icon: '🏢' },
-  ];
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
   const [authReady, setAuthReady] = useState(false);
@@ -184,9 +175,38 @@ export default function AccountPage() {
   const waterModuleOn = isBuildingModuleEnabled(buildingModules, 'water');
   const electricityModuleOn = isBuildingModuleEnabled(buildingModules, 'electricity');
   const capitalEnabled = isBuildingModuleEnabled(buildingModules, 'capital_repair');
+  const supportFeeEnabled = isBuildingModuleEnabled(buildingModules, 'support_fee');
+  const requestsEnabled = isBuildingModuleEnabled(buildingModules, 'requests');
+  const chatEnabled = isBuildingModuleEnabled(buildingModules, 'chat');
+  const pollsEnabled = isBuildingModuleEnabled(buildingModules, 'polls');
+  const announcementsEnabled = isBuildingModuleEnabled(buildingModules, 'announcements');
+  const generalMeetingEnabled = isBuildingModuleEnabled(buildingModules, 'general_meeting');
+  const buildingDocumentsEnabled = isBuildingModuleEnabled(buildingModules, 'building_documents');
+  const documentsNavEnabled = generalMeetingEnabled || buildingDocumentsEnabled;
+  const managementNavEnabled = requestsEnabled || announcementsEnabled || chatEnabled;
   // Module Core disabled always wins; information modes apply only when module is on.
   const waterEnabled = waterModuleOn && isOwnerModuleEnabled(waterMode);
   const electricityEnabled = electricityModuleOn && isOwnerModuleEnabled(electricityMode);
+  const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = [
+    { key: 'обзор', label: t('account.overview'), icon: '▦' },
+    { key: 'квартира', label: t('account.apt'), icon: '🏠' },
+    { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
+    ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled
+      ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
+      : []),
+    ...(waterEnabled || electricityEnabled
+      ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
+      : []),
+    ...(documentsNavEnabled
+      ? [{ key: 'документы' as const, label: t('account.docsMenu'), icon: '📁' }]
+      : []),
+    ...(pollsEnabled
+      ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️' }]
+      : []),
+    ...(managementNavEnabled
+      ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
+      : []),
+  ];
   const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
@@ -451,13 +471,13 @@ export default function AccountPage() {
           setWaterMode(parseWaterMode(settingsRow?.water_mode));
         }
 
-        const modulesRes = await supabase.rpc('get_building_modules');
+        const modulesRes = await supabase.rpc('get_building_modules_v2');
         if (modulesRes.error) {
           // Load error != enabled fallback.
           setBuildingModules(emptyBuildingModulesState());
         } else {
           setBuildingModules(
-            buildingModulesFromRows(modulesRes.data as { module_key: string; enabled: boolean }[] | null),
+            buildingModulesFromV2Rows(modulesRes.data as BuildingModuleV2Row[] | null).state,
           );
         }
 
@@ -711,7 +731,27 @@ export default function AccountPage() {
       setFinanceTab('support');
       persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
     }
-  }, [waterEnabled, electricityEnabled, capitalEnabled, financeTab]);
+    if (!supportFeeEnabled && financeTab === 'support') {
+      const next = waterEnabled ? 'water' : electricityEnabled ? 'electricity' : capitalEnabled ? 'capital' : 'support';
+      setFinanceTab(next);
+      persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
+    }
+  }, [waterEnabled, electricityEnabled, capitalEnabled, supportFeeEnabled, financeTab]);
+
+  useEffect(() => {
+    const allowed = new Set(MENU_ITEMS.map((item) => item.key));
+    if (!allowed.has(activeMenu)) setActiveMenu('обзор');
+  }, [MENU_ITEMS, activeMenu]);
+
+  useEffect(() => {
+    if (managementTab === 'заявки' && !requestsEnabled) {
+      setManagementTab(announcementsEnabled ? 'объявления' : chatEnabled ? 'чат' : 'расходы');
+    } else if (managementTab === 'объявления' && !announcementsEnabled) {
+      setManagementTab(requestsEnabled ? 'заявки' : chatEnabled ? 'чат' : 'расходы');
+    } else if (managementTab === 'чат' && !chatEnabled) {
+      setManagementTab(requestsEnabled ? 'заявки' : announcementsEnabled ? 'объявления' : 'расходы');
+    }
+  }, [managementTab, requestsEnabled, announcementsEnabled, chatEnabled]);
 
   // ===================================================================
   // ЧАТ — ПОЛИНГ
@@ -1224,9 +1264,12 @@ export default function AccountPage() {
 
   function selectFinanceTab(tab: FinanceTab) {
     let next = tab;
-    if (tab === 'water' && !waterEnabled) next = 'support';
-    if (tab === 'electricity' && !electricityEnabled) next = 'support';
-    if (tab === 'capital' && !capitalEnabled) next = 'support';
+    if (tab === 'water' && !waterEnabled) next = supportFeeEnabled ? 'support' : capitalEnabled ? 'capital' : 'support';
+    if (tab === 'electricity' && !electricityEnabled) next = supportFeeEnabled ? 'support' : capitalEnabled ? 'capital' : 'support';
+    if (tab === 'capital' && !capitalEnabled) next = supportFeeEnabled ? 'support' : waterEnabled ? 'water' : 'support';
+    if (tab === 'support' && !supportFeeEnabled) {
+      next = waterEnabled ? 'water' : electricityEnabled ? 'electricity' : capitalEnabled ? 'capital' : 'support';
+    }
     setFinanceTab(next);
     persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
   }
@@ -1448,6 +1491,12 @@ export default function AccountPage() {
             waterEnabled={waterEnabled}
             electricityEnabled={electricityEnabled}
             capitalEnabled={capitalEnabled}
+            supportFeeEnabled={supportFeeEnabled}
+            pollsEnabled={pollsEnabled}
+            requestsEnabled={requestsEnabled}
+            chatEnabled={chatEnabled}
+            documentsEnabled={documentsNavEnabled}
+            meetingsEnabled={generalMeetingEnabled}
             supportDebt={Math.max(0, Number(property?.debt ?? 0))}
             supportOver={Math.max(0, Number(property?.overpayment ?? 0))}
             supportAssessment={supportAssessments.find((a) => a.property_id === property?.id) ?? null}
@@ -1666,16 +1715,17 @@ export default function AccountPage() {
 
             <PillTabs
               items={[
-                { id: 'support' as const, label: t('account.financeTabSupport') },
+                ...(supportFeeEnabled ? [{ id: 'support' as const, label: t('account.financeTabSupport') }] : []),
                 ...(waterEnabled ? [{ id: 'water' as const, label: t('account.financeTabWater') }] : []),
                 ...(electricityEnabled ? [{ id: 'electricity' as const, label: t('account.financeTabElectricity') }] : []),
                 ...(capitalEnabled ? [{ id: 'capital' as const, label: t('account.financeTabCapital') }] : []),
               ]}
               value={
-                (financeTab === 'water' && !waterEnabled)
+                (financeTab === 'support' && !supportFeeEnabled)
+                || (financeTab === 'water' && !waterEnabled)
                 || (financeTab === 'electricity' && !electricityEnabled)
                 || (financeTab === 'capital' && !capitalEnabled)
-                  ? 'support'
+                  ? (supportFeeEnabled ? 'support' : waterEnabled ? 'water' : electricityEnabled ? 'electricity' : 'capital')
                   : financeTab
               }
               onChange={selectFinanceTab}
@@ -1689,10 +1739,11 @@ export default function AccountPage() {
                 variant="finance"
                 currentTariff={waterTariff}
                 financeTab={
-                  (financeTab === 'water' && !waterEnabled)
+                  (financeTab === 'support' && !supportFeeEnabled)
+                  || (financeTab === 'water' && !waterEnabled)
                   || (financeTab === 'electricity' && !electricityEnabled)
                   || (financeTab === 'capital' && !capitalEnabled)
-                    ? 'support'
+                    ? (supportFeeEnabled ? 'support' : waterEnabled ? 'water' : electricityEnabled ? 'electricity' : 'capital')
                     : financeTab
                 }
                 onSelectFinanceTab={selectFinanceTab}
@@ -1704,7 +1755,7 @@ export default function AccountPage() {
               />
             )}
 
-            {financeTab === 'support' && (
+            {supportFeeEnabled && financeTab === 'support' && (
               <>
             <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card">
               <div className="relative px-5 pb-5 pt-5 md:px-6 md:pt-6">
@@ -1878,6 +1929,9 @@ export default function AccountPage() {
             requestFormOpen={showRequestForm}
             onRequestFormOpen={setShowRequestForm}
             unreadChatCount={unreadChatCount}
+            requestsEnabled={requestsEnabled}
+            announcementsEnabled={announcementsEnabled}
+            chatEnabled={chatEnabled}
             requestForm={
               <form onSubmit={handleCreateRequest} className="space-y-3 rounded-[14px] border border-border bg-surface px-4 py-3">
                 <h3 className="text-sm font-semibold">
@@ -2034,7 +2088,13 @@ export default function AccountPage() {
       // ЗАЯВКИ
       // ===========================================================
       case 'документы':
-        return <OwnerDocumentsDecisions supabase={supabase} />;
+        return (
+          <OwnerDocumentsDecisions
+            supabase={supabase}
+            meetingsEnabled={generalMeetingEnabled}
+            documentsEnabled={buildingDocumentsEnabled}
+          />
+        );
 
       case 'опросы':
         return (
@@ -2273,12 +2333,18 @@ export default function AccountPage() {
       <MobileBottomNav
         items={[
           { key: 'обзор', label: t('account.overview'), icon: '▦' },
-          { key: 'финансы', label: t('account.finance'), icon: '💰' },
-          { key: 'ук', label: t('account.mgmtTitle'), icon: '🏢', badge: unreadChatCount || undefined },
-          { key: 'опросы', label: t('account.polls'), icon: '🗳️', badge: unansweredPollsCount || undefined },
+          ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled
+            ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
+            : []),
+          ...(managementNavEnabled
+            ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢', badge: chatEnabled ? (unreadChatCount || undefined) : undefined }]
+            : []),
+          ...(pollsEnabled
+            ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️', badge: unansweredPollsCount || undefined }]
+            : []),
         ]}
         activeKey={activeMenu}
-        moreActive={!['обзор', 'финансы', 'ук', 'опросы'].includes(activeMenu)}
+        moreActive={!MENU_ITEMS.filter((i) => ['обзор', 'финансы', 'ук', 'опросы'].includes(i.key)).map((i) => i.key).includes(activeMenu)}
         onSelect={(key) => setActiveMenu(key as MenuSection)}
         onMore={() => setSidebarOpen(true)}
         hidden={sidebarOpen}

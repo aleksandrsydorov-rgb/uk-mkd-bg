@@ -37,11 +37,15 @@ function fmtWhen(meeting: GeneralMeeting, locale: string) {
 
 export function OwnerDocumentsDecisions({
   supabase,
+  meetingsEnabled = true,
+  documentsEnabled = true,
 }: {
   supabase: SupabaseClient<Database>;
+  meetingsEnabled?: boolean;
+  documentsEnabled?: boolean;
 }) {
   const { t, dateLocale, locale } = useI18n();
-  const [tab, setTab] = useState<Tab>('meetings');
+  const [tab, setTab] = useState<Tab>(meetingsEnabled ? 'meetings' : documentsEnabled ? 'documents' : 'meetings');
   const [meetings, setMeetings] = useState<GeneralMeeting[]>([]);
   const [agenda, setAgenda] = useState<MeetingAgendaItem[]>([]);
   const [decisions, setDecisions] = useState<MeetingDecision[]>([]);
@@ -132,10 +136,23 @@ export function OwnerDocumentsDecisions({
   }, [decisions, filter, query]);
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'meetings', label: t('docs.tabMeetings') },
-    { id: 'decisions', label: t('docs.tabDecisions') },
-    { id: 'documents', label: t('docs.tabDocuments') },
+    ...(meetingsEnabled
+      ? [
+          { id: 'meetings' as const, label: t('docs.tabMeetings') },
+          { id: 'decisions' as const, label: t('docs.tabDecisions') },
+        ]
+      : []),
+    ...(documentsEnabled ? [{ id: 'documents' as const, label: t('docs.tabDocuments') }] : []),
   ];
+
+  useEffect(() => {
+    const allowed: Tab[] = [];
+    if (meetingsEnabled) {
+      allowed.push('meetings', 'decisions');
+    }
+    if (documentsEnabled) allowed.push('documents');
+    if (allowed.length > 0 && !allowed.includes(tab)) setTab(allowed[0]);
+  }, [meetingsEnabled, documentsEnabled, tab]);
 
   function meetingCard(m: GeneralMeeting, upcomingCard: boolean) {
     const items = agenda.filter((a) => a.meeting_id === m.id);

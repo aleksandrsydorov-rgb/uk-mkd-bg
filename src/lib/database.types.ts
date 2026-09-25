@@ -762,6 +762,30 @@ export interface Database {
         };
         Relationships: [];
       };
+      module_catalog: {
+        Row: {
+          module_key: string;
+          default_name: string;
+          category: string;
+          implemented: boolean;
+          sort_order: number;
+        };
+        Insert: {
+          module_key: string;
+          default_name: string;
+          category: string;
+          implemented?: boolean;
+          sort_order?: number;
+        };
+        Update: {
+          module_key?: string;
+          default_name?: string;
+          category?: string;
+          implemented?: boolean;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
       support_fee_ledger: {
         Row: {
           id: number;
@@ -1880,6 +1904,17 @@ export interface Database {
         Returns: {
           module_key: string;
           enabled: boolean;
+        }[];
+      };
+      get_building_modules_v2: {
+        Args: Record<string, never>;
+        Returns: {
+          module_key: string;
+          enabled: boolean;
+          default_name: string;
+          category: string;
+          sort_order: number;
+          implemented: boolean;
         }[];
       };
       set_building_module_enabled: {

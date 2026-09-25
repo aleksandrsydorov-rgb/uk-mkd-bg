@@ -90,6 +90,9 @@ export function OwnerManagement({
   onRequestFormOpen,
   unreadChatCount,
   chat,
+  requestsEnabled = true,
+  announcementsEnabled = true,
+  chatEnabled = true,
 }: {
   tab: ManagementTab;
   onTab: (tab: ManagementTab) => void;
@@ -104,6 +107,9 @@ export function OwnerManagement({
   requestFormOpen: boolean;
   onRequestFormOpen: (open: boolean) => void;
   unreadChatCount: number;
+  requestsEnabled?: boolean;
+  announcementsEnabled?: boolean;
+  chatEnabled?: boolean;
   chat: {
     messages: ChatRow[];
     input: string;
@@ -173,10 +179,16 @@ export function OwnerManagement({
   }, [announcements, t]);
 
   const tabs: Array<{ id: ManagementTab; label: string; count?: number }> = [
-    { id: 'заявки', label: t('account.requests'), count: activeReqs.length || undefined },
-    { id: 'объявления', label: t('account.announcements'), count: announcements.length || undefined },
+    ...(requestsEnabled
+      ? [{ id: 'заявки' as const, label: t('account.requests'), count: activeReqs.length || undefined }]
+      : []),
+    ...(announcementsEnabled
+      ? [{ id: 'объявления' as const, label: t('account.announcements'), count: announcements.length || undefined }]
+      : []),
     { id: 'расходы', label: t('account.mgmtTabExpenses') },
-    { id: 'чат', label: t('account.tabChat'), count: unreadChatCount || undefined },
+    ...(chatEnabled
+      ? [{ id: 'чат' as const, label: t('account.tabChat'), count: unreadChatCount || undefined }]
+      : []),
   ];
 
   return (

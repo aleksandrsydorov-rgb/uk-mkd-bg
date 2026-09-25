@@ -133,11 +133,15 @@ export function AdminDocumentsDecisions({
   properties,
   staffRole,
   staffActive,
+  meetingsEnabled = true,
+  documentsEnabled = true,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
   staffRole: string;
   staffActive: boolean;
+  meetingsEnabled?: boolean;
+  documentsEnabled?: boolean;
 }) {
   const { t, locale } = useI18n();
   const canWrite = canManageBuildingGovernance(staffRole, staffActive);
@@ -638,7 +642,7 @@ export function AdminDocumentsDecisions({
           <AdminSecondaryButton type="button" onClick={() => { setSelectedId(null); setDetailTab('info'); setShowCreate(false); }}>
             {t('common.back')}
           </AdminSecondaryButton>
-        ) : canWrite ? (
+        ) : canWrite && meetingsEnabled ? (
           <AdminPrimaryButton type="button" onClick={() => { startNewMeeting(); setShowCreate(true); }}>
             {t('docs.newMeeting')}
           </AdminPrimaryButton>
@@ -649,6 +653,7 @@ export function AdminDocumentsDecisions({
 
       {!selected ? (
         <>
+          {meetingsEnabled ? (
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-foreground">{t('docs.tabMeetings')}</h3>
             {showCreate && canWrite ? (
@@ -756,7 +761,9 @@ export function AdminDocumentsDecisions({
               </>
             )}
           </section>
+          ) : null}
 
+          {documentsEnabled ? (
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-foreground">{t('docs.tabDocuments')}</h3>
             {canWrite ? (
@@ -881,8 +888,9 @@ export function AdminDocumentsDecisions({
               </AdminCard>
             ) : null}
           </section>
+          ) : null}
         </>
-      ) : (
+      ) : meetingsEnabled ? (
         <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge label={labelMeetingWorkflowStatus(selected, t, isUpcomingMeeting(selected))} tone={meetingTone(selected)} />
@@ -1258,7 +1266,7 @@ export function AdminDocumentsDecisions({
             </AdminCard>
           ) : null}
         </div>
-      )}
+      ) : null}
 
       {dialog === 'reschedule' && selected ? (
         <div className={adminModalOverlayClass}>

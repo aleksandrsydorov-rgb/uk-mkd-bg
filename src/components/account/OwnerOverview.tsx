@@ -52,6 +52,12 @@ export function OwnerOverview({
   waterEnabled,
   electricityEnabled,
   capitalEnabled = true,
+  supportFeeEnabled = true,
+  pollsEnabled = true,
+  requestsEnabled = true,
+  chatEnabled = true,
+  documentsEnabled = true,
+  meetingsEnabled = true,
   supportDebt,
   supportOver,
   supportAssessment,
@@ -84,6 +90,12 @@ export function OwnerOverview({
   waterEnabled: boolean;
   electricityEnabled: boolean;
   capitalEnabled?: boolean;
+  supportFeeEnabled?: boolean;
+  pollsEnabled?: boolean;
+  requestsEnabled?: boolean;
+  chatEnabled?: boolean;
+  documentsEnabled?: boolean;
+  meetingsEnabled?: boolean;
   supportDebt: number;
   supportOver: number;
   supportAssessment: SupportFeeAssessment | null;
@@ -117,27 +129,33 @@ export function OwnerOverview({
   const loadExtras = useCallback(async () => {
     setExtrasLoading(true);
     try {
-      const jobs: Promise<unknown>[] = [
-        Promise.resolve(supabase.from('general_meetings').select('*').order('meeting_date', { ascending: true })).then((res) => {
-          if (res.error) {
-            if (!isMissingRelation(res.error, 'general_meetings')) return;
-            setUpcomingMeeting(null);
-            return;
-          }
-          const rows = (res.data as GeneralMeeting[]) ?? [];
-          setUpcomingMeeting(rows.find((m) => isUpcomingMeeting(m)) ?? null);
-        }),
-        Promise.resolve(
-          supabase.from('general_meeting_decisions').select('*').eq('protocol_result', 'adopted').order('created_at', { ascending: false }).limit(1),
-        ).then((res) => {
-          if (res.error) {
-            if (!isMissingRelation(res.error, 'general_meeting_decisions')) return;
-            setLatestDecision(null);
-            return;
-          }
-          setLatestDecision(((res.data as MeetingDecision[]) ?? [])[0] ?? null);
-        }),
-      ];
+      const jobs: Promise<unknown>[] = [];
+      if (meetingsEnabled) {
+        jobs.push(
+          Promise.resolve(supabase.from('general_meetings').select('*').order('meeting_date', { ascending: true })).then((res) => {
+            if (res.error) {
+              if (!isMissingRelation(res.error, 'general_meetings')) return;
+              setUpcomingMeeting(null);
+              return;
+            }
+            const rows = (res.data as GeneralMeeting[]) ?? [];
+            setUpcomingMeeting(rows.find((m) => isUpcomingMeeting(m)) ?? null);
+          }),
+          Promise.resolve(
+            supabase.from('general_meeting_decisions').select('*').eq('protocol_result', 'adopted').order('created_at', { ascending: false }).limit(1),
+          ).then((res) => {
+            if (res.error) {
+              if (!isMissingRelation(res.error, 'general_meeting_decisions')) return;
+              setLatestDecision(null);
+              return;
+            }
+            setLatestDecision(((res.data as MeetingDecision[]) ?? [])[0] ?? null);
+          }),
+        );
+      } else {
+        setUpcomingMeeting(null);
+        setLatestDecision(null);
+      }
       if (capitalEnabled) {
         jobs.push(
           Promise.resolve(supabase.rpc('get_capital_repair_balance', { p_property_id: property.id })).then((capRes) => {
@@ -203,7 +221,7 @@ export function OwnerOverview({
     } finally {
       setExtrasLoading(false);
     }
-  }, [property.id, supabase, waterEnabled, electricityEnabled, capitalEnabled]);
+  }, [property.id, supabase, waterEnabled, electricityEnabled, capitalEnabled, meetingsEnabled]);
 
   useEffect(() => {
     void loadExtras();
@@ -237,7 +255,7 @@ export function OwnerOverview({
   ].filter(Boolean).join(' · ');
 
   const attention: Array<{ key: string; title: string; detail: string; onClick: () => void }> = [];
-  if (supportDebt > 0) {
+  if (supportFeeEnabled && supportDebt > 0) {
     attention.push({
       key: 'support',
       title: t('account.financeTabSupport'),
@@ -285,15 +303,17 @@ export function OwnerOverview({
       onClick: () => onOpenMeters('electricity'),
     });
   }
-  for (const poll of unvotedPolls.slice(0, 3)) {
-    attention.push({
-      key: `poll-${poll.id}`,
-      title: poll.title?.trim() || t('account.polls'),
-      detail: t('account.pollNotVoted'),
-      onClick: onOpenPolls,
-    });
+  if (pollsEnabled) {
+    for (const poll of unvotedPolls.slice(0, 3)) {
+      attention.push({
+        key: `poll-${poll.id}`,
+        title: poll.title?.trim() || t('account.polls'),
+        detail: t('account.pollNotVoted'),
+        onClick: onOpenPolls,
+      });
+    }
   }
-  if (openRequestsCount > 0) {
+  if (requestsEnabled && openRequestsCount > 0) {
     attention.push({
       key: 'requests',
       title: t('account.requests'),
@@ -301,7 +321,7 @@ export function OwnerOverview({
       onClick: onOpenRequests,
     });
   }
-  if (unreadChatCount > 0) {
+  if (chatEnabled && unreadChatCount > 0) {
     attention.push({
       key: 'chat',
       title: t('account.chat'),
@@ -309,7 +329,7 @@ export function OwnerOverview({
       onClick: onOpenChat,
     });
   }
-  if (upcomingMeeting) {
+  if (meetingsEnabled && upcomingMeeting) {
     attention.push({
       key: 'meeting',
       title: t('docs.attentionMeeting'),
@@ -318,7 +338,8 @@ export function OwnerOverview({
     });
   }
 
-  const financeCount = 1 + (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0) + (capitalEnabled ? 1 : 0);
+  const financeCount =
+    (supportFeeEnabled ? 1 : 0) + (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0) + (capitalEnabled ? 1 : 0);
   const financeCols =
     financeCount >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : financeCount === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
   const meterCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
@@ -422,9 +443,11 @@ export function OwnerOverview({
         </section>
       ) : null}
 
+      {financeCount > 0 ? (
       <section>
         <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.finance')}</p>
         <div className={financeCount >= 4 ? kpiGrid : `grid gap-2 ${financeCols}`}>
+          {supportFeeEnabled && (
           <button type="button" onClick={() => onOpenFinance('support')} className={kpiBtn}>
             <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabSupport')}</p>
             <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(supportNet)}`}>
@@ -444,6 +467,7 @@ export function OwnerOverview({
               </p>
             ) : null}
           </button>
+          )}
           {waterEnabled && (
             <button type="button" onClick={() => onOpenFinance('water')} className={kpiBtn}>
               <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabWater')}</p>
@@ -473,6 +497,7 @@ export function OwnerOverview({
           )}
         </div>
       </section>
+      ) : null}
 
       {meterCount > 0 && (
         <section>
@@ -528,6 +553,7 @@ export function OwnerOverview({
       )}
 
       <section className="grid gap-1 border-t border-border pt-2 sm:grid-cols-2">
+        {pollsEnabled ? (
         <button type="button" onClick={onOpenPolls} className={secondaryBtn}>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium text-foreground">{t('account.overviewPolls')}</span>
@@ -539,6 +565,7 @@ export function OwnerOverview({
           </span>
           <span className="text-muted" aria-hidden>→</span>
         </button>
+        ) : null}
         <button type="button" onClick={onOpenApartment} className={`${secondaryBtn} md:hidden`}>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium text-foreground">{t('account.apt')}</span>

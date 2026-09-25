@@ -51,6 +51,7 @@ export function OwnerOverview({
   onSelectProperty,
   waterEnabled,
   electricityEnabled,
+  capitalEnabled = true,
   supportDebt,
   supportOver,
   supportAssessment,
@@ -82,6 +83,7 @@ export function OwnerOverview({
   onSelectProperty: (id: number) => void;
   waterEnabled: boolean;
   electricityEnabled: boolean;
+  capitalEnabled?: boolean;
   supportDebt: number;
   supportOver: number;
   supportAssessment: SupportFeeAssessment | null;
@@ -116,10 +118,6 @@ export function OwnerOverview({
     setExtrasLoading(true);
     try {
       const jobs: Promise<unknown>[] = [
-        Promise.resolve(supabase.rpc('get_capital_repair_balance', { p_property_id: property.id })).then((capRes) => {
-          if (!capRes.error) setCapitalBalance(firstBalance(capRes.data as UtilityBalance[] | null));
-          else setCapitalBalance(emptyBalance());
-        }),
         Promise.resolve(supabase.from('general_meetings').select('*').order('meeting_date', { ascending: true })).then((res) => {
           if (res.error) {
             if (!isMissingRelation(res.error, 'general_meetings')) return;
@@ -140,6 +138,16 @@ export function OwnerOverview({
           setLatestDecision(((res.data as MeetingDecision[]) ?? [])[0] ?? null);
         }),
       ];
+      if (capitalEnabled) {
+        jobs.push(
+          Promise.resolve(supabase.rpc('get_capital_repair_balance', { p_property_id: property.id })).then((capRes) => {
+            if (!capRes.error) setCapitalBalance(firstBalance(capRes.data as UtilityBalance[] | null));
+            else setCapitalBalance(emptyBalance());
+          }),
+        );
+      } else {
+        setCapitalBalance(emptyBalance());
+      }
       if (waterEnabled) {
         jobs.push(
           (async () => {
@@ -195,7 +203,7 @@ export function OwnerOverview({
     } finally {
       setExtrasLoading(false);
     }
-  }, [property.id, supabase, waterEnabled, electricityEnabled]);
+  }, [property.id, supabase, waterEnabled, electricityEnabled, capitalEnabled]);
 
   useEffect(() => {
     void loadExtras();
@@ -253,7 +261,7 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('electricity'),
     });
   }
-  if (capitalDebt > 0) {
+  if (capitalEnabled && capitalDebt > 0) {
     attention.push({
       key: 'capital',
       title: t('account.financeTabCapital'),
@@ -310,7 +318,7 @@ export function OwnerOverview({
     });
   }
 
-  const financeCount = 2 + (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
+  const financeCount = 1 + (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0) + (capitalEnabled ? 1 : 0);
   const financeCols =
     financeCount >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : financeCount === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
   const meterCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
@@ -454,13 +462,15 @@ export function OwnerOverview({
               <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(electricityDebt, t)}</p>
             </button>
           )}
-          <button type="button" onClick={() => onOpenFinance('capital')} className={kpiBtn}>
-            <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabCapital')}</p>
-            <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(capitalDebt)}`}>
-              {extrasLoading ? t('common.loading') : formatEur(Math.abs(capitalDebt))}
-            </p>
-            <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(capitalDebt, t)}</p>
-          </button>
+          {capitalEnabled && (
+            <button type="button" onClick={() => onOpenFinance('capital')} className={kpiBtn}>
+              <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabCapital')}</p>
+              <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(capitalDebt)}`}>
+                {extrasLoading ? t('common.loading') : formatEur(Math.abs(capitalDebt))}
+              </p>
+              <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(capitalDebt, t)}</p>
+            </button>
+          )}
         </div>
       </section>
 

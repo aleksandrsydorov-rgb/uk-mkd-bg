@@ -52,6 +52,12 @@ import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterTariff, WaterMode } from '@/lib/utilities';
 import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
 import {
+  buildingModulesFromRows,
+  emptyBuildingModulesState,
+  isBuildingModuleEnabled,
+  type BuildingModulesState,
+} from '@/lib/modules';
+import {
   currentElectricityTariff,
   formatElectricityTariff,
   DEFAULT_ELECTRICITY_MODE,
@@ -174,8 +180,13 @@ export default function AccountPage() {
   const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
   const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
   const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
-  const waterEnabled = isOwnerModuleEnabled(waterMode);
-  const electricityEnabled = isOwnerModuleEnabled(electricityMode);
+  const [buildingModules, setBuildingModules] = useState<BuildingModulesState>(() => emptyBuildingModulesState());
+  const waterModuleOn = isBuildingModuleEnabled(buildingModules, 'water');
+  const electricityModuleOn = isBuildingModuleEnabled(buildingModules, 'electricity');
+  const capitalEnabled = isBuildingModuleEnabled(buildingModules, 'capital_repair');
+  // Module Core disabled always wins; information modes apply only when module is on.
+  const waterEnabled = waterModuleOn && isOwnerModuleEnabled(waterMode);
+  const electricityEnabled = electricityModuleOn && isOwnerModuleEnabled(electricityMode);
   const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
@@ -440,6 +451,16 @@ export default function AccountPage() {
           setWaterMode(parseWaterMode(settingsRow?.water_mode));
         }
 
+        const modulesRes = await supabase.rpc('get_building_modules');
+        if (modulesRes.error) {
+          // Load error != enabled fallback.
+          setBuildingModules(emptyBuildingModulesState());
+        } else {
+          setBuildingModules(
+            buildingModulesFromRows(modulesRes.data as { module_key: string; enabled: boolean }[] | null),
+          );
+        }
+
         const waterTariffRes = await supabase
           .from('water_tariffs')
           .select('*')
@@ -686,7 +707,11 @@ export default function AccountPage() {
       setFinanceTab('support');
       persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
     }
-  }, [waterEnabled, electricityEnabled, financeTab]);
+    if (!capitalEnabled && financeTab === 'capital') {
+      setFinanceTab('support');
+      persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
+    }
+  }, [waterEnabled, electricityEnabled, capitalEnabled, financeTab]);
 
   // ===================================================================
   // ЧАТ — ПОЛИНГ
@@ -1201,6 +1226,7 @@ export default function AccountPage() {
     let next = tab;
     if (tab === 'water' && !waterEnabled) next = 'support';
     if (tab === 'electricity' && !electricityEnabled) next = 'support';
+    if (tab === 'capital' && !capitalEnabled) next = 'support';
     setFinanceTab(next);
     persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
   }
@@ -1421,6 +1447,7 @@ export default function AccountPage() {
             onSelectProperty={setSelectedPropertyId}
             waterEnabled={waterEnabled}
             electricityEnabled={electricityEnabled}
+            capitalEnabled={capitalEnabled}
             supportDebt={Math.max(0, Number(property?.debt ?? 0))}
             supportOver={Math.max(0, Number(property?.overpayment ?? 0))}
             supportAssessment={supportAssessments.find((a) => a.property_id === property?.id) ?? null}
@@ -1642,10 +1669,12 @@ export default function AccountPage() {
                 { id: 'support' as const, label: t('account.financeTabSupport') },
                 ...(waterEnabled ? [{ id: 'water' as const, label: t('account.financeTabWater') }] : []),
                 ...(electricityEnabled ? [{ id: 'electricity' as const, label: t('account.financeTabElectricity') }] : []),
-                { id: 'capital' as const, label: t('account.financeTabCapital') },
+                ...(capitalEnabled ? [{ id: 'capital' as const, label: t('account.financeTabCapital') }] : []),
               ]}
               value={
-                (financeTab === 'water' && !waterEnabled) || (financeTab === 'electricity' && !electricityEnabled)
+                (financeTab === 'water' && !waterEnabled)
+                || (financeTab === 'electricity' && !electricityEnabled)
+                || (financeTab === 'capital' && !capitalEnabled)
                   ? 'support'
                   : financeTab
               }
@@ -1660,7 +1689,9 @@ export default function AccountPage() {
                 variant="finance"
                 currentTariff={waterTariff}
                 financeTab={
-                  (financeTab === 'water' && !waterEnabled) || (financeTab === 'electricity' && !electricityEnabled)
+                  (financeTab === 'water' && !waterEnabled)
+                  || (financeTab === 'electricity' && !electricityEnabled)
+                  || (financeTab === 'capital' && !capitalEnabled)
                     ? 'support'
                     : financeTab
                 }
@@ -1669,6 +1700,7 @@ export default function AccountPage() {
                 supportOver={totalOver}
                 waterEnabled={waterEnabled}
                 electricityEnabled={electricityEnabled}
+                capitalEnabled={capitalEnabled}
               />
             )}
 

@@ -106,6 +106,16 @@ import {
   type WaterMode,
 } from '@/lib/utilities';
 import {
+  BUILDING_MODULE_KEYS,
+  buildingModulesFromRows,
+  emptyBuildingModulesState,
+  isBuildingModuleEnabled,
+  isPhase1ToggleableModuleKey,
+  type BuildingModuleKey,
+  type BuildingModulesState,
+  type ImplementedModuleKey,
+} from '@/lib/modules';
+import {
   currentElectricityTariff,
   formatElectricityTariff,
   canSubmitElectricityStaff,
@@ -340,8 +350,11 @@ function AdminPortal() {
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
   const [staffActive, setStaffActive] = useState(false);
-  const showWater = canSeeWaterAdmin(staffRole);
-  const showCapital = canSeeCapitalAdmin(staffRole);
+  const [buildingModules, setBuildingModules] = useState<BuildingModulesState>(() => emptyBuildingModulesState());
+  const [moduleSavingKey, setModuleSavingKey] = useState<ImplementedModuleKey | null>(null);
+  const showWater = canSeeWaterAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'water');
+  const showCapital = canSeeCapitalAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'capital_repair');
+  const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showElectricityFinance = canSeeElectricityFinance(staffRole);
   const canEditStaff = isUkAdminRole(staffRole);
   const canManageCriticalAccess = staffActive && isUkAdminRole(staffRole);
@@ -350,6 +363,7 @@ function AdminPortal() {
   );
   const canReadSupportFinance = staffActive && canRecordSupportPayments(staffRole);
   const canChangeUtilityMode = staffActive && isUkAdminRole(staffRole);
+  const canChangeBuildingModules = staffActive && isUkAdminRole(staffRole);
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
@@ -362,7 +376,7 @@ function AdminPortal() {
         label: t('admin.menuUtilities'),
         items: [
           ...(showWater ? (['вода'] as const) : []),
-          'электроэнергия',
+          ...(showElectricity ? (['электроэнергия'] as const) : []),
         ],
       },
       {
@@ -389,7 +403,7 @@ function AdminPortal() {
       { id: 'system', label: t('admin.menuSystem'), items: ['персонал', 'настройки'] },
     ];
     return groups.filter((group) => group.items.length > 0);
-  }, [t, showWater, showCapital, canManageCriticalAccess, canReadSupportFinance]);
+  }, [t, showWater, showElectricity, showCapital, canManageCriticalAccess, canReadSupportFinance]);
   const visibleSectionSet = useMemo(() => {
     const keys = new Set<AdminSection>();
     for (const group of MENU_GROUPS) {
@@ -711,6 +725,7 @@ function AdminPortal() {
       }
 
       const settingsRes = await supabase.rpc('read_building_settings');
+      const modulesRes = await supabase.rpc('get_building_modules');
       const ledgerRes = canReadSupportFinance
         ? await supabase
           .from('support_fee_ledger')
@@ -735,6 +750,13 @@ function AdminPortal() {
         setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
         setWaterMode(parseWaterMode(settingsRow?.water_mode));
         setSupportFeeMissing(false);
+      }
+
+      // Load error / missing relation => all disabled (never enabled fallback).
+      if (modulesRes.error) {
+        setBuildingModules(emptyBuildingModulesState());
+      } else {
+        setBuildingModules(buildingModulesFromRows(modulesRes.data as { module_key: string; enabled: boolean }[] | null));
       }
 
       if (ledgerRes.error) {
@@ -1682,6 +1704,36 @@ function AdminPortal() {
     }
     setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
     setWaterMode(parseWaterMode(settingsRow?.water_mode));
+  }
+
+  async function refreshBuildingModules() {
+    const modulesRes = await supabase.rpc('get_building_modules');
+    if (modulesRes.error) {
+      setBuildingModules(emptyBuildingModulesState());
+      throw modulesRes.error;
+    }
+    setBuildingModules(buildingModulesFromRows(modulesRes.data as { module_key: string; enabled: boolean }[] | null));
+  }
+
+  async function handleSetBuildingModule(key: ImplementedModuleKey, enabled: boolean) {
+    if (!canChangeBuildingModules || !isPhase1ToggleableModuleKey(key)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    setError(null);
+    setModuleSavingKey(key);
+    try {
+      const { error } = await supabase.rpc('set_building_module_enabled', {
+        p_module_key: key,
+        p_enabled: enabled,
+      });
+      if (error) throw error;
+      await refreshBuildingModules();
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
+    } finally {
+      setModuleSavingKey(null);
+    }
   }
 
   async function handleSaveElectricityMode(mode: ElectricityMode) {
@@ -3959,6 +4011,26 @@ function AdminPortal() {
               ? t('admin.elModeDisabled')
               : t('admin.elModeOwnerAndStaff');
         const canRate = canSetSupportRate(staffRole);
+        const moduleLabel = (key: BuildingModuleKey) => {
+          switch (key) {
+            case 'water':
+              return t('admin.moduleWater');
+            case 'electricity':
+              return t('admin.moduleElectricity');
+            case 'capital_repair':
+              return t('admin.moduleCapitalRepair');
+            case 'internet':
+              return t('admin.moduleInternet');
+            case 'parking':
+              return t('admin.moduleParking');
+            case 'security':
+              return t('admin.moduleSecurity');
+            case 'rental':
+              return t('admin.moduleRental');
+            default:
+              return key;
+          }
+        };
         return (
           <div className="min-w-0 space-y-4">
             <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
@@ -3992,6 +4064,49 @@ function AdminPortal() {
             </AdminCard>
             <AdminCard className="space-y-3">
               <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>
+              <p className="text-xs text-muted">{t('admin.moduleDisableHint')}</p>
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {BUILDING_MODULE_KEYS.map((key) => {
+                  const enabled = isBuildingModuleEnabled(buildingModules, key);
+                  const toggleable = isPhase1ToggleableModuleKey(key);
+                  const saving = moduleSavingKey === key;
+                  return (
+                    <li key={key} className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{moduleLabel(key)}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {toggleable
+                            ? enabled
+                              ? t('admin.moduleEnabled')
+                              : t('admin.moduleDisabled')
+                            : t('admin.moduleNotImplemented')}
+                        </p>
+                      </div>
+                      {toggleable ? (
+                        canChangeBuildingModules ? (
+                          <label className="inline-flex items-center gap-2 text-sm text-secondary">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-[var(--accent)]"
+                              checked={enabled}
+                              disabled={saving || moduleSavingKey != null}
+                              onChange={(e) => handleSetBuildingModule(key, e.target.checked)}
+                              aria-label={t('admin.moduleToggle')}
+                            />
+                            <span>{saving ? t('admin.moduleSaving') : enabled ? t('admin.moduleEnabled') : t('admin.moduleDisabled')}</span>
+                          </label>
+                        ) : (
+                          <span className="text-xs text-muted">{t('admin.feeAdminOnlyRate')}</span>
+                        )
+                      ) : (
+                        <span className="rounded-lg border border-border px-2 py-1 text-xs text-muted">
+                          {t('admin.moduleNotImplemented')}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-xs text-muted">{t('admin.waterMode')}</p>

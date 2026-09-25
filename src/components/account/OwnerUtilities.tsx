@@ -117,6 +117,7 @@ export function OwnerUtilities({
   waterMode = DEFAULT_WATER_MODE,
   waterEnabled = true,
   electricityEnabled = true,
+  capitalEnabled = true,
   electricLastDay = null,
   electricLastNight = null,
   electricLastDate = null,
@@ -136,6 +137,7 @@ export function OwnerUtilities({
   waterMode?: WaterMode;
   waterEnabled?: boolean;
   electricityEnabled?: boolean;
+  capitalEnabled?: boolean;
   electricLastDay?: number | null;
   electricLastNight?: number | null;
   electricLastDate?: string | null;
@@ -326,7 +328,14 @@ export function OwnerUtilities({
       setWaterLedger([]);
       setWaterBalance(emptyBalance());
     }
-    if (variant === 'finance') void loadCapital();
+    if (variant === 'finance' && capitalEnabled) {
+      void loadCapital();
+    } else {
+      setCapitalLoading(false);
+      setCapitalLedger([]);
+      setAssessments([]);
+      setCapitalBalance(emptyBalance());
+    }
     if (variant === 'finance' && electricityEnabled) {
       void loadElectricity();
     } else {
@@ -340,7 +349,7 @@ export function OwnerUtilities({
     setSubmitError(null);
     setSuccess(null);
     idempotencyKeyRef.current = null;
-  }, [loadWater, loadCapital, loadElectricity, variant, propertyId, waterEnabled, electricityEnabled]);
+  }, [loadWater, loadCapital, loadElectricity, variant, propertyId, waterEnabled, electricityEnabled, capitalEnabled]);
 
   const assessmentTitles = useMemo(() => {
     const map = new Map<string, string>();
@@ -850,7 +859,7 @@ export function OwnerUtilities({
         </>
       )}
 
-      {financeTab === 'capital' && (
+      {capitalEnabled && financeTab === 'capital' && (
         <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

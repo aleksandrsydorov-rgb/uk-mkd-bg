@@ -741,6 +741,27 @@ export interface Database {
         };
         Relationships: [];
       };
+      building_modules: {
+        Row: {
+          module_key: string;
+          enabled: boolean;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          module_key: string;
+          enabled: boolean;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          module_key?: string;
+          enabled?: boolean;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
       support_fee_ledger: {
         Row: {
           id: number;
@@ -1852,6 +1873,20 @@ export interface Database {
           updated_at: string;
           updated_by: string | null;
           support_rate_eur_per_sqm_year: number | null;
+        }[];
+      };
+      get_building_modules: {
+        Args: Record<string, never>;
+        Returns: {
+          module_key: string;
+          enabled: boolean;
+        }[];
+      };
+      set_building_module_enabled: {
+        Args: { p_module_key: string; p_enabled: boolean };
+        Returns: {
+          module_key: string;
+          enabled: boolean;
         }[];
       };
       set_utility_information_mode: {

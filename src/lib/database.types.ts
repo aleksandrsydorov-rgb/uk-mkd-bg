@@ -546,6 +546,108 @@ export interface Database {
         };
         Relationships: [];
       };
+      staff_work_capabilities: {
+        Row: {
+          staff_id: number;
+          can_self_claim_requests: boolean;
+          can_receive_work_orders: boolean;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          staff_id: number;
+          can_self_claim_requests?: boolean;
+          can_receive_work_orders?: boolean;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          staff_id?: number;
+          can_self_claim_requests?: boolean;
+          can_receive_work_orders?: boolean;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+      staff_request_category_scope: {
+        Row: {
+          staff_id: number;
+          category: string;
+        };
+        Insert: {
+          staff_id: number;
+          category: string;
+        };
+        Update: {
+          staff_id?: number;
+          category?: string;
+        };
+        Relationships: [];
+      };
+      work_orders: {
+        Row: {
+          id: string;
+          title: string;
+          instructions: string | null;
+          status: string;
+          priority: string;
+          assigned_staff_id: number | null;
+          scheduled_for: string | null;
+          target_property_id: number | null;
+          location_description: string | null;
+          source_type: string;
+          request_id: number | null;
+          created_by: string;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+          completion_note: string | null;
+          idempotency_key: string | null;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          instructions?: string | null;
+          status?: string;
+          priority?: string;
+          assigned_staff_id?: number | null;
+          scheduled_for?: string | null;
+          target_property_id?: number | null;
+          location_description?: string | null;
+          source_type: string;
+          request_id?: number | null;
+          created_by: string;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+          completion_note?: string | null;
+          idempotency_key?: string | null;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          instructions?: string | null;
+          status?: string;
+          priority?: string;
+          assigned_staff_id?: number | null;
+          scheduled_for?: string | null;
+          target_property_id?: number | null;
+          location_description?: string | null;
+          source_type?: string;
+          request_id?: number | null;
+          created_by?: string;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+          completion_note?: string | null;
+          idempotency_key?: string | null;
+        };
+        Relationships: [];
+      };
       uk_expenses: {
         Row: {
           id: number;
@@ -1923,6 +2025,170 @@ export interface Database {
           module_key: string;
           enabled: boolean;
         }[];
+      };
+      current_staff_id: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      list_work_orders_admin: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          title: string;
+          instructions: string | null;
+          status: string;
+          priority: string;
+          assigned_staff_id: number | null;
+          assignee_name: string | null;
+          assignee_role: string | null;
+          scheduled_for: string | null;
+          target_property_id: number | null;
+          apartment_number: string | null;
+          location_description: string | null;
+          source_type: string;
+          request_id: number | null;
+          request_subject: string | null;
+          requester_name: string | null;
+          requester_phone: string | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+          completion_note: string | null;
+        }[];
+      };
+      list_my_work_orders: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          title: string;
+          instructions: string | null;
+          status: string;
+          priority: string;
+          scheduled_for: string | null;
+          apartment_number: string | null;
+          location_description: string | null;
+          request_id: number | null;
+          request_subject: string | null;
+          requester_name: string | null;
+          requester_phone: string | null;
+          completed_at: string | null;
+          completion_note: string | null;
+          created_at: string;
+        }[];
+      };
+      list_claimable_requests: {
+        Args: Record<string, never>;
+        Returns: {
+          request_id: number;
+          subject: string | null;
+          description: string | null;
+          category: string | null;
+          priority: string | null;
+          owner_name: string | null;
+          owner_phone: string | null;
+          property_id: number | null;
+          apartment_number: string | null;
+          created_at: string;
+        }[];
+      };
+      claim_request_as_work_order: {
+        Args: { p_request_id: number };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      get_request_work_order_context: {
+        Args: { p_request_id: number };
+        Returns: {
+          request_id: number;
+          subject: string | null;
+          description: string | null;
+          category: string | null;
+          priority: string | null;
+          status: string | null;
+          owner_name: string | null;
+          owner_phone: string | null;
+          property_id: number | null;
+          apartment_number: string | null;
+          created_at: string;
+          work_priority: string;
+        }[];
+      };
+      get_staff_work_profile: {
+        Args: { p_staff_id: number };
+        Returns: {
+          staff_id: number;
+          can_self_claim_requests: boolean;
+          can_receive_work_orders: boolean;
+          categories: string[];
+        }[];
+      };
+      set_staff_work_profile: {
+        Args: {
+          p_staff_id: number;
+          p_can_self_claim_requests: boolean;
+          p_can_receive_work_orders: boolean;
+          p_categories: string[];
+        };
+        Returns: undefined;
+      };
+      get_my_work_claim_profile: {
+        Args: Record<string, never>;
+        Returns: {
+          staff_id: number;
+          can_self_claim_requests: boolean;
+          can_receive_work_orders: boolean;
+          can_see_my_tasks: boolean;
+          categories: string[];
+        }[];
+      };
+      list_work_order_assignees: {
+        Args: Record<string, never>;
+        Returns: {
+          id: number;
+          name: string;
+          role: string;
+        }[];
+      };
+      create_work_order: {
+        Args: {
+          p_title: string;
+          p_instructions?: string | null;
+          p_priority?: string;
+          p_assigned_staff_id?: number | null;
+          p_scheduled_for?: string | null;
+          p_target_property_id?: number | null;
+          p_location_description?: string | null;
+          p_idempotency_key?: string | null;
+        };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      create_work_order_from_request: {
+        Args: {
+          p_request_id: number;
+          p_title?: string | null;
+          p_instructions?: string | null;
+          p_priority?: string;
+          p_assigned_staff_id?: number | null;
+          p_scheduled_for?: string | null;
+          p_location_description?: string | null;
+          p_idempotency_key?: string | null;
+        };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      assign_work_order: {
+        Args: { p_work_order_id: string; p_assigned_staff_id: number | null };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      cancel_work_order: {
+        Args: { p_work_order_id: string };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      start_work_order: {
+        Args: { p_work_order_id: string };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      complete_work_order: {
+        Args: { p_work_order_id: string; p_completion_note?: string | null };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
       };
       set_utility_information_mode: {
         Args: { p_utility: string; p_mode: string };

@@ -92,6 +92,14 @@ import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
+import { AdminWorkOrders } from '@/components/admin/AdminWorkOrders';
+import { AdminMyTasks } from '@/components/admin/AdminMyTasks';
+import {
+  canSeeMyWorkOrders,
+  canSeeWorkOrdersAdmin,
+  REQUEST_WORK_CATEGORIES,
+  type MyWorkClaimProfile,
+} from '@/lib/workOrders';
 import {
   canSeeCapitalAdmin,
   canSeeWaterAdmin,
@@ -247,7 +255,9 @@ type AdminSection =
   | 'документы'
   | 'объявления'
   | 'отчётность'
-  | 'чат';
+  | 'чат'
+  | 'рабочие_задачи'
+  | 'мои_задачи';
 
 const ADMIN_SECTIONS: readonly AdminSection[] = [
   'обзор',
@@ -267,6 +277,8 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'объявления',
   'отчётность',
   'чат',
+  'рабочие_задачи',
+  'мои_задачи',
 ] as const;
 
 const DEFAULT_ADMIN_SECTION: AdminSection = 'обзор';
@@ -331,6 +343,8 @@ function AdminPortal() {
       { key: 'квартиры', label: t('admin.apartments'), icon: '🏠' },
       { key: 'смены', label: t('admin.transfers'), icon: '🔁' },
       { key: 'заявки', label: t('admin.requests'), icon: '📋' },
+      { key: 'рабочие_задачи', label: t('admin.workOrders'), icon: '🛠️' },
+      { key: 'мои_задачи', label: t('admin.myTasks'), icon: '✅' },
       { key: 'счётчики', label: t('admin.meters'), icon: '⚡' },
       { key: 'вода', label: t('admin.water'), icon: '💧' },
       { key: 'персонал', label: t('admin.staff'), icon: '👷' },
@@ -351,6 +365,7 @@ function AdminPortal() {
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
   const [staffActive, setStaffActive] = useState(false);
+  const [workClaimProfile, setWorkClaimProfile] = useState<MyWorkClaimProfile | null>(null);
   const [buildingModules, setBuildingModules] = useState<BuildingModulesState>(() => emptyBuildingModulesState());
   const [moduleCatalog, setModuleCatalog] = useState<BuildingModuleV2Row[]>([]);
   const [moduleSavingKey, setModuleSavingKey] = useState<string | null>(null);
@@ -374,10 +389,15 @@ function AdminPortal() {
   const canReadSupportFinance = staffActive && canRecordSupportPayments(staffRole);
   const canChangeUtilityMode = staffActive && isUkAdminRole(staffRole);
   const canChangeBuildingModules = staffActive && isUkAdminRole(staffRole);
+  const showWorkOrdersAdmin = canSeeWorkOrdersAdmin(staffRole, staffActive);
+  const showMyTasks = canSeeMyWorkOrders(staffRole, staffActive, workClaimProfile);
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
       { id: 'overview', label: t('admin.overview'), items: ['обзор'] },
+      ...(showMyTasks
+        ? [{ id: 'mytasks', label: t('admin.myTasks'), items: ['мои_задачи'] as AdminSection[] }]
+        : []),
       ...(canManageCriticalAccess
         ? [{ id: 'objects', label: t('admin.menuObjects'), items: ['квартиры', 'смены'] as AdminSection[] }]
         : []),
@@ -404,6 +424,7 @@ function AdminPortal() {
         label: t('admin.menuComm'),
         items: [
           ...(canManageCriticalAccess && showRequests ? (['заявки'] as const) : []),
+          ...(showWorkOrdersAdmin ? (['рабочие_задачи'] as const) : []),
           ...(showAnnouncements ? (['объявления'] as const) : []),
           ...(showPolls ? (['опросы'] as const) : []),
           ...(canManageCriticalAccess && showChat ? (['чат'] as const) : []),
@@ -422,6 +443,8 @@ function AdminPortal() {
     showCapital,
     showSupportFee,
     showRequests,
+    showWorkOrdersAdmin,
+    showMyTasks,
     showAnnouncements,
     showPolls,
     showChat,
@@ -599,6 +622,9 @@ function AdminPortal() {
     email: '',
     salary_eur: '',
     active: true,
+    can_self_claim_requests: false,
+    can_receive_work_orders: false,
+    categories: [] as string[],
   });
 
   const [showPollForm, setShowPollForm] = useState(false);
@@ -843,6 +869,14 @@ function AdminPortal() {
         setStaffActive(access.staff?.active === true);
         setHasCabinet(access.isOwner);
         setAllowed(true);
+        try {
+          const { data: profileRows } = await supabase.rpc('get_my_work_claim_profile');
+          if (!cancelled && profileRows?.[0]) {
+            setWorkClaimProfile(profileRows[0] as MyWorkClaimProfile);
+          }
+        } catch {
+          if (!cancelled) setWorkClaimProfile(null);
+        }
       } catch (e: unknown) {
         if (!cancelled) {
           setError(ownerVisibleError(e, t('admin.errGeneric')));
@@ -867,6 +901,7 @@ function AdminPortal() {
       setSessionEmail('');
         setStaffRole('');
         setStaffActive(false);
+      setWorkClaimProfile(null);
       setHasCabinet(false);
       setAllowed(false);
       router.replace('/');
@@ -2118,7 +2153,7 @@ function AdminPortal() {
     }
   }
 
-  function startEditStaff(s: StaffMember) {
+  async function startEditStaff(s: StaffMember) {
     setEditingStaff(s);
     setStaffForm({
       name: s.name,
@@ -2127,13 +2162,41 @@ function AdminPortal() {
       email: s.email ?? '',
       salary_eur: String(s.salary_eur ?? ''),
       active: s.active,
+      can_self_claim_requests: false,
+      can_receive_work_orders: false,
+      categories: [],
     });
     setShowStaffForm(true);
+    try {
+      const { data, error } = await supabase.rpc('get_staff_work_profile', { p_staff_id: s.id });
+      if (error) throw error;
+      const profile = data?.[0];
+      if (profile) {
+        setStaffForm((prev) => ({
+          ...prev,
+          can_self_claim_requests: profile.can_self_claim_requests === true,
+          can_receive_work_orders: profile.can_receive_work_orders === true,
+          categories: Array.isArray(profile.categories) ? [...profile.categories] : [],
+        }));
+      }
+    } catch {
+      // Profile RPC may be missing before migration is applied.
+    }
   }
 
   function startNewStaff() {
     setEditingStaff(null);
-    setStaffForm({ name: '', role: '', phone: '', email: '', salary_eur: '', active: true });
+    setStaffForm({
+      name: '',
+      role: '',
+      phone: '',
+      email: '',
+      salary_eur: '',
+      active: true,
+      can_self_claim_requests: false,
+      can_receive_work_orders: false,
+      categories: [],
+    });
     setShowStaffForm(true);
   }
 
@@ -2157,12 +2220,25 @@ function AdminPortal() {
     };
     if (showStaffSalary) payload.salary_eur = Number(staffForm.salary_eur) || null;
     try {
+      let staffId = editingStaff?.id ?? null;
       if (editingStaff) {
         const { error } = await supabase.from('staff').update(payload).eq('id', editingStaff.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('staff').insert(payload);
+        const { data, error } = await supabase.from('staff').insert(payload).select('id').single();
         if (error) throw error;
+        staffId = data?.id ?? null;
+      }
+      if (staffId != null) {
+        const { error: profileErr } = await supabase.rpc('set_staff_work_profile', {
+          p_staff_id: staffId,
+          p_can_self_claim_requests: staffForm.can_self_claim_requests,
+          p_can_receive_work_orders: staffForm.can_receive_work_orders,
+          p_categories: staffForm.categories,
+        });
+        if (profileErr && !isMissingRelation(profileErr, 'set_staff_work_profile')) {
+          throw profileErr;
+        }
       }
       setShowStaffForm(false);
       await loadAll();
@@ -3221,7 +3297,22 @@ function AdminPortal() {
                         <option value="отклонена">{t('status.reqReject')}</option>
                       </select>
                     </div>
-                    <div className="border-t border-border pt-4">
+                    <div className="border-t border-border pt-4 space-y-3">
+                      {showWorkOrdersAdmin ? (
+                        <AdminSecondaryButton
+                          type="button"
+                          onClick={() => {
+                            const id = requestDetail.id;
+                            setRequestDetailId(null);
+                            const params = new URLSearchParams(searchParams.toString());
+                            params.set('section', 'рабочие_задачи');
+                            params.set('fromRequest', String(id));
+                            router.replace(`${pathname}?${params.toString()}`);
+                          }}
+                        >
+                          {t('admin.woCreateFromRequest')}
+                        </AdminSecondaryButton>
+                      ) : null}
                       <button type="button" onClick={() => handleDeleteRequest(requestDetail.id)} className="text-sm text-danger hover:underline">
                         {t('common.delete')}
                       </button>
@@ -3233,6 +3324,29 @@ function AdminPortal() {
           </div>
         );
       }
+
+      case 'рабочие_задачи': {
+        const fromRequestRaw = searchParams.get('fromRequest');
+        const fromRequestId = fromRequestRaw && /^\d+$/.test(fromRequestRaw) ? Number(fromRequestRaw) : null;
+        return (
+          <AdminWorkOrders
+            supabase={supabase}
+            properties={properties}
+            staff={staff}
+            locale={locale}
+            fromRequestId={fromRequestId}
+            onClearFromRequest={() => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete('fromRequest');
+              const qs = params.toString();
+              router.replace(qs ? `${pathname}?${qs}` : pathname);
+            }}
+          />
+        );
+      }
+
+      case 'мои_задачи':
+        return <AdminMyTasks supabase={supabase} locale={locale} />;
 
       // =============================================================
       // СЧЁТЧИКИ
@@ -3956,6 +4070,54 @@ function AdminPortal() {
                       onChange={(e) => setStaffForm({ ...staffForm, active: e.target.checked })} />
                     {t('admin.staffActive')}
                   </label>
+                </div>
+                <div className="space-y-3 rounded-[12px] border border-border bg-surface-secondary/80 p-3 sm:col-span-2 lg:col-span-3">
+                  <p className="text-sm font-semibold text-foreground">{t('admin.woResponsibility')}</p>
+                  <label className="flex items-center gap-2 text-sm text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={staffForm.can_receive_work_orders}
+                      onChange={(e) =>
+                        setStaffForm({ ...staffForm, can_receive_work_orders: e.target.checked })
+                      }
+                    />
+                    {t('admin.woCanReceiveWorkOrders')}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={staffForm.can_self_claim_requests}
+                      onChange={(e) =>
+                        setStaffForm({ ...staffForm, can_self_claim_requests: e.target.checked })
+                      }
+                    />
+                    {t('admin.woCanSelfClaim')}
+                  </label>
+                  <div>
+                    <p className="mb-2 text-xs text-muted">{t('admin.woRequestCategories')}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {REQUEST_WORK_CATEGORIES.map((cat) => {
+                        const checked = staffForm.categories.includes(cat);
+                        return (
+                          <label key={cat} className="flex items-center gap-2 text-sm text-secondary">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setStaffForm({
+                                  ...staffForm,
+                                  categories: e.target.checked
+                                    ? [...staffForm.categories, cat]
+                                    : staffForm.categories.filter((c) => c !== cat),
+                                });
+                              }}
+                            />
+                            {labelCategory(cat, t)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <AdminPrimaryButton type="submit">{t('common.save')}</AdminPrimaryButton>

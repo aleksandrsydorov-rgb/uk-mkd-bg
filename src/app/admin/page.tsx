@@ -349,6 +349,7 @@ function AdminPortal() {
     isUkAdminRole(staffRole) || isUkAccountantRole(staffRole) || staffRole === 'инженер'
   );
   const canReadSupportFinance = staffActive && canRecordSupportPayments(staffRole);
+  const canChangeUtilityMode = staffActive && isUkAdminRole(staffRole);
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
@@ -1670,44 +1671,50 @@ function AdminPortal() {
     }
   }
 
+  async function refreshBuildingSettings() {
+    const settingsRes = await supabase.rpc('read_building_settings');
+    if (settingsRes.error) throw settingsRes.error;
+    const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
+    const rate = settingsRow?.support_rate_eur_per_sqm_year;
+    if (rate != null && Number(rate) > 0) {
+      setSupportRate(Number(rate));
+      setSupportRateInput(String(rate));
+    }
+    setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
+    setWaterMode(parseWaterMode(settingsRow?.water_mode));
+  }
+
   async function handleSaveElectricityMode(mode: ElectricityMode) {
-    if (staffRole.trim().toLowerCase() !== 'администрация') {
+    if (!canChangeUtilityMode) {
       setError(t('admin.errNoAccess'));
       return;
     }
     setError(null);
     try {
-      const { error } = await supabase.from('building_settings').upsert({
-        id: 1,
-        support_rate_eur_per_sqm_year: supportRate,
-        electricity_mode: mode,
-        updated_at: new Date().toISOString(),
-        updated_by: sessionEmail,
-      }).select('id');
+      const { error } = await supabase.rpc('set_utility_information_mode', {
+        p_utility: 'electricity',
+        p_mode: mode,
+      });
       if (error) throw error;
-      setElectricityMode(mode);
+      await refreshBuildingSettings();
     } catch (e: any) {
       setError(e?.message ?? t('admin.errGeneric'));
     }
   }
 
   async function handleSaveWaterMode(mode: WaterMode) {
-    if (staffRole.trim().toLowerCase() !== 'администрация') {
+    if (!canChangeUtilityMode) {
       setError(t('admin.errNoAccess'));
       return;
     }
     setError(null);
     try {
-      const { error } = await supabase.from('building_settings').upsert({
-        id: 1,
-        support_rate_eur_per_sqm_year: supportRate,
-        electricity_mode: electricityMode,
-        water_mode: mode,
-        updated_at: new Date().toISOString(),
-        updated_by: sessionEmail,
-      }).select('id');
+      const { error } = await supabase.rpc('set_utility_information_mode', {
+        p_utility: 'water',
+        p_mode: mode,
+      });
       if (error) throw error;
-      setWaterMode(mode);
+      await refreshBuildingSettings();
     } catch (e: any) {
       setError(e?.message ?? t('admin.errGeneric'));
     }
@@ -1906,12 +1913,9 @@ function AdminPortal() {
     setRateSaving(true);
     setError(null);
     try {
-      const { error } = await supabase.from('building_settings').upsert({
-        id: 1,
-        support_rate_eur_per_sqm_year: rate,
-        updated_at: new Date().toISOString(),
-        updated_by: sessionEmail,
-      }).select('id');
+      const { error } = await supabase.rpc('set_support_rate_eur_per_sqm_year', {
+        p_rate: rate,
+      });
       if (error) {
         if (isMissingRelation(error, 'building_settings')) {
           setSupportFeeMissing(true);
@@ -1919,8 +1923,7 @@ function AdminPortal() {
         }
         throw error;
       }
-      setSupportRate(rate);
-      await loadAll();
+      await refreshBuildingSettings();
     } catch (err: any) {
       setError(err?.message ?? 'Не удалось сохранить ставку');
     } finally {
@@ -3157,7 +3160,7 @@ function AdminPortal() {
             staffRole={staffRole}
             staffActive={staffActive}
             waterMode={waterMode}
-            canChangeWaterMode={staffRole.trim().toLowerCase() === 'администрация'}
+            canChangeWaterMode={canChangeUtilityMode}
             onSaveWaterMode={handleSaveWaterMode}
             tab={searchParams.get('tab')}
             onTabChange={(next) => openUtilityTab('вода', next)}
@@ -3189,7 +3192,7 @@ function AdminPortal() {
       case 'электроэнергия': {
         const canElSubmit =
           electricityMode !== 'disabled' && canSubmitElectricityStaff(staffRole, staffActive);
-        const canChangeElMode = staffRole.trim().toLowerCase() === 'администрация';
+        const canChangeElMode = canChangeUtilityMode;
         const elModeLabel =
           electricityMode === 'staff_only'
             ? t('admin.elModeStaffOnly')

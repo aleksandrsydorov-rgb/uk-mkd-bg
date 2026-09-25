@@ -1854,6 +1854,25 @@ export interface Database {
           support_rate_eur_per_sqm_year: number | null;
         }[];
       };
+      set_utility_information_mode: {
+        Args: { p_utility: string; p_mode: string };
+        Returns: {
+          id: number;
+          electricity_mode: string | null;
+          water_mode: string | null;
+          updated_at: string;
+          updated_by: string | null;
+        }[];
+      };
+      set_support_rate_eur_per_sqm_year: {
+        Args: { p_rate: number };
+        Returns: {
+          id: number;
+          support_rate_eur_per_sqm_year: number;
+          updated_at: string;
+          updated_by: string | null;
+        }[];
+      };
       set_poll_lifecycle: {
         Args: { p_poll_id: number; p_close: boolean };
         Returns: Database['public']['Tables']['polls']['Row'];

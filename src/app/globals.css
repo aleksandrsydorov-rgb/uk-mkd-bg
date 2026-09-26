@@ -947,6 +947,152 @@ table tbody tr:hover {
   }
 }
 
+.home-awards {
+  position: relative;
+  overflow: hidden;
+  background-color: #f3eee6;
+  padding: 40px 0 44px;
+}
+
+.home-awards-inner {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto;
+  max-width: 1440px;
+  padding: 0 16px;
+}
+
+.home-awards-line {
+  width: 54px;
+  height: 1px;
+  background: #b58a5a;
+  margin-bottom: 18px;
+}
+
+.home-awards-title {
+  font-weight: 400;
+  font-size: clamp(32px, 4vw, 54px);
+  letter-spacing: -0.03em;
+  color: #20343c;
+}
+
+.home-awards-lead {
+  margin-top: 12px;
+  max-width: 560px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #5c6669;
+}
+
+.home-awards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 22px;
+  margin-top: 28px;
+}
+
+.home-awards-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.home-awards-frame {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 5 / 6.3;
+  border-radius: 4px 4px 2px 2px;
+  background: #1a2428;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 18px 40px rgba(30, 45, 50, 0.14);
+}
+
+.home-awards-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(32, 52, 60, 0.12);
+}
+
+.home-awards-img {
+  object-fit: cover;
+  object-position: center 35%;
+}
+
+.home-awards-copy {
+  margin-top: 14px;
+  padding: 0 2px;
+}
+
+.home-awards-year {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b58a5a;
+}
+
+.home-awards-name {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #20343c;
+}
+
+.home-awards-meta {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #6a767b;
+}
+
+.home-awards-note {
+  margin-top: 26px;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7a8589;
+}
+
+@media (min-width: 640px) {
+  .home-awards-inner {
+    padding: 0 32px;
+  }
+
+  .home-awards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .home-awards {
+    padding: 48px 0 52px;
+  }
+
+  .home-awards-title {
+    font-size: 52px;
+  }
+
+  .home-awards-lead {
+    font-size: 18px;
+  }
+
+  .home-awards-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 28px 22px;
+    margin-top: 36px;
+  }
+
+  .home-awards-name {
+    font-size: 17px;
+  }
+}
+
 .home-res {
   position: relative;
   overflow: hidden;

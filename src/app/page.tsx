@@ -306,6 +306,7 @@ export default function HomePage() {
   const nav = [
     { label: t('home.navFacilities'), href: '#infrastructure' },
     { label: t('home.navLocation'), href: '#location' },
+    { label: t('home.navAwards'), href: '#awards' },
     { label: t('home.navResidents'), href: '#residents' },
   ];
 
@@ -600,6 +601,70 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section id="awards" className="home-awards">
+        <div className="home-awards-inner">
+          <div className="home-awards-line" />
+          <h2 className="home-hero-serif home-awards-title">{t('home.awardsTitle')}</h2>
+          <p className="home-awards-lead">{t('home.awardsLead')}</p>
+          <div className="home-awards-grid">
+            {(
+              [
+                {
+                  src: '/complex/awards/2026-recognition.jpg',
+                  year: '2026',
+                  title: t('home.award2026Title'),
+                  meta: t('home.award2026Meta'),
+                  text: t('home.award2026Text'),
+                },
+                {
+                  src: '/complex/awards/2025-trust.jpg',
+                  year: '2025',
+                  title: t('home.award2025Title'),
+                  meta: t('home.award2025Meta'),
+                  text: t('home.award2025Text'),
+                },
+                {
+                  src: '/complex/awards/2024-choice.jpg',
+                  year: '2024',
+                  title: t('home.award2024ChoiceTitle'),
+                  meta: t('home.award2024ChoiceMeta'),
+                  text: t('home.award2024ChoiceText'),
+                },
+                {
+                  src: '/complex/awards/2024-silver.jpg',
+                  year: '2024',
+                  title: t('home.award2024SilverTitle'),
+                  meta: t('home.award2024SilverMeta'),
+                  text: t('home.award2024SilverText'),
+                },
+              ] as const
+            ).map((item) => (
+              <figure key={item.src} className="home-awards-item">
+                <div className="home-awards-frame">
+                  <Image
+                    src={item.src}
+                    alt={`${item.title} — AMADEUS 11, ${item.year}`}
+                    fill
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    className="home-awards-img"
+                  />
+                </div>
+                <figcaption className="home-awards-copy">
+                  <span className="home-awards-year">{item.year}</span>
+                  <h3 className="home-awards-name">{item.title}</h3>
+                  <p className="home-awards-meta">
+                    {item.meta}
+                    <br />
+                    {item.text}
+                  </p>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <p className="home-awards-note">{t('home.awardsNote')}</p>
+        </div>
+      </section>
+
       <section id="residents" className="home-res">
         <div className="home-res-inner">
           <div className="home-res-main">
@@ -707,6 +772,7 @@ export default function HomePage() {
               { href: '/', label: t('home.footerNavHome') },
               { href: '#infrastructure', label: t('home.navFacilities') },
               { href: '#location', label: t('home.navLocation') },
+              { href: '#awards', label: t('home.navAwards') },
               { href: '#residents', label: t('home.footerNavOwners') },
               { href: cabinetHref, label: t('home.personalCabinet') },
             ].map((item, index) => (

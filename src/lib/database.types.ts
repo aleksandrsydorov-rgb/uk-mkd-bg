@@ -3230,6 +3230,150 @@ export interface Database {
         Args: { p_property_id: number };
         Returns: boolean;
       };
+      admin_list_security_posts: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+        }[];
+      };
+      list_active_security_posts: {
+        Args: Record<string, never>;
+        Returns: { id: string; name: string; sort_order: number }[];
+      };
+      admin_create_security_post: {
+        Args: { p_name: string; p_sort_order?: number };
+        Returns: {
+          id: string;
+          name: string;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+        };
+      };
+      admin_update_security_post: {
+        Args: {
+          p_post_id: string;
+          p_name?: string | null;
+          p_active?: boolean | null;
+          p_sort_order?: number | null;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+        };
+      };
+      owner_create_security_request: {
+        Args: {
+          p_property_id: number;
+          p_kind: string;
+          p_post_id?: string | null;
+          p_guest_id?: number | null;
+          p_guest_name?: string | null;
+          p_expected_at?: string | null;
+          p_courier_name?: string | null;
+          p_delivery_note?: string | null;
+          p_handover_item?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      admin_create_security_request: {
+        Args: {
+          p_property_id: number;
+          p_kind: string;
+          p_post_id?: string | null;
+          p_guest_id?: number | null;
+          p_guest_name?: string | null;
+          p_expected_at?: string | null;
+          p_courier_name?: string | null;
+          p_delivery_note?: string | null;
+          p_handover_item?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      owner_list_my_security_requests: {
+        Args: { p_property_id?: number | null };
+        Returns: Record<string, unknown>[];
+      };
+      owner_cancel_security_request: {
+        Args: { p_request_id: string };
+        Returns: Record<string, unknown>;
+      };
+      admin_list_security_requests: {
+        Args: { p_status?: string | null; p_limit?: number };
+        Returns: {
+          id: string;
+          property_id: number;
+          apartment_number: string;
+          post_id: string;
+          post_name: string;
+          kind: string;
+          status: string;
+          created_by_role: string;
+          created_by_email: string;
+          guest_name: string | null;
+          expected_at: string | null;
+          courier_name: string | null;
+          delivery_note: string | null;
+          handover_item: string | null;
+          note: string | null;
+          accepted_at: string | null;
+          handed_over_at: string | null;
+          created_at: string;
+        }[];
+      };
+      guard_open_shift: {
+        Args: { p_post_id: string };
+        Returns: Record<string, unknown>;
+      };
+      guard_close_shift: {
+        Args: Record<string, never>;
+        Returns: Record<string, unknown>;
+      };
+      guard_my_shift: {
+        Args: Record<string, never>;
+        Returns: {
+          shift_id: string;
+          post_id: string;
+          post_name: string;
+          started_at: string;
+        }[];
+      };
+      guard_list_post_queue: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          property_id: number;
+          apartment_number: string;
+          post_id: string;
+          kind: string;
+          status: string;
+          guest_name: string | null;
+          expected_at: string | null;
+          courier_name: string | null;
+          delivery_note: string | null;
+          handover_item: string | null;
+          note: string | null;
+          created_at: string;
+          accepted_at: string | null;
+        }[];
+      };
+      guard_accept_request: {
+        Args: { p_request_id: string };
+        Returns: Record<string, unknown>;
+      };
+      guard_handover_request: {
+        Args: { p_request_id: string };
+        Returns: Record<string, unknown>;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

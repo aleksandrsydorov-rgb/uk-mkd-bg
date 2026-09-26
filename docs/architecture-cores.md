@@ -47,7 +47,8 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 | `water` | utilities | Tariff Core (€/m³) + modes | Вода | Water (mode-gated) |
 | `electricity` | utilities | Tariff Core (day/night €/kWh) + modes | Электроэнергия | Electricity (mode-gated) |
 | `internet` | utilities | Tariff Core (monthly) + subscription/ledger + system WOs + monthly charge cron | Интернет; тарифы в Тарифы | Connect / disconnect; auto-charge until disconnect |
-| `service_lock` | communication | none (admin debt restriction) | Блокировка услуг | Soft lock with scopes (water/internet/requests/…); future elevator/security selectable |
+| `service_lock` | communication | none (admin debt restriction) | Блокировка услуг | Soft lock with live scopes (water/internet/security/requests/…) |
+| `security` | services | none (v1) | Охрана: посты + заявки | Заявки пропуск/доставка/передача; кабинет `/guard` |
 | `requests` | communication | none | Заявки | Requests |
 | `chat` | communication | none | Чат | Chat |
 | `polls` | communication | none | Опросы | Polls |
@@ -62,7 +63,7 @@ Finance category in Settings has **only** `tariffs`. Fee, capital and internet l
 
 ## Stub modules (implemented = false)
 
-`parking`, `security`, `rental`, `cleaning`, `maintenance`,
+`parking`, `rental`, `cleaning`, `maintenance`,
 `access_control`, `contractors`, `inventory`, `common_areas`, `commercial_rentals`
 
 Visible in Settings catalog as non-toggleable stubs. No product surface. No tariffs.

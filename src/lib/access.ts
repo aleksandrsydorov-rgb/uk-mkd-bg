@@ -1,6 +1,7 @@
 import { escapeIlike, normalizeEmail } from '@/lib/email';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
+import { isGuardRole, staffHomePath } from '@/lib/security';
 
 export type Property = Database['public']['Tables']['properties']['Row'];
 
@@ -19,6 +20,14 @@ export interface AccessProfile {
   staff: StaffRecord | null;
   isStaff: boolean;
   isOwner: boolean;
+}
+
+export { isGuardRole, staffHomePath };
+
+/** Staff cabinet after login: `/guard` for охрана, otherwise `/admin`. */
+export function resolveStaffHome(access: AccessProfile): '/guard' | '/admin' | '/account' {
+  if (access.isStaff) return staffHomePath(access.staff?.role);
+  return '/account';
 }
 
 function isMissingColumn(error: { message?: string } | null | undefined, column: string) {

@@ -60,6 +60,7 @@ export function labelStaffRole(raw: string | null | undefined, t: Translate) {
   if (r === 'бухгалтер') return t('admin.roleAccountant');
   if (r === 'инженер') return t('admin.roleEngineer');
   if (r === 'уборщик') return t('admin.roleCleaner');
+  if (r === 'охрана') return t('admin.roleGuard');
   if (!r) return '—';
   warnUnknownLabel('staff role', r);
   return t('admin.roleUnknown');

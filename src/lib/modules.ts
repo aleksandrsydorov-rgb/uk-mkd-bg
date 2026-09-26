@@ -39,6 +39,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'electricity',
   'internet',
   'service_lock',
+  'security',
   'requests',
   'chat',
   'polls',

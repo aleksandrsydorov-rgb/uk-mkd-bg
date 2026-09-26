@@ -8,7 +8,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { LoginScreen } from '@/components/LoginScreen';
 import { LocationDiagram } from '@/components/home/ComplexVisuals';
 import { useI18n } from '@/i18n/I18nProvider';
-import { resolveAccess } from '@/lib/access';
+import { resolveAccess, resolveStaffHome } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { createClient } from '@/lib/supabase/client';
 
@@ -328,7 +328,7 @@ export default function HomePage() {
       try {
         const access = await resolveAccess(authenticatedEmail, supabase);
         if (cancelled) return;
-        if (access.isStaff) setCabinetHref('/admin');
+        if (access.isStaff) setCabinetHref(resolveStaffHome(access));
         else if (access.isOwner) setCabinetHref('/account');
         else setCabinetHref('#resident-login');
       } catch {
@@ -361,7 +361,7 @@ export default function HomePage() {
         return;
       }
       const access = await resolveAccess(authenticatedEmail, supabase);
-      router.replace(access.isStaff ? '/admin' : '/account');
+      router.replace(resolveStaffHome(access));
     } catch (err: unknown) {
       setLoginError(err instanceof Error ? err.message : 'Sign in failed');
     } finally {
@@ -370,7 +370,7 @@ export default function HomePage() {
   }
 
   const cabinetLabel =
-    cabinetHref === '/account' || cabinetHref === '/admin'
+    cabinetHref === '/account' || cabinetHref === '/admin' || cabinetHref === '/guard'
       ? t('home.openAccount')
       : t('home.personalCabinet');
 

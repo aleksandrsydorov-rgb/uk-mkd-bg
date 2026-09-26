@@ -24,7 +24,7 @@ import {
   labelPriority,
   labelTransfer,
 } from '@/i18n/labels';
-import { resolveAccess } from '@/lib/access';
+import { resolveAccess, staffHomePath } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import {
@@ -37,6 +37,7 @@ import {
 } from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import { OwnerInternet } from '@/components/account/OwnerInternet';
+import { OwnerSecurity } from '@/components/account/OwnerSecurity';
 import { firstServiceLock, isScopeLocked, type PropertyServiceLockView } from '@/lib/serviceLock';
 import {
   sofiaCalendarYear,
@@ -143,6 +144,7 @@ type MenuSection =
   | 'жильцы'
   | 'финансы'
   | 'интернет'
+  | 'охрана'
   | 'ук'
   | 'счётчики'
   | 'документы'
@@ -181,6 +183,7 @@ export default function AccountPage() {
   const electricityModuleOn = isBuildingModuleEnabled(buildingModules, 'electricity');
   const capitalEnabled = isBuildingModuleEnabled(buildingModules, 'capital_repair');
   const internetEnabled = isBuildingModuleEnabled(buildingModules, 'internet');
+  const securityEnabled = isBuildingModuleEnabled(buildingModules, 'security');
   const serviceLockEnabled = isBuildingModuleEnabled(buildingModules, 'service_lock');
   const supportFeeEnabled = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const requestsEnabled = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -202,6 +205,7 @@ export default function AccountPage() {
       ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
       : []),
     ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
+    ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
     ...(waterEnabled || electricityEnabled
       ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
       : []),
@@ -383,7 +387,7 @@ export default function AccountPage() {
           setProperties([]);
           setSelectedPropertyId(null);
           if (access.isStaff) {
-            router.replace('/admin');
+            router.replace(staffHomePath(access.staff?.role));
             return;
           }
           setError(t('account.noAccess'));
@@ -1815,6 +1819,18 @@ export default function AccountPage() {
             supabase={supabase}
             propertyId={property.id}
             serviceLocked={scopeLocked('internet')}
+          />
+        );
+
+      case 'охрана':
+        if (!property || !securityEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
+        return (
+          <OwnerSecurity
+            supabase={supabase}
+            propertyId={property.id}
+            serviceLocked={scopeLocked('security')}
           />
         );
 

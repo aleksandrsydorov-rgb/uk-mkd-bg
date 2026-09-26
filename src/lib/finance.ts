@@ -111,4 +111,5 @@ export const STAFF_ROLE_OPTIONS = [
   { value: 'бухгалтер', label: 'Бухгалтер' },
   { value: 'инженер', label: 'Инженер' },
   { value: 'уборщик', label: 'Уборщик' },
+  { value: 'охрана', label: 'Охрана' },
 ] as const;

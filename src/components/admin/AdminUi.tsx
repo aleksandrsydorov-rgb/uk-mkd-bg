@@ -91,6 +91,76 @@ export function AdminCard({
   );
 }
 
+/** iOS-style switch — sizes via inline styles so CSS always paints the thumb. */
+export function AdminToggle({
+  checked,
+  onChange,
+  disabled = false,
+  busy = false,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  busy?: boolean;
+  label: string;
+}) {
+  const inactive = disabled || busy;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-busy={busy || undefined}
+      aria-label={label}
+      disabled={inactive}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (inactive) return;
+        onChange(!checked);
+      }}
+      className={`shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
+        busy ? 'animate-pulse' : ''
+      }`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        width: 52,
+        height: 32,
+        minWidth: 52,
+        minHeight: 32,
+        padding: 2,
+        borderRadius: 9999,
+        border: 'none',
+        cursor: inactive ? 'not-allowed' : 'pointer',
+        backgroundColor: checked ? '#34C759' : '#E5E5EA',
+        boxShadow: checked
+          ? 'inset 0 0 0 1px rgba(52,199,89,0.25)'
+          : 'inset 0 0 0 1px rgba(0,0,0,0.08)',
+        transition: 'background-color 180ms ease',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          display: 'block',
+          width: 28,
+          height: 28,
+          minWidth: 28,
+          minHeight: 28,
+          borderRadius: 9999,
+          backgroundColor: '#FFFFFF',
+          transform: checked ? 'translateX(20px)' : 'translateX(0)',
+          transition: 'transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1)',
+          boxShadow:
+            '0 2px 4px rgba(0,0,0,0.18), 0 1px 1px rgba(0,0,0,0.1)',
+        }}
+      />
+    </button>
+  );
+}
+
 export function AdminFilterBar({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div className={`rounded-[14px] border border-border bg-surface px-3 py-3 space-y-3 md:p-4 ${className}`.trim()}>

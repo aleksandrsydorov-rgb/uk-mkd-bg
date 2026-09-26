@@ -30,6 +30,7 @@ import { StatusBadge } from '@/components/account/ownerUi';
 import {
   AdminPageHeader,
   AdminCard,
+  AdminToggle,
   AdminMetricCard,
   AdminTableShell,
   AdminFilterBar,
@@ -4499,158 +4500,159 @@ function AdminPortal() {
           });
         };
         const eligibleOverviewCards = OVERVIEW_CARD_KEYS.filter((key) => overviewCardEligibility[key]);
+        const categoryMark = (category: string) => {
+          const map: Record<string, string> = {
+            finance: '€',
+            utilities: '⚡',
+            communication: '◎',
+            documents: '▣',
+            services: '◇',
+            commercial: '◆',
+          };
+          return map[category] ?? '•';
+        };
         return (
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-6">
             <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
 
-            <AdminCard className="space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsWorkspace')}</h3>
-                <p className="mt-1 text-xs text-muted">{t('admin.settingsWorkspaceHint')}</p>
+            <section className="space-y-3">
+              <div className="px-0.5">
+                <h3 className="text-base font-semibold tracking-tight text-foreground">
+                  {t('admin.settingsWorkspace')}
+                </h3>
+                <p className="mt-1 max-w-xl text-sm text-secondary">{t('admin.settingsWorkspaceHint')}</p>
               </div>
               {eligibleOverviewCards.length === 0 ? (
-                <p className="text-sm text-muted">{t('admin.settingsWorkspaceEmpty')}</p>
+                <div className={`${adminCardClass} px-4 py-5`}>
+                  <p className="text-sm text-muted">{t('admin.settingsWorkspaceEmpty')}</p>
+                </div>
               ) : (
-                <ul className="divide-y divide-border rounded-xl border border-border">
-                  {eligibleOverviewCards.map((key) => (
-                    <li
-                      key={key}
-                      className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">{overviewCardLabel(key)}</p>
-                        <p className="mt-0.5 text-xs text-muted">{t('admin.settingsWorkspaceCardHint')}</p>
-                      </div>
-                      <label className="inline-flex items-center gap-2 text-sm text-secondary">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-[var(--accent)]"
-                          checked={isOverviewCardEnabled(overviewCardPrefs, key)}
-                          onChange={(e) => toggleOverviewCard(key, e.target.checked)}
-                          aria-label={overviewCardLabel(key)}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {eligibleOverviewCards.map((key) => {
+                    const on = isOverviewCardEnabled(overviewCardPrefs, key);
+                    return (
+                      <div
+                        key={key}
+                        className={`${adminCardClass} flex items-start justify-between gap-3 p-4 ${
+                          on ? 'ring-1 ring-accent/20' : ''
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[15px] font-semibold leading-snug text-foreground">
+                            {overviewCardLabel(key)}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {on ? t('admin.settingsWorkspaceOn') : t('admin.settingsWorkspaceOff')}
+                          </p>
+                        </div>
+                        <AdminToggle
+                          checked={on}
+                          label={overviewCardLabel(key)}
+                          onChange={(next) => toggleOverviewCard(key, next)}
                         />
-                        <span>
-                          {isOverviewCardEnabled(overviewCardPrefs, key)
-                            ? t('admin.settingsWorkspaceOn')
-                            : t('admin.settingsWorkspaceOff')}
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
-            </AdminCard>
+            </section>
 
-            <AdminCard className="space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>
-                <p className="mt-1 text-xs text-muted">{t('admin.moduleDisableHint')}</p>
+            <section className="space-y-4">
+              <div className="px-0.5">
+                <h3 className="text-base font-semibold tracking-tight text-foreground">
+                  {t('admin.settingsModules')}
+                </h3>
+                <p className="mt-1 max-w-xl text-sm text-secondary">{t('admin.moduleDisableHint')}</p>
               </div>
               {groupedModules.length === 0 ? (
-                <p className="text-sm text-muted">{t('admin.moduleNotImplemented')}</p>
+                <div className={`${adminCardClass} px-4 py-5`}>
+                  <p className="text-sm text-muted">{t('admin.moduleNotImplemented')}</p>
+                </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-5">
                   {groupedModules.map((group) => {
                     const toggleableCount = group.modules.filter((m) => m.implemented === true).length;
                     const enabledCount = group.modules.filter(
                       (m) => m.implemented === true && m.enabled === true,
                     ).length;
                     return (
-                      <details
-                        key={group.category}
-                        className="group overflow-hidden rounded-xl border border-border-strong bg-surface shadow-sm"
-                      >
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-surface-secondary/90 px-3.5 py-3.5 text-foreground transition-colors hover:bg-hover marker:content-none [&::-webkit-details-marker]:hidden">
-                          <span className="flex min-w-0 items-center gap-3">
+                      <div key={group.category} className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-3 px-0.5">
+                          <div className="flex min-w-0 items-center gap-2.5">
                             <span
                               aria-hidden
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-sm text-secondary transition-transform group-open:rotate-180"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-accent-bg text-[13px] font-semibold text-accent"
                             >
-                              ▾
+                              {categoryMark(group.category)}
                             </span>
-                            <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                            <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-secondary">
                               {resolveCategoryLabel(group.category)}
+                            </p>
+                          </div>
+                          {toggleableCount > 0 ? (
+                            <span className="text-xs tabular-nums text-muted">
+                              {enabledCount}/{toggleableCount}
                             </span>
-                          </span>
-                          <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-                            <span className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs font-medium text-secondary">
-                              {toggleableCount > 0
-                                ? `${enabledCount}/${toggleableCount}`
-                                : t('admin.moduleNotImplemented')}
-                            </span>
-                            <span className="text-[10px] text-muted group-open:hidden">
-                              {t('admin.moduleCategoryExpandHint')}
-                            </span>
-                            <span className="hidden text-[10px] text-muted group-open:inline">
-                              {t('admin.moduleCategoryCollapseHint')}
-                            </span>
-                          </span>
-                        </summary>
-                        <ul className="divide-y divide-border border-t border-border bg-surface">
+                          ) : null}
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                           {group.modules.map((row) => {
                             const enabled = row.enabled === true;
                             const toggleable = row.implemented === true;
                             const saving = moduleSavingKey === row.module_key;
                             return (
-                              <li
+                              <div
                                 key={row.module_key}
-                                className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3 pl-[3.25rem]"
+                                className={`${adminCardClass} flex items-start justify-between gap-3 p-4 ${
+                                  enabled && toggleable ? 'ring-1 ring-accent/20' : ''
+                                }`}
                               >
                                 <div className="min-w-0">
-                                  <p className="text-sm font-medium text-foreground">
+                                  <p className="text-[15px] font-semibold leading-snug text-foreground">
                                     {resolveModuleLabel(row)}
                                   </p>
-                                  <p className="mt-0.5 text-xs text-muted">
-                                    {toggleable
-                                      ? enabled
-                                        ? t('admin.moduleEnabled')
-                                        : t('admin.moduleDisabled')
-                                      : t('admin.moduleNotImplemented')}
+                                  <p className="mt-1 text-xs text-muted">
+                                    {!toggleable
+                                      ? t('admin.moduleNotImplemented')
+                                      : saving
+                                        ? t('admin.moduleSaving')
+                                        : enabled
+                                          ? t('admin.moduleEnabled')
+                                          : t('admin.moduleDisabled')}
                                   </p>
                                 </div>
                                 {toggleable ? (
                                   canChangeBuildingModules ? (
-                                    <label className="inline-flex items-center gap-2 text-sm text-secondary">
-                                      <input
-                                        type="checkbox"
-                                        className="h-4 w-4 accent-[var(--accent)]"
-                                        checked={enabled}
-                                        disabled={saving || moduleSavingKey != null}
-                                        onChange={(e) =>
-                                          handleSetBuildingModule(row.module_key, e.target.checked)
-                                        }
-                                        aria-label={t('admin.moduleToggle')}
-                                      />
-                                      <span>
-                                        {saving
-                                          ? t('admin.moduleSaving')
-                                          : enabled
-                                            ? t('admin.moduleEnabled')
-                                            : t('admin.moduleDisabled')}
-                                      </span>
-                                    </label>
+                                    <AdminToggle
+                                      checked={enabled}
+                                      busy={saving}
+                                      disabled={moduleSavingKey != null && !saving}
+                                      label={`${resolveModuleLabel(row)}: ${t('admin.moduleToggle')}`}
+                                      onChange={(next) =>
+                                        void handleSetBuildingModule(row.module_key, next)
+                                      }
+                                    />
                                   ) : (
                                     <span className="text-xs text-muted">{t('admin.feeAdminOnlyRate')}</span>
                                   )
                                 ) : (
-                                  <span className="rounded-lg border border-border px-2 py-1 text-xs text-muted">
+                                  <span className="rounded-full bg-surface-secondary px-2.5 py-1 text-[11px] text-muted">
                                     {t('admin.moduleNotImplemented')}
                                   </span>
                                 )}
-                              </li>
+                              </div>
                             );
                           })}
-                        </ul>
-                      </details>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               )}
-            </AdminCard>
+            </section>
           </div>
         );
       }
-
       // =============================================================
       // ОПРОСЫ
       // =============================================================

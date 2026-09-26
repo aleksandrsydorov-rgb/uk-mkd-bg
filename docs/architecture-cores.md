@@ -1,6 +1,6 @@
 # AMADEUS 11 — Platform cores and modules
 
-Canonical map for scale. Live product = 12 implemented modules.
+Canonical map for scale. Live product = 13 implemented modules.
 Stub catalog keys are future-only. Do not implement stub UIs until a real product brief exists.
 
 ## Platform cores
@@ -47,6 +47,7 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 | `water` | utilities | Tariff Core (€/m³) + modes | Вода | Water (mode-gated) |
 | `electricity` | utilities | Tariff Core (day/night €/kWh) + modes | Электроэнергия | Electricity (mode-gated) |
 | `internet` | utilities | Tariff Core (monthly) + subscription/ledger + system WOs + monthly charge cron | Интернет; тарифы в Тарифы | Connect / disconnect; auto-charge until disconnect |
+| `service_lock` | communication | none (admin debt restriction) | Блокировка услуг | Soft lock with scopes (water/internet/requests/…); future elevator/security selectable |
 | `requests` | communication | none | Заявки | Requests |
 | `chat` | communication | none | Чат | Chat |
 | `polls` | communication | none | Опросы | Polls |
@@ -90,6 +91,6 @@ Do not convert remaining platform services into modules without a product decisi
 
 ## Launch rule
 
-First test launch = all **11 live** modules behave under one rule set
+First test launch = all **13 live** modules behave under one rule set
 (off → hidden; on → full path; tariff-backed → Core only).
 Stubs stay stubs. See [`audit_exports/v1_launch_checklist.md`](../audit_exports/v1_launch_checklist.md).

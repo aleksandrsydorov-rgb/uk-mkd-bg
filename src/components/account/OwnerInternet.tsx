@@ -39,9 +39,11 @@ function eventLabel(row: InternetLedger, t: (key: string) => string) {
 export function OwnerInternet({
   supabase,
   propertyId,
+  serviceLocked = false,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
+  serviceLocked?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [subscription, setSubscription] = useState<InternetSubscription | null>(null);
@@ -92,6 +94,10 @@ export function OwnerInternet({
   const canDisconnect = status === 'active';
 
   async function runConnect() {
+    if (serviceLocked) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -112,6 +118,10 @@ export function OwnerInternet({
   }
 
   async function runCancelConnect() {
+    if (serviceLocked) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     if (!confirm(t('account.internetCancelConfirm'))) return;
     setBusy(true);
     setError(null);
@@ -131,6 +141,10 @@ export function OwnerInternet({
   }
 
   async function runDisconnect() {
+    if (serviceLocked) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     if (!confirm(t('account.internetDisconnectConfirm'))) return;
     setBusy(true);
     setError(null);
@@ -195,7 +209,7 @@ export function OwnerInternet({
               <p className="text-xs text-muted">{t('account.internetCancelHint')}</p>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || serviceLocked}
                 onClick={() => void runCancelConnect()}
                 className="rounded-xl border border-danger/30 px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg disabled:opacity-50"
               >
@@ -217,7 +231,7 @@ export function OwnerInternet({
               <p className="text-xs text-muted">{t('account.internetMonthlyHint')}</p>
               <button
                 type="button"
-                disabled={busy || monthRate == null}
+                disabled={busy || monthRate == null || serviceLocked}
                 onClick={() => void runConnect()}
                 className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
               >
@@ -229,7 +243,7 @@ export function OwnerInternet({
           {canDisconnect ? (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || serviceLocked}
               onClick={() => void runDisconnect()}
               className="rounded-xl border border-danger/30 px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg disabled:opacity-50"
             >

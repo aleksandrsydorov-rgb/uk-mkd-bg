@@ -120,6 +120,7 @@ export function OwnerUtilities({
   electricityEnabled = true,
   capitalEnabled = true,
   internetEnabled = true,
+  serviceLocked = false,
   electricLastDay = null,
   electricLastNight = null,
   electricLastDate = null,
@@ -141,6 +142,7 @@ export function OwnerUtilities({
   electricityEnabled?: boolean;
   capitalEnabled?: boolean;
   internetEnabled?: boolean;
+  serviceLocked?: boolean;
   electricLastDay?: number | null;
   electricLastNight?: number | null;
   electricLastDate?: string | null;
@@ -440,6 +442,10 @@ export function OwnerUtilities({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!meter || submitting) return;
+    if (serviceLocked) {
+      setSubmitError(t('account.serviceLockBanner'));
+      return;
+    }
     setSubmitError(null);
     setSuccess(null);
 
@@ -683,7 +689,7 @@ export function OwnerUtilities({
           )}
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || serviceLocked}
             className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
           >
             {submitting ? t('account.utilSubmitting') : t('account.utilSubmit')}

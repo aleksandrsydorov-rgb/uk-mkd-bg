@@ -89,6 +89,7 @@ import {
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminInternet } from '@/components/admin/AdminInternet';
+import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
@@ -117,6 +118,7 @@ import {
   type WaterMode,
 } from '@/lib/utilities';
 import { canSeeInternetAdmin } from '@/lib/internet';
+import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import {
   buildingModulesFromV2Rows,
   emptyBuildingModulesState,
@@ -257,6 +259,7 @@ type AdminSection =
   | 'электроэнергия'
   | 'капремонт'
   | 'интернет'
+  | 'блокировка'
   | 'расходы'
   | 'опросы'
   | 'документы'
@@ -280,6 +283,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'электроэнергия',
   'капремонт',
   'интернет',
+  'блокировка',
   'расходы',
   'опросы',
   'документы',
@@ -363,6 +367,7 @@ function AdminPortal() {
       { key: 'электроэнергия', label: t('admin.electricityFinance'), icon: '⚡' },
       { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
       { key: 'интернет', label: t('admin.internet'), icon: '🌐' },
+      { key: 'блокировка', label: t('admin.serviceLock'), icon: '🔒' },
       { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
       { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
       { key: 'тарифы', label: t('admin.tariffsCore'), icon: '📑' },
@@ -384,6 +389,8 @@ function AdminPortal() {
   const showWater = canSeeWaterAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'water');
   const showCapital = canSeeCapitalAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'capital_repair');
   const showInternet = canSeeInternetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'internet');
+  const showServiceLock =
+    canSeeServiceLockAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'service_lock');
   const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -414,7 +421,15 @@ function AdminPortal() {
         ? [{ id: 'mytasks', label: t('admin.myTasks'), items: ['мои_задачи'] as AdminSection[] }]
         : []),
       ...(canManageCriticalAccess
-        ? [{ id: 'objects', label: t('admin.menuObjects'), items: ['квартиры', 'смены'] as AdminSection[] }]
+        ? [{
+            id: 'objects',
+            label: t('admin.menuObjects'),
+            items: [
+              'квартиры',
+              'смены',
+              ...(showServiceLock ? (['блокировка'] as const) : []),
+            ] as AdminSection[],
+          }]
         : []),
       {
         id: 'utilities',
@@ -459,6 +474,7 @@ function AdminPortal() {
     showElectricity,
     showCapital,
     showInternet,
+    showServiceLock,
     showSupportFee,
     showRequests,
     showWorkOrdersAdmin,
@@ -579,6 +595,7 @@ function AdminPortal() {
   selectedChatRef.current = selectedChatProperty;
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
   const [internetOpenTasks, setInternetOpenTasks] = useState<number | null>(null);
+  const [serviceLockActiveCount, setServiceLockActiveCount] = useState<number | null>(null);
   const [ukChatSeen, setUkChatSeen] = useState<Record<string, string>>({});
 
   // ---------- ФОРМЫ ----------
@@ -979,6 +996,25 @@ function AdminPortal() {
       cancelled = true;
     };
   }, [allowed, showInternetOverviewCard, supabase, activeMenu]);
+
+  useEffect(() => {
+    if (!allowed || !showServiceLock) {
+      setServiceLockActiveCount(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase.rpc('list_property_service_locks').then(({ data, error: rpcErr }) => {
+      if (cancelled) return;
+      if (rpcErr) {
+        setServiceLockActiveCount(null);
+        return;
+      }
+      setServiceLockActiveCount(Array.isArray(data) ? data.length : 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [allowed, showServiceLock, supabase, activeMenu]);
 
   const activeNavGroup = useMemo(() => {
     const group = MENU_GROUPS.find((item) => item.id !== 'overview' && item.items.includes(activeMenu));
@@ -2640,6 +2676,15 @@ function AdminPortal() {
             tone: 'warning',
           });
         }
+        if (showServiceLock && (serviceLockActiveCount ?? 0) > 0) {
+          attention.push({
+            key: 'блокировка',
+            title: t('admin.serviceLockOverviewCard'),
+            detail: t('admin.serviceLockOverviewDetail', { n: serviceLockActiveCount ?? 0 }),
+            badge: String(serviceLockActiveCount ?? 0),
+            tone: 'danger',
+          });
+        }
 
         return (
           <div className="space-y-3">
@@ -2685,6 +2730,22 @@ function AdminPortal() {
                         : 'обзор',
                   )
                 }
+              />
+              ) : null}
+              {showServiceLock ? (
+              <AdminMetricCard
+                align="center"
+                label={t('admin.serviceLockOverviewCard')}
+                value={
+                  serviceLockActiveCount == null
+                    ? t('common.loading')
+                    : String(serviceLockActiveCount)
+                }
+                secondary={t('admin.serviceLockOverviewDetail', {
+                  n: serviceLockActiveCount ?? 0,
+                })}
+                alert={(serviceLockActiveCount ?? 0) > 0}
+                onClick={() => navigateAdminSection('блокировка')}
               />
               ) : null}
               {canReadSupportFinance && showSupportFee ? (
@@ -3540,6 +3601,15 @@ function AdminPortal() {
       case 'интернет':
         return (
           <AdminInternet
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+          />
+        );
+
+      case 'блокировка':
+        return (
+          <AdminServiceLock
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}

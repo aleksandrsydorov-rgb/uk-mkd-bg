@@ -201,6 +201,7 @@ export type AdminRpcErrorKey =
   | 'admin.errInternetNotActive'
   | 'admin.errInternetPeriod'
   | 'admin.errInternetCancelTaken'
+  | 'admin.errServiceLock'
   | 'admin.errLegacyTariffDisabled'
   | 'admin.errCapitalDup'
   | 'admin.errIdempotency'
@@ -228,6 +229,9 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   }
   if (msg.includes('function is not unique') || msg.includes('ambiguous')) {
     return 'admin.errGeneric';
+  }
+  if (msg.includes('service_lock: restricted') || msg.includes('service_lock')) {
+    return 'admin.errServiceLock';
   }
   if (msg.includes('no electricity tariff is defined') || msg.includes('no water tariff configured')) return 'admin.errNoTariff';
   if (msg.includes('legacy tariff publication disabled')) return 'admin.errLegacyTariffDisabled';

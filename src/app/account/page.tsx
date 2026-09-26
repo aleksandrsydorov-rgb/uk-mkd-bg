@@ -37,7 +37,7 @@ import {
 } from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import { OwnerInternet } from '@/components/account/OwnerInternet';
-import {
+import { firstServiceLock, isScopeLocked } from '@/lib/serviceLock';import {
   sofiaCalendarYear,
   type SupportFeeAllocation,
   type SupportFeeAssessment,
@@ -180,6 +180,7 @@ export default function AccountPage() {
   const electricityModuleOn = isBuildingModuleEnabled(buildingModules, 'electricity');
   const capitalEnabled = isBuildingModuleEnabled(buildingModules, 'capital_repair');
   const internetEnabled = isBuildingModuleEnabled(buildingModules, 'internet');
+  const serviceLockEnabled = isBuildingModuleEnabled(buildingModules, 'service_lock');
   const supportFeeEnabled = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const requestsEnabled = isBuildingModuleEnabled(buildingModules, 'requests');
   const chatEnabled = isBuildingModuleEnabled(buildingModules, 'chat');
@@ -223,6 +224,9 @@ export default function AccountPage() {
   const [pollVotes, setPollVotes] = useState<PollVote[]>([]);
   const [pollTallies, setPollTallies] = useState<PollTallyAggregate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [serviceLockScopes, setServiceLockScopes] = useState<string[]>([]);
+  const serviceLocked = serviceLockScopes.length > 0;
+  const scopeLocked = (scope: string) => isScopeLocked(serviceLockScopes, scope);
 
   // ---------- СЧЁТЧИКИ ----------
   const [meterReadings, setMeterReadings] = useState<{
@@ -754,6 +758,34 @@ export default function AccountPage() {
   }, [property?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    let cancelled = false;
+    async function loadServiceLock() {
+      if (!property?.id || !serviceLockEnabled) {
+        setServiceLockScopes([]);
+        return;
+      }
+      try {
+        const { data, error: rpcErr } = await supabase.rpc('get_property_service_lock', {
+          p_property_id: property.id,
+        });
+        if (cancelled) return;
+        if (rpcErr) {
+          setServiceLockScopes([]);
+          return;
+        }
+        const lock = firstServiceLock(data as { active: boolean; scopes?: string[] }[] | null);
+        setServiceLockScopes(lock.active ? lock.scopes : []);
+      } catch {
+        if (!cancelled) setServiceLockScopes([]);
+      }
+    }
+    void loadServiceLock();
+    return () => {
+      cancelled = true;
+    };
+  }, [property?.id, serviceLockEnabled, supabase]);
+
+  useEffect(() => {
     if (!waterEnabled && !electricityEnabled) return;
     if (!waterEnabled && meterTab === 'water') {
       setMeterTab('electricity');
@@ -862,6 +894,10 @@ export default function AccountPage() {
   async function handleSendChat(e: React.FormEvent) {
     e.preventDefault();
     if (!property) return;
+    if (scopeLocked('chat')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     const msg = chatInput.trim();
     if (!msg && !chatFile) return;
     if (chatFile && chatFile.size > MAX_CHAT_FILE_BYTES) {
@@ -914,6 +950,10 @@ export default function AccountPage() {
   // ===================================================================
   async function handleUpdateOccupantKind(kind: OccupantKind) {
     if (!property) return;
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     setOccupancySaving(true);
     try {
       const { error: updErr } = await supabase
@@ -936,6 +976,7 @@ export default function AccountPage() {
 
   async function handleReportBookChange(message: string) {
     if (!property) throw new Error(t('err.save'));
+    if (scopeLocked('occupancy')) throw new Error(t('account.serviceLockBanner'));
     const { error } = await supabase.rpc('submit_property_book_change', {
       p_property_id: property.id,
       p_message: message,
@@ -996,6 +1037,7 @@ export default function AccountPage() {
 
   async function handleSaveOccupancy(payload: OccupancySavePayload) {
     if (!property) throw new Error(t('err.status'));
+    if (scopeLocked('occupancy')) throw new Error(t('account.serviceLockBanner'));
     setOccupancySaving(true);
     try {
       const { error: updErr } = await supabase
@@ -1052,6 +1094,10 @@ export default function AccountPage() {
 
   async function handleUpdateListing(next: 'в собственности' | 'на продаже') {
     if (!property) return;
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     setListingSaving(true);
     try {
       const { error: updErr } = await supabase
@@ -1072,6 +1118,10 @@ export default function AccountPage() {
   async function handleSubmitTransfer(e: React.FormEvent) {
     e.preventDefault();
     if (!property) return;
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     const toName = transferForm.to_owner_name.trim();
     const toEmail = normalizeEmail(transferForm.to_owner_email);
     if (!toName || !toEmail) return;
@@ -1111,6 +1161,7 @@ export default function AccountPage() {
 
   async function handleAddGuest(payload: GuestInsertPayload) {
     if (!property) throw new Error(t('err.addGuest'));
+    if (scopeLocked('occupancy')) throw new Error(t('account.serviceLockBanner'));
     const fn = payload.first_name.trim();
     const ln = payload.last_name.trim();
     if (!fn || !ln) throw new Error(t('err.addGuest'));
@@ -1145,6 +1196,10 @@ export default function AccountPage() {
   }
 
   async function handleUpdateGuest(id: number, payload: GuestInsertPayload) {
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     const fn = payload.first_name.trim();
     const ln = payload.last_name.trim();
     if (!fn || !ln) throw new Error(t('err.updateGuest'));
@@ -1170,6 +1225,10 @@ export default function AccountPage() {
   }
 
   async function handleRemoveGuest(id: number) {
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     const { error: delErr } = await supabase.from('apartment_guests').delete().eq('id', id);
     if (delErr) throw delErr;
     setGuests((prev) => prev.filter((g) => g.id !== id));
@@ -1177,6 +1236,7 @@ export default function AccountPage() {
 
   async function handleAddPet(payload: PetInsertPayload) {
     if (!property) throw new Error(t('err.save'));
+    if (scopeLocked('occupancy')) throw new Error(t('account.serviceLockBanner'));
     setPetSaving(true);
     try {
       const full = {
@@ -1204,6 +1264,10 @@ export default function AccountPage() {
   }
 
   async function handleRemovePet(id: number) {
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     const { error } = await supabase.from('apartment_pets').delete().eq('id', id);
     if (error) throw error;
     setPets((prev) => prev.filter((p) => p.id !== id));
@@ -1211,6 +1275,10 @@ export default function AccountPage() {
 
   async function handleSavePetInfo() {
     if (!property) return;
+    if (scopeLocked('occupancy')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     setOccupancySaving(true);
     try {
       const { error: updErr } = await supabase
@@ -1254,6 +1322,10 @@ export default function AccountPage() {
   async function handleCreateRequest(e: React.FormEvent) {
     e.preventDefault();
     if (!property || !devEmail) return;
+    if (scopeLocked('requests')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     const sub = subject.trim();
     const desc = description.trim();
     if (!sub || !desc) return;
@@ -1377,6 +1449,10 @@ export default function AccountPage() {
 
   async function handleVote(poll: Poll, optionId: number) {
     if (properties.length === 0) return;
+    if (scopeLocked('polls')) {
+      setError(t('account.serviceLockBanner'));
+      return;
+    }
     if (!isPollAcceptingVotes(poll)) return;
     const ownedIds = new Set(properties.map((p) => p.id));
     if (pollVotes.some((v) => v.poll_id === poll.id && ownedIds.has(v.property_id))) return;
@@ -1733,7 +1809,13 @@ export default function AccountPage() {
         if (!property || !internetEnabled) {
           return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
         }
-        return <OwnerInternet supabase={supabase} propertyId={property.id} />;
+        return (
+          <OwnerInternet
+            supabase={supabase}
+            propertyId={property.id}
+            serviceLocked={scopeLocked('internet')}
+          />
+        );
 
       case 'финансы': {
         const totalDebt = Number(property?.debt ?? 0);
@@ -1842,6 +1924,7 @@ export default function AccountPage() {
                 electricityEnabled={electricityEnabled}
                 capitalEnabled={capitalEnabled}
                 internetEnabled={internetEnabled}
+                serviceLocked={scopeLocked('water')}
               />
             )}
 
@@ -2157,6 +2240,7 @@ export default function AccountPage() {
                 waterMode={waterMode}
                 waterEnabled={waterEnabled}
                 electricityEnabled={electricityEnabled}
+                serviceLocked={scopeLocked('water')}
                 electricLastDay={latestElectric.currentDay}
                 electricLastNight={latestElectric.currentNight}
                 electricLastDate={latestElectric.readingDate}
@@ -2174,6 +2258,7 @@ export default function AccountPage() {
                 meters={electricityMeters}
                 onSubmitted={() => reloadMeterReadings(property.id)}
                 onOpenFinance={openFinanceFromOverview}
+                serviceLocked={scopeLocked('electricity')}
               />
             )}
           </div>
@@ -2412,6 +2497,17 @@ export default function AccountPage() {
               </button>
             </div>
           )}
+
+          {!loading && property && serviceLocked ? (
+            <div
+              className={`rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground ${
+                inMgmtChat ? 'mb-3 shrink-0' : 'mb-4'
+              }`}
+              role="status"
+            >
+              {t('account.serviceLockBanner')}
+            </div>
+          ) : null}
 
           {!loading && property && (
             inMgmtChat

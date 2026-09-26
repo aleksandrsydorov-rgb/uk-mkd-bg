@@ -29,6 +29,7 @@ export function OwnerElectricity({
   meters,
   onSubmitted,
   onOpenFinance,
+  serviceLocked = false,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
@@ -37,6 +38,7 @@ export function OwnerElectricity({
   meters: ElectricityMeter[];
   onSubmitted: () => Promise<void> | void;
   onOpenFinance?: (tab: FinanceTab) => void;
+  serviceLocked?: boolean;
 }) {
   const { t, dateLocale, locale } = useI18n();
   const pairs = useMemo(() => pairElectricityReadings(rows, meters), [rows, meters]);
@@ -99,6 +101,10 @@ export function OwnerElectricity({
 
     const day = Number(String(dayValue).replace(',', '.'));
     const night = Number(String(nightValue).replace(',', '.'));
+    if (serviceLocked) {
+      setSubmitError(t('account.serviceLockBanner'));
+      return;
+    }
     if (!Number.isFinite(day) || !Number.isFinite(night)) {
       setSubmitError(t('account.utilNeedNumber'));
       return;
@@ -298,7 +304,7 @@ export function OwnerElectricity({
             )}
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || serviceLocked}
               className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
             >
               {submitting ? t('account.utilSubmitting') : t('account.elSubmit')}

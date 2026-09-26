@@ -3057,6 +3057,82 @@ export interface Database {
           balance_eur: number;
         }[];
       };
+      get_property_service_lock: {
+        Args: { p_property_id: number };
+        Returns: {
+          active: boolean;
+          reason_code: string | null;
+          locked_at: string | null;
+          admin_note: string | null;
+          scopes: string[];
+        }[];
+      };
+      list_property_service_locks: {
+        Args: Record<string, never>;
+        Returns: {
+          lock_id: string;
+          property_id: number;
+          apartment_number: string;
+          owner_name: string | null;
+          active: boolean;
+          reason_code: string;
+          admin_note: string | null;
+          locked_at: string;
+          locked_by_email: string | null;
+          scopes: string[];
+        }[];
+      };
+      admin_lock_property_services: {
+        Args: {
+          p_property_id: number;
+          p_note?: string | null;
+          p_scopes?: string[] | null;
+        };
+        Returns: {
+          id: string;
+          property_id: number;
+          active: boolean;
+          reason_code: string;
+          admin_note: string | null;
+          locked_by: string;
+          locked_at: string;
+          unlocked_by: string | null;
+          unlocked_at: string | null;
+          created_at: string;
+          scopes: string[];
+        };
+      };
+      list_property_service_lock_events: {
+        Args: { p_property_id?: number | null; p_limit?: number };
+        Returns: {
+          event_id: string;
+          property_id: number;
+          apartment_number: string;
+          owner_name: string | null;
+          lock_id: string | null;
+          event_type: string;
+          reason_code: string | null;
+          admin_note: string | null;
+          actor_email: string | null;
+          created_at: string;
+          scopes: string[];
+        }[];
+      };
+      admin_unlock_property_services: {
+        Args: { p_property_id: number };
+        Returns: {
+          id: string;
+          property_id: number;
+          active: boolean;
+          reason_code: string;
+          admin_note: string | null;
+          locked_by: string;
+          locked_at: string;
+          unlocked_by: string | null;
+          unlocked_at: string | null;
+          created_at: string;
+        };
+      };
       list_claimable_system_work_orders: {
         Args: Record<string, never>;
         Returns: {

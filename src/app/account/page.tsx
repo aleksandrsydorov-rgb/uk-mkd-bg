@@ -37,7 +37,8 @@ import {
 } from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import { OwnerInternet } from '@/components/account/OwnerInternet';
-import { firstServiceLock, isScopeLocked } from '@/lib/serviceLock';import {
+import { firstServiceLock, isScopeLocked, type PropertyServiceLockView } from '@/lib/serviceLock';
+import {
   sofiaCalendarYear,
   type SupportFeeAllocation,
   type SupportFeeAssessment,
@@ -773,7 +774,7 @@ export default function AccountPage() {
           setServiceLockScopes([]);
           return;
         }
-        const lock = firstServiceLock(data as { active: boolean; scopes?: string[] }[] | null);
+        const lock = firstServiceLock(data as PropertyServiceLockView[] | null);
         setServiceLockScopes(lock.active ? lock.scopes : []);
       } catch {
         if (!cancelled) setServiceLockScopes([]);

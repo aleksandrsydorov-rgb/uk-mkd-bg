@@ -120,6 +120,15 @@ import {
 import { canSeeInternetAdmin } from '@/lib/internet';
 import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import {
+  OVERVIEW_CARD_KEYS,
+  defaultOverviewCardPrefs,
+  isOverviewCardEnabled,
+  loadOverviewCardPrefs,
+  persistOverviewCardPrefs,
+  type OverviewCardKey,
+  type OverviewCardPrefs,
+} from '@/lib/adminOverviewPrefs';
+import {
   buildingModulesFromV2Rows,
   emptyBuildingModulesState,
   groupModulesByCategory,
@@ -596,6 +605,9 @@ function AdminPortal() {
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
   const [internetOpenTasks, setInternetOpenTasks] = useState<number | null>(null);
   const [serviceLockActiveCount, setServiceLockActiveCount] = useState<number | null>(null);
+  const [overviewCardPrefs, setOverviewCardPrefs] = useState<OverviewCardPrefs>(() =>
+    defaultOverviewCardPrefs(),
+  );
   const [ukChatSeen, setUkChatSeen] = useState<Record<string, string>>({});
 
   // ---------- ФОРМЫ ----------
@@ -964,6 +976,10 @@ function AdminPortal() {
   useEffect(() => {
     if (allowed) loadAll();
   }, [allowed]);
+
+  useEffect(() => {
+    setOverviewCardPrefs(loadOverviewCardPrefs());
+  }, []);
 
   const showInternetOverviewCard =
     isBuildingModuleEnabled(buildingModules, 'internet') &&
@@ -2606,6 +2622,7 @@ function AdminPortal() {
         const standbyCount = properties.filter((p) => p.occupancy_status === 'standby').length;
         const ownerCount = properties.filter((p) => p.occupancy_status === 'owner' || !p.occupancy_status).length;
         const debtCount = properties.filter((p) => Number(p.debt ?? 0) > 0).length;
+        const showCard = (key: OverviewCardKey) => isOverviewCardEnabled(overviewCardPrefs, key);
         const attention: {
           key: AdminSection;
           title: string;
@@ -2613,7 +2630,7 @@ function AdminPortal() {
           badge: string;
           tone: 'danger' | 'warning' | 'info';
         }[] = [];
-        if (showRequests && activeRequests.length > 0) {
+        if (showCard('active_requests') && showRequests && activeRequests.length > 0) {
           attention.push({
             key: 'заявки',
             title: t('admin.activeReq'),
@@ -2640,7 +2657,7 @@ function AdminPortal() {
             tone: 'warning',
           });
         }
-        if (showSupportFee && totalDebt > 0) {
+        if (showCard('support_debt') && showSupportFee && totalDebt > 0) {
           attention.push({
             key: 'такса',
             title: t('admin.kpiDebtTitle'),
@@ -2649,7 +2666,7 @@ function AdminPortal() {
             tone: 'danger',
           });
         }
-        if (showPolls && openPollsCount > 0) {
+        if (showCard('open_polls') && showPolls && openPollsCount > 0) {
           attention.push({
             key: 'опросы',
             title: t('admin.kpiPollsTitle'),
@@ -2667,7 +2684,11 @@ function AdminPortal() {
             tone: 'info',
           });
         }
-        if (showInternetOverviewCard && (internetOpenTasks ?? 0) > 0) {
+        if (
+          showCard('internet_open_tasks') &&
+          showInternetOverviewCard &&
+          (internetOpenTasks ?? 0) > 0
+        ) {
           attention.push({
             key: showMyTasks ? 'мои_задачи' : showInternet ? 'интернет' : 'обзор',
             title: t('admin.internetOverviewCard'),
@@ -2676,7 +2697,7 @@ function AdminPortal() {
             tone: 'warning',
           });
         }
-        if (showServiceLock && (serviceLockActiveCount ?? 0) > 0) {
+        if (showCard('service_lock') && showServiceLock && (serviceLockActiveCount ?? 0) > 0) {
           attention.push({
             key: 'блокировка',
             title: t('admin.serviceLockOverviewCard'),
@@ -2691,7 +2712,7 @@ function AdminPortal() {
             <AdminPageHeader title={t('admin.overview')} secondary={t('admin.overviewLead')} />
 
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-              {canReadPropertyDirectory ? (
+              {showCard('apartments') && canReadPropertyDirectory ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.apartments')}
@@ -2700,7 +2721,7 @@ function AdminPortal() {
                 onClick={() => navigateAdminSection('квартиры')}
               />
               ) : null}
-              {canManageCriticalAccess && showRequests ? (
+              {showCard('active_requests') && canManageCriticalAccess && showRequests ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.activeReq')}
@@ -2710,7 +2731,7 @@ function AdminPortal() {
                 onClick={() => navigateAdminSection('заявки')}
               />
               ) : null}
-              {showInternetOverviewCard ? (
+              {showCard('internet_open_tasks') && showInternetOverviewCard ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.internetOverviewCard')}
@@ -2732,7 +2753,7 @@ function AdminPortal() {
                 }
               />
               ) : null}
-              {showServiceLock ? (
+              {showCard('service_lock') && showServiceLock ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.serviceLockOverviewCard')}
@@ -2748,7 +2769,7 @@ function AdminPortal() {
                 onClick={() => navigateAdminSection('блокировка')}
               />
               ) : null}
-              {canReadSupportFinance && showSupportFee ? (
+              {showCard('support_debt') && canReadSupportFinance && showSupportFee ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.kpiDebtTitle')}
@@ -2758,7 +2779,7 @@ function AdminPortal() {
                 onClick={() => navigateAdminSection('такса')}
               />
               ) : null}
-              {showPolls ? (
+              {showCard('open_polls') && showPolls ? (
               <AdminMetricCard
                 align="center"
                 label={t('admin.kpiPollsTitle')}
@@ -4444,9 +4465,82 @@ function AdminPortal() {
           return category;
         };
         const groupedModules = groupModulesByCategory(moduleCatalog);
+        const overviewCardEligibility: Record<OverviewCardKey, boolean> = {
+          apartments: canReadPropertyDirectory,
+          active_requests: canManageCriticalAccess && showRequests,
+          internet_open_tasks: showInternetOverviewCard,
+          service_lock: showServiceLock,
+          support_debt: canReadSupportFinance && showSupportFee,
+          open_polls: showPolls,
+        };
+        const overviewCardLabel = (key: OverviewCardKey) => {
+          switch (key) {
+            case 'apartments':
+              return t('admin.apartments');
+            case 'active_requests':
+              return t('admin.activeReq');
+            case 'internet_open_tasks':
+              return t('admin.internetOverviewCard');
+            case 'service_lock':
+              return t('admin.serviceLockOverviewCard');
+            case 'support_debt':
+              return t('admin.kpiDebtTitle');
+            case 'open_polls':
+              return t('admin.kpiPollsTitle');
+            default:
+              return key;
+          }
+        };
+        const toggleOverviewCard = (key: OverviewCardKey, enabled: boolean) => {
+          setOverviewCardPrefs((prev) => {
+            const next = { ...prev, [key]: enabled };
+            persistOverviewCardPrefs(next);
+            return next;
+          });
+        };
+        const eligibleOverviewCards = OVERVIEW_CARD_KEYS.filter((key) => overviewCardEligibility[key]);
         return (
           <div className="min-w-0 space-y-4">
-            <AdminPageHeader title={t('admin.settingsTitle')} />
+            <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
+
+            <AdminCard className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsWorkspace')}</h3>
+                <p className="mt-1 text-xs text-muted">{t('admin.settingsWorkspaceHint')}</p>
+              </div>
+              {eligibleOverviewCards.length === 0 ? (
+                <p className="text-sm text-muted">{t('admin.settingsWorkspaceEmpty')}</p>
+              ) : (
+                <ul className="divide-y divide-border rounded-xl border border-border">
+                  {eligibleOverviewCards.map((key) => (
+                    <li
+                      key={key}
+                      className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{overviewCardLabel(key)}</p>
+                        <p className="mt-0.5 text-xs text-muted">{t('admin.settingsWorkspaceCardHint')}</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm text-secondary">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[var(--accent)]"
+                          checked={isOverviewCardEnabled(overviewCardPrefs, key)}
+                          onChange={(e) => toggleOverviewCard(key, e.target.checked)}
+                          aria-label={overviewCardLabel(key)}
+                        />
+                        <span>
+                          {isOverviewCardEnabled(overviewCardPrefs, key)
+                            ? t('admin.settingsWorkspaceOn')
+                            : t('admin.settingsWorkspaceOff')}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AdminCard>
+
             <AdminCard className="space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>

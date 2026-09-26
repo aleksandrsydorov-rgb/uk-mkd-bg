@@ -145,18 +145,20 @@ export function canAssignWaterMeter(role?: string | null) {
   return r === STAFF_ROLE_ADMIN || r === STAFF_ROLE_ENGINEER;
 }
 
-export type WaterMode = 'owner_and_staff' | 'staff_only' | 'disabled';
+export type WaterMode = 'owner_and_staff' | 'staff_only';
 export const DEFAULT_WATER_MODE: WaterMode = 'owner_and_staff';
 
 export function parseWaterMode(value: unknown): WaterMode {
-  if (value === 'owner_and_staff' || value === 'staff_only' || value === 'disabled') {
+  if (value === 'owner_and_staff' || value === 'staff_only') {
     return value;
   }
+  // Legacy `disabled` → module off; remap to default when mode column still holds it.
   return DEFAULT_WATER_MODE;
 }
 
+/** Owner can use the surface when module is on and mode is not staff-only. */
 export function isOwnerModuleEnabled(mode: string | null | undefined) {
-  return mode !== 'disabled';
+  return mode === 'owner_and_staff' || mode === 'staff_only';
 }
 
 export function canSubmitWaterStaff(role?: string | null, active?: boolean | null) {

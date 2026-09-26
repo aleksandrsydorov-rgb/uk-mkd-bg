@@ -1,6 +1,9 @@
-/** Building Module Core v2. UX gating only — not the security boundary. */
+/** Building Module Core v2. UX gating only — not the security boundary.
+ *  Canon: docs/architecture-cores.md · new modules: docs/module-template.md
+ */
 
 export const BUILDING_MODULE_KEYS = [
+  'tariffs',
   'support_fee',
   'capital_repair',
   'water',
@@ -28,6 +31,7 @@ export type BuildingModuleKey = (typeof BUILDING_MODULE_KEYS)[number];
 
 /** Catalog keys that have product surfaces (must match seeded implemented=true). */
 export const IMPLEMENTED_MODULE_KEYS = [
+  'tariffs',
   'support_fee',
   'capital_repair',
   'water',
@@ -71,6 +75,7 @@ export type BuildingModuleV2Row = {
 
 export function emptyBuildingModulesState(): BuildingModulesState {
   return {
+    tariffs: false,
     support_fee: false,
     capital_repair: false,
     water: false,
@@ -143,10 +148,16 @@ export function isBuildingModuleEnabled(
   return state[key] === true;
 }
 
+/** Display/catalog grouping: fee + capital sit with utilities (коммунальные). */
+const MODULE_CATEGORY_OVERRIDE: Partial<Record<string, string>> = {
+  support_fee: 'utilities',
+  capital_repair: 'utilities',
+};
+
 export function groupModulesByCategory(rows: BuildingModuleV2Row[]) {
   const groups = new Map<string, BuildingModuleV2Row[]>();
   for (const row of rows) {
-    const cat = row.category || 'other';
+    const cat = MODULE_CATEGORY_OVERRIDE[row.module_key] ?? (row.category || 'other');
     const list = groups.get(cat) ?? [];
     list.push(row);
     groups.set(cat, list);
@@ -165,6 +176,7 @@ export function groupModulesByCategory(rows: BuildingModuleV2Row[]) {
 /** i18n message key under admin.* for a module_key; fallback to default_name in UI. */
 export function moduleLabelMessageKey(key: string): string | null {
   const map: Record<string, string> = {
+    tariffs: 'moduleTariffs',
     support_fee: 'moduleSupportFee',
     capital_repair: 'moduleCapitalRepair',
     water: 'moduleWater',

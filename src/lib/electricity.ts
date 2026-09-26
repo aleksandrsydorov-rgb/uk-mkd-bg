@@ -1,4 +1,4 @@
-export type ElectricityMode = 'owner_and_staff' | 'staff_only' | 'disabled';
+export type ElectricityMode = 'owner_and_staff' | 'staff_only';
 export type ElectricitySource = 'owner' | 'staff';
 
 export const DEFAULT_ELECTRICITY_MODE: ElectricityMode = 'owner_and_staff';
@@ -151,7 +151,7 @@ export function formatElectricityTariff(n: number, locale?: string) {
 }
 
 export function parseElectricityMode(value: unknown): ElectricityMode {
-  if (value === 'owner_and_staff' || value === 'staff_only' || value === 'disabled') {
+  if (value === 'owner_and_staff' || value === 'staff_only') {
     return value;
   }
   return DEFAULT_ELECTRICITY_MODE;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -30,7 +30,6 @@ import {
   AdminSecondaryButton,
   AdminTabBar,
   adminFieldClass,
-  adminFormPanelClass,
 } from '@/components/admin/AdminUi';
 import { StatusBadge } from '@/components/account/ownerUi';
 
@@ -40,32 +39,70 @@ type DecisionOption = {
   title: string;
 };
 
-function ratesLabel(
-  rates: Record<string, number> | null,
-  componentKeys: string[],
-  locale: string,
-  t: (key: string) => string,
-): string {
-  if (!rates) return '—';
-  const parts = componentKeys.map((key) => {
-    const label =
-      key === 'day'
-        ? t('admin.tcCompDay')
-        : key === 'night'
-          ? t('admin.tcCompNight')
-          : key === 'base'
-            ? t('admin.tcCompBase')
-            : key;
-    return `${label}: ${formatTariffRate(rates[key], locale)}`;
-  });
-  return parts.join(' · ');
+function unitSuffix(unit: string, t: (key: string) => string) {
+  if (unit === 'm2') return `€/${t('admin.tcUnitM2')}`;
+  if (unit === 'm3') return `€/${t('admin.tcUnitM3')}`;
+  if (unit === 'kwh') return `€/${t('admin.tcUnitKwh')}`;
+  return unit;
 }
 
-function unitLabel(unit: string, t: (key: string) => string) {
-  if (unit === 'm2') return t('admin.tcUnitM2');
-  if (unit === 'm3') return t('admin.tcUnitM3');
-  if (unit === 'kwh') return t('admin.tcUnitKwh');
-  return unit;
+function RatesDisplay({
+  rates,
+  componentKeys,
+  locale,
+  t,
+  empty = false,
+}: {
+  rates: Record<string, number> | null;
+  componentKeys: string[];
+  locale: string;
+  t: (key: string) => string;
+  empty?: boolean;
+}) {
+  if (empty || !rates) {
+    return <p className="text-3xl font-semibold tabular-nums text-foreground">—</p>;
+  }
+
+  const isDual = componentKeys.includes('day') || componentKeys.includes('night');
+  if (isDual) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">{t('admin.tcCompDay')}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+            {formatTariffRate(rates.day, locale)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">{t('admin.tcCompNight')}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+            {formatTariffRate(rates.night, locale)}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const key = componentKeys[0] ?? 'base';
+  return (
+    <p className="text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+      {formatTariffRate(rates[key], locale)}
+    </p>
+  );
+}
+
+function basisLabel(basis: string | null, t: (key: string) => string) {
+  if (basis === 'general_meeting') return t('admin.tcBasisGm');
+  if (basis === 'external_decision') return t('admin.tcBasisExternal');
+  if (basis === 'supplier_notice') return t('admin.tcBasisSupplier');
+  if (basis === 'legacy_import') return t('admin.tcBasisLegacy');
+  return basis || '—';
+}
+
+function canPublishRow(row: TariffListRow, canSupport: boolean, canUtility: boolean): boolean {
+  if (row.tariff_key === 'support_fee' || row.tariff_key === 'capital_repair') return canSupport;
+  if (row.tariff_key === 'water' || row.tariff_key === 'electricity') return canUtility;
+  return false;
 }
 
 export function AdminTariffs({
@@ -103,14 +140,14 @@ export function AdminTariffs({
     basis_mode: 'general_meeting' as 'general_meeting' | 'external_decision',
     decision_id: '',
     basis_reference: '',
-    basis_date: '',
+    basis_date: today,
     basis_note: '',
   });
   const [waterForm, setWaterForm] = useState({
     rate: '',
     valid_from: today,
     basis_reference: '',
-    basis_date: '',
+    basis_date: today,
     basis_note: '',
   });
   const [elForm, setElForm] = useState({
@@ -118,7 +155,7 @@ export function AdminTariffs({
     night: '',
     valid_from: today,
     basis_reference: '',
-    basis_date: '',
+    basis_date: today,
     basis_note: '',
   });
 
@@ -183,13 +220,7 @@ export function AdminTariffs({
         .select('id, decision_number, title')
         .order('created_at', { ascending: false })
         .limit(100);
-      if (cancelled) return;
-      if (qErr) {
-        if (!isMissingRelation(qErr, 'general_meeting_decisions')) {
-          // Non-fatal for publish form; external_decision still works.
-        }
-        return;
-      }
+      if (cancelled || qErr) return;
       setDecisions((data as DecisionOption[] | null) ?? []);
     })();
     return () => {
@@ -213,17 +244,9 @@ export function AdminTariffs({
     [rows],
   );
 
-  function basisLabel(basis: string | null) {
-    if (basis === 'general_meeting') return t('admin.tcBasisGm');
-    if (basis === 'external_decision') return t('admin.tcBasisExternal');
-    if (basis === 'supplier_notice') return t('admin.tcBasisSupplier');
-    if (basis === 'legacy_import') return t('admin.tcBasisLegacy');
-    return basis || '—';
-  }
-
-  async function publishSupport(e: React.FormEvent) {
+  async function publishAnnualRate(e: React.FormEvent, tariffKey: 'support_fee' | 'capital_repair') {
     e.preventDefault();
-    const tariff = byKey.get('support_fee');
+    const tariff = byKey.get(tariffKey);
     if (!tariff || !canSupport) return;
     setBusy(true);
     setError(null);
@@ -261,6 +284,14 @@ export function AdminTariffs({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function publishSupport(e: React.FormEvent) {
+    return publishAnnualRate(e, 'support_fee');
+  }
+
+  async function publishCapital(e: React.FormEvent) {
+    return publishAnnualRate(e, 'capital_repair');
   }
 
   async function publishWater(e: React.FormEvent) {
@@ -360,93 +391,399 @@ export function AdminTariffs({
     }
   }
 
-  function renderTariffCard(row: TariffListRow, mode: 'current' | 'future') {
-    const versionId = mode === 'current' ? row.current_version_id : row.nearest_future_version_id;
-    const validFrom = mode === 'current' ? row.current_valid_from : row.nearest_future_valid_from;
-    const rates = mode === 'current' ? row.current_rates : row.nearest_future_rates;
-    const basisType = mode === 'current' ? row.current_basis_type : row.nearest_future_basis_type;
-    const basisNote = mode === 'current' ? row.current_basis_note : row.nearest_future_basis_note;
-    const basisDate = mode === 'current' ? row.current_basis_date : row.nearest_future_basis_date;
-    const publishedAt = mode === 'current' ? row.current_published_at : row.nearest_future_published_at;
-    const author = mode === 'current' ? row.current_legacy_author : null;
-    const appYear = applicationYearFromValidFrom(validFrom);
+  function openPublish(key: string) {
+    setPublishKey((prev) => (prev === key ? null : key));
+    setCancelId(null);
+  }
+
+  function openHistory(tariffId: string) {
+    setHistoryTariffId(tariffId);
+    setPublishKey(null);
+    setTab('history');
+  }
+
+  function renderPublishForm(key: string): ReactNode {
+    if ((key === 'support_fee' || key === 'capital_repair') && canSupport) {
+      const onSubmit = key === 'capital_repair' ? publishCapital : publishSupport;
+      return (
+        <form onSubmit={onSubmit} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcNewRate')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={supportForm.rate}
+              onChange={(e) => setSupportForm({ ...supportForm, rate: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcApplicationYear')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              min={nextYear}
+              value={supportForm.application_year}
+              onChange={(e) => setSupportForm({ ...supportForm, application_year: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcBasis')}
+            <select
+              className={adminFieldClass}
+              value={supportForm.basis_mode}
+              onChange={(e) =>
+                setSupportForm({
+                  ...supportForm,
+                  basis_mode: e.target.value as 'general_meeting' | 'external_decision',
+                })
+              }
+            >
+              <option value="general_meeting">{t('admin.tcBasisGm')}</option>
+              <option value="external_decision">{t('admin.tcBasisExternal')}</option>
+            </select>
+          </label>
+          {supportForm.basis_mode === 'general_meeting' ? (
+            <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              {t('admin.tcDecision')}
+              <select
+                className={adminFieldClass}
+                value={supportForm.decision_id}
+                onChange={(e) => setSupportForm({ ...supportForm, decision_id: e.target.value })}
+                required
+              >
+                <option value="">{t('admin.tcDecisionPick')}</option>
+                {decisions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.decision_number} · {d.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              {t('admin.tcBasisReference')}
+              <input
+                className={adminFieldClass}
+                value={supportForm.basis_reference}
+                onChange={(e) => setSupportForm({ ...supportForm, basis_reference: e.target.value })}
+                required
+              />
+            </label>
+          )}
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcBasisDate')}
+            <input
+              className={adminFieldClass}
+              type="date"
+              value={supportForm.basis_date}
+              onChange={(e) => setSupportForm({ ...supportForm, basis_date: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcBasisNote')}
+            <input
+              className={adminFieldClass}
+              value={supportForm.basis_note}
+              onChange={(e) => setSupportForm({ ...supportForm, basis_note: e.target.value })}
+              required
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <AdminPrimaryButton type="submit" disabled={busy}>
+              {busy ? t('common.saving') : t('admin.tcPublish')}
+            </AdminPrimaryButton>
+            <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
+              {t('common.cancel')}
+            </AdminSecondaryButton>
+          </div>
+        </form>
+      );
+    }
+
+    if (key === 'water' && canUtility) {
+      return (
+        <form onSubmit={publishWater} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcNewRate')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0"
+              value={waterForm.rate}
+              onChange={(e) => setWaterForm({ ...waterForm, rate: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcValidFrom')}
+            <input
+              className={adminFieldClass}
+              type="date"
+              min={today}
+              value={waterForm.valid_from}
+              onChange={(e) => setWaterForm({ ...waterForm, valid_from: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcSupplierRef')}
+            <input
+              className={adminFieldClass}
+              value={waterForm.basis_reference}
+              onChange={(e) => setWaterForm({ ...waterForm, basis_reference: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcBasisDate')}
+            <input
+              className={adminFieldClass}
+              type="date"
+              value={waterForm.basis_date}
+              onChange={(e) => setWaterForm({ ...waterForm, basis_date: e.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcBasisNote')}
+            <input
+              className={adminFieldClass}
+              value={waterForm.basis_note}
+              onChange={(e) => setWaterForm({ ...waterForm, basis_note: e.target.value })}
+              required
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <AdminPrimaryButton type="submit" disabled={busy}>
+              {busy ? t('common.saving') : t('admin.tcPublish')}
+            </AdminPrimaryButton>
+            <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
+              {t('common.cancel')}
+            </AdminSecondaryButton>
+          </div>
+        </form>
+      );
+    }
+
+    if (key === 'electricity' && canUtility) {
+      return (
+        <form onSubmit={publishElectricity} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcCompDay')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0"
+              value={elForm.day}
+              onChange={(e) => setElForm({ ...elForm, day: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcCompNight')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0"
+              value={elForm.night}
+              onChange={(e) => setElForm({ ...elForm, night: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcValidFrom')}
+            <input
+              className={adminFieldClass}
+              type="date"
+              min={today}
+              value={elForm.valid_from}
+              onChange={(e) => setElForm({ ...elForm, valid_from: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcSupplierRef')}
+            <input
+              className={adminFieldClass}
+              value={elForm.basis_reference}
+              onChange={(e) => setElForm({ ...elForm, basis_reference: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcBasisDate')}
+            <input
+              className={adminFieldClass}
+              type="date"
+              value={elForm.basis_date}
+              onChange={(e) => setElForm({ ...elForm, basis_date: e.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcBasisNote')}
+            <input
+              className={adminFieldClass}
+              value={elForm.basis_note}
+              onChange={(e) => setElForm({ ...elForm, basis_note: e.target.value })}
+              required
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <AdminPrimaryButton type="submit" disabled={busy}>
+              {busy ? t('common.saving') : t('admin.tcPublish')}
+            </AdminPrimaryButton>
+            <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
+              {t('common.cancel')}
+            </AdminSecondaryButton>
+          </div>
+        </form>
+      );
+    }
+
+    return null;
+  }
+
+  function renderCurrentCard(row: TariffListRow) {
+    const hasCurrent = row.current_version_id != null;
+    const appYear = applicationYearFromValidFrom(row.current_valid_from);
+    const when =
+      row.application_basis === 'billing_year' && appYear != null
+        ? String(appYear)
+        : row.current_valid_from
+          ? formatOwnerDate(row.current_valid_from, locale)
+          : null;
+    const publishable = canPublishRow(row, canSupport, canUtility);
+    const editing = publishKey === row.tariff_key;
+    const future = row.nearest_future_version_id != null;
 
     return (
-      <AdminCard key={`${row.tariff_id}-${mode}`} className="space-y-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
+      <AdminCard
+        key={row.tariff_id}
+        className={`flex flex-col gap-4 ${editing ? 'sm:col-span-2 xl:col-span-3 border-accent/30' : 'h-full'}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">{row.default_name}</p>
-            <p className="text-xs text-muted">
-              {unitLabel(row.unit_code, t)} · {row.currency}
-            </p>
+            <p className="mt-0.5 text-xs text-muted">{unitSuffix(row.unit_code, t)}</p>
           </div>
           <StatusBadge
-            label={mode === 'current' ? t('admin.tcStatusCurrent') : t('admin.tcStatusScheduled')}
-            tone={mode === 'current' ? 'success' : 'info'}
+            label={hasCurrent ? t('admin.tcStatusCurrent') : t('admin.tcStatusMissing')}
+            tone={hasCurrent ? 'success' : 'warning'}
           />
         </div>
-        <p className="text-sm text-secondary">
-          {ratesLabel(rates, row.component_keys, locale, t)}
-        </p>
-        <dl className="grid gap-1 text-sm text-secondary sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-muted">
-              {row.application_basis === 'billing_year'
-                ? t('admin.tcApplicationYear')
-                : t('admin.tcValidFrom')}
-            </dt>
-            <dd>
-              {row.application_basis === 'billing_year' && appYear != null
-                ? String(appYear)
-                : validFrom
-                  ? formatOwnerDate(validFrom, locale)
+
+        <RatesDisplay
+          rates={row.current_rates}
+          componentKeys={row.component_keys}
+          locale={locale}
+          t={t}
+          empty={!hasCurrent}
+        />
+
+        <div className="space-y-1 text-sm text-secondary">
+          {when ? (
+            <p>
+              <span className="text-muted">{t('admin.tcAppliesFrom')}: </span>
+              {when}
+              {row.application_basis === 'billing_year' ? (
+                <span className="text-muted"> · {t('admin.tcYearBasis')}</span>
+              ) : null}
+            </p>
+          ) : (
+            <p className="text-muted">{t('admin.tcNoCurrentVersion')}</p>
+          )}
+          {future ? (
+            <p className="text-xs text-accent">
+              {t('admin.tcHasScheduled')}:{' '}
+              {row.application_basis === 'billing_year' &&
+              applicationYearFromValidFrom(row.nearest_future_valid_from) != null
+                ? applicationYearFromValidFrom(row.nearest_future_valid_from)
+                : row.nearest_future_valid_from
+                  ? formatOwnerDate(row.nearest_future_valid_from, locale)
                   : '—'}
-            </dd>
+            </p>
+          ) : null}
+        </div>
+
+        {!editing ? (
+          <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-3">
+            {publishable ? (
+              <AdminPrimaryButton type="button" onClick={() => openPublish(row.tariff_key)}>
+                {t('admin.tcChangeRate')}
+              </AdminPrimaryButton>
+            ) : null}
+            <AdminSecondaryButton type="button" onClick={() => openHistory(row.tariff_id)}>
+              {t('admin.tcOpenHistory')}
+            </AdminSecondaryButton>
           </div>
-          <div>
-            <dt className="text-xs text-muted">{t('admin.tcBasis')}</dt>
-            <dd>{basisLabel(basisType)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted">{t('admin.tcBasisDate')}</dt>
-            <dd>{basisDate ? formatOwnerDate(basisDate, locale) : '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted">{t('admin.tcPublishedAt')}</dt>
-            <dd>{publishedAt ? formatOwnerDateTime(publishedAt, locale) : '—'}</dd>
-          </div>
-        </dl>
-        {basisNote ? <p className="whitespace-pre-wrap text-sm text-secondary">{basisNote}</p> : null}
-        {author ? (
-          <p className="text-xs text-muted">
-            {t('admin.tcAuthor')}: {author}
-          </p>
         ) : null}
-        {mode === 'future' &&
-        versionId &&
-        canCancelTariffVersionInUi(
-          { module_key: row.module_key, status: 'published', valid_from: validFrom ?? '' },
-          today,
-        ) ? (
-          <AdminSecondaryButton
-            type="button"
-            onClick={() => {
-              setCancelId(versionId);
-              setCancelReason('');
-            }}
-          >
-            {t('admin.tcCancel')}
+
+        {editing ? renderPublishForm(row.tariff_key) : null}
+      </AdminCard>
+    );
+  }
+
+  function renderScheduledCard(row: TariffListRow) {
+    const versionId = row.nearest_future_version_id;
+    const validFrom = row.nearest_future_valid_from;
+    const appYear = applicationYearFromValidFrom(validFrom);
+    const when =
+      row.application_basis === 'billing_year' && appYear != null
+        ? String(appYear)
+        : validFrom
+          ? formatOwnerDate(validFrom, locale)
+          : '—';
+
+    return (
+      <AdminCard key={`${row.tariff_id}-future`} className="flex h-full flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">{row.default_name}</p>
+            <p className="mt-0.5 text-xs text-muted">{unitSuffix(row.unit_code, t)}</p>
+          </div>
+          <StatusBadge label={t('admin.tcStatusScheduled')} tone="info" />
+        </div>
+        <RatesDisplay
+          rates={row.nearest_future_rates}
+          componentKeys={row.component_keys}
+          locale={locale}
+          t={t}
+        />
+        <p className="mt-auto text-sm text-secondary">
+          <span className="text-muted">{t('admin.tcAppliesFrom')}: </span>
+          {when}
+        </p>
+        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+          {versionId &&
+          canCancelTariffVersionInUi(
+            { module_key: row.module_key, status: 'published', valid_from: validFrom ?? '' },
+            today,
+          ) ? (
+            <AdminSecondaryButton
+              type="button"
+              onClick={() => {
+                setCancelId(versionId);
+                setCancelReason('');
+                setPublishKey(null);
+              }}
+            >
+              {t('admin.tcCancel')}
+            </AdminSecondaryButton>
+          ) : null}
+          <AdminSecondaryButton type="button" onClick={() => openHistory(row.tariff_id)}>
+            {t('admin.tcOpenHistory')}
           </AdminSecondaryButton>
-        ) : null}
-        <AdminSecondaryButton
-          type="button"
-          onClick={() => {
-            setHistoryTariffId(row.tariff_id);
-            setTab('history');
-          }}
-        >
-          {t('admin.tcOpenHistory')}
-        </AdminSecondaryButton>
+        </div>
       </AdminCard>
     );
   }
@@ -454,7 +791,6 @@ export function AdminTariffs({
   return (
     <div className="min-w-0 space-y-4">
       <AdminPageHeader title={t('admin.tcTitle')} secondary={t('admin.tcLead')} />
-      <AdminInlineAlert tone="warning">{t('admin.tcPackage1Note')}</AdminInlineAlert>
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
 
       <AdminTabBar
@@ -464,18 +800,21 @@ export function AdminTariffs({
           { id: 'history', label: t('admin.tcTabHistory') },
         ]}
         active={tab}
-        onChange={(id) => setTab(id as TariffTab)}
+        onChange={(id) => {
+          setTab(id as TariffTab);
+          setPublishKey(null);
+        }}
       />
 
       {cancelId ? (
-        <AdminCard className={adminFormPanelClass}>
+        <AdminCard className="space-y-3 border-accent/20">
           <h3 className="text-sm font-semibold text-foreground">{t('admin.tcCancelTitle')}</h3>
-          <form onSubmit={handleCancel} className="mt-3 space-y-3">
+          <form onSubmit={handleCancel} className="space-y-3">
             <label className="grid gap-1 text-sm text-secondary">
               {t('admin.tcCancelReason')}
               <textarea
                 className={adminFieldClass}
-                rows={3}
+                rows={2}
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
                 required
@@ -502,308 +841,20 @@ export function AdminTariffs({
       {loading ? (
         <p className="text-sm text-muted">{t('common.loading')}</p>
       ) : tab === 'current' ? (
-        <div className="space-y-4">
-          {rows.length === 0 ? (
-            <AdminEmptyState title={t('admin.tcEmpty')} />
-          ) : (
-            <div className="space-y-3">
-              {rows.map((row) =>
-                row.current_version_id
-                  ? renderTariffCard(row, 'current')
-                  : (
-                    <AdminCard key={row.tariff_id} className="space-y-2">
-                      <p className="text-sm font-semibold text-foreground">{row.default_name}</p>
-                      <p className="text-sm text-muted">{t('admin.tcNoCurrentVersion')}</p>
-                      {row.tariff_key === 'support_fee' ? (
-                        <p className="text-xs text-muted">{t('admin.tcSupportLegacyNote')}</p>
-                      ) : null}
-                    </AdminCard>
-                  ),
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            {canSupport ? (
-              <AdminPrimaryButton type="button" onClick={() => setPublishKey('support_fee')}>
-                {t('admin.tcPublishSupport')}
-              </AdminPrimaryButton>
-            ) : null}
-            {canUtility ? (
-              <>
-                <AdminPrimaryButton type="button" onClick={() => setPublishKey('water')}>
-                  {t('admin.tcPublishWater')}
-                </AdminPrimaryButton>
-                <AdminPrimaryButton type="button" onClick={() => setPublishKey('electricity')}>
-                  {t('admin.tcPublishElectricity')}
-                </AdminPrimaryButton>
-              </>
-            ) : null}
+        rows.length === 0 ? (
+          <AdminEmptyState title={t('admin.tcEmpty')} />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {rows.map((row) => renderCurrentCard(row))}
           </div>
-
-          {publishKey === 'support_fee' && canSupport ? (
-            <AdminCard className={adminFormPanelClass}>
-              <h3 className="text-sm font-semibold text-foreground">{t('admin.tcPublishSupport')}</h3>
-              <p className="mt-1 text-xs text-muted">{t('admin.tcSupportFormHint')}</p>
-              <form onSubmit={publishSupport} className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcNewRate')}
-                  <input
-                    className={adminFieldClass}
-                    type="number"
-                    step="0.0001"
-                    min="0.0001"
-                    value={supportForm.rate}
-                    onChange={(e) => setSupportForm({ ...supportForm, rate: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcApplicationYear')}
-                  <input
-                    className={adminFieldClass}
-                    type="number"
-                    min={nextYear}
-                    value={supportForm.application_year}
-                    onChange={(e) =>
-                      setSupportForm({ ...supportForm, application_year: e.target.value })
-                    }
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
-                  {t('admin.tcBasis')}
-                  <select
-                    className={adminFieldClass}
-                    value={supportForm.basis_mode}
-                    onChange={(e) =>
-                      setSupportForm({
-                        ...supportForm,
-                        basis_mode: e.target.value as 'general_meeting' | 'external_decision',
-                      })
-                    }
-                  >
-                    <option value="general_meeting">{t('admin.tcBasisGm')}</option>
-                    <option value="external_decision">{t('admin.tcBasisExternal')}</option>
-                  </select>
-                </label>
-                {supportForm.basis_mode === 'general_meeting' ? (
-                  <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
-                    {t('admin.tcDecision')}
-                    <select
-                      className={adminFieldClass}
-                      value={supportForm.decision_id}
-                      onChange={(e) =>
-                        setSupportForm({ ...supportForm, decision_id: e.target.value })
-                      }
-                      required
-                    >
-                      <option value="">{t('admin.tcDecisionPick')}</option>
-                      {decisions.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.decision_number} · {d.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
-                    {t('admin.tcBasisReference')}
-                    <input
-                      className={adminFieldClass}
-                      value={supportForm.basis_reference}
-                      onChange={(e) =>
-                        setSupportForm({ ...supportForm, basis_reference: e.target.value })
-                      }
-                      required
-                    />
-                  </label>
-                )}
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcBasisDate')}
-                  <input
-                    className={adminFieldClass}
-                    type="date"
-                    value={supportForm.basis_date}
-                    onChange={(e) => setSupportForm({ ...supportForm, basis_date: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
-                  {t('admin.tcBasisNote')}
-                  <textarea
-                    className={adminFieldClass}
-                    rows={3}
-                    value={supportForm.basis_note}
-                    onChange={(e) => setSupportForm({ ...supportForm, basis_note: e.target.value })}
-                    required
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2 sm:col-span-2">
-                  <AdminPrimaryButton type="submit" disabled={busy}>
-                    {busy ? t('common.saving') : t('admin.tcPublish')}
-                  </AdminPrimaryButton>
-                  <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
-                    {t('common.cancel')}
-                  </AdminSecondaryButton>
-                </div>
-              </form>
-            </AdminCard>
-          ) : null}
-
-          {publishKey === 'water' && canUtility ? (
-            <AdminCard className={adminFormPanelClass}>
-              <h3 className="text-sm font-semibold text-foreground">{t('admin.tcPublishWater')}</h3>
-              <form onSubmit={publishWater} className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcNewRate')}
-                  <input
-                    className={adminFieldClass}
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    value={waterForm.rate}
-                    onChange={(e) => setWaterForm({ ...waterForm, rate: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcValidFrom')}
-                  <input
-                    className={adminFieldClass}
-                    type="date"
-                    min={today}
-                    value={waterForm.valid_from}
-                    onChange={(e) => setWaterForm({ ...waterForm, valid_from: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcSupplierRef')}
-                  <input
-                    className={adminFieldClass}
-                    value={waterForm.basis_reference}
-                    onChange={(e) =>
-                      setWaterForm({ ...waterForm, basis_reference: e.target.value })
-                    }
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcBasisDate')}
-                  <input
-                    className={adminFieldClass}
-                    type="date"
-                    value={waterForm.basis_date}
-                    onChange={(e) => setWaterForm({ ...waterForm, basis_date: e.target.value })}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
-                  {t('admin.tcBasisNote')}
-                  <textarea
-                    className={adminFieldClass}
-                    rows={3}
-                    value={waterForm.basis_note}
-                    onChange={(e) => setWaterForm({ ...waterForm, basis_note: e.target.value })}
-                    required
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2 sm:col-span-2">
-                  <AdminPrimaryButton type="submit" disabled={busy}>
-                    {busy ? t('common.saving') : t('admin.tcPublish')}
-                  </AdminPrimaryButton>
-                  <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
-                    {t('common.cancel')}
-                  </AdminSecondaryButton>
-                </div>
-              </form>
-            </AdminCard>
-          ) : null}
-
-          {publishKey === 'electricity' && canUtility ? (
-            <AdminCard className={adminFormPanelClass}>
-              <h3 className="text-sm font-semibold text-foreground">{t('admin.tcPublishElectricity')}</h3>
-              <form onSubmit={publishElectricity} className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcCompDay')}
-                  <input
-                    className={adminFieldClass}
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    value={elForm.day}
-                    onChange={(e) => setElForm({ ...elForm, day: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcCompNight')}
-                  <input
-                    className={adminFieldClass}
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    value={elForm.night}
-                    onChange={(e) => setElForm({ ...elForm, night: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcValidFrom')}
-                  <input
-                    className={adminFieldClass}
-                    type="date"
-                    min={today}
-                    value={elForm.valid_from}
-                    onChange={(e) => setElForm({ ...elForm, valid_from: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcSupplierRef')}
-                  <input
-                    className={adminFieldClass}
-                    value={elForm.basis_reference}
-                    onChange={(e) => setElForm({ ...elForm, basis_reference: e.target.value })}
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary">
-                  {t('admin.tcBasisDate')}
-                  <input
-                    className={adminFieldClass}
-                    type="date"
-                    value={elForm.basis_date}
-                    onChange={(e) => setElForm({ ...elForm, basis_date: e.target.value })}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
-                  {t('admin.tcBasisNote')}
-                  <textarea
-                    className={adminFieldClass}
-                    rows={3}
-                    value={elForm.basis_note}
-                    onChange={(e) => setElForm({ ...elForm, basis_note: e.target.value })}
-                    required
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2 sm:col-span-2">
-                  <AdminPrimaryButton type="submit" disabled={busy}>
-                    {busy ? t('common.saving') : t('admin.tcPublish')}
-                  </AdminPrimaryButton>
-                  <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
-                    {t('common.cancel')}
-                  </AdminSecondaryButton>
-                </div>
-              </form>
-            </AdminCard>
-          ) : null}
-        </div>
+        )
       ) : tab === 'scheduled' ? (
         scheduled.length === 0 ? (
           <AdminEmptyState title={t('admin.tcScheduledEmpty')} />
         ) : (
-          <div className="space-y-3">{scheduled.map((row) => renderTariffCard(row, 'future'))}</div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {scheduled.map((row) => renderScheduledCard(row))}
+          </div>
         )
       ) : (
         <div className="space-y-3">
@@ -827,60 +878,61 @@ export function AdminTariffs({
           ) : history.length === 0 ? (
             <AdminEmptyState title={t('admin.tcHistoryEmpty')} />
           ) : (
-            history.map((h) => {
-              const tariff = rows.find((r) => r.tariff_id === h.tariff_id);
-              const cancellable =
-                tariff != null &&
-                canCancelTariffVersionInUi(
-                  {
-                    module_key: tariff.module_key,
-                    status: h.status,
-                    valid_from: h.valid_from,
-                  },
-                  today,
+            <div className="space-y-2">
+              {history.map((h) => {
+                const tariff = rows.find((r) => r.tariff_id === h.tariff_id);
+                const keys = tariff?.component_keys ?? Object.keys(h.rates ?? {});
+                const cancellable =
+                  tariff != null &&
+                  canCancelTariffVersionInUi(
+                    {
+                      module_key: tariff.module_key,
+                      status: h.status,
+                      valid_from: h.valid_from,
+                    },
+                    today,
+                  );
+                return (
+                  <AdminCard key={h.version_id} className="space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <RatesDisplay rates={h.rates} componentKeys={keys} locale={locale} t={t} />
+                        <p className="mt-2 text-sm text-secondary">
+                          {formatOwnerDate(h.valid_from, locale)}
+                          {' · '}
+                          {basisLabel(h.basis_type, t)}
+                        </p>
+                      </div>
+                      <StatusBadge
+                        label={
+                          h.status === 'cancelled'
+                            ? t('admin.tcStatusCancelled')
+                            : t('admin.tcStatusPublished')
+                        }
+                        tone={h.status === 'cancelled' ? 'danger' : 'success'}
+                      />
+                    </div>
+                    {h.published_at ? (
+                      <p className="text-xs text-muted">{formatOwnerDateTime(h.published_at, locale)}</p>
+                    ) : null}
+                    {h.status === 'cancelled' && h.cancellation_reason ? (
+                      <p className="text-sm text-danger">{h.cancellation_reason}</p>
+                    ) : null}
+                    {cancellable ? (
+                      <AdminSecondaryButton
+                        type="button"
+                        onClick={() => {
+                          setCancelId(h.version_id);
+                          setCancelReason('');
+                        }}
+                      >
+                        {t('admin.tcCancel')}
+                      </AdminSecondaryButton>
+                    ) : null}
+                  </AdminCard>
                 );
-              return (
-                <AdminCard key={h.version_id} className="space-y-2">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      {formatOwnerDate(h.valid_from, locale)}
-                    </p>
-                    <StatusBadge
-                      label={
-                        h.status === 'cancelled'
-                          ? t('admin.tcStatusCancelled')
-                          : t('admin.tcStatusPublished')
-                      }
-                      tone={h.status === 'cancelled' ? 'danger' : 'success'}
-                    />
-                  </div>
-                  <p className="text-sm text-secondary">
-                    {ratesLabel(h.rates, tariff?.component_keys ?? Object.keys(h.rates ?? {}), locale, t)}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {basisLabel(h.basis_type)}
-                    {h.published_at ? ` · ${formatOwnerDateTime(h.published_at, locale)}` : ''}
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm text-secondary">{h.basis_note}</p>
-                  {h.status === 'cancelled' && h.cancellation_reason ? (
-                    <p className="text-sm text-danger">
-                      {t('admin.tcCancelReason')}: {h.cancellation_reason}
-                    </p>
-                  ) : null}
-                  {cancellable ? (
-                    <AdminSecondaryButton
-                      type="button"
-                      onClick={() => {
-                        setCancelId(h.version_id);
-                        setCancelReason('');
-                      }}
-                    >
-                      {t('admin.tcCancel')}
-                    </AdminSecondaryButton>
-                  ) : null}
-                </AdminCard>
-              );
-            })
+              })}
+            </div>
           )}
         </div>
       )}

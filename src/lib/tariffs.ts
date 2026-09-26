@@ -1,8 +1,9 @@
 /** Tariff Core helpers. UX only — RPCs are the security boundary.
- *  Package 2: Water/Electricity billing resolves from Core. Support Fee still legacy.
+ *  Live tariff_keys: support_fee, capital_repair, water, electricity.
+ *  See docs/architecture-cores.md.
  */
 
-export const TARIFF_KEYS = ['support_fee', 'water', 'electricity'] as const;
+export const TARIFF_KEYS = ['support_fee', 'capital_repair', 'water', 'electricity'] as const;
 export type TariffKey = (typeof TARIFF_KEYS)[number];
 
 export const TARIFF_TABS = ['current', 'scheduled', 'history'] as const;
@@ -70,13 +71,13 @@ export function canPublishUtilityTariff(role?: string | null, active?: boolean |
   return role === 'администрация' || role === 'бухгалтер';
 }
 
-/** Package 2: Support + Water + Electricity future published versions are cancellable in UI. */
+/** Package 2+: future published versions are cancellable in UI. */
 export function canCancelTariffVersionInUi(row: {
   module_key: string;
   status: string;
   valid_from: string;
 }, sofiaTodayIso: string) {
-  if (!['support_fee', 'water', 'electricity'].includes(row.module_key)) return false;
+  if (!['support_fee', 'capital_repair', 'water', 'electricity'].includes(row.module_key)) return false;
   if (row.status !== 'published') return false;
   return row.valid_from > sofiaTodayIso;
 }

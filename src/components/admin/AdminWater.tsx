@@ -89,7 +89,7 @@ export function AdminWater({
   const canMeter = canAssignWaterMeter(staffRole);
   const canTariff = canManageWaterTariff(staffRole);
   const canFinance = canManageWaterFinance(staffRole);
-  const canSubmit = waterMode !== 'disabled' && canSubmitWaterStaff(staffRole, staffActive);
+  const canSubmit = canSubmitWaterStaff(staffRole, staffActive);
   const waterTabs = useMemo(() => {
     const items: { id: AdminUtilityTab; label: string }[] = [
       { id: 'overview', label: t('admin.utilTabOverview') },
@@ -429,11 +429,7 @@ export function AdminWater({
   const statusLabel =
     tone === 'debt' ? t('admin.balDebt') : tone === 'over' ? t('admin.balOver') : t('admin.balSettled');
   const waterModeLabel =
-    waterMode === 'staff_only'
-      ? t('admin.elModeStaffOnly')
-      : waterMode === 'disabled'
-        ? t('admin.elModeDisabled')
-        : t('admin.elModeOwnerAndStaff');
+    waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
 
   return (
@@ -447,7 +443,6 @@ export function AdminWater({
             {([
               ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
               ['staff_only', t('admin.elModeStaffOnly')],
-              ['disabled', t('admin.elModeDisabled')],
             ] as const).map(([id, label]) => (
               <button
                 key={id}
@@ -463,9 +458,6 @@ export function AdminWater({
               </button>
             ))}
           </div>
-        )}
-        {waterMode === 'disabled' && (
-          <p className="mt-3 text-sm text-secondary">{t('account.utilErrDisabled')}</p>
         )}
         <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
         <ApartmentCombobox

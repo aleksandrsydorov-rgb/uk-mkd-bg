@@ -398,7 +398,8 @@ function AdminPortal() {
   const canChangeBuildingModules = staffActive && isUkAdminRole(staffRole);
   const showWorkOrdersAdmin = canSeeWorkOrdersAdmin(staffRole, staffActive);
   const showMyTasks = canSeeMyWorkOrders(staffRole, staffActive, workClaimProfile);
-  const showTariffCore = canViewTariffCore(staffRole, staffActive);
+  const showTariffCore =
+    canViewTariffCore(staffRole, staffActive) && isBuildingModuleEnabled(buildingModules, 'tariffs');
   const showStaffSalary = staffRole.trim().toLowerCase() === 'администрация';
   const MENU_GROUPS: AdminMenuGroup[] = useMemo(() => {
     const groups: AdminMenuGroup[] = [
@@ -415,14 +416,14 @@ function AdminPortal() {
         items: [
           ...(showWater ? (['вода'] as const) : []),
           ...(showElectricity ? (['электроэнергия'] as const) : []),
+          ...(canReadSupportFinance && showSupportFee ? (['такса'] as const) : []),
+          ...(showCapital ? (['капремонт'] as const) : []),
         ],
       },
       {
         id: 'finance',
         label: t('admin.menuFinance'),
         items: [
-          ...(canReadSupportFinance && showSupportFee ? (['такса'] as const) : []),
-          ...(showCapital ? (['капремонт'] as const) : []),
           'расходы',
           ...(showTariffCore ? (['тарифы'] as const) : []),
           ...(canReadSupportFinance ? (['отчётность'] as const) : []),
@@ -1654,10 +1655,6 @@ function AdminPortal() {
   async function handleSaveMeter(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (electricityMode === 'disabled') {
-      setError(t('account.elErrDisabled'));
-      return;
-    }
     if (!canSubmitElectricityStaff(staffRole, staffActive)) {
       setError(t('admin.errNoAccess'));
       return;
@@ -3488,15 +3485,12 @@ function AdminPortal() {
 
       case 'счётчики':
       case 'электроэнергия': {
-        const canElSubmit =
-          electricityMode !== 'disabled' && canSubmitElectricityStaff(staffRole, staffActive);
+        const canElSubmit = canSubmitElectricityStaff(staffRole, staffActive);
         const canChangeElMode = canChangeUtilityMode;
         const elModeLabel =
           electricityMode === 'staff_only'
             ? t('admin.elModeStaffOnly')
-            : electricityMode === 'disabled'
-              ? t('admin.elModeDisabled')
-              : t('admin.elModeOwnerAndStaff');
+            : t('admin.elModeOwnerAndStaff');
         const elTabItems: { id: AdminUtilityTab; label: string }[] = [
           { id: 'overview', label: t('admin.utilTabOverview') },
           { id: 'meter', label: t('admin.utilTabMeter') },
@@ -3542,7 +3536,6 @@ function AdminPortal() {
                   {([
                     ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
                     ['staff_only', t('admin.elModeStaffOnly')],
-                    ['disabled', t('admin.elModeDisabled')],
                   ] as const).map(([id, label]) => (
                     <button
                       key={`el-${id}`}
@@ -3558,9 +3551,6 @@ function AdminPortal() {
                     </button>
                   ))}
                 </div>
-              )}
-              {electricityMode === 'disabled' && (
-                <p className="mt-3 text-sm text-secondary">{t('account.elErrDisabled')}</p>
               )}
               <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
               <ApartmentCombobox
@@ -4298,13 +4288,6 @@ function AdminPortal() {
         );
 
       case 'настройки': {
-        const moduleModeLabel = (mode: string) =>
-          mode === 'staff_only'
-            ? t('admin.elModeStaffOnly')
-            : mode === 'disabled'
-              ? t('admin.elModeDisabled')
-              : t('admin.elModeOwnerAndStaff');
-        const canRate = canSetSupportRate(staffRole) && showSupportFee;
         const resolveModuleLabel = (row: BuildingModuleV2Row) => {
           const msgKey = moduleLabelMessageKey(row.module_key);
           if (msgKey) return t(`admin.${msgKey}` as 'admin.moduleWater');
@@ -4319,90 +4302,111 @@ function AdminPortal() {
         return (
           <div className="min-w-0 space-y-4">
             <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
-            {showSupportFee ? (
-            <AdminCard className="space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsFinance')}</h3>
-              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{t('admin.feeCurrentRate')}</p>
-              {supportRate == null ? (
-                <p className="text-sm text-secondary">{t('admin.feeTariffNotConfigured')}</p>
-              ) : (
-                <p className="text-xl font-semibold text-foreground">
-                  {money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span>
-                </p>
-              )}
-              <p className="text-xs text-muted">{t('admin.feeRateViaTariffs')}</p>
-              {canRate ? (
-                <p className="text-xs text-secondary">{t('admin.feeTariffPolicySplit')}</p>
-              ) : null}
-            </AdminCard>
-            ) : null}
             <AdminCard className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>
-              <p className="text-xs text-muted">{t('admin.moduleDisableHint')}</p>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>
+                <p className="mt-1 text-xs text-muted">{t('admin.moduleDisableHint')}</p>
+              </div>
               {groupedModules.length === 0 ? (
                 <p className="text-sm text-muted">{t('admin.moduleNotImplemented')}</p>
               ) : (
-                groupedModules.map((group) => (
-                  <div key={group.category} className="space-y-2">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-                      {resolveCategoryLabel(group.category)}
-                    </p>
-                    <ul className="divide-y divide-border rounded-xl border border-border">
-                      {group.modules.map((row) => {
-                        const enabled = row.enabled === true;
-                        const toggleable = row.implemented === true;
-                        const saving = moduleSavingKey === row.module_key;
-                        return (
-                          <li key={row.module_key} className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground">{resolveModuleLabel(row)}</p>
-                              <p className="mt-0.5 text-xs text-muted">
-                                {toggleable
-                                  ? enabled
-                                    ? t('admin.moduleEnabled')
-                                    : t('admin.moduleDisabled')
-                                  : t('admin.moduleNotImplemented')}
-                              </p>
-                            </div>
-                            {toggleable ? (
-                              canChangeBuildingModules ? (
-                                <label className="inline-flex items-center gap-2 text-sm text-secondary">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[var(--accent)]"
-                                    checked={enabled}
-                                    disabled={saving || moduleSavingKey != null}
-                                    onChange={(e) => handleSetBuildingModule(row.module_key, e.target.checked)}
-                                    aria-label={t('admin.moduleToggle')}
-                                  />
-                                  <span>{saving ? t('admin.moduleSaving') : enabled ? t('admin.moduleEnabled') : t('admin.moduleDisabled')}</span>
-                                </label>
-                              ) : (
-                                <span className="text-xs text-muted">{t('admin.feeAdminOnlyRate')}</span>
-                              )
-                            ) : (
-                              <span className="rounded-lg border border-border px-2 py-1 text-xs text-muted">
-                                {t('admin.moduleNotImplemented')}
-                              </span>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))
+                <div className="space-y-3">
+                  {groupedModules.map((group) => {
+                    const toggleableCount = group.modules.filter((m) => m.implemented === true).length;
+                    const enabledCount = group.modules.filter(
+                      (m) => m.implemented === true && m.enabled === true,
+                    ).length;
+                    return (
+                      <details
+                        key={group.category}
+                        className="group overflow-hidden rounded-xl border border-border-strong bg-surface shadow-sm"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 bg-surface-secondary/90 px-3.5 py-3.5 text-foreground transition-colors hover:bg-hover marker:content-none [&::-webkit-details-marker]:hidden">
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span
+                              aria-hidden
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-sm text-secondary transition-transform group-open:rotate-180"
+                            >
+                              ▾
+                            </span>
+                            <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                              {resolveCategoryLabel(group.category)}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+                            <span className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs font-medium text-secondary">
+                              {toggleableCount > 0
+                                ? `${enabledCount}/${toggleableCount}`
+                                : t('admin.moduleNotImplemented')}
+                            </span>
+                            <span className="text-[10px] text-muted group-open:hidden">
+                              {t('admin.moduleCategoryExpandHint')}
+                            </span>
+                            <span className="hidden text-[10px] text-muted group-open:inline">
+                              {t('admin.moduleCategoryCollapseHint')}
+                            </span>
+                          </span>
+                        </summary>
+                        <ul className="divide-y divide-border border-t border-border bg-surface">
+                          {group.modules.map((row) => {
+                            const enabled = row.enabled === true;
+                            const toggleable = row.implemented === true;
+                            const saving = moduleSavingKey === row.module_key;
+                            return (
+                              <li
+                                key={row.module_key}
+                                className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3 pl-[3.25rem]"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-foreground">
+                                    {resolveModuleLabel(row)}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-muted">
+                                    {toggleable
+                                      ? enabled
+                                        ? t('admin.moduleEnabled')
+                                        : t('admin.moduleDisabled')
+                                      : t('admin.moduleNotImplemented')}
+                                  </p>
+                                </div>
+                                {toggleable ? (
+                                  canChangeBuildingModules ? (
+                                    <label className="inline-flex items-center gap-2 text-sm text-secondary">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 accent-[var(--accent)]"
+                                        checked={enabled}
+                                        disabled={saving || moduleSavingKey != null}
+                                        onChange={(e) =>
+                                          handleSetBuildingModule(row.module_key, e.target.checked)
+                                        }
+                                        aria-label={t('admin.moduleToggle')}
+                                      />
+                                      <span>
+                                        {saving
+                                          ? t('admin.moduleSaving')
+                                          : enabled
+                                            ? t('admin.moduleEnabled')
+                                            : t('admin.moduleDisabled')}
+                                      </span>
+                                    </label>
+                                  ) : (
+                                    <span className="text-xs text-muted">{t('admin.feeAdminOnlyRate')}</span>
+                                  )
+                                ) : (
+                                  <span className="rounded-lg border border-border px-2 py-1 text-xs text-muted">
+                                    {t('admin.moduleNotImplemented')}
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    );
+                  })}
+                </div>
               )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs text-muted">{t('admin.waterMode')}</p>
-                  <p className="mt-1 text-sm font-medium text-foreground">{moduleModeLabel(waterMode)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted">{t('admin.electricityMode')}</p>
-                  <p className="mt-1 text-sm font-medium text-foreground">{moduleModeLabel(electricityMode)}</p>
-                </div>
-              </div>
-              <p className="text-xs text-muted">{t('admin.settingsModesReadOnly')}</p>
             </AdminCard>
           </div>
         );

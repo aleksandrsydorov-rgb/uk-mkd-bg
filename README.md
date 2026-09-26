@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Architecture
+
+- Platform cores + live/stub modules: [`docs/architecture-cores.md`](docs/architecture-cores.md)
+- How to add the next module: [`docs/module-template.md`](docs/module-template.md)
+- v1 launch checklist: [`audit_exports/v1_launch_checklist.md`](audit_exports/v1_launch_checklist.md)
+
 ## Database / new complex
 
 Production schema changes go in `supabase/migrations` only.

@@ -36,6 +36,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'capital_repair',
   'water',
   'electricity',
+  'internet',
   'requests',
   'chat',
   'polls',

@@ -52,6 +52,7 @@ export function OwnerOverview({
   waterEnabled,
   electricityEnabled,
   capitalEnabled = true,
+  internetEnabled = true,
   supportFeeEnabled = true,
   pollsEnabled = true,
   requestsEnabled = true,
@@ -90,6 +91,7 @@ export function OwnerOverview({
   waterEnabled: boolean;
   electricityEnabled: boolean;
   capitalEnabled?: boolean;
+  internetEnabled?: boolean;
   supportFeeEnabled?: boolean;
   pollsEnabled?: boolean;
   requestsEnabled?: boolean;
@@ -121,6 +123,7 @@ export function OwnerOverview({
   const [waterBalance, setWaterBalance] = useState<UtilityBalance>(emptyBalance());
   const [electricityBalance, setElectricityBalance] = useState<UtilityBalance>(emptyBalance());
   const [capitalBalance, setCapitalBalance] = useState<UtilityBalance>(emptyBalance());
+  const [internetBalance, setInternetBalance] = useState<UtilityBalance>(emptyBalance());
   const [waterMeter, setWaterMeter] = useState<WaterMeter | null>(null);
   const [lastWater, setLastWater] = useState<WaterReading | null>(null);
   const [upcomingMeeting, setUpcomingMeeting] = useState<GeneralMeeting | null>(null);
@@ -165,6 +168,16 @@ export function OwnerOverview({
         );
       } else {
         setCapitalBalance(emptyBalance());
+      }
+      if (internetEnabled) {
+        jobs.push(
+          Promise.resolve(supabase.rpc('get_internet_balance', { p_property_id: property.id })).then((netRes) => {
+            if (!netRes.error) setInternetBalance(firstBalance(netRes.data as UtilityBalance[] | null));
+            else setInternetBalance(emptyBalance());
+          }),
+        );
+      } else {
+        setInternetBalance(emptyBalance());
       }
       if (waterEnabled) {
         jobs.push(
@@ -216,12 +229,13 @@ export function OwnerOverview({
       setWaterBalance(emptyBalance());
       setElectricityBalance(emptyBalance());
       setCapitalBalance(emptyBalance());
+      setInternetBalance(emptyBalance());
       setWaterMeter(null);
       setLastWater(null);
     } finally {
       setExtrasLoading(false);
     }
-  }, [property.id, supabase, waterEnabled, electricityEnabled, capitalEnabled, meetingsEnabled]);
+  }, [property.id, supabase, waterEnabled, electricityEnabled, capitalEnabled, internetEnabled, meetingsEnabled]);
 
   useEffect(() => {
     void loadExtras();
@@ -231,6 +245,7 @@ export function OwnerOverview({
   const waterDebt = Number(waterBalance.balance_eur);
   const electricityDebt = Number(electricityBalance.balance_eur);
   const capitalDebt = Number(capitalBalance.balance_eur);
+  const internetDebt = Number(internetBalance.balance_eur);
 
   const activePolls = useMemo(() => polls.filter((p) => isPollAcceptingVotes(p)), [polls]);
   const unvotedPolls = useMemo(
@@ -287,6 +302,14 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('capital'),
     });
   }
+  if (internetEnabled && internetDebt > 0) {
+    attention.push({
+      key: 'internet',
+      title: t('account.financeTabInternet'),
+      detail: t('account.overviewDebt', { n: internetDebt.toFixed(2) }),
+      onClick: () => onOpenFinance('internet'),
+    });
+  }
   if (waterEnabled && !extrasLoading && !waterMeter) {
     attention.push({
       key: 'no-water-meter',
@@ -339,7 +362,11 @@ export function OwnerOverview({
   }
 
   const financeCount =
-    (supportFeeEnabled ? 1 : 0) + (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0) + (capitalEnabled ? 1 : 0);
+    (supportFeeEnabled ? 1 : 0)
+    + (waterEnabled ? 1 : 0)
+    + (electricityEnabled ? 1 : 0)
+    + (capitalEnabled ? 1 : 0)
+    + (internetEnabled ? 1 : 0);
   const financeCols =
     financeCount >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : financeCount === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
   const meterCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
@@ -493,6 +520,15 @@ export function OwnerOverview({
                 {extrasLoading ? t('common.loading') : formatEur(Math.abs(capitalDebt))}
               </p>
               <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(capitalDebt, t)}</p>
+            </button>
+          )}
+          {internetEnabled && (
+            <button type="button" onClick={() => onOpenFinance('internet')} className={kpiBtn}>
+              <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabInternet')}</p>
+              <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(internetDebt)}`}>
+                {extrasLoading ? t('common.loading') : formatEur(Math.abs(internetDebt))}
+              </p>
+              <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(internetDebt, t)}</p>
             </button>
           )}
         </div>

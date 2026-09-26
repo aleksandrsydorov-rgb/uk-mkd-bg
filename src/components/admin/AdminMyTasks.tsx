@@ -13,6 +13,7 @@ import {
   type ClaimableRequestRow,
   type MyWorkOrderRow,
 } from '@/lib/workOrders';
+import type { ClaimableSystemWorkOrder } from '@/lib/internet';
 import {
   AdminPageHeader,
   AdminCard,
@@ -43,6 +44,7 @@ export function AdminMyTasks({
   const { t } = useI18n();
   const [rows, setRows] = useState<MyWorkOrderRow[]>([]);
   const [claimable, setClaimable] = useState<ClaimableRequestRow[]>([]);
+  const [systemPool, setSystemPool] = useState<ClaimableSystemWorkOrder[]>([]);
   const [canSelfClaim, setCanSelfClaim] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,10 +96,24 @@ export function AdminMyTasks({
       } else {
         setClaimable([]);
       }
+
+      const systemRes = await supabase.rpc('list_claimable_system_work_orders');
+      if (systemRes.error) {
+        if (
+          !isMissingRelation(systemRes.error, 'list_claimable_system_work_orders') &&
+          !/not allowed/i.test(systemRes.error.message ?? '')
+        ) {
+          throw systemRes.error;
+        }
+        setSystemPool([]);
+      } else {
+        setSystemPool((systemRes.data as ClaimableSystemWorkOrder[] | null) ?? []);
+      }
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
       setRows([]);
       setClaimable([]);
+      setSystemPool([]);
     } finally {
       setLoading(false);
     }
@@ -132,6 +148,22 @@ export function AdminMyTasks({
         const key = workOrderClaimErrorKey(rpcErr.message ?? '');
         throw key ? new Error(t(key)) : rpcErr;
       }
+      await load();
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleClaimSystem(workOrderId: string) {
+    setError(null);
+    setBusyId(`sys-${workOrderId}`);
+    try {
+      const { error: rpcErr } = await supabase.rpc('claim_system_work_order', {
+        p_work_order_id: workOrderId,
+      });
+      if (rpcErr) throw rpcErr;
       await load();
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
@@ -210,6 +242,43 @@ export function AdminMyTasks({
           </form>
         </AdminCard>
       ) : null}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold text-foreground">{t('admin.woSystemPool')}</h2>
+        </div>
+        {loading ? (
+          <p className="text-sm text-muted">{t('common.loading')}</p>
+        ) : systemPool.length === 0 ? (
+          <AdminEmptyState title={t('admin.woSystemEmpty')} />
+        ) : (
+          <div className="space-y-3">
+            {systemPool.map((row) => (
+              <AdminCard key={row.id} className="space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground">{row.title}</p>
+                    {row.apartment_number ? (
+                      <p className="mt-1 text-sm text-secondary">№{row.apartment_number}</p>
+                    ) : null}
+                    {row.instructions ? (
+                      <p className="mt-2 text-sm text-secondary">{row.instructions}</p>
+                    ) : null}
+                  </div>
+                  <StatusBadge label={statusLabel(row.status)} tone={statusTone(row.status)} />
+                </div>
+                <AdminPrimaryButton
+                  type="button"
+                  disabled={busyId === `sys-${row.id}`}
+                  onClick={() => void handleClaimSystem(row.id)}
+                >
+                  {busyId === `sys-${row.id}` ? t('common.saving') : t('admin.woClaimSystem')}
+                </AdminPrimaryButton>
+              </AdminCard>
+            ))}
+          </div>
+        )}
+      </section>
 
       {canSelfClaim ? (
         <section className="space-y-3">

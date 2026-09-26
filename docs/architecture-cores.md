@@ -1,6 +1,6 @@
 # AMADEUS 11 — Platform cores and modules
 
-Canonical map for scale. Live product = 11 implemented modules.
+Canonical map for scale. Live product = 12 implemented modules.
 Stub catalog keys are future-only. Do not implement stub UIs until a real product brief exists.
 
 ## Platform cores
@@ -19,20 +19,23 @@ Hardening module checks inside every RPC is a later security package — not a v
 
 ```text
 Tariff-backed (recurring rate)
-  support_fee | capital_repair | water | electricity
+  support_fee | capital_repair | water | electricity | internet
   → publish in Tariff Core
   → operational billing resolves published version where cut over
-    (support / water / electricity live; capital rate is published for Tariffs UI —
-     charges still use assessment + operator amount until a dedicated cutover)
+    (support / water / electricity / internet live; capital rate is published for Tariffs UI —
+     capital charges resolve from published year tariff via bulk/year RPCs)
   → no hard-coded rate fallback in UI/RPC for cut-over domains
 
 Assessment + ledger (campaign / operator amount)
-  capital_repair charges
-  → assessment + ledger + bulk charge with explicit amount
-  → tariff_catalog row exists for rate visibility / future cutover
+  capital_repair
+  → fixed EUR per apartment per calendar year in Tariff Core
+  → charge_capital_repair / bulk resolve amount from published tariff for billing year
+  → assessment remains the grouping/decision key; payments unchanged
 ```
 
-Capital appears in Admin → Тарифы; charging still uses the capital section amounts until cutover.
+Capital appears in Admin → Тарифы; charging uses the capital section (year bulk by tariff).
+
+Internet: monthly subscription tariff; charge on connect and auto-charge on billing day until disconnect; engineer completes system work orders for enable/disable.
 
 ## Live modules (implemented = true)
 
@@ -40,9 +43,10 @@ Capital appears in Admin → Тарифы; charging still uses the capital secti
 |------------|----------|---------|---------------|---------------|
 | `tariffs` | finance | — (gates Tariff Core admin UI) | Финансы → Тарифы | — |
 | `support_fee` | utilities | Tariff Core (€/m²·year) + annual policy (discount/deadline) | Такса; ставка в Тарифы | Account support fee |
-| `capital_repair` | utilities | Assessment + ledger; rate also in Tariff Core (€/m²·year) | Капитальный ремонт; ставка в Тарифы | Capital balances |
+| `capital_repair` | utilities | Tariff Core fixed €/apartment·year + assessment/ledger | Капитальный ремонт; сумма в Тарифы | Capital balances |
 | `water` | utilities | Tariff Core (€/m³) + modes | Вода | Water (mode-gated) |
 | `electricity` | utilities | Tariff Core (day/night €/kWh) + modes | Электроэнергия | Electricity (mode-gated) |
+| `internet` | utilities | Tariff Core (monthly) + subscription/ledger + system WOs + monthly charge cron | Интернет; тарифы в Тарифы | Connect / disconnect; auto-charge until disconnect |
 | `requests` | communication | none | Заявки | Requests |
 | `chat` | communication | none | Чат | Chat |
 | `polls` | communication | none | Опросы | Polls |
@@ -53,11 +57,11 @@ Capital appears in Admin → Тарифы; charging still uses the capital secti
 Keys must stay aligned with `IMPLEMENTED_MODULE_KEYS` in [`src/lib/modules.ts`](../src/lib/modules.ts)
 and `module_catalog.implemented=true` seed.
 
-Finance category in Settings has **only** `tariffs`. Fee and capital live under utilities.
+Finance category in Settings has **only** `tariffs`. Fee, capital and internet live under utilities.
 
 ## Stub modules (implemented = false)
 
-`internet`, `parking`, `security`, `rental`, `cleaning`, `maintenance`,
+`parking`, `security`, `rental`, `cleaning`, `maintenance`,
 `access_control`, `contractors`, `inventory`, `common_areas`, `commercial_rentals`
 
 Visible in Settings catalog as non-toggleable stubs. No product surface. No tariffs.
@@ -71,7 +75,7 @@ Always role-gated, not `module_key` toggles:
 - Work orders / my tasks
 - Staff, settings shell, reports (role), apartment book / shifts overview
 
-Tariff Core admin (`тарифы`) is **role-gated and** toggled by the `tariffs` finance module (UX only; publish still checks water/support_fee/electricity module flags).
+Tariff Core admin (`тарифы`) is **role-gated and** toggled by the `tariffs` finance module (UX only; publish still checks water/support_fee/electricity/internet module flags).
 
 Do not convert remaining platform services into modules without a product decision.
 

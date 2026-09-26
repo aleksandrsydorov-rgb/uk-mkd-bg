@@ -3,6 +3,7 @@ export type OwnerMenu =
   | 'квартира'
   | 'жильцы'
   | 'финансы'
+  | 'интернет'
   | 'счётчики'
   | 'документы'
   | 'опросы'
@@ -22,6 +23,8 @@ const SECTION_TO_MENU: Record<string, OwnerMenu> = {
   жильцы: 'жильцы',
   finance: 'финансы',
   финансы: 'финансы',
+  internet: 'интернет',
+  интернет: 'интернет',
   meters: 'счётчики',
   счётчики: 'счётчики',
   documents: 'документы',
@@ -63,6 +66,7 @@ const MENU_TO_SECTION: Record<OwnerMenu, string> = {
   квартира: 'apartment',
   жильцы: 'residency',
   финансы: 'finance',
+  интернет: 'internet',
   счётчики: 'meters',
   документы: 'documents',
   опросы: 'polls',

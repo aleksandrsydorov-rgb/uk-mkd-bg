@@ -1,9 +1,9 @@
 /** Tariff Core helpers. UX only — RPCs are the security boundary.
- *  Live tariff_keys: support_fee, capital_repair, water, electricity.
+ *  Live tariff_keys: support_fee, capital_repair, water, electricity, internet.
  *  See docs/architecture-cores.md.
  */
 
-export const TARIFF_KEYS = ['support_fee', 'capital_repair', 'water', 'electricity'] as const;
+export const TARIFF_KEYS = ['support_fee', 'capital_repair', 'water', 'electricity', 'internet'] as const;
 export type TariffKey = (typeof TARIFF_KEYS)[number];
 
 export const TARIFF_TABS = ['current', 'scheduled', 'history'] as const;
@@ -77,7 +77,7 @@ export function canCancelTariffVersionInUi(row: {
   status: string;
   valid_from: string;
 }, sofiaTodayIso: string) {
-  if (!['support_fee', 'capital_repair', 'water', 'electricity'].includes(row.module_key)) return false;
+  if (!['support_fee', 'capital_repair', 'water', 'electricity', 'internet'].includes(row.module_key)) return false;
   if (row.status !== 'published') return false;
   return row.valid_from > sofiaTodayIso;
 }

@@ -88,6 +88,7 @@ import {
 } from '@/lib/privateMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
+import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
@@ -115,6 +116,7 @@ import {
   formatEur,
   type WaterMode,
 } from '@/lib/utilities';
+import { canSeeInternetAdmin } from '@/lib/internet';
 import {
   buildingModulesFromV2Rows,
   emptyBuildingModulesState,
@@ -254,6 +256,7 @@ type AdminSection =
   | 'такса'
   | 'электроэнергия'
   | 'капремонт'
+  | 'интернет'
   | 'расходы'
   | 'опросы'
   | 'документы'
@@ -276,6 +279,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'такса',
   'электроэнергия',
   'капремонт',
+  'интернет',
   'расходы',
   'опросы',
   'документы',
@@ -358,6 +362,7 @@ function AdminPortal() {
       { key: 'такса', label: t('admin.fee'), icon: '💶' },
       { key: 'электроэнергия', label: t('admin.electricityFinance'), icon: '⚡' },
       { key: 'капремонт', label: t('admin.capital'), icon: '🏗️' },
+      { key: 'интернет', label: t('admin.internet'), icon: '🌐' },
       { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
       { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
       { key: 'тарифы', label: t('admin.tariffsCore'), icon: '📑' },
@@ -378,6 +383,7 @@ function AdminPortal() {
   const [moduleSavingKey, setModuleSavingKey] = useState<string | null>(null);
   const showWater = canSeeWaterAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'water');
   const showCapital = canSeeCapitalAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'capital_repair');
+  const showInternet = canSeeInternetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'internet');
   const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -418,6 +424,7 @@ function AdminPortal() {
           ...(showElectricity ? (['электроэнергия'] as const) : []),
           ...(canReadSupportFinance && showSupportFee ? (['такса'] as const) : []),
           ...(showCapital ? (['капремонт'] as const) : []),
+          ...(showInternet ? (['интернет'] as const) : []),
         ],
       },
       {
@@ -451,6 +458,7 @@ function AdminPortal() {
     showWater,
     showElectricity,
     showCapital,
+    showInternet,
     showSupportFee,
     showRequests,
     showWorkOrdersAdmin,
@@ -570,6 +578,7 @@ function AdminPortal() {
   const selectedChatRef = useRef<Property | null>(null);
   selectedChatRef.current = selectedChatProperty;
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
+  const [internetOpenTasks, setInternetOpenTasks] = useState<number | null>(null);
   const [ukChatSeen, setUkChatSeen] = useState<Record<string, string>>({});
 
   // ---------- ФОРМЫ ----------
@@ -939,12 +948,38 @@ function AdminPortal() {
     if (allowed) loadAll();
   }, [allowed]);
 
+  const showInternetOverviewCard =
+    isBuildingModuleEnabled(buildingModules, 'internet') &&
+    staffActive &&
+    (staffRole === 'инженер' || showInternet);
+
   const sectionQuery = searchParams.get('section');
   const activeMenu: AdminSection = useMemo(() => {
     if (sectionQuery === 'счётчики' && visibleSectionSet.has('электроэнергия')) return 'электроэнергия';
     if (isAdminSection(sectionQuery) && visibleSectionSet.has(sectionQuery)) return sectionQuery;
     return DEFAULT_ADMIN_SECTION;
   }, [sectionQuery, visibleSectionSet]);
+
+  useEffect(() => {
+    if (!allowed || !showInternetOverviewCard) {
+      setInternetOpenTasks(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase.rpc('get_internet_open_task_counts').then(({ data, error: rpcErr }) => {
+      if (cancelled) return;
+      if (rpcErr) {
+        setInternetOpenTasks(null);
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      setInternetOpenTasks(row?.open_total != null ? Number(row.open_total) : 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [allowed, showInternetOverviewCard, supabase, activeMenu]);
+
   const activeNavGroup = useMemo(() => {
     const group = MENU_GROUPS.find((item) => item.id !== 'overview' && item.items.includes(activeMenu));
     return group?.id ?? null;
@@ -2127,8 +2162,10 @@ function AdminPortal() {
         return;
       }
       const base = t('admin.bulkResult', { created: summary.created, skipped: summary.skipped_existing });
+      const withReprice =
+        summary.repriced > 0 ? `${base} ${t('admin.feeBulkRepriced', { n: summary.repriced })}` : base;
       setFeeBulkResult(
-        summary.not_applied > 0 ? `${base} ${t('admin.bulkNotApplied', { n: summary.not_applied })}` : base,
+        summary.not_applied > 0 ? `${withReprice} ${t('admin.bulkNotApplied', { n: summary.not_applied })}` : withReprice,
       );
       await loadAll();
     } catch (err: unknown) {
@@ -2594,6 +2631,15 @@ function AdminPortal() {
             tone: 'info',
           });
         }
+        if (showInternetOverviewCard && (internetOpenTasks ?? 0) > 0) {
+          attention.push({
+            key: showMyTasks ? 'мои_задачи' : showInternet ? 'интернет' : 'обзор',
+            title: t('admin.internetOverviewCard'),
+            detail: t('admin.internetOverviewDetail', { n: internetOpenTasks ?? 0 }),
+            badge: String(internetOpenTasks ?? 0),
+            tone: 'warning',
+          });
+        }
 
         return (
           <div className="space-y-3">
@@ -2617,6 +2663,28 @@ function AdminPortal() {
                 secondary={t('admin.kpiNeedWork')}
                 alert={activeRequests.length > 0}
                 onClick={() => navigateAdminSection('заявки')}
+              />
+              ) : null}
+              {showInternetOverviewCard ? (
+              <AdminMetricCard
+                align="center"
+                label={t('admin.internetOverviewCard')}
+                value={internetOpenTasks == null ? t('common.loading') : String(internetOpenTasks)}
+                secondary={
+                  staffRole === 'инженер'
+                    ? t('admin.internetOverviewHint')
+                    : t('admin.internetOverviewDetail', { n: internetOpenTasks ?? 0 })
+                }
+                alert={(internetOpenTasks ?? 0) > 0}
+                onClick={() =>
+                  navigateAdminSection(
+                    staffRole === 'инженер' && showMyTasks
+                      ? 'мои_задачи'
+                      : showInternet
+                        ? 'интернет'
+                        : 'обзор',
+                  )
+                }
               />
               ) : null}
               {canReadSupportFinance && showSupportFee ? (
@@ -3466,8 +3534,15 @@ function AdminPortal() {
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
-            tab={searchParams.get('tab')}
-            onTabChange={(next) => openSectionTab('капремонт', next)}
+          />
+        );
+
+      case 'интернет':
+        return (
+          <AdminInternet
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
           />
         );
 
@@ -4301,7 +4376,7 @@ function AdminPortal() {
         const groupedModules = groupModulesByCategory(moduleCatalog);
         return (
           <div className="min-w-0 space-y-4">
-            <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
+            <AdminPageHeader title={t('admin.settingsTitle')} />
             <AdminCard className="space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsModules')}</h3>

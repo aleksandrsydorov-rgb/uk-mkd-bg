@@ -195,6 +195,12 @@ export type AdminRpcErrorKey =
   | 'admin.errReadingLower'
   | 'admin.errTariffDate'
   | 'admin.errNoTariff'
+  | 'admin.errCapitalTariff'
+  | 'admin.errInternetTariff'
+  | 'admin.errInternetBusy'
+  | 'admin.errInternetNotActive'
+  | 'admin.errInternetPeriod'
+  | 'admin.errInternetCancelTaken'
   | 'admin.errLegacyTariffDisabled'
   | 'admin.errCapitalDup'
   | 'admin.errIdempotency'
@@ -208,6 +214,21 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
   if (msg.includes('no active water meter') || msg.includes('no active electricity meter') || msg.includes('electricity meter is not assigned')) return 'admin.errNoMeter';
   if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
+  if (msg.includes('no capital repair tariff')) return 'admin.errCapitalTariff';
+  if (msg.includes('no internet tariff')) return 'admin.errInternetTariff';
+  if (msg.includes('already connected or pending')) return 'admin.errInternetBusy';
+  if (msg.includes('request_internet_extend: not active') || msg.includes('request_internet_disconnect: not active') || msg.includes('admin_internet_disconnect_debt: not active')) {
+    return 'admin.errInternetNotActive';
+  }
+  if (msg.includes('invalid period') || msg.includes('period required') || msg.includes('start in the past') || msg.includes('start must')) {
+    return 'admin.errInternetPeriod';
+  }
+  if (msg.includes('cancel_internet_connect_request: already taken') || msg.includes('cancel_internet_connect_request: not pending')) {
+    return 'admin.errInternetCancelTaken';
+  }
+  if (msg.includes('function is not unique') || msg.includes('ambiguous')) {
+    return 'admin.errGeneric';
+  }
   if (msg.includes('no electricity tariff is defined') || msg.includes('no water tariff configured')) return 'admin.errNoTariff';
   if (msg.includes('legacy tariff publication disabled')) return 'admin.errLegacyTariffDisabled';
   if (msg.includes('tariff already exists') || msg.includes('already exists for this valid_from')) {

@@ -605,6 +605,8 @@ export interface Database {
           completed_at: string | null;
           completion_note: string | null;
           idempotency_key: string | null;
+          internet_action: string | null;
+          internet_subscription_id: string | null;
         };
         Insert: {
           id?: string;
@@ -625,6 +627,8 @@ export interface Database {
           completed_at?: string | null;
           completion_note?: string | null;
           idempotency_key?: string | null;
+          internet_action?: string | null;
+          internet_subscription_id?: string | null;
         };
         Update: {
           id?: string;
@@ -645,6 +649,8 @@ export interface Database {
           completed_at?: string | null;
           completion_note?: string | null;
           idempotency_key?: string | null;
+          internet_action?: string | null;
+          internet_subscription_id?: string | null;
         };
         Relationships: [];
       };
@@ -1673,6 +1679,96 @@ export interface Database {
         };
         Relationships: [];
       };
+      internet_subscriptions: {
+        Row: {
+          id: string;
+          property_id: number;
+          status: string;
+          period_start: string | null;
+          period_end: string | null;
+          pending_days: number | null;
+          disable_reason: string | null;
+          enable_work_order_id: string | null;
+          disable_work_order_id: string | null;
+          billing_day: number | null;
+          billing_anchor_date: string | null;
+          next_charge_on: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          status?: string;
+          period_start?: string | null;
+          period_end?: string | null;
+          pending_days?: number | null;
+          disable_reason?: string | null;
+          enable_work_order_id?: string | null;
+          disable_work_order_id?: string | null;
+          billing_day?: number | null;
+          billing_anchor_date?: string | null;
+          next_charge_on?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          status?: string;
+          period_start?: string | null;
+          period_end?: string | null;
+          pending_days?: number | null;
+          disable_reason?: string | null;
+          enable_work_order_id?: string | null;
+          disable_work_order_id?: string | null;
+          billing_day?: number | null;
+          billing_anchor_date?: string | null;
+          next_charge_on?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      internet_ledger: {
+        Row: {
+          id: string;
+          property_id: number;
+          kind: string;
+          amount_eur: number;
+          period_days: number | null;
+          tariff_version_id: string | null;
+          note: string | null;
+          recorded_by_email: string | null;
+          idempotency_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          kind: string;
+          amount_eur: number;
+          period_days?: number | null;
+          tariff_version_id?: string | null;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          kind?: string;
+          amount_eur?: number;
+          period_days?: number | null;
+          tariff_version_id?: string | null;
+          note?: string | null;
+          recorded_by_email?: string | null;
+          idempotency_key?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       building_documents: {
         Row: {
           id: string;
@@ -2385,6 +2481,7 @@ export interface Database {
           request_subject: string | null;
           requester_name: string | null;
           requester_phone: string | null;
+          internet_action: string | null;
           created_at: string;
           updated_at: string;
           completed_at: string | null;
@@ -2810,19 +2907,41 @@ export interface Database {
         };
         Returns: Database['public']['Tables']['capital_repair_assessments']['Row'][];
       };
+      charge_capital_repair_year_bulk: {
+        Args: {
+          p_billing_year: number;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
       charge_capital_repair_bulk: {
         Args: {
           p_assessment_id: string;
-          p_amount_eur: number;
+          p_billing_year: number;
           p_note: string | null;
         };
         Returns: Json;
+      };
+      get_capital_repair_fund_totals: {
+        Args: Record<string, never>;
+        Returns: {
+          charged_eur: number;
+          paid_eur: number;
+          balance_eur: number;
+          apartments_with_debt: number;
+        }[];
+      };
+      ensure_capital_repair_year_assessment: {
+        Args: {
+          p_billing_year: number;
+        };
+        Returns: string;
       };
       charge_capital_repair: {
         Args: {
           p_property_id: number;
           p_assessment_id: string;
-          p_amount_eur: number;
+          p_billing_year: number;
           p_note: string | null;
           p_idempotency_key: string;
         };
@@ -2833,6 +2952,153 @@ export interface Database {
           amount_eur: number;
           note: string | null;
           created_at: string;
+        }[];
+      };
+      get_applicable_capital_tariff: {
+        Args: {
+          p_billing_year?: number | null;
+        };
+        Returns: {
+          tariff_version_id: string;
+          valid_from: string;
+          amount_eur: number;
+          billing_year: number;
+        }[];
+      };
+      get_applicable_internet_tariff: {
+        Args: { p_on_date?: string | null };
+        Returns: {
+          tariff_version_id: string;
+          tariff_key: string;
+          valid_from: string;
+          rates: Json;
+        }[];
+      };
+      compute_internet_amount: {
+        Args: { p_days: number; p_on_date?: string | null };
+        Returns: {
+          days: number;
+          month_cycles: number;
+          remainder_days: number;
+          day_rate_eur: number;
+          month_rate_eur: number;
+          amount_eur: number;
+          tariff_version_id: string;
+        }[];
+      };
+      compute_internet_monthly_amount: {
+        Args: { p_on_date?: string | null };
+        Returns: {
+          month_rate_eur: number;
+          amount_eur: number;
+          tariff_version_id: string;
+        }[];
+      };
+      request_internet_connect: {
+        Args: {
+          p_property_id: number;
+          p_idempotency_key?: string | null;
+        };
+        Returns: Database['public']['Tables']['internet_subscriptions']['Row'];
+      };
+      request_internet_extend: {
+        Args: {
+          p_property_id: number;
+          p_idempotency_key?: string | null;
+        };
+        Returns: Database['public']['Tables']['internet_subscriptions']['Row'];
+      };
+      cancel_internet_connect_request: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['internet_subscriptions']['Row'];
+      };
+      request_internet_disconnect: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['internet_subscriptions']['Row'];
+      };
+      admin_internet_disconnect_debt: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['internet_subscriptions']['Row'];
+      };
+      record_internet_payment: {
+        Args: {
+          p_property_id: number;
+          p_amount_eur: number;
+          p_note: string | null;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          ledger_id: string;
+          property_id: number;
+          amount_eur: number;
+          note: string | null;
+          created_at: string;
+        }[];
+      };
+      get_internet_balance: {
+        Args: { p_property_id: number };
+        Returns: {
+          charged_eur: number;
+          paid_eur: number;
+          adjustments_debit_eur: number;
+          adjustments_credit_eur: number;
+          balance_eur: number;
+        }[];
+      };
+      get_internet_fund_totals: {
+        Args: Record<string, never>;
+        Returns: {
+          active_count: number;
+          inactive_count: number;
+          pending_enable_count: number;
+          pending_disable_count: number;
+          charged_eur: number;
+          paid_eur: number;
+          balance_eur: number;
+        }[];
+      };
+      list_claimable_system_work_orders: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          title: string;
+          instructions: string | null;
+          status: string;
+          priority: string;
+          apartment_number: string | null;
+          internet_action: string | null;
+          created_at: string;
+        }[];
+      };
+      claim_system_work_order: {
+        Args: { p_work_order_id: string };
+        Returns: Database['public']['Tables']['work_orders']['Row'];
+      };
+      list_internet_work_orders: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          title: string;
+          instructions: string | null;
+          status: string;
+          priority: string;
+          internet_action: string | null;
+          assigned_staff_id: number | null;
+          assignee_name: string | null;
+          apartment_number: string | null;
+          property_id: number | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+          completion_note: string | null;
+        }[];
+      };
+      get_internet_open_task_counts: {
+        Args: Record<string, never>;
+        Returns: {
+          claimable_count: number;
+          my_open_count: number;
+          open_total: number;
         }[];
       };
       record_capital_repair_payment: {

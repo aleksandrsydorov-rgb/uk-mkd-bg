@@ -36,6 +36,7 @@ import {
   messageForUploadError,
 } from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
+import { OwnerInternet } from '@/components/account/OwnerInternet';
 import {
   sofiaCalendarYear,
   type SupportFeeAllocation,
@@ -140,6 +141,7 @@ type MenuSection =
   | 'квартира'
   | 'жильцы'
   | 'финансы'
+  | 'интернет'
   | 'ук'
   | 'счётчики'
   | 'документы'
@@ -177,6 +179,7 @@ export default function AccountPage() {
   const waterModuleOn = isBuildingModuleEnabled(buildingModules, 'water');
   const electricityModuleOn = isBuildingModuleEnabled(buildingModules, 'electricity');
   const capitalEnabled = isBuildingModuleEnabled(buildingModules, 'capital_repair');
+  const internetEnabled = isBuildingModuleEnabled(buildingModules, 'internet');
   const supportFeeEnabled = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const requestsEnabled = isBuildingModuleEnabled(buildingModules, 'requests');
   const chatEnabled = isBuildingModuleEnabled(buildingModules, 'chat');
@@ -193,9 +196,10 @@ export default function AccountPage() {
     { key: 'обзор', label: t('account.overview'), icon: '▦' },
     { key: 'квартира', label: t('account.apt'), icon: '🏠' },
     { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
-    ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled
+    ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled || internetEnabled
       ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
       : []),
+    ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
     ...(waterEnabled || electricityEnabled
       ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
       : []),
@@ -589,11 +593,23 @@ export default function AccountPage() {
         if (!nav.menu) setActiveMenu('ук');
       }
       const fromFinance = url.searchParams.get('financeTab');
-      if (fromFinance === 'support' || fromFinance === 'water' || fromFinance === 'electricity' || fromFinance === 'capital') {
+      if (
+        fromFinance === 'support'
+        || fromFinance === 'water'
+        || fromFinance === 'electricity'
+        || fromFinance === 'capital'
+        || fromFinance === 'internet'
+      ) {
         setFinanceTab(fromFinance);
       } else {
         const storedFinance = sessionStorage.getItem('amadeus-finance-tab');
-        if (storedFinance === 'support' || storedFinance === 'water' || storedFinance === 'electricity' || storedFinance === 'capital') {
+        if (
+          storedFinance === 'support'
+          || storedFinance === 'water'
+          || storedFinance === 'electricity'
+          || storedFinance === 'capital'
+          || storedFinance === 'internet'
+        ) {
           setFinanceTab(storedFinance);
         }
       }
@@ -762,12 +778,24 @@ export default function AccountPage() {
       setFinanceTab('support');
       persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
     }
+    if (!internetEnabled && financeTab === 'internet') {
+      setFinanceTab('support');
+      persistQueryTab('financeTab', 'support', 'support', 'amadeus-finance-tab');
+    }
     if (!supportFeeEnabled && financeTab === 'support') {
-      const next = waterEnabled ? 'water' : electricityEnabled ? 'electricity' : capitalEnabled ? 'capital' : 'support';
+      const next = waterEnabled
+        ? 'water'
+        : electricityEnabled
+          ? 'electricity'
+          : capitalEnabled
+            ? 'capital'
+            : internetEnabled
+              ? 'internet'
+              : 'support';
       setFinanceTab(next);
       persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
     }
-  }, [waterEnabled, electricityEnabled, capitalEnabled, supportFeeEnabled, financeTab]);
+  }, [waterEnabled, electricityEnabled, capitalEnabled, internetEnabled, supportFeeEnabled, financeTab]);
 
   useEffect(() => {
     const allowed = new Set(MENU_ITEMS.map((item) => item.key));
@@ -1295,12 +1323,23 @@ export default function AccountPage() {
 
   function selectFinanceTab(tab: FinanceTab) {
     let next = tab;
-    if (tab === 'water' && !waterEnabled) next = supportFeeEnabled ? 'support' : capitalEnabled ? 'capital' : 'support';
-    if (tab === 'electricity' && !electricityEnabled) next = supportFeeEnabled ? 'support' : capitalEnabled ? 'capital' : 'support';
-    if (tab === 'capital' && !capitalEnabled) next = supportFeeEnabled ? 'support' : waterEnabled ? 'water' : 'support';
-    if (tab === 'support' && !supportFeeEnabled) {
-      next = waterEnabled ? 'water' : electricityEnabled ? 'electricity' : capitalEnabled ? 'capital' : 'support';
-    }
+    const fallback = (): FinanceTab =>
+      supportFeeEnabled
+        ? 'support'
+        : waterEnabled
+          ? 'water'
+          : electricityEnabled
+            ? 'electricity'
+            : capitalEnabled
+              ? 'capital'
+              : internetEnabled
+                ? 'internet'
+                : 'support';
+    if (tab === 'water' && !waterEnabled) next = fallback();
+    if (tab === 'electricity' && !electricityEnabled) next = fallback();
+    if (tab === 'capital' && !capitalEnabled) next = fallback();
+    if (tab === 'internet' && !internetEnabled) next = fallback();
+    if (tab === 'support' && !supportFeeEnabled) next = fallback();
     setFinanceTab(next);
     persistQueryTab('financeTab', next, 'support', 'amadeus-finance-tab');
   }
@@ -1515,6 +1554,7 @@ export default function AccountPage() {
             waterEnabled={waterEnabled}
             electricityEnabled={electricityEnabled}
             capitalEnabled={capitalEnabled}
+            internetEnabled={internetEnabled}
             supportFeeEnabled={supportFeeEnabled}
             pollsEnabled={pollsEnabled}
             requestsEnabled={requestsEnabled}
@@ -1689,6 +1729,12 @@ export default function AccountPage() {
         );
 
 
+      case 'интернет':
+        if (!property || !internetEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
+        return <OwnerInternet supabase={supabase} propertyId={property.id} />;
+
       case 'финансы': {
         const totalDebt = Number(property?.debt ?? 0);
         const totalOver = Number(property?.overpayment ?? 0);
@@ -1743,13 +1789,23 @@ export default function AccountPage() {
                 ...(waterEnabled ? [{ id: 'water' as const, label: t('account.financeTabWater') }] : []),
                 ...(electricityEnabled ? [{ id: 'electricity' as const, label: t('account.financeTabElectricity') }] : []),
                 ...(capitalEnabled ? [{ id: 'capital' as const, label: t('account.financeTabCapital') }] : []),
+                ...(internetEnabled ? [{ id: 'internet' as const, label: t('account.financeTabInternet') }] : []),
               ]}
               value={
                 (financeTab === 'support' && !supportFeeEnabled)
                 || (financeTab === 'water' && !waterEnabled)
                 || (financeTab === 'electricity' && !electricityEnabled)
                 || (financeTab === 'capital' && !capitalEnabled)
-                  ? (supportFeeEnabled ? 'support' : waterEnabled ? 'water' : electricityEnabled ? 'electricity' : 'capital')
+                || (financeTab === 'internet' && !internetEnabled)
+                  ? (supportFeeEnabled
+                    ? 'support'
+                    : waterEnabled
+                      ? 'water'
+                      : electricityEnabled
+                        ? 'electricity'
+                        : capitalEnabled
+                          ? 'capital'
+                          : 'internet')
                   : financeTab
               }
               onChange={selectFinanceTab}
@@ -1767,7 +1823,16 @@ export default function AccountPage() {
                   || (financeTab === 'water' && !waterEnabled)
                   || (financeTab === 'electricity' && !electricityEnabled)
                   || (financeTab === 'capital' && !capitalEnabled)
-                    ? (supportFeeEnabled ? 'support' : waterEnabled ? 'water' : electricityEnabled ? 'electricity' : 'capital')
+                  || (financeTab === 'internet' && !internetEnabled)
+                    ? (supportFeeEnabled
+                      ? 'support'
+                      : waterEnabled
+                        ? 'water'
+                        : electricityEnabled
+                          ? 'electricity'
+                          : capitalEnabled
+                            ? 'capital'
+                            : 'internet')
                     : financeTab
                 }
                 onSelectFinanceTab={selectFinanceTab}
@@ -1776,6 +1841,7 @@ export default function AccountPage() {
                 waterEnabled={waterEnabled}
                 electricityEnabled={electricityEnabled}
                 capitalEnabled={capitalEnabled}
+                internetEnabled={internetEnabled}
               />
             )}
 
@@ -2363,7 +2429,7 @@ export default function AccountPage() {
       <MobileBottomNav
         items={[
           { key: 'обзор', label: t('account.overview'), icon: '▦' },
-          ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled
+          ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled || internetEnabled
             ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
             : []),
           ...(managementNavEnabled

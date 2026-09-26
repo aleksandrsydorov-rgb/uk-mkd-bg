@@ -242,7 +242,9 @@ export function AdminWorkOrders({
   }
 
   function sourceLabel(source: string) {
-    return source === 'request' ? t('admin.woSourceRequest') : t('admin.woSourceAdmin');
+    if (source === 'request') return t('admin.woSourceRequest');
+    if (source === 'system') return t('admin.woSourceSystem');
+    return t('admin.woSourceAdmin');
   }
 
   function resetForm() {

@@ -12,6 +12,7 @@ import {
   type ElectricityCharge,
   type ElectricityLedger,
 } from '@/lib/electricity';
+import type { InternetLedger } from '@/lib/internet';
 import {
   balanceTone,
   emptyBalance,
@@ -36,7 +37,7 @@ import {
 } from '@/lib/utilities';
 
 type Variant = 'finance' | 'meters';
-export type FinanceTab = 'support' | 'water' | 'electricity' | 'capital';
+export type FinanceTab = 'support' | 'water' | 'electricity' | 'capital' | 'internet';
 export type MeterTab = 'water' | 'electricity';
 
 function ledgerKindLabel(kind: string, t: (key: 'account.utilCharge' | 'account.utilPayment' | 'account.utilAdjDebit' | 'account.utilAdjCredit') => string) {
@@ -118,6 +119,7 @@ export function OwnerUtilities({
   waterEnabled = true,
   electricityEnabled = true,
   capitalEnabled = true,
+  internetEnabled = true,
   electricLastDay = null,
   electricLastNight = null,
   electricLastDate = null,
@@ -138,6 +140,7 @@ export function OwnerUtilities({
   waterEnabled?: boolean;
   electricityEnabled?: boolean;
   capitalEnabled?: boolean;
+  internetEnabled?: boolean;
   electricLastDay?: number | null;
   electricLastNight?: number | null;
   electricLastDate?: string | null;
@@ -147,6 +150,7 @@ export function OwnerUtilities({
   const { t, dateLocale, locale } = useI18n();
   const [waterLoading, setWaterLoading] = useState(true);
   const [capitalLoading, setCapitalLoading] = useState(true);
+  const [internetLoading, setInternetLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<WaterSubmitResult | null>(null);
@@ -161,6 +165,8 @@ export function OwnerUtilities({
   const [capitalLedger, setCapitalLedger] = useState<CapitalLedger[]>([]);
   const [assessments, setAssessments] = useState<CapitalAssessment[]>([]);
   const [capitalBalance, setCapitalBalance] = useState<UtilityBalance>(emptyBalance());
+  const [internetLedger, setInternetLedger] = useState<InternetLedger[]>([]);
+  const [internetBalance, setInternetBalance] = useState<UtilityBalance>(emptyBalance());
   const [electricityLoading, setElectricityLoading] = useState(true);
   const [electricityCharges, setElectricityCharges] = useState<ElectricityCharge[]>([]);
   const [electricityLedger, setElectricityLedger] = useState<ElectricityLedger[]>([]);
@@ -296,6 +302,32 @@ export function OwnerUtilities({
     }
   }, [propertyId, supabase]);
 
+  const loadInternet = useCallback(async () => {
+    setInternetLoading(true);
+    try {
+      const [ledgerRes, balRes] = await Promise.all([
+        supabase
+          .from('internet_ledger')
+          .select('*')
+          .eq('property_id', propertyId)
+          .order('created_at', { ascending: false })
+          .limit(40),
+        supabase.rpc('get_internet_balance', { p_property_id: propertyId }),
+      ]);
+      if (ledgerRes.error && !isMissingRelation(ledgerRes.error, 'internet_ledger')) throw ledgerRes.error;
+      setInternetLedger((ledgerRes.data as InternetLedger[] | null) ?? []);
+      if (balRes.error && !isMissingRelation(balRes.error, 'get_internet_balance')) throw balRes.error;
+      const row = ((balRes.data as UtilityBalance[] | null) ?? [])[0];
+      setInternetBalance(row ? { ...emptyBalance(), ...row } : emptyBalance());
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') console.error(err);
+      setInternetLedger([]);
+      setInternetBalance(emptyBalance());
+    } finally {
+      setInternetLoading(false);
+    }
+  }, [propertyId, supabase]);
+
   const loadElectricity = useCallback(async () => {
     setElectricityLoading(true);
     try {
@@ -352,6 +384,13 @@ export function OwnerUtilities({
       setAssessments([]);
       setCapitalBalance(emptyBalance());
     }
+    if (variant === 'finance' && internetEnabled) {
+      void loadInternet();
+    } else {
+      setInternetLoading(false);
+      setInternetLedger([]);
+      setInternetBalance(emptyBalance());
+    }
     if (variant === 'finance' && electricityEnabled) {
       void loadElectricity();
     } else {
@@ -365,7 +404,18 @@ export function OwnerUtilities({
     setSubmitError(null);
     setSuccess(null);
     idempotencyKeyRef.current = null;
-  }, [loadWater, loadCapital, loadElectricity, variant, propertyId, waterEnabled, electricityEnabled, capitalEnabled]);
+  }, [
+    loadWater,
+    loadCapital,
+    loadInternet,
+    loadElectricity,
+    variant,
+    propertyId,
+    waterEnabled,
+    electricityEnabled,
+    capitalEnabled,
+    internetEnabled,
+  ]);
 
   const assessmentTitles = useMemo(() => {
     const map = new Map<string, string>();
@@ -952,6 +1002,56 @@ export function OwnerUtilities({
           )}
         </div>
       </div>
+      )}
+
+      {internetEnabled && financeTab === 'internet' && (
+        <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+                {t('account.financeTabInternet')}
+              </p>
+              <p className="mt-1 text-sm text-secondary">{t('account.utilInternetHint')}</p>
+            </div>
+            <BalanceBadge balance={Number(internetBalance.balance_eur)} loading={internetLoading} />
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+              <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
+              <div className="mt-1 text-lg font-semibold">{formatEur(Number(internetBalance.charged_eur))}</div>
+            </div>
+            <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+              <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
+              <div className="mt-1 text-lg font-semibold">{formatEur(Number(internetBalance.paid_eur))}</div>
+            </div>
+            <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+              <div className="text-[11px] text-muted">{t('account.debt')}</div>
+              <div className={`mt-1 text-lg font-semibold ${internetBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
+                {formatEur(Math.max(0, Number(internetBalance.balance_eur)))}
+              </div>
+            </div>
+            <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
+              <div className="text-[11px] text-muted">{t('account.overpay')}</div>
+              <div className={`mt-1 text-lg font-semibold ${internetBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
+                {formatEur(Math.max(0, -Number(internetBalance.balance_eur)))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.utilInternetOps')}</p>
+            {internetLoading ? (
+              <p className="text-sm text-muted">{t('common.loading')}</p>
+            ) : (
+              <LedgerList
+                rows={internetLedger}
+                empty={t('account.utilNoInternet')}
+                dateLocale={dateLocale}
+              />
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

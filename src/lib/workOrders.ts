@@ -6,7 +6,7 @@ export type WorkOrderStatus = (typeof WORK_ORDER_STATUSES)[number];
 export const WORK_ORDER_PRIORITIES = ['low', 'normal', 'high'] as const;
 export type WorkOrderPriority = (typeof WORK_ORDER_PRIORITIES)[number];
 
-export const WORK_ORDER_SOURCES = ['request', 'admin'] as const;
+export const WORK_ORDER_SOURCES = ['request', 'admin', 'system'] as const;
 export type WorkOrderSource = (typeof WORK_ORDER_SOURCES)[number];
 
 /** Canonical request categories used for worker responsibility scope. */
@@ -37,6 +37,7 @@ export type WorkOrderAdminRow = {
   request_subject: string | null;
   requester_name: string | null;
   requester_phone: string | null;
+  internet_action?: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

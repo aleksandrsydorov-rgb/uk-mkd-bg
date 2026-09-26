@@ -1,0 +1,126 @@
+AMADEUS 11 — Support Fee Tariff Core — RECOVERY AUDIT REPORT
+Generated: 2026-09-26
+Mode: audit-first, then repair auxiliary SQL / report only
+Forbidden: db push, deploy, commit, push, new migration, edit applied 060000
+
+========================================================================
+1. GIT BASELINE
+========================================================================
+
+HEAD: 134d82a4d62eaf41895563bc69c510b9ab92cde6
+  "fix: finalize tariff package 2 integrity"
+Branch: main...origin/main
+
+Working tree vs 134d82a (Support Fee package only):
+  M  src/app/account/page.tsx
+  M  src/app/admin/page.tsx
+  M  src/components/AdminReports.tsx
+  M  src/components/admin/AdminSupportFeeAnnual.tsx
+  M  src/i18n/messages.ts
+  M  src/lib/database.types.ts
+  M  src/lib/finance.ts
+  M  src/lib/supportFeeAnnual.ts
+
+Untracked (package artifacts):
+  supabase/migrations/20260926060000_support_fee_tariff_core_cutover.sql
+  supabase/support_fee_tariff_core_preflight.sql
+  supabase/support_fee_tariff_core_verify.sql
+  supabase/support_fee_tariff_core_smoke.sql
+  audit_exports/support_fee_tariff_core_implementation_report.txt
+  audit_exports/support_fee_recovery_report.txt
+  (+ older unrelated audit_exports bundles left untouched)
+
+Unrelated modules touched: NO
+  (diff confined to Support Fee admin/account/finance/i18n/types + tariff cutover SQL)
+
+========================================================================
+2. APPLIED MIGRATION ALIGNMENT (FILE = INTENDED PRODUCTION TRUTH)
+========================================================================
+
+File: supabase/migrations/20260926060000_support_fee_tariff_core_cutover.sql
+LastWriteTime (local): 2026-09-26 16:38:16 — matches bootstrap patch time;
+  NOT modified after the known preflight dollar-quote fix (16:52).
+
+Verified contents include:
+  [PASS] 2026-01-01 published baseline, base=8.0000, basis_type=legacy_import
+  [PASS] snapshot columns + all-or-nothing + base=area*rate checks
+  [PASS] immutable pricing snapshot trigger
+  [PASS] resolve_support_tariff_for_year / get_applicable_support_tariff
+  [PASS] support_fee_base_amount(_for_year) Tariff Core only (no building_settings / no 8)
+  [PASS] finalize standard path (pricing_rule=standard, reason=policy_disabled)
+  [PASS] no policy_disabled_use_ordinary_charge bypass
+  [PASS] charge_support_fee thin wrapper → finalize_support_fee_assessment
+  [PASS] set_support_rate_eur_per_sqm_year blocked
+  [PASS] tariff_version_bound_to_support_usage real assessment binding
+  [PASS] bootstrap only when zero published Support versions
+  [PASS] no historical ledger/assessment rewrite
+
+Contradiction: NONE found in local migration file.
+NOTE: This is file↔intent alignment. Live Postgres was not queried in this recovery.
+
+========================================================================
+3. FRONTEND AUDIT
+========================================================================
+
+  [PASS] DEFAULT_SUPPORT_RATE exists only as legacy constant; not used as billing fallback
+  [PASS] annualSupportFee / monthlySupportFee return null when rate missing
+  [PASS] admin + account load rate via get_applicable_support_tariff
+  [PASS] no UI calls set_support_rate_eur_per_sqm_year
+  [PASS] rate editor forms removed; Tariffs / policy split messaging present
+  [PASS] AdminReports / AdminSupportFeeAnnual accept null rate → "—"
+  [FIX] admin page now uses sofiaCalendarYear() for Support tariff RPC + charge year
+        (was new Date().getFullYear(); account already used Sofia)
+
+Unrelated Water/Electricity/Capital/Requests/WO/Polls: not in Support Fee diff.
+
+========================================================================
+4. AUXILIARY SQL RECOVERY
+========================================================================
+
+Manual-change risk:
+  User reported external paste/hack of preflight after Cursor work.
+  Observed failure: relation "Tariff" does not exist from broken string quoting
+  on note containing "Tariff Core".
+
+Actions taken (no production mutation):
+  - preflight: header clarified for post-apply OK vs pre-apply BOOTSTRAP_REQUIRED;
+    remaining planned_baseline string dollar-quoted; notes already $n$/$b$
+  - verify: all detail note strings switched to dollar-quoting (paste-safe)
+  - smoke: audited; left as-is (baseline assert + checks #1–#38, BEGIN/ROLLBACK)
+  - implementation report: status corrected to APPLIED; smoke coverage updated
+
+Post-apply expectation:
+  preflight → OK (not BOOTSTRAP_REQUIRED) when 2026 published baseline exists
+  verify → FAIL sorts first; requires 2026/8.0000 + Core semantics
+  smoke → asserts baseline then future-year temporary publishes; rolls back
+
+========================================================================
+5. VALIDATION
+========================================================================
+
+Static SQL inspection only (not executed against production).
+tsc: PASS (npx tsc --noEmit, exit 0)
+build: PASS (npm run build, exit 0)
+
+========================================================================
+6. REMAINING RISKS
+========================================================================
+
+1. Live DB drift vs local 060000 file is UNVERIFIED here (no SQL against prod).
+   Next step: paste verify.sql in SQL Editor; require zero FAIL.
+2. Migration file is still untracked in git — commit when intentionally ready.
+3. Preflight/verify/smoke must be pasted from repo files (not edited mid-UI)
+   to avoid smart-quote breakage.
+4. DEFAULT_SUPPORT_RATE constant remains exported for legacy naming; keep unused
+   as operational fallback.
+
+========================================================================
+7. RECOMMENDED NEXT STEP
+========================================================================
+
+1. Run support_fee_tariff_core_verify.sql on production (read-only) → 0 FAIL
+2. Optionally run smoke (BEGIN/ROLLBACK) against a safe env with admin@example.com
+3. Commit package when satisfied (migration + frontend + aux SQL + reports)
+4. Do NOT db push again; do NOT invent a new migration unless verify proves drift
+
+END.

@@ -1,0 +1,250 @@
+AMADEUS 11 — Support Fee Tariff Core Cutover — IMPLEMENTATION REPORT
+Generated: 2026-09-26
+Updated: 2026-09-26 (recovery audit — post-apply)
+Baseline: main @ 134d82a (Package 2 integrity)
+Migration (APPLIED via npx supabase db push): 20260926060000_support_fee_tariff_core_cutover.sql
+
+Local file remains the source-of-truth for what was pushed; do NOT edit after apply
+and do NOT create a follow-up migration unless live DB drift is proven.
+
+========================================================================
+CURRENT LEGACY PATH REMOVED
+========================================================================
+
+Operational billing no longer reads building_settings.support_rate_eur_per_sqm_year
+and no longer falls back to 8.
+
+Replaced:
+- support_fee_base_amount(property) → Sofia year via support_fee_base_amount_for_year → Tariff Core
+- finalize_support_fee_assessment → resolve_support_tariff_for_year + immutable snapshots
+- preview_support_fee_year → Core rate for billing year
+- charge_support_fee ordinary path → Core rate for period year
+- set_support_rate_eur_per_sqm_year → raises Legacy Support Fee tariff publication disabled
+
+Historical assessments / ledger / payments / allocations NOT rewritten.
+
+========================================================================
+TARIFF RESOLUTION
+========================================================================
+
+resolve_support_tariff_for_year(p_billing_year):
+- finds support_fee catalog
+- latest PUBLISHED version with valid_from <= Jan 1 of year
+- ignores cancelled
+- requires exactly one base rate > 0
+- fail closed (no building_settings / no default 8 / no wall-clock / no future)
+
+get_applicable_support_tariff(p_billing_year default null):
+- client-facing wrapper for owners + admin/accountant
+- defaults to Sofia calendar year
+
+Carry-forward: year without its own version uses prior published version.
+
+========================================================================
+ASSESSMENT SNAPSHOT
+========================================================================
+
+New nullable columns on support_fee_assessments:
+- tariff_version_id uuid FK → tariff_versions(id)
+- area_sqm_snapshot numeric(12,3)
+- rate_eur_per_sqm_year_snapshot numeric(12,4)
+
+Constraints:
+- all-or-nothing snapshot completeness (legacy all-null allowed)
+- when snapshot present: base_amount = round(area * rate, 2)
+
+Immutable trigger blocks UPDATE of pricing snapshot fields
+(base/early/late/percents/rule/final/tariff/area/rate).
+Corrections/payments still update remaining_due / status / applied_payment_amount.
+
+NEW finalize inserts complete Core snapshots.
+Idempotent retry returns stored assessment — never live area/tariff.
+
+========================================================================
+ANNUAL POLICY
+========================================================================
+
+Unchanged ownership:
+- Policy = discount / increase / deadline / publish
+- Tariff Core = EUR/m2/year
+
+upsert/publish/close/finalize_year unchanged in contract.
+finalize_year still loops finalize_support_fee_assessment (now Core-backed).
+
+========================================================================
+CORRECTIONS
+========================================================================
+
+record_support_fee_assessment_correction unchanged:
+append-only ledger + remaining_due/status metadata.
+Immutable trigger prevents mutating pricing snapshot / base_amount.
+
+========================================================================
+IDEMPOTENCY / CONCURRENCY
+========================================================================
+
+- property FOR UPDATE before new assessment
+- assessment unique (property_id, billing_year)
+- ledger charge unique per property/period
+- existing assessment → idempotent return of stored snapshot
+- charge without assessment → charge_already_exists (no Core assessment invented)
+
+========================================================================
+LEGACY SHUTDOWN
+========================================================================
+
+set_support_rate_eur_per_sqm_year: blocked with explicit message.
+building_settings.support_rate_eur_per_sqm_year column retained (schema compat).
+read_building_settings may still return the field; UI no longer uses it for billing.
+
+========================================================================
+ADMIN UI
+========================================================================
+
+- Rate loaded via get_applicable_support_tariff
+- Removed operational rate editor forms (settings + fee operations)
+- Notes point to Tariffs section; policy stays separate
+- i18n: tcSupportLegacyNote + feeRateViaTariffs + feeTariffPolicySplit
+
+========================================================================
+OWNER UI
+========================================================================
+
+- Account page loads Support rate from get_applicable_support_tariff
+- OwnerSupportFee continues to show stored assessment amounts for finalized years
+- Preview RPC now Core year-aware
+
+========================================================================
+TARIFF USAGE BINDING
+========================================================================
+
+tariff_version_bound_to_support_usage(version_id):
+returns true when any support_fee_assessments.tariff_version_id references it.
+Integrates with cancel_future_tariff_version (bound versions cannot cancel).
+
+========================================================================
+SMOKE COVERAGE
+========================================================================
+
+supabase/support_fee_tariff_core_smoke.sql — baseline + numbered checks #1–#38
+(BEGIN/ROLLBACK; future-year publishes only; does not assume empty Support history).
+Actor: admin@example.com
+Coverage: resolver, carry-forward, future isolation, cancelled, legacy block,
+snapshots, idempotency, early/late, correction, binding, legacy charge safety,
+standard no-policy path, charge→finalize, finalize year.
+
+========================================================================
+VERIFY COVERAGE
+========================================================================
+
+supabase/support_fee_tariff_core_verify.sql — read-only catalog/RPC/schema/
+data/fn_body/privilege checks.
+
+========================================================================
+STATIC SEARCH RESULTS
+========================================================================
+
+src operational:
+- support_rate_eur_per_sqm_year: types + BuildingSettings type only (schema)
+- set_support_rate_eur_per_sqm_year: types only (blocked RPC)
+- support_fee_base_amount(: types only; no UI call sites
+- Admin/Owner billing: get_applicable_support_tariff / assessment snapshots / preview RPC
+
+Allowed leftovers: applied migrations, types, BuildingSettings interface,
+blocked RPC signature.
+
+========================================================================
+TSC / BUILD
+========================================================================
+
+tsc: PASS (npx tsc --noEmit, exit 0)
+build: PASS (npm run build, Next.js 16.3.2 compiled successfully)
+
+========================================================================
+FILES CHANGED
+========================================================================
+
+- supabase/migrations/20260926060000_support_fee_tariff_core_cutover.sql (APPLIED; local untracked mirror)
+- supabase/support_fee_tariff_core_smoke.sql
+- supabase/support_fee_tariff_core_verify.sql
+- supabase/support_fee_tariff_core_preflight.sql
+- audit_exports/support_fee_tariff_core_implementation_report.txt
+- audit_exports/support_fee_recovery_report.txt
+- src/app/admin/page.tsx
+- src/app/account/page.tsx
+- src/lib/database.types.ts
+- src/lib/supportFeeAnnual.ts
+- src/lib/finance.ts
+- src/i18n/messages.ts
+- src/components/admin/AdminSupportFeeAnnual.tsx
+- src/components/AdminReports.tsx
+
+NOT changed: Water/Electricity/Capital/Requests/WO/Rental/Polls/GM architecture
+NOT modified: any previously-applied Package 1/2 migration files
+DO NOT re-edit 060000 after push; DO NOT create another migration yet.
+
+========================================================================
+2026 CORE BASELINE BOOTSTRAP (pre-apply addition to 060000)
+========================================================================
+
+When support_fee has zero published versions, migration inserts:
+  valid_from = 2026-01-01
+  rate base = 8.0000
+  basis_type = legacy_import
+  basis_reference = building_settings:support_rate_eur_per_sqm_year
+Direct insert (not publish_tariff_version). Skips if any published version exists.
+Binds existing tariff_legacy_links pointer (version_id was null) without duplicates.
+
+Preflight: zero published + valid catalog => BOOTSTRAP_REQUIRED (not FAIL).
+Verify (post-apply): requires published Support + 2026 resolves to 8.0000.
+Smoke: asserts 2026 baseline then uses future-year publishes (37 checks retained + baseline).
+
+
+
+1. STANDARD YEAR NOW CREATES IMMUTABLE ASSESSMENT
+   finalize_support_fee_assessment no longer returns
+   policy_disabled_use_ordinary_charge.
+   No enabled published/closed policy => pricing_rule='standard',
+   pricing_reason_code='policy_disabled', qualification_status='not_checked',
+   policy_id NULL, discount/increase 0, final_amount=base_amount,
+   full Core snapshot + ledger/debt/allocations/idempotency/binding.
+
+2. charge_support_fee UNIFIED TO CANONICAL FINALIZE PATH
+   Thin wrapper only: validates YYYY then calls finalize_support_fee_assessment.
+   No independent ledger/debt engine. Compatibility amount/ledger_id fields
+   preserved on applied responses.
+
+3. DEFAULT_SUPPORT_RATE OPERATIONAL FALLBACK REMOVED
+   Admin/Owner supportRate is number | null.
+   Core unavailable => null, localized feeTariffNotConfigured, no invented 8,
+   no annual/monthly fee fabrication, bulk charge disabled when rate null.
+   DEFAULT_SUPPORT_RATE remains only as a legacy constant comment in finance.ts.
+
+4. PREFLIGHT ADDED
+   supabase/support_fee_tariff_core_preflight.sql (READ ONLY, pre-060000).
+   FAILs if no applicable published Core Support tariff for current Sofia year.
+
+5. EXPANDED STANDARD-YEAR SMOKE
+   Fresh property + Y3 (tariff present, no policy): assessment, snapshots,
+   charge path, retry, binding, correction.
+
+6. ACTUAL SMOKE CHECK COUNT
+   37 numbered check groups (smoke#1–#22, #24–#38) + transactional ROLLBACK.
+
+7. TSC / BUILD
+   tsc: PASS
+   build: PASS
+
+========================================================================
+PRODUCTION APPLY PLAN
+========================================================================
+
+1. Run supabase/support_fee_tariff_core_preflight.sql
+2. Require NO FAIL rows (INFO allowed)
+3. Apply supabase/migrations/20260926060000_support_fee_tariff_core_cutover.sql
+4. Run supabase/support_fee_tariff_core_verify.sql
+5. Run supabase/support_fee_tariff_core_smoke.sql (expect ALL CHECKS PASSED + ROLLBACK)
+6. Deploy/commit only after PASS
+
+DO NOT invent historical tariff mappings; DO NOT rewrite old assessments.
+

@@ -1,4 +1,4 @@
-export const DEFAULT_SUPPORT_RATE = 8;
+export const DEFAULT_SUPPORT_RATE = 8; // legacy constant only — not an operational billing fallback
 
 export type SupportFeeKind = 'payment' | 'charge';
 
@@ -44,12 +44,23 @@ export function supportPaymentIdempotencySignature(input: {
   return `regular|${input.propertyId}|${amount}|${note}`;
 }
 
-export function annualSupportFee(area: number | null | undefined, rate: number) {
-  return roundMoney(Number(area ?? 0) * rate);
+/** Preview helper. Returns null when Core tariff rate is unavailable. */
+export function annualSupportFee(
+  area: number | null | undefined,
+  rate: number | null | undefined,
+): number | null {
+  if (rate == null || !Number.isFinite(Number(rate)) || Number(rate) <= 0) return null;
+  return roundMoney(Number(area ?? 0) * Number(rate));
 }
 
-export function monthlySupportFee(area: number | null | undefined, rate: number) {
-  return roundMoney(annualSupportFee(area, rate) / 12);
+/** Preview helper. Returns null when Core tariff rate is unavailable. */
+export function monthlySupportFee(
+  area: number | null | undefined,
+  rate: number | null | undefined,
+): number | null {
+  const annual = annualSupportFee(area, rate);
+  if (annual == null) return null;
+  return roundMoney(annual / 12);
 }
 
 /** Incoming cash: pays down debt, leftover becomes overpayment. */

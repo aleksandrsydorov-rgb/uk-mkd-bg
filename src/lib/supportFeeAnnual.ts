@@ -52,6 +52,9 @@ export interface SupportFeeAssessment {
   correction_reason: string | null;
   correction_at: string | null;
   correction_by_email: string | null;
+  tariff_version_id: string | null;
+  area_sqm_snapshot: number | null;
+  rate_eur_per_sqm_year_snapshot: number | null;
 }
 
 export interface SupportFeeAllocation {
@@ -80,6 +83,9 @@ export interface SupportFeeYearPreview {
   old_debt: number;
   credit_covers_early?: boolean;
   amount_needed_for_discount?: number | null;
+  rate_eur_per_sqm_year?: number;
+  tariff_version_id?: string;
+  preview?: boolean;
 }
 
 export function sofiaCalendarYear(at: Date = new Date()): number {

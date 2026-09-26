@@ -60,7 +60,6 @@ import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
 import { ownerVisibleError } from '@/lib/ownerError';
 import {
-  DEFAULT_SUPPORT_RATE,
   STAFF_ROLE_OPTIONS,
   annualSupportFee,
   canApproveUkExpenses,
@@ -92,6 +91,7 @@ import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
+import { sofiaCalendarYear } from '@/lib/supportFeeAnnual';
 import { AdminWorkOrders } from '@/components/admin/AdminWorkOrders';
 import { AdminMyTasks } from '@/components/admin/AdminMyTasks';
 import { AdminTariffs } from '@/components/admin/AdminTariffs';
@@ -476,8 +476,7 @@ function AdminPortal() {
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [authReady, setAuthReady] = useState(false);
-  const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
-  const [supportRateInput, setSupportRateInput] = useState(String(DEFAULT_SUPPORT_RATE));
+  const [supportRate, setSupportRate] = useState<number | null>(null);
   const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
   const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
   const [supportFeeMissing, setSupportFeeMissing] = useState(false);
@@ -487,8 +486,7 @@ function AdminPortal() {
   const [payNote, setPayNote] = useState('');
   const [paySaving, setPaySaving] = useState(false);
   const supportPayKeyRef = useRef<{ key: string; sig: string } | null>(null);
-  const [rateSaving, setRateSaving] = useState(false);
-  const [chargeYear, setChargeYear] = useState(String(new Date().getFullYear()));
+  const [chargeYear, setChargeYear] = useState(String(sofiaCalendarYear()));
   const [chargeSaving, setChargeSaving] = useState(false);
   const [feeChargeExisting, setFeeChargeExisting] = useState<number | null>(null);
   const [feeBulkResult, setFeeBulkResult] = useState<string | null>(null);
@@ -811,19 +809,24 @@ function AdminPortal() {
       const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
       if (settingsRes.error && isMissingRelation(settingsRes.error, 'building_settings')) {
         setSupportFeeMissing(true);
-        setSupportRate(DEFAULT_SUPPORT_RATE);
-        setSupportRateInput(String(DEFAULT_SUPPORT_RATE));
+        setSupportRate(null);
       } else if (settingsRes.error) {
         throw settingsRes.error;
       } else {
-        const rate = settingsRow?.support_rate_eur_per_sqm_year;
-        if (rate != null && Number(rate) > 0) {
-          setSupportRate(Number(rate));
-          setSupportRateInput(String(rate));
-        }
         setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
         setWaterMode(parseWaterMode(settingsRow?.water_mode));
         setSupportFeeMissing(false);
+      }
+
+      const supportTariffRes = await supabase.rpc('get_applicable_support_tariff', {
+        p_billing_year: sofiaCalendarYear(),
+      });
+      if (supportTariffRes.error) {
+        setSupportRate(null);
+      } else {
+        const row = Array.isArray(supportTariffRes.data) ? supportTariffRes.data[0] : supportTariffRes.data;
+        const rate = Number((row as { rate_eur_per_sqm_year?: number } | null)?.rate_eur_per_sqm_year);
+        setSupportRate(Number.isFinite(rate) && rate > 0 ? rate : null);
       }
 
       // Load error / missing relation => all disabled (never enabled fallback).
@@ -1245,7 +1248,7 @@ function AdminPortal() {
     () => properties.reduce((sum, p) => sum + Number(p.area_sqm ?? 0), 0),
     [properties]
   );
-  const annualSupportTotal = totalArea * supportRate;
+  const annualSupportTotal = supportRate == null ? null : totalArea * supportRate;
   const activeRequests = useMemo(
     () =>
       requests.filter(
@@ -1790,11 +1793,6 @@ function AdminPortal() {
     const settingsRes = await supabase.rpc('read_building_settings');
     if (settingsRes.error) throw settingsRes.error;
     const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
-    const rate = settingsRow?.support_rate_eur_per_sqm_year;
-    if (rate != null && Number(rate) > 0) {
-      setSupportRate(Number(rate));
-      setSupportRateInput(String(rate));
-    }
     setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
     setWaterMode(parseWaterMode(settingsRow?.water_mode));
   }
@@ -2044,38 +2042,6 @@ function AdminPortal() {
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Ошибка удаления');
-    }
-  }
-
-  async function handleSaveSupportRate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSetSupportRate(staffRole)) {
-      setError('Ставку таксы меняет только администратор.');
-      return;
-    }
-    const rate = Number(supportRateInput.replace(',', '.'));
-    if (!Number.isFinite(rate) || rate <= 0) {
-      setError('Укажите ставку больше нуля (€/м² в год).');
-      return;
-    }
-    setRateSaving(true);
-    setError(null);
-    try {
-      const { error } = await supabase.rpc('set_support_rate_eur_per_sqm_year', {
-        p_rate: rate,
-      });
-      if (error) {
-        if (isMissingRelation(error, 'building_settings')) {
-          setSupportFeeMissing(true);
-          throw new Error(t('err.feeSql'));
-        }
-        throw error;
-      }
-      await refreshBuildingSettings();
-    } catch (err: any) {
-      setError(err?.message ?? 'Не удалось сохранить ставку');
-    } finally {
-      setRateSaving(false);
     }
   }
 
@@ -3104,10 +3070,13 @@ function AdminPortal() {
                 onTakePayment={() => {
                   setPayPropertyId(detailProperty.id);
                   const debt = Number(detailProperty.debt ?? 0);
+                  const monthly = monthlySupportFee(detailProperty.area_sqm, supportRate);
                   setPayAmount(
                     debt > 0
                       ? debt.toFixed(2)
-                      : String(monthlySupportFee(detailProperty.area_sqm, supportRate)),
+                      : monthly == null
+                        ? ''
+                        : String(monthly),
                   );
                   setDetailProperty(null);
                   navigateAdminSection('такса');
@@ -4354,30 +4323,17 @@ function AdminPortal() {
             <AdminCard className="space-y-3">
               <h3 className="text-sm font-semibold text-foreground">{t('admin.settingsFinance')}</h3>
               <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{t('admin.feeCurrentRate')}</p>
-              <p className="text-xl font-semibold text-foreground">
-                {money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span>
-              </p>
-              {canRate ? (
-                <form onSubmit={handleSaveSupportRate} className="flex flex-wrap items-end gap-2">
-                  <label className="text-sm text-secondary">
-                    {t('admin.feeNewRate')}
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={supportRateInput}
-                      onChange={(e) => setSupportRateInput(e.target.value)}
-                      className={`${adminFieldClass} mt-1 w-36`}
-                    />
-                  </label>
-                  <AdminPrimaryButton type="submit" disabled={rateSaving || supportFeeMissing}>
-                    {rateSaving ? t('admin.feeSaving') : t('admin.feeSaveRate')}
-                  </AdminPrimaryButton>
-                </form>
+              {supportRate == null ? (
+                <p className="text-sm text-secondary">{t('admin.feeTariffNotConfigured')}</p>
               ) : (
-                <p className="text-xs text-muted">{t('admin.feeAdminOnlyRate')}</p>
+                <p className="text-xl font-semibold text-foreground">
+                  {money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span>
+                </p>
               )}
-              <p className="text-xs text-muted">{t('admin.settingsRateAlso')}</p>
+              <p className="text-xs text-muted">{t('admin.feeRateViaTariffs')}</p>
+              {canRate ? (
+                <p className="text-xs text-secondary">{t('admin.feeTariffPolicySplit')}</p>
+              ) : null}
             </AdminCard>
             ) : null}
             <AdminCard className="space-y-4">
@@ -5101,14 +5057,14 @@ function AdminPortal() {
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <AdminMetricCard
                   label={t('admin.feeCurrentRate')}
-                  value={money(supportRate)}
-                  secondary={t('admin.feePerSqm')}
+                  value={supportRate == null ? '—' : money(supportRate)}
+                  secondary={supportRate == null ? t('admin.feeTariffNotConfigured') : t('admin.feePerSqm')}
                   onClick={() => openSectionTab('такса', 'operations')}
                 />
                 <AdminMetricCard
                   label={t('admin.feeYear')}
-                  value={money(annualSupportTotal)}
-                  secondary={String(new Date().getFullYear())}
+                  value={annualSupportTotal == null ? '—' : money(annualSupportTotal)}
+                  secondary={String(sofiaCalendarYear())}
                   onClick={() => openSectionTab('такса', 'policy')}
                 />
                 <AdminMetricCard
@@ -5143,34 +5099,18 @@ function AdminPortal() {
             <div className="grid gap-4">
               <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feeCurrentRate')}</p>
-                <div className="mt-1 text-xl font-semibold text-foreground">{money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span></div>
-                <p className="mt-2 text-sm text-muted">
-                  {t('admin.feeYear')}: {money(annualSupportTotal)}
-                </p>
-                {canRate ? (
-                  <form onSubmit={handleSaveSupportRate} className="mt-4 flex flex-wrap items-end gap-2">
-                    <label className="text-sm text-secondary">
-                      {t('admin.feeNewRate')}
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={supportRateInput}
-                        onChange={(e) => setSupportRateInput(e.target.value)}
-                        className="mt-1 block w-36 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={rateSaving || supportFeeMissing}
-                      className="rounded-full bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {rateSaving ? t('admin.feeSaving') : t('admin.feeSaveRate')}
-                    </button>
-                  </form>
+                {supportRate == null ? (
+                  <p className="mt-2 text-sm text-secondary">{t('admin.feeTariffNotConfigured')}</p>
                 ) : (
-                  <p className="mt-3 text-xs text-muted">{t('admin.feeAdminOnlyRate')}</p>
+                  <>
+                    <div className="mt-1 text-xl font-semibold text-foreground">{money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span></div>
+                    <p className="mt-2 text-sm text-muted">
+                      {t('admin.feeYear')}: {annualSupportTotal == null ? '—' : money(annualSupportTotal)}
+                    </p>
+                  </>
                 )}
+                <p className="mt-3 text-xs text-muted">{t('admin.feeRateViaTariffs')}</p>
+                <p className="mt-1 text-xs text-secondary">{t('admin.feeTariffPolicySplit')}</p>
               </div>
 
             </div>
@@ -5209,7 +5149,7 @@ function AdminPortal() {
               </dl>
               <button
                 type="button"
-                disabled={chargeSaving || !canPay || supportFeeMissing || feeBulkTotal === 0}
+                disabled={chargeSaving || !canPay || supportFeeMissing || supportRate == null || feeBulkTotal === 0}
                 onClick={() => void handleChargeSupportBulk()}
                 className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
               >
@@ -5241,8 +5181,9 @@ function AdminPortal() {
                       const p = properties.find((x) => x.id === id);
                       if (!p) return;
                       const debt = Number(p.debt ?? 0);
+                      const monthly = monthlySupportFee(p.area_sqm, supportRate);
                       setPayAmount(
-                        debt > 0 ? debt.toFixed(2) : String(monthlySupportFee(p.area_sqm, supportRate)),
+                        debt > 0 ? debt.toFixed(2) : monthly == null ? '' : String(monthly),
                       );
                     }}
                   />
@@ -5276,12 +5217,26 @@ function AdminPortal() {
                       onClick={() => setPayAmount(Number(selectedPay.debt ?? 0) > 0 ? Number(selectedPay.debt).toFixed(2) : '0.01')}>
                       {t('admin.feeAllDebt')}
                     </button>
-                    <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
-                      onClick={() => setPayAmount(String(monthlySupportFee(selectedPay.area_sqm, supportRate)))}>
+                    <button
+                      type="button"
+                      className="rounded-full border border-border px-3 py-1 text-secondary disabled:opacity-40"
+                      disabled={supportRate == null}
+                      onClick={() => {
+                        const m = monthlySupportFee(selectedPay.area_sqm, supportRate);
+                        if (m != null) setPayAmount(String(m));
+                      }}
+                    >
                       {t('admin.feeMonth')}
                     </button>
-                    <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
-                      onClick={() => setPayAmount(String(annualSupportFee(selectedPay.area_sqm, supportRate)))}>
+                    <button
+                      type="button"
+                      className="rounded-full border border-border px-3 py-1 text-secondary disabled:opacity-40"
+                      disabled={supportRate == null}
+                      onClick={() => {
+                        const a = annualSupportFee(selectedPay.area_sqm, supportRate);
+                        if (a != null) setPayAmount(String(a));
+                      }}
+                    >
                       {t('admin.feeOneYear')}
                     </button>
                   </div>
@@ -5658,7 +5613,7 @@ function ApartmentDetailModal({
   pets: ApartmentPet[];
   chatMessages: ChatMessage[];
   chatSeenAt?: string;
-  supportRate: number;
+  supportRate: number | null;
   onClose: () => void;
   onEdit: () => void;
   onOpenChat: () => void;
@@ -5916,16 +5871,18 @@ function ApartmentDetailModal({
                 <div className={`${adminCardClass} p-3`}>
                   <div className="text-secondary text-xs">{t('admin.feeYear')}</div>
                   <div className="mt-1 text-lg font-semibold text-foreground">
-                    {formatEur(annualFee, locale)}
+                    {annualFee == null ? '—' : formatEur(annualFee, locale)}
                   </div>
                   <div className="text-xs text-muted mt-1">
-                    {supportRate} €/м² × {property.area_sqm} м²
+                    {supportRate == null
+                      ? t('admin.feeTariffNotConfigured')
+                      : `${supportRate} €/м² × ${property.area_sqm} м²`}
                   </div>
                 </div>
                 <div className={`${adminCardClass} p-3`}>
                   <div className="text-secondary text-xs">{t('account.feeMonth')}</div>
                   <div className="mt-1 text-lg font-semibold text-foreground">
-                    {formatEur(monthlyFee, locale)}
+                    {monthlyFee == null ? '—' : formatEur(monthlyFee, locale)}
                   </div>
                 </div>
               </div>
@@ -5935,7 +5892,11 @@ function ApartmentDetailModal({
                   <div>{t('admin.elDayShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh), locale) : '—'}</div>
                   <div>{t('admin.elNightShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh), locale) : '—'}</div>
                   <div>{t('admin.water')}: {waterTariffPrice == null || Number.isNaN(waterTariffPrice) ? '—' : `${formatEur(waterTariffPrice, locale)}/м³`}</div>
-                  <div>Такса: {supportRate} €/м²·год</div>
+                  <div>
+                    {supportRate == null
+                      ? t('admin.feeTariffNotConfigured')
+                      : `Такса: ${supportRate} €/м²·год`}
+                  </div>
                 </div>
                 <button
                   type="button"

@@ -1006,6 +1006,9 @@ export interface Database {
           correction_reason: string | null;
           correction_at: string | null;
           correction_by_email: string | null;
+          tariff_version_id: string | null;
+          area_sqm_snapshot: number | null;
+          rate_eur_per_sqm_year_snapshot: number | null;
         };
         Insert: {
           id?: string;
@@ -1040,13 +1043,46 @@ export interface Database {
           correction_reason?: string | null;
           correction_at?: string | null;
           correction_by_email?: string | null;
+          tariff_version_id?: string | null;
+          area_sqm_snapshot?: number | null;
+          rate_eur_per_sqm_year_snapshot?: number | null;
         };
         Update: {
           id?: string;
           property_id?: number;
           billing_year?: number;
+          policy_id?: string | null;
+          charge_ledger_id?: number | null;
+          base_amount?: number;
+          discount_percent?: number;
+          increase_percent?: number;
+          early_amount?: number;
+          late_amount?: number;
+          early_deadline_at?: string | null;
+          pricing_rule?: string;
+          pricing_reason_code?: string | null;
+          qualification_status?: string;
+          qualification_checked_at?: string | null;
+          available_credit_at_check?: number;
+          amount_covered_at_check?: number;
+          dedicated_payment_at_check?: number;
+          applied_credit_amount?: number;
+          applied_payment_amount?: number;
+          final_amount?: number;
           remaining_due?: number;
+          balance_before?: number | null;
+          balance_after?: number | null;
           status?: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          finalized_at?: string | null;
+          finalized_by_email?: string | null;
+          correction_reason?: string | null;
+          correction_at?: string | null;
+          correction_by_email?: string | null;
+          tariff_version_id?: string | null;
+          area_sqm_snapshot?: number | null;
+          rate_eur_per_sqm_year_snapshot?: number | null;
         };
         Relationships: [];
       };
@@ -2310,6 +2346,24 @@ export interface Database {
           valid_from: string;
           rates: Record<string, number> | null;
         }[];
+      };
+      get_applicable_support_tariff: {
+        Args: {
+          p_billing_year?: number | null;
+        };
+        Returns: {
+          tariff_version_id: string;
+          valid_from: string;
+          rate_eur_per_sqm_year: number;
+          billing_year: number;
+        }[];
+      };
+      support_fee_base_amount_for_year: {
+        Args: {
+          p_property_id: number;
+          p_billing_year: number;
+        };
+        Returns: number;
       };
       list_work_orders_admin: {
         Args: Record<string, never>;

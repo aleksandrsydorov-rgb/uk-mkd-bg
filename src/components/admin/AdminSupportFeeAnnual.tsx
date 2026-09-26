@@ -53,7 +53,7 @@ export function AdminSupportFeeAnnual({
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyLite[];
-  supportRate: number;
+  supportRate: number | null;
   canPay: boolean;
   canRate: boolean;
   onReload: () => Promise<void>;
@@ -80,8 +80,8 @@ export function AdminSupportFeeAnnual({
   );
   const disc = Number(String(discount).replace(',', '.')) || 0;
   const inc = Number(String(increase).replace(',', '.')) || 0;
-  const early = Math.round(sampleBase * (1 - disc / 100) * 100) / 100;
-  const late = Math.round(sampleBase * (1 + inc / 100) * 100) / 100;
+  const early = sampleBase == null ? null : Math.round(sampleBase * (1 - disc / 100) * 100) / 100;
+  const late = sampleBase == null ? null : Math.round(sampleBase * (1 + inc / 100) * 100) / 100;
   const earlyPct = Math.round((100 - disc) * 100) / 100;
   const latePct = Math.round((100 + inc) * 100) / 100;
   const current = policies.find((p) => p.billing_year === y);
@@ -304,7 +304,9 @@ export function AdminSupportFeeAnnual({
         <div className="mt-3 grid gap-2 sm:grid-cols-3 text-sm">
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
             <div className="text-muted">{t('admin.sfBase100', { p: formatPolicyPercent(100, locale) })}</div>
-            <div className="font-semibold tabular-nums">{formatEurAmount(sampleBase, locale)}</div>
+            <div className="font-semibold tabular-nums">
+              {sampleBase == null ? '—' : formatEurAmount(sampleBase, locale)}
+            </div>
           </div>
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
             <div className="text-muted">{t('admin.sfEarlyPay', { p: formatPolicyPercent(earlyPct, locale) })}</div>
@@ -315,12 +317,16 @@ export function AdminSupportFeeAnnual({
                   : `31.12.${Number(year) - 1}`,
               })}
             </div>
-            <div className="font-semibold tabular-nums text-success">{formatEurAmount(early, locale)}</div>
+            <div className="font-semibold tabular-nums text-success">
+              {early == null ? '—' : formatEurAmount(early, locale)}
+            </div>
           </div>
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
             <div className="text-muted">{t('admin.sfLatePay', { p: formatPolicyPercent(latePct, locale) })}</div>
             <div className="text-xs text-muted">{t('admin.sfFromDate', { d: sofiaYearStartLabel(y) })}</div>
-            <div className="font-semibold tabular-nums">{formatEurAmount(late, locale)}</div>
+            <div className="font-semibold tabular-nums">
+              {late == null ? '—' : formatEurAmount(late, locale)}
+            </div>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -384,7 +390,14 @@ export function AdminSupportFeeAnnual({
                 <tr key={p.id} className={adminTableRowClass}>
                   <td className={adminTableCellClass}>№ {p.apartment_number}</td>
                   <td className={adminTableCellClass}>{p.owner_name ?? '—'}</td>
-                  <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.base_amount, locale) : formatEurAmount(annualSupportFee(p.area_sqm, supportRate), locale)}</td>
+                  <td className={`${adminTableCellClass} tabular-nums`}>
+                    {a
+                      ? formatEurAmount(a.base_amount, locale)
+                      : (() => {
+                          const preview = annualSupportFee(p.area_sqm, supportRate);
+                          return preview == null ? '—' : formatEurAmount(preview, locale);
+                        })()}
+                  </td>
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.final_amount, locale) : '—'}</td>
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.applied_credit_amount, locale) : '—'}</td>
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.remaining_due, locale) : '—'}</td>

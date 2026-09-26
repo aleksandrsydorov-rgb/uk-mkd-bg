@@ -26,7 +26,7 @@ import {
 } from '@/i18n/labels';
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
-import { DEFAULT_SUPPORT_RATE, annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
+import { annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import {
   CHAT_FILES_BUCKET,
   REQUEST_PHOTOS_BUCKET,
@@ -37,6 +37,7 @@ import {
 } from '@/lib/privateMedia';
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import {
+  sofiaCalendarYear,
   type SupportFeeAllocation,
   type SupportFeeAssessment,
 } from '@/lib/supportFeeAnnual';
@@ -169,7 +170,7 @@ export default function AccountPage() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [ukExpenses, setUkExpenses] = useState<UkExpense[]>([]);
-  const [supportRate, setSupportRate] = useState(DEFAULT_SUPPORT_RATE);
+  const [supportRate, setSupportRate] = useState<number | null>(null);
   const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
   const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
   const [buildingModules, setBuildingModules] = useState<BuildingModulesState>(() => emptyBuildingModulesState());
@@ -464,12 +465,20 @@ export default function AccountPage() {
         const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
         if (settingsRes.error) {
           if (!isMissingRelation(settingsRes.error, 'building_settings')) throw settingsRes.error;
-          setSupportRate(DEFAULT_SUPPORT_RATE);
         } else {
-          const rate = Number(settingsRow?.support_rate_eur_per_sqm_year ?? DEFAULT_SUPPORT_RATE);
-          setSupportRate(rate > 0 ? rate : DEFAULT_SUPPORT_RATE);
           setElectricityMode(parseElectricityMode(settingsRow?.electricity_mode));
           setWaterMode(parseWaterMode(settingsRow?.water_mode));
+        }
+
+        const supportTariffRes = await supabase.rpc('get_applicable_support_tariff', {
+          p_billing_year: sofiaCalendarYear(),
+        });
+        if (supportTariffRes.error) {
+          setSupportRate(null);
+        } else {
+          const row = Array.isArray(supportTariffRes.data) ? supportTariffRes.data[0] : supportTariffRes.data;
+          const rate = Number((row as { rate_eur_per_sqm_year?: number } | null)?.rate_eur_per_sqm_year);
+          setSupportRate(Number.isFinite(rate) && rate > 0 ? rate : null);
         }
 
         const modulesRes = await supabase.rpc('get_building_modules_v2');
@@ -1379,13 +1388,6 @@ export default function AccountPage() {
     return 'text-success';
   }, [properties]);
 
-  const annualSupportFeeEur = useMemo(() => {
-    return properties.reduce(
-      (sum, p) => sum + annualSupportFee(p.area_sqm, supportRate),
-      0
-    );
-  }, [properties, supportRate]);
-
   const publishedUkExpenses = useMemo(
     () => ukExpenses.filter(isExpensePublished),
     [ukExpenses]
@@ -1825,16 +1827,18 @@ export default function AccountPage() {
                   <div className="rounded-xl bg-surface px-3 py-3">
                     <div className="text-[11px] text-muted">{t('account.feeYear')}</div>
                     <div className="mt-1 text-lg font-semibold text-foreground">
-                      {annualFee.toFixed(0)} €
+                      {annualFee == null ? '—' : `${annualFee.toFixed(0)} €`}
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted">
-                      {supportArea.toFixed(1)} м² × {supportRate} €
+                      {supportRate == null
+                        ? t('admin.feeTariffNotConfigured')
+                        : `${supportArea.toFixed(1)} м² × ${supportRate} €`}
                     </div>
                   </div>
                   <div className="rounded-xl bg-surface px-3 py-3">
                     <div className="text-[11px] text-muted">{t('account.feeMonth')}</div>
                     <div className="mt-1 text-lg font-semibold text-foreground">
-                      {monthlyFee.toFixed(2)} €
+                      {monthlyFee == null ? '—' : `${monthlyFee.toFixed(2)} €`}
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted">{t('account.approx')}</div>
                   </div>
@@ -1897,8 +1901,12 @@ export default function AccountPage() {
                 )}
                 <div className="rounded-xl bg-surface px-3 py-3">
                   <div className="text-[11px] text-muted">{t('account.supportFee')}</div>
-                  <div className="mt-1 text-lg font-semibold text-foreground">{supportRate}</div>
-                  <div className="text-[11px] text-muted">{t('account.perSqmYear')}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {supportRate == null ? '—' : supportRate}
+                  </div>
+                  <div className="text-[11px] text-muted">
+                    {supportRate == null ? t('admin.feeTariffNotConfigured') : t('account.perSqmYear')}
+                  </div>
                 </div>
               </div>
             </div>

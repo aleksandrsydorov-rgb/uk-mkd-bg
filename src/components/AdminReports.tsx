@@ -120,7 +120,7 @@ export function AdminReports({
   ukExpenses: UkExpense[];
   ledger: SupportFeeEntry[];
   staff: StaffRow[];
-  supportRate: number;
+  supportRate: number | null;
   years: number[];
   showSalary?: boolean;
 }) {
@@ -190,7 +190,13 @@ export function AdminReports({
           { label: t('form.colArea'), value: `${area.toFixed(1)} ${t('common.sqm')}` },
           { label: t('admin.debt'), value: money(debt) },
           { label: t('admin.overpay'), value: money(over) },
-          { label: t('admin.feeYear'), value: money(annualSupportFee(area, supportRate)) },
+          {
+            label: t('admin.feeYear'),
+            value: (() => {
+              const fee = annualSupportFee(area, supportRate);
+              return fee == null ? '—' : money(fee);
+            })(),
+          },
           { label: t('admin.ukSpend'), value: money(exp) },
           { label: t('admin.activeReq'), value: String(activeReq) },
         ];

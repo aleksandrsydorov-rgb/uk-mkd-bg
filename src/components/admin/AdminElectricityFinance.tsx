@@ -8,11 +8,11 @@ import { labelLedgerKind } from '@/i18n/labels';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
-  currentElectricityTariff,
+  currentElectricityTariffViewFromCore,
   formatElectricityTariff,
+  type CurrentElectricityTariffView,
   type ElectricityCharge,
   type ElectricityLedger,
-  type ElectricityTariff,
 } from '@/lib/electricity';
 import {
   balanceTone,
@@ -25,6 +25,7 @@ import {
   todayIsoDate,
   type UtilityBalance,
 } from '@/lib/utilities';
+import { parseRatesJson } from '@/lib/tariffs';
 import {
   AdminPageHeader,
   AdminMetricCard,
@@ -92,43 +93,43 @@ export function AdminElectricityFinance({
     if (focusPropertyId == null || focusPropertyId === '') return;
     setPropertyId((current) => (current === focusPropertyId ? current : focusPropertyId));
   }, [focusPropertyId]);
-  const [tariffs, setTariffs] = useState<ElectricityTariff[]>([]);
+  const [tariff, setTariff] = useState<CurrentElectricityTariffView | null>(null);
   const [charges, setCharges] = useState<ElectricityCharge[]>([]);
   const [ledger, setLedger] = useState<ElectricityLedger[]>([]);
   const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
   const [listLoading, setListLoading] = useState(false);
   const [propLoading, setPropLoading] = useState(false);
-  const [tariffBusy, setTariffBusy] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [dayPrice, setDayPrice] = useState('');
-  const [nightPrice, setNightPrice] = useState('');
-  const [tariffFrom, setTariffFrom] = useState(todayIsoDate());
-  const [tariffNote, setTariffNote] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
   const payKeyRef = useRef(crypto.randomUUID());
 
-  const tariff = useMemo(() => currentElectricityTariff(tariffs), [tariffs]);
-
   const loadTariffs = useCallback(async () => {
     setListLoading(true);
     try {
-      const { data, error: qErr } = await supabase
-        .from('electricity_tariffs')
-        .select('*')
-        .order('valid_from', { ascending: false });
-      if (qErr) {
-        if (!isMissingRelation(qErr, 'electricity_tariffs')) throw qErr;
-        setTariffs([]);
-        return;
-      }
-      setTariffs((data as ElectricityTariff[] | null) ?? []);
+      const { data, error: qErr } = await supabase.rpc('get_applicable_utility_tariff', {
+        p_tariff_key: 'electricity',
+        p_on_date: todayIsoDate(),
+      });
+      if (qErr) throw qErr;
+      const row = firstRow(data) as Record<string, unknown> | null;
+      setTariff(
+        currentElectricityTariffViewFromCore(
+          row
+            ? {
+                tariff_version_id: String(row.tariff_version_id ?? ''),
+                valid_from: String(row.valid_from ?? ''),
+                rates: parseRatesJson(row.rates),
+              }
+            : null,
+        ),
+      );
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') console.error(err);
-      setTariffs([]);
+      setTariff(null);
     } finally {
       setListLoading(false);
     }
@@ -192,34 +193,6 @@ export function AdminElectricityFinance({
   function rpcFail(message: string | undefined) {
     setSuccess(null);
     setError(t(mapAdminRpcError(message ?? '')));
-  }
-
-  async function handleTariff(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canTariff) return;
-    const day = Number(dayPrice);
-    const night = Number(nightPrice);
-    if (!(day >= 0) || !(night >= 0) || Number.isNaN(day) || Number.isNaN(night)) {
-      setError(t('admin.errTariffPrice'));
-      return;
-    }
-    setTariffBusy(true);
-    const { error: rpcErr } = await supabase.rpc('set_electricity_tariff', {
-      p_day_price_eur_per_kwh: day,
-      p_night_price_eur_per_kwh: night,
-      p_valid_from: tariffFrom,
-      p_note: tariffNote.trim() || null,
-    });
-    setTariffBusy(false);
-    if (rpcErr) {
-      rpcFail(rpcErr.message);
-      return;
-    }
-    setDayPrice('');
-    setNightPrice('');
-    setTariffNote('');
-    flash(t('admin.okTariff'));
-    await loadTariffs();
   }
 
   async function handlePay(e: React.FormEvent) {
@@ -340,44 +313,7 @@ export function AdminElectricityFinance({
               {t('admin.validFrom')}: {formatOwnerDate(tariff.valid_from)}
             </p>
           )}
-          <form onSubmit={handleTariff} className="mt-4 grid gap-3 sm:grid-cols-2">
-            <input className={fieldClass} type="number" min="0" step="0.01" placeholder={t('admin.elDayPrice')} value={dayPrice} onChange={(e) => setDayPrice(e.target.value)} required />
-            <input className={fieldClass} type="number" min="0" step="0.01" placeholder={t('admin.elNightPrice')} value={nightPrice} onChange={(e) => setNightPrice(e.target.value)} required />
-            <input className={fieldClass} type="date" value={tariffFrom} onChange={(e) => setTariffFrom(e.target.value)} required />
-            <input className={fieldClass} placeholder={t('admin.noteOptional')} value={tariffNote} onChange={(e) => setTariffNote(e.target.value)} />
-            <button type="submit" disabled={tariffBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50 sm:w-fit">
-              {tariffBusy ? t('common.saving') : t('admin.setTariff')}
-            </button>
-          </form>
-          <p className="mt-2 text-xs text-muted">{t('admin.tariffImmutable')}</p>
-          {tariffs.length === 0 ? (
-            <div className="mt-3">
-              <AdminEmptyState title={t('admin.noTariffHistory')} />
-            </div>
-          ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[28rem] text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted">
-                    <th className="py-2 pr-3">{t('admin.validFrom')}</th>
-                    <th className="py-2 pr-3">{t('account.elDay')}</th>
-                    <th className="py-2 pr-3">{t('account.elNight')}</th>
-                    <th className="py-2 pr-3">{t('admin.note')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tariffs.map((row) => (
-                    <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.valid_from)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.day_price_eur_per_kwh), locale)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.night_price_eur_per_kwh), locale)}</td>
-                      <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <p className="mt-4 text-sm text-secondary">{t('admin.tariffManageInCore')}</p>
         </div>
       )}
 

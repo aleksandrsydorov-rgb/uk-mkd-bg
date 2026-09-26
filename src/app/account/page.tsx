@@ -49,8 +49,8 @@ import { OwnerOccupancy, type OccupancySavePayload, type GuestInsertPayload, typ
 import { OwnerDocumentsDecisions } from '@/components/account/OwnerDocumentsDecisions';
 import { PillTabs } from '@/components/account/ownerUi';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
-import type { WaterTariff, WaterMode } from '@/lib/utilities';
-import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled } from '@/lib/utilities';
+import type { WaterMode, CurrentWaterTariffView } from '@/lib/utilities';
+import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled, currentWaterTariffViewFromCore } from '@/lib/utilities';
 import {
   buildingModulesFromV2Rows,
   emptyBuildingModulesState,
@@ -59,7 +59,7 @@ import {
   type BuildingModuleV2Row,
 } from '@/lib/modules';
 import {
-  currentElectricityTariff,
+  currentElectricityTariffViewFromCore,
   formatElectricityTariff,
   DEFAULT_ELECTRICITY_MODE,
   parseElectricityMode,
@@ -68,8 +68,9 @@ import {
   electricityActiveMeterReadings,
   type ElectricityMode,
   type ElectricityMeter,
-  type ElectricityTariff,
+  type CurrentElectricityTariffView,
 } from '@/lib/electricity';
+import { parseRatesJson } from '@/lib/tariffs';
 import { isExpensePublished } from '@/lib/expenses';
 import { MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import { normalizeOccupantKind, type ApartmentPet, type OccupantKind } from '@/lib/registry';
@@ -207,8 +208,8 @@ export default function AccountPage() {
       ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
       : []),
   ];
-  const [waterTariff, setWaterTariff] = useState<WaterTariff | null>(null);
-  const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
+  const [waterTariff, setWaterTariff] = useState<CurrentWaterTariffView | null>(null);
+  const [electricityTariff, setElectricityTariff] = useState<CurrentElectricityTariffView | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
   const [supportAssessments, setSupportAssessments] = useState<SupportFeeAssessment[]>([]);
   const [supportAllocations, setSupportAllocations] = useState<SupportFeeAllocation[]>([]);
@@ -481,27 +482,48 @@ export default function AccountPage() {
           );
         }
 
-        const waterTariffRes = await supabase
-          .from('water_tariffs')
-          .select('*')
-          .order('valid_from', { ascending: false })
-          .limit(1);
+        const waterTariffRes = await supabase.rpc('get_applicable_utility_tariff', {
+          p_tariff_key: 'water',
+          p_on_date: null,
+        });
         if (waterTariffRes.error) {
-          if (!isMissingRelation(waterTariffRes.error, 'water_tariffs')) throw waterTariffRes.error;
+          if (!isMissingRelation(waterTariffRes.error, 'get_applicable_utility_tariff')) throw waterTariffRes.error;
           setWaterTariff(null);
         } else {
-          setWaterTariff(((waterTariffRes.data as WaterTariff[] | null) ?? [])[0] ?? null);
+          const row = Array.isArray(waterTariffRes.data) ? waterTariffRes.data[0] : waterTariffRes.data;
+          setWaterTariff(
+            currentWaterTariffViewFromCore(
+              row
+                ? {
+                    tariff_version_id: String((row as { tariff_version_id?: string }).tariff_version_id ?? ''),
+                    valid_from: String((row as { valid_from?: string }).valid_from ?? ''),
+                    rates: parseRatesJson((row as { rates?: unknown }).rates),
+                  }
+                : null,
+            ),
+          );
         }
 
-        const elTariffRes = await supabase
-          .from('electricity_tariffs')
-          .select('*')
-          .order('valid_from', { ascending: false });
+        const elTariffRes = await supabase.rpc('get_applicable_utility_tariff', {
+          p_tariff_key: 'electricity',
+          p_on_date: null,
+        });
         if (elTariffRes.error) {
-          if (!isMissingRelation(elTariffRes.error, 'electricity_tariffs')) throw elTariffRes.error;
+          if (!isMissingRelation(elTariffRes.error, 'get_applicable_utility_tariff')) throw elTariffRes.error;
           setElectricityTariff(null);
         } else {
-          setElectricityTariff(currentElectricityTariff((elTariffRes.data as ElectricityTariff[] | null) ?? []));
+          const row = Array.isArray(elTariffRes.data) ? elTariffRes.data[0] : elTariffRes.data;
+          setElectricityTariff(
+            currentElectricityTariffViewFromCore(
+              row
+                ? {
+                    tariff_version_id: String((row as { tariff_version_id?: string }).tariff_version_id ?? ''),
+                    valid_from: String((row as { valid_from?: string }).valid_from ?? ''),
+                    rates: parseRatesJson((row as { rates?: unknown }).rates),
+                  }
+                : null,
+            ),
+          );
         }
 
         const ledRes = await supabase

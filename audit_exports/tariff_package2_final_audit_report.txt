@@ -1,0 +1,167 @@
+AMADEUS 11 — Tariff Core Package 2 FINAL AUDIT + INTEGRITY FOLLOW-UP
+Generated: 2026-09-26
+Applied baseline (DO NOT EDIT): 20260926050000_tariff_core_package2_cutover.sql
+Follow-up (NOT YET APPLIED): 20260926050100_tariff_core_package2_integrity_fix.sql
+
+========================================================================
+CONFIRMED BUGS FIXED
+========================================================================
+
+B1. WATER previous-reading ordering nondeterministic
+    Root cause: ORDER BY reading_date DESC, created_at DESC LIMIT 1
+    Same-day / same-transaction readings tie on created_at; greatest
+    current_value was not preferred. Smoke 10→10→11→10.5 accepted 10.5.
+    Exact fix: ORDER BY reading_date DESC, current_value DESC, created_at DESC,
+    id DESC; scoped to active meter_id; SELECT ... FOR UPDATE on chosen row.
+
+B2. ELECTRICITY previous-reading ordering nondeterministic (per register)
+    Root cause: same created_at-only tie-break for day and night independently.
+    Exact fix: per electricity_meter_id + meter_type:
+    ORDER BY reading_date DESC, value DESC, created_at DESC, id DESC
+    with FOR UPDATE on each chosen register row.
+
+B3. ELECTRICITY idempotent path without charge repriced with LIVE Core tariff
+    Root cause: when day+night readings existed but electricity_charges missing,
+    return path used freshly resolved v_day_rate/v_night_rate.
+    Exact fix: idempotency handled BEFORE resolve_utility_tariff; if charge
+    missing → RAISE 'Idempotency key conflict: readings exist without charge
+    snapshot.' (fail closed). Charge-present path returns stored snapshot only.
+    Live Core resolve runs only for NEW operations.
+
+========================================================================
+POSSIBLE BUGS
+========================================================================
+
+P1. WATER previous row not selected FOR UPDATE
+    Classification: FIXED (category A)
+    Chosen previous water reading now locked with FOR UPDATE after
+    deterministic ORDER BY. Property then meter then previous-row lock order.
+
+P2. ELECTRICITY FOR UPDATE used nondeterministic ORDER BY
+    Classification: FIXED (category A)
+    Follows from B2: deterministic order + FOR UPDATE on chosen day/night rows.
+
+P3. WATER charge ledger idempotency_key = gen_random_uuid()
+    Classification: FIXED (category A)
+    water_ledger charge insert now uses p_idempotency_key with unique_violation
+    retry-safe handling (aligned with electricity_ledger / payment RPCs).
+
+P4. database.types.ts may drift from production properties types
+    Classification: DEFERRED WITH REASON (category C)
+    Types show apartment_number string / floor nullable; production is bigint /
+    floor NOT NULL. Regenerating types is a separate product/ops decision and
+    does not affect Package 2 RPC correctness. Smoke fixtures use numeric apt +
+    explicit floor. No frontend Package 2 correctness defect found.
+
+P5. Smoke file Cyrillic/mojibake actor selection
+    Classification: FALSE ALARM / ALREADY SAFE (category B) after rebuild
+    Final smoke selects admin@example.com by email only; no Cyrillic role
+    literal for actor selection. Staff role checks inside RPCs unchanged.
+
+P6. fn_body static check for "retry live tariff" was heuristic
+    Classification: FIXED (meta) — audit SQL now asserts fail-closed string
+    and deterministic ORDER BY presence; B3 code review confirms no live
+    reprice on incomplete idempotency path.
+
+Summary:
+  FIXED: P1, P2, P3, P6 (meta closed by B3 + audit asserts)
+  FALSE ALARM / ALREADY SAFE: P5
+  DEFERRED: P4
+
+========================================================================
+FOLLOW-UP MIGRATION
+========================================================================
+
+Filename: supabase/migrations/20260926050100_tariff_core_package2_integrity_fix.sql
+
+RPCs replaced (signatures / SECURITY DEFINER / search_path / grants preserved):
+  - public.submit_water_reading(bigint, numeric, date, uuid)
+  - public.submit_electricity_reading(bigint, numeric, numeric, date, uuid)
+
+Constraints/indexes: none added (ordering + fail-closed + ledger key only).
+
+NOT modified:
+  - 20260926050000_tariff_core_package2_cutover.sql
+  - resolve_utility_tariff / get_applicable_utility_tariff
+  - publish/cancel / assign/replace / legacy setters
+  - Support Fee / Capital Repair / Requests / Work Orders / Rental / GM
+
+========================================================================
+FINAL SMOKE
+========================================================================
+
+File: supabase/tariff_package2_smoke.sql
+Mode: BEGIN … ROLLBACK
+Actor: admin@example.com (active staff + auth.users link)
+Fixture: numeric unique apartment_number (max+900000), floor=1 explicit;
+         unique SMOKE-W-/SMOKE-E- meter numbers; no text apartment_number.
+
+Coverage (40 checks):
+  1–10  Tariff Core (resolvers, day/night same version, cancelled future,
+        legacy publishers blocked, publish/cancel idempotency + conflict,
+        past/effective cancel rejected)
+  11–23 Water (equal, greater, same-date lower reject 10.5, retry, key
+        conflicts, Core snapshot, ledger no dup, replacement isolation,
+        before-install reject)
+  24–38 Electricity (equal, greater, lower day/night, same-date lower,
+        atomicity zero partials, retry/ledger, key conflict, Core snapshot
+        same version, replacement isolation, date validation)
+  39–40 Idempotency snapshot: retry after future bait publish keeps A;
+        orphan readings-without-charge fails closed (no live charge)
+
+Expected end notice:
+  tariff_package2_final_smoke: ALL CHECKS PASSED
+
+Assertion quality: expected-error blocks re-raise smoke#N FAIL prefixes;
+  unexpected errors fail; no WHEN OTHERS swallow of assertion exceptions.
+
+========================================================================
+VALIDATION
+========================================================================
+
+tsc: PASS (npx tsc --noEmit, exit 0)
+build: PASS (npm run build, Next.js 16.3.2 compiled successfully)
+
+Static SQL inspection of 20260926050100:
+  - No remaining ORDER BY reading_date DESC, created_at DESC alone in
+    previous-baseline selection
+  - No live Core resolve inside incomplete electricity idempotency branch
+  - Water idempotency returns stored reading snapshot (no reprice)
+  - Legacy publishers untouched (still blocked by 500)
+  - Smoke: no text apartment_number; actor by email; no swallowed FAIL
+
+========================================================================
+FILES CHANGED
+========================================================================
+
+- supabase/migrations/20260926050100_tariff_core_package2_integrity_fix.sql  (NEW)
+- supabase/tariff_package2_smoke.sql  (FINAL smoke rebuild)
+- supabase/tariff_package2_final_audit.sql  (integrity asserts updated)
+- audit_exports/tariff_package2_final_audit_report.txt  (this file)
+
+NOT changed:
+- supabase/migrations/20260926050000_tariff_core_package2_cutover.sql
+- frontend / database.types.ts
+- unrelated modules
+
+========================================================================
+PRODUCTION APPLY PLAN
+========================================================================
+
+1. Review 20260926050100_tariff_core_package2_integrity_fix.sql
+2. Apply ONLY that migration (do not re-apply 500)
+3. Run supabase/tariff_package2_smoke.sql (expect ALL CHECKS PASSED + ROLLBACK)
+4. Run supabase/tariff_package2_final_audit.sql (fn_body order/fail-closed OK)
+5. Do not rewrite historical financial rows; audit may still INFO/FAIL on
+   pre-existing historical monotonicity / orphan anomalies (read-only)
+
+DO NOT (this patch):
+  apply / db push / deploy / commit / push
+
+========================================================================
+FALSE ALARMS / ALREADY CORRECT (from prior audit — still hold)
+========================================================================
+
+OK1–OK10 from pre-follow-up audit remain valid after integrity fix.
+Monotonicity OK6 now actually enforced by B1/B2 fixes.
+OK4 electricity incomplete path is now fail-closed (was the B3 hole).

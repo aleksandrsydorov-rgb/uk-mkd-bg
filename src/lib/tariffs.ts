@@ -1,5 +1,5 @@
-/** Tariff Core v1 Package 1 helpers. UX only — RPCs are the security boundary.
- *  Does NOT cut over Water/Electricity/Support billing. Legacy tables remain live.
+/** Tariff Core helpers. UX only — RPCs are the security boundary.
+ *  Package 2: Water/Electricity billing resolves from Core. Support Fee still legacy.
  */
 
 export const TARIFF_KEYS = ['support_fee', 'water', 'electricity'] as const;
@@ -70,15 +70,57 @@ export function canPublishUtilityTariff(role?: string | null, active?: boolean |
   return role === 'администрация' || role === 'бухгалтер';
 }
 
-/** Package 1: only Support future versions are operationally cancellable in UI. */
+/** Package 2: Support + Water + Electricity future published versions are cancellable in UI. */
 export function canCancelTariffVersionInUi(row: {
   module_key: string;
   status: string;
   valid_from: string;
 }, sofiaTodayIso: string) {
-  if (row.module_key !== 'support_fee') return false;
+  if (!['support_fee', 'water', 'electricity'].includes(row.module_key)) return false;
   if (row.status !== 'published') return false;
   return row.valid_from > sofiaTodayIso;
+}
+
+export type ApplicableUtilityTariff = {
+  tariff_version_id: string;
+  tariff_key: string;
+  valid_from: string;
+  rates: Record<string, number>;
+};
+
+export function normalizeApplicableUtilityTariff(
+  row: Record<string, unknown> | null | undefined,
+): ApplicableUtilityTariff | null {
+  if (!row) return null;
+  const rates = parseRatesJson(row.rates);
+  if (!rates) return null;
+  const id = String(row.tariff_version_id ?? '');
+  const key = String(row.tariff_key ?? '');
+  const validFrom = String(row.valid_from ?? '');
+  if (!id || !key || !validFrom) return null;
+  return {
+    tariff_version_id: id,
+    tariff_key: key,
+    valid_from: validFrom,
+    rates,
+  };
+}
+
+export function waterRateFromApplicable(t: ApplicableUtilityTariff | null | undefined): number | null {
+  if (!t) return null;
+  const n = Number(t.rates.base);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function electricityRatesFromApplicable(t: ApplicableUtilityTariff | null | undefined): {
+  day: number;
+  night: number;
+} | null {
+  if (!t) return null;
+  const day = Number(t.rates.day);
+  const night = Number(t.rates.night);
+  if (!Number.isFinite(day) || !Number.isFinite(night)) return null;
+  return { day, night };
 }
 
 export function sofiaTodayIsoDate(now = new Date()): string {

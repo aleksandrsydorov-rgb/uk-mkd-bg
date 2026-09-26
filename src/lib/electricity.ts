@@ -75,6 +75,14 @@ export type ElectricityTariff = {
   created_at: string;
 };
 
+/** Core-backed current electricity rates for owner/admin display (Package 2). */
+export type CurrentElectricityTariffView = {
+  tariff_version_id: string;
+  valid_from: string;
+  day_price_eur_per_kwh: number;
+  night_price_eur_per_kwh: number;
+};
+
 export type ElectricityCharge = {
   id: string;
   property_id: number;
@@ -110,6 +118,23 @@ export function currentElectricityTariff(rows: ElectricityTariff[], onDate?: str
   return [...rows]
     .filter((row) => row.valid_from <= day)
     .sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0] ?? null;
+}
+
+export function currentElectricityTariffViewFromCore(row: {
+  tariff_version_id: string;
+  valid_from: string;
+  rates: Record<string, number> | null;
+} | null): CurrentElectricityTariffView | null {
+  if (!row?.rates) return null;
+  const day = Number(row.rates.day);
+  const night = Number(row.rates.night);
+  if (!Number.isFinite(day) || !Number.isFinite(night)) return null;
+  return {
+    tariff_version_id: row.tariff_version_id,
+    valid_from: row.valid_from,
+    day_price_eur_per_kwh: day,
+    night_price_eur_per_kwh: night,
+  };
 }
 
 export function formatElectricityTariff(n: number, locale?: string) {

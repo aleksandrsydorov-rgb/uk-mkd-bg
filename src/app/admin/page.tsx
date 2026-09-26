@@ -127,7 +127,7 @@ import {
   type BuildingModuleV2Row,
 } from '@/lib/modules';
 import {
-  currentElectricityTariff,
+  currentElectricityTariffViewFromCore,
   formatElectricityTariff,
   canSubmitElectricityStaff,
   canManageElectricityMeter,
@@ -140,8 +140,10 @@ import {
   mapSubmitElectricityError,
   type ElectricityMode,
   type ElectricityMeter,
-  type ElectricityTariff,
+  type CurrentElectricityTariffView,
 } from '@/lib/electricity';
+import { parseRatesJson } from '@/lib/tariffs';
+import { currentWaterTariffViewFromCore } from '@/lib/utilities';
 import { chatPreviewText, MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import {
   buildRegistryPdfHtml,
@@ -5669,7 +5671,7 @@ function ApartmentDetailModal({
   const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
   const [waterTariffPrice, setWaterTariffPrice] = useState<number | null>(null);
-  const [electricityTariff, setElectricityTariff] = useState<ElectricityTariff | null>(null);
+  const [electricityTariff, setElectricityTariff] = useState<CurrentElectricityTariffView | null>(null);
   const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
   const [petSaving, setPetSaving] = useState(false);
   const [guestForm, setGuestForm] = useState({
@@ -5690,26 +5692,34 @@ function ApartmentDetailModal({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { data, error } = await supabase
-        .from('water_tariffs')
-        .select('price_eur_per_m3')
-        .order('valid_from', { ascending: false })
-        .limit(1);
-      const elRes = await supabase
-        .from('electricity_tariffs')
-        .select('*')
-        .order('valid_from', { ascending: false });
+      const [waterRes, elRes] = await Promise.all([
+        supabase.rpc('get_applicable_utility_tariff', { p_tariff_key: 'water', p_on_date: null }),
+        supabase.rpc('get_applicable_utility_tariff', { p_tariff_key: 'electricity', p_on_date: null }),
+      ]);
       if (cancelled) return;
-      if (error || !data?.[0]) {
-        setWaterTariffPrice(null);
-      } else {
-        setWaterTariffPrice(Number(data[0].price_eur_per_m3));
-      }
-      if (elRes.error || !elRes.data) {
-        setElectricityTariff(null);
-      } else {
-        setElectricityTariff(currentElectricityTariff((elRes.data as ElectricityTariff[]) ?? []));
-      }
+      const waterRow = Array.isArray(waterRes.data) ? waterRes.data[0] : waterRes.data;
+      const waterView = currentWaterTariffViewFromCore(
+        waterRow && !waterRes.error
+          ? {
+              tariff_version_id: String((waterRow as { tariff_version_id?: string }).tariff_version_id ?? ''),
+              valid_from: String((waterRow as { valid_from?: string }).valid_from ?? ''),
+              rates: parseRatesJson((waterRow as { rates?: unknown }).rates),
+            }
+          : null,
+      );
+      setWaterTariffPrice(waterView?.price_eur_per_m3 ?? null);
+      const elRow = Array.isArray(elRes.data) ? elRes.data[0] : elRes.data;
+      setElectricityTariff(
+        currentElectricityTariffViewFromCore(
+          elRow && !elRes.error
+            ? {
+                tariff_version_id: String((elRow as { tariff_version_id?: string }).tariff_version_id ?? ''),
+                valid_from: String((elRow as { valid_from?: string }).valid_from ?? ''),
+                rates: parseRatesJson((elRow as { rates?: unknown }).rates),
+              }
+            : null,
+        ),
+      );
     })();
     return () => {
       cancelled = true;

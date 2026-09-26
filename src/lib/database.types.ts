@@ -1191,7 +1191,8 @@ export interface Database {
           current_day: number;
           previous_night: number;
           current_night: number;
-          tariff_id: string;
+          tariff_id: string | null;
+          tariff_version_id: string | null;
           day_tariff_eur_per_kwh: number;
           night_tariff_eur_per_kwh: number;
           consumption_day: number;
@@ -1213,7 +1214,8 @@ export interface Database {
           current_day: number;
           previous_night: number;
           current_night: number;
-          tariff_id: string;
+          tariff_id?: string | null;
+          tariff_version_id?: string | null;
           day_tariff_eur_per_kwh: number;
           night_tariff_eur_per_kwh: number;
           recorded_by_email: string;
@@ -1230,7 +1232,8 @@ export interface Database {
           current_day?: number;
           previous_night?: number;
           current_night?: number;
-          tariff_id?: string;
+          tariff_id?: string | null;
+          tariff_version_id?: string | null;
           day_tariff_eur_per_kwh?: number;
           night_tariff_eur_per_kwh?: number;
           recorded_by_email?: string;
@@ -1475,7 +1478,8 @@ export interface Database {
           reading_date: string;
           previous_value: number;
           current_value: number;
-          tariff_id: string;
+          tariff_id: string | null;
+          tariff_version_id: string | null;
           tariff_eur_per_m3: number;
           consumption_m3: number;
           charge_amount_eur: number;
@@ -1495,7 +1499,8 @@ export interface Database {
           reading_date: string;
           previous_value: number;
           current_value: number;
-          tariff_id: string;
+          tariff_id?: string | null;
+          tariff_version_id?: string | null;
           tariff_eur_per_m3: number;
           submitted_by_email?: string | null;
           submitted_via: string;
@@ -1513,7 +1518,8 @@ export interface Database {
           reading_date?: string;
           previous_value?: number;
           current_value?: number;
-          tariff_id?: string;
+          tariff_id?: string | null;
+          tariff_version_id?: string | null;
           tariff_eur_per_m3?: number;
           submitted_by_email?: string | null;
           submitted_via?: string;
@@ -2291,6 +2297,18 @@ export interface Database {
           version_id: string;
           status: string;
           cancelled_at: string | null;
+        }[];
+      };
+      get_applicable_utility_tariff: {
+        Args: {
+          p_tariff_key: string;
+          p_on_date?: string | null;
+        };
+        Returns: {
+          tariff_version_id: string;
+          tariff_key: string;
+          valid_from: string;
+          rates: Record<string, number> | null;
         }[];
       };
       list_work_orders_admin: {

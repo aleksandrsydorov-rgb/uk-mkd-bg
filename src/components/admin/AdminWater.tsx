@@ -14,7 +14,7 @@ import {
   canManageWaterTariff,
   canSeeWaterAdmin,
   canSubmitWaterStaff,
-  currentWaterTariff,
+  currentWaterTariffViewFromCore,
   emptyBalance,
   formatEur,
   formatM3,
@@ -29,8 +29,9 @@ import {
   type WaterMeter,
   type WaterMode,
   type WaterReading,
-  type WaterTariff,
+  type CurrentWaterTariffView,
 } from '@/lib/utilities';
+import { parseRatesJson } from '@/lib/tariffs';
 import {
   AdminPageHeader,
   AdminCard,
@@ -111,7 +112,7 @@ export function AdminWater({
 
   const [propertyId, setPropertyId] = useState<number | ''>(sorted[0]?.id ?? '');
   const [meters, setMeters] = useState<WaterMeter[]>([]);
-  const [tariffs, setTariffs] = useState<WaterTariff[]>([]);
+  const [tariff, setTariff] = useState<CurrentWaterTariffView | null>(null);
   const [readings, setReadings] = useState<WaterReading[]>([]);
   const [ledger, setLedger] = useState<WaterLedger[]>([]);
   const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
@@ -119,7 +120,6 @@ export function AdminWater({
   const [tariffLoading, setTariffLoading] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [meterBusy, setMeterBusy] = useState(false);
-  const [tariffBusy, setTariffBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -132,10 +132,6 @@ export function AdminWater({
   const [replaceInitial, setReplaceInitial] = useState('0');
   const [replaceDate, setReplaceDate] = useState(todayIsoDate());
   const [replaceReason, setReplaceReason] = useState('');
-
-  const [tariffPrice, setTariffPrice] = useState('');
-  const [tariffFrom, setTariffFrom] = useState(todayIsoDate());
-  const [tariffNote, setTariffNote] = useState('');
 
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
@@ -170,7 +166,6 @@ export function AdminWater({
 
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
   const meterById = useMemo(() => new Map(meters.map((m) => [m.id, m])), [meters]);
-  const tariff = currentWaterTariff(tariffs);
   const lastReading = lastActiveReading(
     activeMeter ? readings.filter((r) => r.meter_id === activeMeter.id) : readings,
   );
@@ -178,18 +173,28 @@ export function AdminWater({
   const loadTariffs = useCallback(async () => {
     if (!canSee) return;
     setTariffLoading(true);
-    const { data, error: qErr } = await supabase
-      .from('water_tariffs')
-      .select('*')
-      .order('valid_from', { ascending: false })
-      .limit(12);
+    const { data, error: qErr } = await supabase.rpc('get_applicable_utility_tariff', {
+      p_tariff_key: 'water',
+      p_on_date: todayIsoDate(),
+    });
     setTariffLoading(false);
     if (qErr) {
-      if (!isMissingRelation(qErr, 'water_tariffs')) setError(t(mapAdminRpcError(qErr.message)));
-      setTariffs([]);
+      setError(t(mapAdminRpcError(qErr.message)));
+      setTariff(null);
       return;
     }
-    setTariffs((data ?? []) as WaterTariff[]);
+    const row = firstRow(data) as Record<string, unknown> | null;
+    setTariff(
+      currentWaterTariffViewFromCore(
+        row
+          ? {
+              tariff_version_id: String(row.tariff_version_id ?? ''),
+              valid_from: String(row.valid_from ?? ''),
+              rates: parseRatesJson(row.rates),
+            }
+          : null,
+      ),
+    );
   }, [canSee, supabase, t]);
 
   const loadPropertyWater = useCallback(async () => {
@@ -349,31 +354,6 @@ export function AdminWater({
     setReplaceDate(todayIsoDate());
     flash(t('admin.okMeterReplaced'));
     await loadPropertyWater();
-  }
-
-  async function handleTariff(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canTariff) return;
-    const price = Number(tariffPrice);
-    if (!(price > 0) || Number.isNaN(price)) {
-      setError(t('admin.errTariffPrice'));
-      return;
-    }
-    setTariffBusy(true);
-    const { error: rpcErr } = await supabase.rpc('set_water_tariff', {
-      p_price_eur_per_m3: price,
-      p_valid_from: tariffFrom,
-      p_note: tariffNote.trim() || null,
-    });
-    setTariffBusy(false);
-    if (rpcErr) {
-      rpcFail(rpcErr.message);
-      return;
-    }
-    setTariffPrice('');
-    setTariffNote('');
-    flash(t('admin.okTariff'));
-    await loadTariffs();
   }
 
   async function handlePay(e: React.FormEvent) {
@@ -739,39 +719,7 @@ export function AdminWater({
               {t('admin.validFrom')}: {formatOwnerDate(tariff.valid_from)}
             </p>
           )}
-          <form onSubmit={handleTariff} className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input className={fieldClass} type="number" min="0.01" step="0.01" placeholder={t('admin.tariffPrice')} value={tariffPrice} onChange={(e) => setTariffPrice(e.target.value)} required />
-            <input className={fieldClass} type="date" value={tariffFrom} onChange={(e) => setTariffFrom(e.target.value)} required />
-            <input className={fieldClass} placeholder={t('admin.noteOptional')} value={tariffNote} onChange={(e) => setTariffNote(e.target.value)} />
-            <button type="submit" disabled={tariffBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50 sm:col-span-3 sm:w-fit">
-              {tariffBusy ? t('common.saving') : t('admin.setTariff')}
-            </button>
-          </form>
-          <p className="mt-2 text-xs text-muted">{t('admin.tariffImmutable')}</p>
-          {tariffs.length === 0 ? (
-            <p className="mt-3 text-sm text-secondary">{t('admin.noTariffHistory')}</p>
-          ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[28rem] text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted">
-                    <th className="py-2 pr-3">{t('admin.validFrom')}</th>
-                    <th className="py-2 pr-3">{t('admin.tariffPrice')}</th>
-                    <th className="py-2 pr-3">{t('admin.note')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tariffs.map((row) => (
-                    <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.valid_from)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.price_eur_per_m3), locale)}</td>
-                      <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <p className="mt-4 text-sm text-secondary">{t('admin.tariffManageInCore')}</p>
         </div>
       )}
 

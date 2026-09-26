@@ -1,9 +1,17 @@
 import type { Database } from '@/lib/database.types';
 
 export type WaterMeter = Database['public']['Tables']['water_meters']['Row'];
+/** @deprecated Prefer ApplicableUtilityTariff from tariffs.ts for current rates. Legacy table shape kept for historical SELECT. */
 export type WaterTariff = Database['public']['Tables']['water_tariffs']['Row'];
 export type WaterReading = Database['public']['Tables']['water_readings']['Row'];
 export type WaterLedger = Database['public']['Tables']['water_ledger']['Row'];
+
+/** Core-backed current water rate for owner/admin display (Package 2). */
+export type CurrentWaterTariffView = {
+  tariff_version_id: string;
+  valid_from: string;
+  price_eur_per_m3: number;
+};
 export type CapitalAssessment = Database['public']['Tables']['capital_repair_assessments']['Row'];
 export type CapitalLedger = Database['public']['Tables']['capital_repair_ledger']['Row'];
 
@@ -185,6 +193,7 @@ export type AdminRpcErrorKey =
   | 'admin.errReadingLower'
   | 'admin.errTariffDate'
   | 'admin.errNoTariff'
+  | 'admin.errLegacyTariffDisabled'
   | 'admin.errCapitalDup'
   | 'admin.errIdempotency'
   | 'admin.errNoAccess'
@@ -197,7 +206,8 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
   if (msg.includes('no active water meter') || msg.includes('no active electricity meter') || msg.includes('electricity meter is not assigned')) return 'admin.errNoMeter';
   if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
-  if (msg.includes('no electricity tariff is defined')) return 'admin.errNoTariff';
+  if (msg.includes('no electricity tariff is defined') || msg.includes('no water tariff configured')) return 'admin.errNoTariff';
+  if (msg.includes('legacy tariff publication disabled')) return 'admin.errLegacyTariffDisabled';
   if (msg.includes('tariff already exists') || msg.includes('already exists for this valid_from')) {
     return 'admin.errTariffDate';
   }
@@ -212,4 +222,19 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
 
 export function currentWaterTariff(tariffs: WaterTariff[], asOf = todayIsoDate()): WaterTariff | null {
   return tariffs.find((row) => row.valid_from <= asOf) ?? null;
+}
+
+export function currentWaterTariffViewFromCore(row: {
+  tariff_version_id: string;
+  valid_from: string;
+  rates: Record<string, number> | null;
+} | null): CurrentWaterTariffView | null {
+  if (!row?.rates) return null;
+  const price = Number(row.rates.base);
+  if (!Number.isFinite(price)) return null;
+  return {
+    tariff_version_id: row.tariff_version_id,
+    valid_from: row.valid_from,
+    price_eur_per_m3: price,
+  };
 }

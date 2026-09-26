@@ -32,7 +32,7 @@ import {
   type WaterMeter,
   type WaterReading,
   type WaterSubmitResult,
-  type WaterTariff,
+  type CurrentWaterTariffView,
 } from '@/lib/utilities';
 
 type Variant = 'finance' | 'meters';
@@ -127,7 +127,7 @@ export function OwnerUtilities({
   supabase: SupabaseClient<Database>;
   propertyId: number;
   variant: Variant;
-  currentTariff?: WaterTariff | null;
+  currentTariff?: CurrentWaterTariffView | null;
   financeTab?: FinanceTab;
   onSelectFinanceTab?: (tab: FinanceTab) => void;
   supportDebt?: number;
@@ -152,7 +152,7 @@ export function OwnerUtilities({
   const [success, setSuccess] = useState<WaterSubmitResult | null>(null);
 
   const [meter, setMeter] = useState<WaterMeter | null>(null);
-  const [tariff, setTariff] = useState<WaterTariff | null>(null);
+  const [tariff, setTariff] = useState<CurrentWaterTariffView | null>(null);
   const [readings, setReadings] = useState<WaterReading[]>([]);
   const [waterLedger, setWaterLedger] = useState<WaterLedger[]>([]);
   const [waterBalance, setWaterBalance] = useState<UtilityBalance>(emptyBalance());
@@ -187,16 +187,13 @@ export function OwnerUtilities({
     setWaterBalanceLoading(true);
     setWaterBalanceFailed(false);
     try {
-      const [meterRes, tariffRes, readingsRes, ledgerRes] = await Promise.all([
+      const [meterRes, readingsRes, ledgerRes] = await Promise.all([
         supabase
           .from('water_meters')
           .select('*')
           .eq('property_id', propertyId)
           .is('retired_at', null)
           .maybeSingle(),
-        currentTariff !== undefined
-          ? Promise.resolve({ data: currentTariff ? [currentTariff] : [], error: null })
-          : supabase.from('water_tariffs').select('*').order('valid_from', { ascending: false }).limit(1),
         supabase
           .from('water_readings')
           .select('*')
@@ -215,8 +212,27 @@ export function OwnerUtilities({
       if (meterRes.error && !isMissingRelation(meterRes.error, 'water_meters')) throw meterRes.error;
       setMeter((meterRes.data as WaterMeter | null) ?? null);
 
-      if (tariffRes.error && !isMissingRelation(tariffRes.error, 'water_tariffs')) throw tariffRes.error;
-      setTariff(((tariffRes.data as WaterTariff[] | null) ?? [])[0] ?? null);
+      if (currentTariff !== undefined) {
+        setTariff(currentTariff);
+      } else {
+        const { data: tariffData, error: tariffErr } = await supabase.rpc('get_applicable_utility_tariff', {
+          p_tariff_key: 'water',
+          p_on_date: null,
+        });
+        if (tariffErr && !isMissingRelation(tariffErr, 'get_applicable_utility_tariff')) throw tariffErr;
+        const row = Array.isArray(tariffData) ? tariffData[0] : tariffData;
+        const rates = row && typeof row === 'object' && 'rates' in row ? (row as { rates?: Record<string, number> }).rates : null;
+        const base = rates ? Number(rates.base) : NaN;
+        setTariff(
+          row && Number.isFinite(base)
+            ? {
+                tariff_version_id: String((row as { tariff_version_id: string }).tariff_version_id),
+                valid_from: String((row as { valid_from: string }).valid_from),
+                price_eur_per_m3: base,
+              }
+            : null,
+        );
+      }
 
       if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) throw readingsRes.error;
       setReadings((readingsRes.data as WaterReading[] | null) ?? []);

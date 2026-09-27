@@ -3230,6 +3230,18 @@ export interface Database {
         Args: { p_property_id: number };
         Returns: boolean;
       };
+      admin_upsert_staff: {
+        Args: {
+          p_id: number | null;
+          p_name: string;
+          p_role: string;
+          p_email: string | null;
+          p_phone: string | null;
+          p_active: boolean;
+          p_salary_eur: number | null;
+        };
+        Returns: number;
+      };
       admin_list_security_posts: {
         Args: Record<string, never>;
         Returns: {

@@ -2300,31 +2300,23 @@ function AdminPortal() {
     e.preventDefault();
     if (!canEditStaff) return;
     setError(null);
-    const payload: {
-      name: string;
-      role: string;
-      phone: string | null;
-      email: string | null;
-      active: boolean;
-      salary_eur?: number | null;
-    } = {
-      name: staffForm.name.trim(),
-      role: staffForm.role.trim(),
-      phone: staffForm.phone.trim() || null,
-      email: staffForm.email.trim() ? normalizeEmail(staffForm.email) : null,
-      active: staffForm.active,
-    };
-    if (showStaffSalary) payload.salary_eur = Number(staffForm.salary_eur) || null;
+    const role = staffForm.role.trim();
+    if (!STAFF_ROLE_OPTIONS.some((r) => r.value === role)) {
+      setError(t('admin.staffRoleInvalid'));
+      return;
+    }
     try {
-      let staffId = editingStaff?.id ?? null;
-      if (editingStaff) {
-        const { error } = await supabase.from('staff').update(payload).eq('id', editingStaff.id);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.from('staff').insert(payload).select('id').single();
-        if (error) throw error;
-        staffId = data?.id ?? null;
-      }
+      const { data: upsertedId, error: upsertErr } = await supabase.rpc('admin_upsert_staff', {
+        p_id: editingStaff?.id ?? null,
+        p_name: staffForm.name.trim(),
+        p_role: role,
+        p_email: staffForm.email.trim() ? normalizeEmail(staffForm.email) : null,
+        p_phone: staffForm.phone.trim() || null,
+        p_active: staffForm.active,
+        p_salary_eur: showStaffSalary ? Number(staffForm.salary_eur) || null : null,
+      });
+      if (upsertErr) throw upsertErr;
+      const staffId = (upsertedId as number | null) ?? editingStaff?.id ?? null;
       if (staffId != null) {
         const { error: profileErr } = await supabase.rpc('set_staff_work_profile', {
           p_staff_id: staffId,

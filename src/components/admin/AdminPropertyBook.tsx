@@ -91,6 +91,11 @@ export function AdminPropertyBook({
   const [ownershipType, setOwnershipType] = useState<OwnershipType>('sole');
   const [owners, setOwners] = useState<OwnerForm[]>([emptyOwner()]);
   const [importErrors, setImportErrors] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [invites, setInvites] = useState<
+    Array<{ id: string; email: string; status: string; expires_at: string; created_at: string }>
+  >([]);
 
   const sortedProps = useMemo(
     () =>
@@ -179,6 +184,24 @@ export function AdminPropertyBook({
           o.ideal_parts_percent != null ? String(o.ideal_parts_percent) : '',
       }));
       setOwners(mapped.length > 0 ? mapped : [emptyOwner()]);
+      const { data: invData, error: invErr } = await supabase.rpc('admin_list_property_invites', {
+        p_property_id: id,
+      });
+      if (!invErr) {
+        setInvites(
+          ((invData as Array<Record<string, unknown>>) ?? []).map((i) => ({
+            id: String(i.id),
+            email: String(i.email ?? ''),
+            status: String(i.status ?? ''),
+            expires_at: String(i.expires_at ?? ''),
+            created_at: String(i.created_at ?? ''),
+          })),
+        );
+      } else {
+        setInvites([]);
+      }
+      setInviteLink(null);
+      setInviteEmail(mapped[0]?.email ?? '');
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
     } finally {
@@ -622,6 +645,121 @@ export function AdminPropertyBook({
           <AdminPrimaryButton type="button" disabled={busy} onClick={() => void saveCard()}>
             {busy ? t('common.saving') : t('common.save')}
           </AdminPrimaryButton>
+
+          <div className="space-y-3 border-t border-border pt-4">
+            <h4 className="text-sm font-semibold">{t('admin.bookInvite')}</h4>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="grid min-w-0 flex-1 gap-1 text-sm text-secondary">
+                {t('admin.bookInviteEmail')}
+                <input
+                  className={adminFieldClass}
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+              </label>
+              <AdminPrimaryButton
+                type="button"
+                disabled={busy || !inviteEmail.trim()}
+                onClick={() => {
+                  void (async () => {
+                    if (!selectedId) return;
+                    setBusy(true);
+                    setError(null);
+                    try {
+                      const { data, error: rpcErr } = await supabase.rpc(
+                        'admin_create_property_invite',
+                        {
+                          p_property_id: selectedId,
+                          p_email: inviteEmail.trim(),
+                        },
+                      );
+                      if (rpcErr) throw rpcErr;
+                      const token = String((data as { token?: string })?.token ?? '');
+                      const link = `${window.location.origin}/auth/invite?token=${token}`;
+                      setInviteLink(link);
+                      try {
+                        await navigator.clipboard.writeText(link);
+                        setSuccess(t('admin.bookInviteCopied'));
+                      } catch {
+                        setSuccess(t('admin.bookInviteLink'));
+                      }
+                      const { data: invData } = await supabase.rpc('admin_list_property_invites', {
+                        p_property_id: selectedId,
+                      });
+                      setInvites(
+                        ((invData as Array<Record<string, unknown>>) ?? []).map((i) => ({
+                          id: String(i.id),
+                          email: String(i.email ?? ''),
+                          status: String(i.status ?? ''),
+                          expires_at: String(i.expires_at ?? ''),
+                          created_at: String(i.created_at ?? ''),
+                        })),
+                      );
+                    } catch (e: unknown) {
+                      setError(ownerVisibleError(e, t('admin.errGeneric')));
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                {t('admin.bookInviteSend')}
+              </AdminPrimaryButton>
+            </div>
+            {inviteLink ? (
+              <p className="break-all text-xs text-muted">
+                {t('admin.bookInviteLink')}: {inviteLink}
+              </p>
+            ) : null}
+            {invites.length > 0 ? (
+              <ul className="space-y-2 text-sm">
+                <li className="text-xs font-medium uppercase tracking-wide text-muted">
+                  {t('admin.bookInvites')}
+                </li>
+                {invites.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+                  >
+                    <span>
+                      {inv.email} ·{' '}
+                      {t(`admin.bookInviteStatus_${inv.status}` as 'admin.bookInviteStatus_pending')}
+                    </span>
+                    {inv.status === 'pending' ? (
+                      <button
+                        type="button"
+                        className="text-xs text-danger hover:underline"
+                        disabled={busy}
+                        onClick={() => {
+                          void (async () => {
+                            setBusy(true);
+                            try {
+                              const { error: rpcErr } = await supabase.rpc(
+                                'admin_revoke_property_invite',
+                                { p_invite_id: inv.id },
+                              );
+                              if (rpcErr) throw rpcErr;
+                              setInvites((prev) =>
+                                prev.map((x) =>
+                                  x.id === inv.id ? { ...x, status: 'revoked' } : x,
+                                ),
+                              );
+                            } catch (e: unknown) {
+                              setError(ownerVisibleError(e, t('admin.errGeneric')));
+                            } finally {
+                              setBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {t('admin.bookInviteRevoke')}
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         </section>
       ) : null}
     </div>

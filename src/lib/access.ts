@@ -35,26 +35,46 @@ function isMissingColumn(error: { message?: string } | null | undefined, column:
   return msg.includes(column) || msg.includes('schema cache') || msg.includes('Could not find');
 }
 
-export async function resolveAccess(
-  emailRaw: string,
-  supabase: SupabaseClient<Database>,
-): Promise<AccessProfile> {
-  const email = normalizeEmail(emailRaw);
-  const pattern = escapeIlike(email);
+function isMissingRpc(error: { message?: string; code?: string } | null | undefined, name: string) {
+  const msg = error?.message ?? '';
+  return msg.includes(name) || msg.includes('schema cache') || error?.code === 'PGRST202';
+}
 
+async function loadOwnedProperties(
+  email: string,
+  supabase: SupabaseClient<Database>,
+): Promise<Property[]> {
+  const ownedRes = await supabase.rpc('list_my_owned_properties');
+  if (!ownedRes.error) {
+    return (ownedRes.data as Property[] | null) ?? [];
+  }
+  if (!isMissingRpc(ownedRes.error, 'list_my_owned_properties')) {
+    throw ownedRes.error;
+  }
+
+  const pattern = escapeIlike(email);
   const propsRes = await supabase
     .from('properties')
     .select('*')
     .ilike('owner_email', pattern)
     .order('apartment_number', { ascending: true });
-
   if (propsRes.error) throw propsRes.error;
+  return (propsRes.data as Property[]) ?? [];
+}
+
+export async function resolveAccess(
+  emailRaw: string,
+  supabase: SupabaseClient<Database>,
+): Promise<AccessProfile> {
+  const email = normalizeEmail(emailRaw);
+
+  const properties = await loadOwnedProperties(email, supabase);
 
   let staff: StaffRecord | null = null;
   const staffRes = await supabase
     .from('staff')
     .select('id, name, role, phone, active, email')
-    .ilike('email', pattern)
+    .ilike('email', escapeIlike(email))
     .limit(5);
 
   if (staffRes.error) {
@@ -64,7 +84,6 @@ export async function resolveAccess(
     staff = rows.find((s) => s.active === true) ?? null;
   }
 
-  const properties = (propsRes.data as Property[]) ?? [];
   return {
     email,
     properties,

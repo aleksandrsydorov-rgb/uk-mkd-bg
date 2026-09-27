@@ -3472,6 +3472,26 @@ export interface Database {
         Args: { p_property_id: number };
         Returns: Record<string, unknown>;
       };
+      list_my_owned_properties: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['properties']['Row'][];
+      };
+      admin_create_property_invite: {
+        Args: { p_property_id: number; p_email: string };
+        Returns: Record<string, unknown>;
+      };
+      admin_revoke_property_invite: {
+        Args: { p_invite_id: string };
+        Returns: Record<string, unknown>;
+      };
+      admin_list_property_invites: {
+        Args: { p_property_id: number };
+        Returns: Record<string, unknown>[];
+      };
+      accept_property_invite: {
+        Args: { p_token: string; p_mark_accepted?: boolean };
+        Returns: Record<string, unknown>;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

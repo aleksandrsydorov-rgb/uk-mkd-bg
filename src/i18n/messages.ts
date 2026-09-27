@@ -648,7 +648,7 @@ export const ru = {
     cleaning: 'Уборка',
     heating: 'Отопление',
     other: 'Другое',
-    book: 'Книга',
+    book: 'Книга этажной собственности',
   },
   pollCat: {
     buy: 'покупка',

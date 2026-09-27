@@ -1316,7 +1316,7 @@ export const ru = {
     bookMigrationNeeded: 'Примените миграцию книги (db push), затем обновите страницу.',
     bookImport: 'Импорт из Excel',
     bookImportHint:
-      'Один файл .xlsx с листами objects и owners. Ключ — номер апартамента (уже должен быть в базе). Собственники в файле полностью заменяют текущих.',
+      'Один файл .xlsx с листами objects и owners. Ключ — номер апартамента. Если апартамента нет в базе — он будет создан. Собственники в файле полностью заменяют текущих.',
     bookTplExcel: 'Скачать шаблон Excel',
     bookFileExcel: 'Файл книги (.xlsx)',
     bookFileRequired: 'Выберите Excel-файл.',
@@ -3328,7 +3328,7 @@ export const en: Messages = {
     bookMigrationNeeded: 'Apply the property-book migration (db push), then refresh.',
     bookImport: 'Excel import',
     bookImportHint:
-      'One .xlsx file with sheets objects and owners. Key is apartment number (must already exist). Owners in the file fully replace current ones.',
+      'One .xlsx file with sheets objects and owners. Key is apartment number. Missing apartments are created. Owners in the file fully replace current ones.',
     bookTplExcel: 'Download Excel template',
     bookFileExcel: 'Book file (.xlsx)',
     bookFileRequired: 'Select an Excel file.',
@@ -5340,7 +5340,7 @@ export const bg: Messages = {
     bookMigrationNeeded: 'Приложете миграцията на книгата (db push) и опреснете страницата.',
     bookImport: 'Импорт от Excel',
     bookImportHint:
-      'Един файл .xlsx с листове objects и owners. Ключът е номер на апартамент (трябва вече да съществува). Собствениците във файла напълно заместват текущите.',
+      'Един файл .xlsx с листове objects и owners. Ключът е номер на апартамент. Липсващите апартаменти се създават. Собствениците във файла напълно заместват текущите.',
     bookTplExcel: 'Изтегли Excel шаблон',
     bookFileExcel: 'Файл на книгата (.xlsx)',
     bookFileRequired: 'Изберете Excel файл.',

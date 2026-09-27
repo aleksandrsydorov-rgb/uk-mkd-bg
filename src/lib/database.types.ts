@@ -410,6 +410,7 @@ export interface Database {
           ideal_parts_note: string | null;
           ideal_parts_meeting_ref: string | null;
           owner_user_management_agreement: string | null;
+          ownership_type: string | null;
         };
         Insert: {
           id?: number;
@@ -439,6 +440,7 @@ export interface Database {
           ideal_parts_note?: string | null;
           ideal_parts_meeting_ref?: string | null;
           owner_user_management_agreement?: string | null;
+          ownership_type?: string | null;
         };
         Update: {
           id?: number;
@@ -468,6 +470,7 @@ export interface Database {
           ideal_parts_note?: string | null;
           ideal_parts_meeting_ref?: string | null;
           owner_user_management_agreement?: string | null;
+          ownership_type?: string | null;
         };
         Relationships: [];
       };
@@ -748,6 +751,8 @@ export interface Database {
           deregistered_at: string | null;
           lives_on_property: boolean | null;
           note: string | null;
+          ownership_share_percent: number | null;
+          ideal_parts_percent: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -766,6 +771,8 @@ export interface Database {
           deregistered_at?: string | null;
           lives_on_property?: boolean | null;
           note?: string | null;
+          ownership_share_percent?: number | null;
+          ideal_parts_percent?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -784,6 +791,8 @@ export interface Database {
           deregistered_at?: string | null;
           lives_on_property?: boolean | null;
           note?: string | null;
+          ownership_share_percent?: number | null;
+          ideal_parts_percent?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -3412,6 +3421,55 @@ export interface Database {
           p_photo_path?: string | null;
           p_completion_mode?: string | null;
         };
+        Returns: Record<string, unknown>;
+      };
+      admin_list_property_book: {
+        Args: { p_limit?: number };
+        Returns: {
+          property_id: number;
+          apartment_number: string;
+          purpose: string | null;
+          area_sqm: number | null;
+          ideal_parts_percent: number | null;
+          ownership_type: string | null;
+          owner_count: number;
+          book_complete: boolean;
+          validation: Record<string, unknown>;
+        }[];
+      };
+      admin_get_property_book: {
+        Args: { p_property_id: number };
+        Returns: Record<string, unknown>;
+      };
+      admin_upsert_property_book_object: {
+        Args: {
+          p_property_id: number;
+          p_purpose: string;
+          p_area_sqm: number;
+          p_ideal_parts_percent: number;
+          p_ownership_type: string;
+          p_ideal_parts_source?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      admin_replace_property_book_owners: {
+        Args: { p_property_id: number; p_owners: unknown };
+        Returns: Record<string, unknown>;
+      };
+      admin_import_property_book: {
+        Args: {
+          p_objects: unknown;
+          p_owners: unknown;
+          p_dry_run?: boolean;
+        };
+        Returns: Record<string, unknown>;
+      };
+      property_book_is_complete: {
+        Args: { p_property_id: number };
+        Returns: boolean;
+      };
+      property_book_validate: {
+        Args: { p_property_id: number };
         Returns: Record<string, unknown>;
       };
     };

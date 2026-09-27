@@ -92,6 +92,7 @@ import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
 import { AdminSecurity } from '@/components/admin/AdminSecurity';
+import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
@@ -261,6 +262,7 @@ interface ApartmentGuest {
 type AdminSection =
   | 'обзор'
   | 'квартиры'
+  | 'книга'
   | 'смены'
   | 'заявки'
   | 'счётчики'
@@ -286,6 +288,7 @@ type AdminSection =
 const ADMIN_SECTIONS: readonly AdminSection[] = [
   'обзор',
   'квартиры',
+  'книга',
   'смены',
   'заявки',
   'счётчики',
@@ -369,6 +372,7 @@ function AdminPortal() {
     () => [
       { key: 'обзор', label: t('admin.overview'), icon: '📊' },
       { key: 'квартиры', label: t('admin.apartments'), icon: '🏠' },
+      { key: 'книга', label: t('admin.book'), icon: '📖' },
       { key: 'смены', label: t('admin.transfers'), icon: '🔁' },
       { key: 'заявки', label: t('admin.requests'), icon: '📋' },
       { key: 'рабочие_задачи', label: t('admin.workOrders'), icon: '🛠️' },
@@ -443,6 +447,7 @@ function AdminPortal() {
             label: t('admin.menuObjects'),
             items: [
               'квартиры',
+              'книга',
               'смены',
               ...(showServiceLock ? (['блокировка'] as const) : []),
               ...(showSecurity ? (['охрана'] as const) : []),
@@ -3637,6 +3642,15 @@ function AdminPortal() {
       case 'блокировка':
         return (
           <AdminServiceLock
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+          />
+        );
+
+      case 'книга':
+        return (
+          <AdminPropertyBook
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}

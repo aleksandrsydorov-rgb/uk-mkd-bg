@@ -3293,6 +3293,7 @@ export interface Database {
           p_delivery_note?: string | null;
           p_handover_item?: string | null;
           p_note?: string | null;
+          p_delivery_mode?: string | null;
         };
         Returns: Record<string, unknown>;
       };
@@ -3308,6 +3309,7 @@ export interface Database {
           p_delivery_note?: string | null;
           p_handover_item?: string | null;
           p_note?: string | null;
+          p_delivery_mode?: string | null;
         };
         Returns: Record<string, unknown>;
       };
@@ -3329,6 +3331,7 @@ export interface Database {
           post_name: string;
           kind: string;
           status: string;
+          delivery_mode: string | null;
           created_by_role: string;
           created_by_email: string;
           guest_name: string | null;
@@ -3339,6 +3342,7 @@ export interface Database {
           note: string | null;
           accepted_at: string | null;
           handed_over_at: string | null;
+          completion_mode: string | null;
           created_at: string;
         }[];
       };
@@ -3368,6 +3372,7 @@ export interface Database {
           post_id: string;
           kind: string;
           status: string;
+          delivery_mode: string | null;
           guest_name: string | null;
           expected_at: string | null;
           courier_name: string | null;
@@ -3376,14 +3381,37 @@ export interface Database {
           note: string | null;
           created_at: string;
           accepted_at: string | null;
+          accepted_photo_path: string | null;
+          handed_over_photo_path: string | null;
+          completion_mode: string | null;
         }[];
       };
-      guard_accept_request: {
+      guard_mark_seen: {
         Args: { p_request_id: string };
         Returns: Record<string, unknown>;
       };
+      guard_receive_at_post: {
+        Args: { p_request_id: string; p_photo_path?: string | null };
+        Returns: Record<string, unknown>;
+      };
+      guard_complete_request: {
+        Args: {
+          p_request_id: string;
+          p_photo_path?: string | null;
+          p_completion_mode?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      guard_accept_request: {
+        Args: { p_request_id: string; p_photo_path?: string | null };
+        Returns: Record<string, unknown>;
+      };
       guard_handover_request: {
-        Args: { p_request_id: string };
+        Args: {
+          p_request_id: string;
+          p_photo_path?: string | null;
+          p_completion_mode?: string | null;
+        };
         Returns: Record<string, unknown>;
       };
     };

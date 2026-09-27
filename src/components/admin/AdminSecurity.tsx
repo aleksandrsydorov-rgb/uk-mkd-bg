@@ -8,9 +8,12 @@ import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
 import {
+  SECURITY_DELIVERY_MODES,
   SECURITY_HANDOVER_ITEMS,
   SECURITY_REQUEST_KINDS,
   canSeeSecurityAdmin,
+  securityStatusTone,
+  type SecurityDeliveryMode,
   type SecurityHandoverItem,
   type SecurityPost,
   type SecurityRequestAdminRow,
@@ -79,6 +82,7 @@ export function AdminSecurity({
   const [guestName, setGuestName] = useState('');
   const [courierName, setCourierName] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
+  const [deliveryMode, setDeliveryMode] = useState<SecurityDeliveryMode>('hold_at_post');
   const [handoverItem, setHandoverItem] = useState<SecurityHandoverItem>('parcel');
   const [note, setNote] = useState('');
 
@@ -199,11 +203,13 @@ export function AdminSecurity({
         p_delivery_note: kind === 'delivery' ? deliveryNote.trim() || null : null,
         p_handover_item: kind === 'handover' ? handoverItem : null,
         p_note: note.trim() || null,
+        p_delivery_mode: kind === 'delivery' ? deliveryMode : null,
       });
       if (rpcErr) throw rpcErr;
       setGuestName('');
       setCourierName('');
       setDeliveryNote('');
+      setDeliveryMode('hold_at_post');
       setNote('');
       setSuccess(t('admin.secRequestCreated'));
       await load();
@@ -324,6 +330,27 @@ export function AdminSecurity({
           ) : null}
           {kind === 'delivery' ? (
             <>
+              <fieldset className="grid gap-2">
+                <legend className="text-sm text-secondary">{t('admin.secDeliveryMode')}</legend>
+                {SECURITY_DELIVERY_MODES.map((mode) => (
+                  <label key={mode} className="flex items-start gap-2 text-sm text-foreground">
+                    <input
+                      type="radio"
+                      name="admin_delivery_mode"
+                      className="mt-1"
+                      checked={deliveryMode === mode}
+                      onChange={() => setDeliveryMode(mode)}
+                      disabled={busy}
+                    />
+                    <span>
+                      <span className="font-medium">{t(`admin.secDeliveryMode_${mode}`)}</span>
+                      <span className="mt-0.5 block text-xs text-muted">
+                        {t(`admin.secDeliveryModeHint_${mode}`)}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
               <label className="grid gap-1 text-sm text-secondary">
                 {t('admin.secCourier')}
                 <input className={adminFieldClass} value={courierName} onChange={(e) => setCourierName(e.target.value)} />
@@ -398,16 +425,13 @@ export function AdminSecurity({
                     <td className={adminTableCellClass}>
                       <StatusBadge
                         label={statusLabel(row.status)}
-                        tone={
-                          row.status === 'pending'
-                            ? 'warning'
-                            : row.status === 'accepted'
-                              ? 'info'
-                              : row.status === 'handed_over'
-                                ? 'success'
-                                : 'neutral'
-                        }
+                        tone={securityStatusTone(row.status)}
                       />
+                      {row.kind === 'delivery' && row.delivery_mode ? (
+                        <p className="mt-1 text-xs text-muted">
+                          {t(`admin.secDeliveryMode_${row.delivery_mode}`)}
+                        </p>
+                      ) : null}
                     </td>
                     <td className={adminTableCellClass}>
                       {row.guest_name || row.courier_name || row.note || '—'}

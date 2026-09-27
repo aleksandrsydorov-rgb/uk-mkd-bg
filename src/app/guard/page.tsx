@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { resolveAccess } from '@/lib/access';
@@ -12,11 +12,23 @@ import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
 import {
+  GUARD_QUEUE_KIND_ORDER,
+  isCourierPassFlow,
   isGuardRole,
+  isHoldAtPostFlow,
+  isParcelGuardFlow,
+  securityStatusTone,
   type GuardQueueRow,
   type GuardShiftView,
+  type SecurityCompletionMode,
   type SecurityPostOption,
 } from '@/lib/security';
+import {
+  REQUEST_PHOTOS_BUCKET,
+  messageForUploadError,
+  securityPhotoPath,
+  uploadPrivateFile,
+} from '@/lib/privateMedia';
 import { StatusBadge } from '@/components/account/ownerUi';
 import {
   AdminInlineAlert,
@@ -40,6 +52,7 @@ function GuardCabinetInner() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoById, setPhotoById] = useState<Record<string, File | null>>({});
 
   const kindLabel = (k: string) => {
     const key = `guard.kind_${k}` as const;
@@ -47,10 +60,31 @@ function GuardCabinetInner() {
     return v === key ? k : v;
   };
 
-  const statusLabel = (s: string) => {
-    const key = `guard.status_${s}` as const;
+  const statusLabel = (row: GuardQueueRow) => {
+    const { kind, status, delivery_mode: mode } = row;
+    if (kind === 'guest_pass') {
+      if (status === 'pending') return t('guard.statusInfoPending');
+      if (status === 'seen' || status === 'accepted') return t('guard.statusInfoSeen');
+      if (status === 'done' || status === 'handed_over') return t('guard.statusInfoDone');
+    } else if (isCourierPassFlow(kind, mode)) {
+      if (status === 'pending') return t('guard.statusPassPending');
+      if (status === 'seen' || status === 'accepted') return t('guard.statusPassSeen');
+      if (status === 'done' || status === 'handed_over') return t('guard.statusPassDone');
+    } else if (isHoldAtPostFlow(kind, mode)) {
+      if (status === 'pending') return t('guard.statusParcelPending');
+      if (status === 'seen') return t('guard.statusParcelSeen');
+      if (status === 'at_post' || status === 'accepted') return t('guard.statusParcelAtPost');
+      if (status === 'done' || status === 'handed_over') return t('guard.statusParcelDone');
+    }
+    const key = `guard.status_${status}` as const;
     const v = t(key);
-    return v === key ? s : v;
+    return v === key ? status : v;
+  };
+
+  const flowHint = (kind: string, mode?: string | null) => {
+    if (kind === 'guest_pass') return t('guard.flowInfoHint');
+    if (isCourierPassFlow(kind, mode)) return t('guard.flowPassHint');
+    return t('guard.flowHoldHint');
   };
 
   const handoverLabel = (item: string | null) => {
@@ -59,6 +93,23 @@ function GuardCabinetInner() {
     const v = t(key);
     return v === key ? item : v;
   };
+
+  const groupedQueue = useMemo(() => {
+    const map = new Map<string, GuardQueueRow[]>();
+    for (const kind of GUARD_QUEUE_KIND_ORDER) map.set(kind, []);
+    for (const row of queue) {
+      const key = GUARD_QUEUE_KIND_ORDER.includes(row.kind as (typeof GUARD_QUEUE_KIND_ORDER)[number])
+        ? row.kind
+        : 'guest_pass';
+      const list = map.get(key) ?? [];
+      list.push(row);
+      map.set(key, list);
+    }
+    return GUARD_QUEUE_KIND_ORDER.map((kind) => ({
+      kind,
+      rows: map.get(kind) ?? [],
+    })).filter((g) => g.rows.length > 0);
+  }, [queue]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,11 +213,26 @@ function GuardCabinetInner() {
     }
   }
 
-  async function accept(id: string) {
+  async function uploadOptionalPhoto(row: GuardQueueRow) {
+    const file = photoById[row.id];
+    if (!file) return null;
+    try {
+      const path = securityPhotoPath(row.property_id, file.name);
+      await uploadPrivateFile(supabase, REQUEST_PHOTOS_BUCKET, path, file);
+      return path;
+    } catch (e: unknown) {
+      const mapped = messageForUploadError(e, t('guard.photoTypeErr'), t('guard.photoSizeErr'));
+      throw mapped ? new Error(mapped) : e;
+    }
+  }
+
+  async function markSeen(row: GuardQueueRow) {
     setBusy(true);
     setError(null);
     try {
-      const { error: rpcErr } = await supabase.rpc('guard_accept_request', { p_request_id: id });
+      const { error: rpcErr } = await supabase.rpc('guard_mark_seen', {
+        p_request_id: row.id,
+      });
       if (rpcErr) throw rpcErr;
       await refresh();
     } catch (e: unknown) {
@@ -176,12 +242,40 @@ function GuardCabinetInner() {
     }
   }
 
-  async function handover(id: string) {
+  async function receiveAtPost(row: GuardQueueRow) {
     setBusy(true);
     setError(null);
     try {
-      const { error: rpcErr } = await supabase.rpc('guard_handover_request', { p_request_id: id });
+      const photoPath = await uploadOptionalPhoto(row);
+      const { error: rpcErr } = await supabase.rpc('guard_receive_at_post', {
+        p_request_id: row.id,
+        p_photo_path: photoPath,
+      });
       if (rpcErr) throw rpcErr;
+      setPhotoById((prev) => ({ ...prev, [row.id]: null }));
+      await refresh();
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('guard.errGeneric')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function complete(row: GuardQueueRow, mode: SecurityCompletionMode) {
+    setBusy(true);
+    setError(null);
+    try {
+      const wantsPhoto =
+        isHoldAtPostFlow(row.kind, row.delivery_mode) ||
+        isCourierPassFlow(row.kind, row.delivery_mode);
+      const photoPath = wantsPhoto ? await uploadOptionalPhoto(row) : null;
+      const { error: rpcErr } = await supabase.rpc('guard_complete_request', {
+        p_request_id: row.id,
+        p_photo_path: photoPath,
+        p_completion_mode: mode,
+      });
+      if (rpcErr) throw rpcErr;
+      setPhotoById((prev) => ({ ...prev, [row.id]: null }));
       await refresh();
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('guard.errGeneric')));
@@ -193,6 +287,100 @@ function GuardCabinetInner() {
   async function logout() {
     await supabase.auth.signOut();
     router.replace('/');
+  }
+
+  function rowDetail(row: GuardQueueRow) {
+    const modeHint =
+      row.kind === 'delivery'
+        ? row.delivery_mode === 'courier_pass'
+          ? t('guard.modeCourierPass')
+          : t('guard.modeHoldAtPost')
+        : null;
+    if (row.kind === 'guest_pass') {
+      return [row.guest_name, row.expected_at ? formatOwnerDateTime(row.expected_at, locale) : null, row.note]
+        .filter(Boolean)
+        .join(' · ') || '—';
+    }
+    if (row.kind === 'delivery') {
+      return [modeHint, row.courier_name, row.delivery_note, row.note].filter(Boolean).join(' · ') || '—';
+    }
+    return [row.handover_item ? handoverLabel(row.handover_item) : null, row.note]
+      .filter(Boolean)
+      .join(' · ') || '—';
+  }
+
+  function renderActions(row: GuardQueueRow) {
+    const hold = isHoldAtPostFlow(row.kind, row.delivery_mode);
+    const pass = isCourierPassFlow(row.kind, row.delivery_mode);
+    const guest = row.kind === 'guest_pass';
+
+    if (row.status === 'pending') {
+      return (
+        <AdminPrimaryButton type="button" disabled={busy} onClick={() => void markSeen(row)}>
+          {t('guard.ackSeen')}
+        </AdminPrimaryButton>
+      );
+    }
+
+    if (guest && (row.status === 'seen' || row.status === 'accepted')) {
+      return (
+        <AdminPrimaryButton type="button" disabled={busy} onClick={() => void complete(row, 'done')}>
+          {t('guard.markDone')}
+        </AdminPrimaryButton>
+      );
+    }
+
+    if (pass && (row.status === 'seen' || row.status === 'accepted')) {
+      return (
+        <AdminPrimaryButton
+          type="button"
+          disabled={busy}
+          onClick={() => void complete(row, 'courier_passed')}
+        >
+          {t('guard.courierPassed')}
+        </AdminPrimaryButton>
+      );
+    }
+
+    if (hold && row.status === 'seen') {
+      return (
+        <AdminPrimaryButton type="button" disabled={busy} onClick={() => void receiveAtPost(row)}>
+          {t('guard.receiveAtPost')}
+        </AdminPrimaryButton>
+      );
+    }
+
+    if (hold && (row.status === 'at_post' || row.status === 'accepted')) {
+      return (
+        <>
+          <AdminPrimaryButton
+            type="button"
+            disabled={busy}
+            onClick={() => void complete(row, 'handed_to_owner')}
+          >
+            {t('guard.handoverParcel')}
+          </AdminPrimaryButton>
+          <AdminSecondaryButton
+            type="button"
+            disabled={busy}
+            onClick={() => void complete(row, 'owner_collected')}
+          >
+            {t('guard.ownerCollected')}
+          </AdminSecondaryButton>
+        </>
+      );
+    }
+
+    return null;
+  }
+
+  function showPhotoInput(row: GuardQueueRow) {
+    if (!isParcelGuardFlow(row.kind, row.delivery_mode)) return false;
+    if (row.status === 'pending') return false;
+    if (isHoldAtPostFlow(row.kind, row.delivery_mode)) {
+      return row.status === 'seen' || row.status === 'at_post' || row.status === 'accepted';
+    }
+    return row.status === 'seen' || row.status === 'accepted';
   }
 
   if (!authReady || !allowed) {
@@ -281,9 +469,14 @@ function GuardCabinetInner() {
               </AdminSecondaryButton>
             </section>
 
-            <section className="space-y-3">
+            <section className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base font-semibold">{t('guard.queue')}</h2>
+                <h2 className="text-base font-semibold">
+                  {t('guard.queue')}
+                  {queue.length > 0 ? (
+                    <span className="ml-2 text-sm font-normal text-muted">({queue.length})</span>
+                  ) : null}
+                </h2>
                 <button
                   type="button"
                   className="text-sm text-accent hover:underline"
@@ -293,57 +486,71 @@ function GuardCabinetInner() {
                   {t('guard.refresh')}
                 </button>
               </div>
+
               {loading ? (
                 <p className="text-sm text-muted">{t('common.loading')}</p>
               ) : queue.length === 0 ? (
                 <div className={`${adminCardClass} p-5 text-sm text-muted`}>{t('guard.queueEmpty')}</div>
               ) : (
-                <ul className="space-y-3">
-                  {queue.map((row) => (
-                    <li key={row.id} className={`${adminCardClass} space-y-3 p-4`}>
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            {kindLabel(row.kind)} · {t('guard.apt')} {row.apartment_number}
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted">
-                            {formatOwnerDateTime(row.created_at, locale)}
-                          </p>
-                        </div>
-                        <StatusBadge
-                          label={statusLabel(row.status)}
-                          tone={row.status === 'pending' ? 'warning' : 'info'}
-                        />
+                groupedQueue.map((group) => {
+                  const pending = group.rows.filter((r) => r.status === 'pending').length;
+                  const active = group.rows.filter((r) => r.status !== 'pending').length;
+                  const sampleMode = group.rows[0]?.delivery_mode;
+                  return (
+                    <div key={group.kind} className="space-y-2">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2 px-0.5">
+                        <h3 className="text-sm font-semibold text-foreground">{kindLabel(group.kind)}</h3>
+                        <p className="text-xs text-muted">
+                          {t('guard.groupCounts', { pending, active, total: group.rows.length })}
+                        </p>
                       </div>
-                      <p className="text-sm text-secondary">
-                        {row.guest_name ||
-                          row.courier_name ||
-                          (row.handover_item ? handoverLabel(row.handover_item) : null) ||
-                          row.note ||
-                          row.delivery_note ||
-                          '—'}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {row.status === 'pending' ? (
-                          <AdminPrimaryButton
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void accept(row.id)}
-                          >
-                            {t('guard.accept')}
-                          </AdminPrimaryButton>
-                        ) : null}
-                        <AdminSecondaryButton
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void handover(row.id)}
-                        >
-                          {t('guard.handover')}
-                        </AdminSecondaryButton>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      <p className="px-0.5 text-xs text-secondary">{flowHint(group.kind, sampleMode)}</p>
+                      <ul className="space-y-3">
+                        {group.rows.map((row) => (
+                          <li key={row.id} className={`${adminCardClass} space-y-3 p-4`}>
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {t('guard.apt')} {row.apartment_number}
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted">
+                                  {formatOwnerDateTime(row.created_at, locale)}
+                                </p>
+                              </div>
+                              <StatusBadge
+                                label={statusLabel(row)}
+                                tone={securityStatusTone(row.status)}
+                              />
+                            </div>
+                            <p className="text-sm text-secondary">{rowDetail(row)}</p>
+
+                            {showPhotoInput(row) ? (
+                              <label className="grid gap-1 text-xs text-secondary">
+                                {t('guard.photoOptional')}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  disabled={busy}
+                                  className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-surface-secondary file:px-3 file:py-1.5 file:text-sm"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0] ?? null;
+                                    setPhotoById((prev) => ({ ...prev, [row.id]: file }));
+                                  }}
+                                />
+                                {photoById[row.id] ? (
+                                  <span className="text-muted">{photoById[row.id]?.name}</span>
+                                ) : null}
+                              </label>
+                            ) : null}
+
+                            <div className="flex flex-wrap gap-2">{renderActions(row)}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })
               )}
             </section>
           </>

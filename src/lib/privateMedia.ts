@@ -96,6 +96,10 @@ export function pollImagePath(pollId: number, fileName: string) {
   return `polls/${pollId}/${objectFileName(fileName)}`;
 }
 
+export function securityPhotoPath(propertyId: number, fileName: string) {
+  return `security/${propertyId}/${objectFileName(fileName)}`;
+}
+
 export function bucketForStoredPath(stored: string | null | undefined) {
   const path = stored?.trim() ?? '';
   if (!path || path.includes('..') || path.startsWith('http://') || path.startsWith('https://')) {
@@ -104,6 +108,7 @@ export function bucketForStoredPath(stored: string | null | undefined) {
   const file = path.split('/').pop() ?? '';
   if (!UUID_FILE.test(file)) return null;
   if (/^requests\/[0-9]+\//.test(path)) return REQUEST_PHOTOS_BUCKET;
+  if (/^security\/[0-9]+\//.test(path)) return REQUEST_PHOTOS_BUCKET;
   if (/^properties\/[0-9]+\//.test(path)) return CHAT_FILES_BUCKET;
   if (/^expenses\/[0-9]+\//.test(path)) return EXPENSE_RECEIPTS_BUCKET;
   if (/^polls\/[0-9]+\//.test(path)) return POLL_IMAGES_BUCKET;

@@ -8,8 +8,11 @@ import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
 import {
+  SECURITY_DELIVERY_MODES,
   SECURITY_HANDOVER_ITEMS,
   SECURITY_REQUEST_KINDS,
+  securityStatusTone,
+  type SecurityDeliveryMode,
   type SecurityHandoverItem,
   type SecurityPostOption,
   type SecurityRequest,
@@ -39,6 +42,7 @@ export function OwnerSecurity({
   const [guestName, setGuestName] = useState('');
   const [courierName, setCourierName] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
+  const [deliveryMode, setDeliveryMode] = useState<SecurityDeliveryMode>('hold_at_post');
   const [handoverItem, setHandoverItem] = useState<SecurityHandoverItem>('parcel');
   const [note, setNote] = useState('');
 
@@ -126,11 +130,13 @@ export function OwnerSecurity({
         p_delivery_note: kind === 'delivery' ? deliveryNote.trim() || null : null,
         p_handover_item: kind === 'handover' ? handoverItem : null,
         p_note: note.trim() || null,
+        p_delivery_mode: kind === 'delivery' ? deliveryMode : null,
       });
       if (rpcErr) throw rpcErr;
       setGuestName('');
       setCourierName('');
       setDeliveryNote('');
+      setDeliveryMode('hold_at_post');
       setNote('');
       setOk(t('account.secRequestCreated'));
       await load();
@@ -226,6 +232,27 @@ export function OwnerSecurity({
         ) : null}
         {kind === 'delivery' ? (
           <>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm text-secondary">{t('account.secDeliveryMode')}</legend>
+              {SECURITY_DELIVERY_MODES.map((mode) => (
+                <label key={mode} className="flex items-start gap-2 text-sm text-foreground">
+                  <input
+                    type="radio"
+                    name="delivery_mode"
+                    className="mt-1"
+                    checked={deliveryMode === mode}
+                    onChange={() => setDeliveryMode(mode)}
+                    disabled={busy || serviceLocked}
+                  />
+                  <span>
+                    <span className="font-medium">{t(`account.secDeliveryMode_${mode}`)}</span>
+                    <span className="mt-0.5 block text-xs text-muted">
+                      {t(`account.secDeliveryModeHint_${mode}`)}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
             <label className="grid gap-1 text-sm text-secondary">
               {t('account.secCourier')}
               <input
@@ -301,20 +328,15 @@ export function OwnerSecurity({
                     <p className="text-sm font-medium text-foreground">{kindLabel(row.kind)}</p>
                     <StatusBadge
                       label={statusLabel(row.status)}
-                      tone={
-                        row.status === 'pending'
-                          ? 'warning'
-                          : row.status === 'accepted'
-                            ? 'info'
-                            : row.status === 'handed_over'
-                              ? 'success'
-                              : 'neutral'
-                      }
+                      tone={securityStatusTone(row.status)}
                     />
                   </div>
                   <p className="mt-1 text-xs text-muted">
                     {formatOwnerDateTime(row.created_at, locale)}
                     {postNameById.get(row.post_id) ? ` · ${postNameById.get(row.post_id)}` : ''}
+                    {row.kind === 'delivery' && row.delivery_mode
+                      ? ` · ${t(`account.secDeliveryMode_${row.delivery_mode}`)}`
+                      : ''}
                   </p>
                   <p className="mt-1 text-sm text-secondary">
                     {row.guest_name || row.courier_name || row.note || '—'}

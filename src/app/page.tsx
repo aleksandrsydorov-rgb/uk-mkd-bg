@@ -330,7 +330,7 @@ export default function HomePage() {
         const access = await resolveAccess(authenticatedEmail, supabase);
         if (cancelled) return;
         if (access.isStaff) setCabinetHref(resolveStaffHome(access));
-        else if (access.isOwner) setCabinetHref('/account');
+        else if (access.isOwner || access.isGuest) setCabinetHref('/account');
         else setCabinetHref('#resident-login');
       } catch {
         if (!cancelled) setCabinetHref('#resident-login');

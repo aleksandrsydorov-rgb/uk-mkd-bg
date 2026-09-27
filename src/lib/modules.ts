@@ -26,6 +26,7 @@ export const BUILDING_MODULE_KEYS = [
   'inventory',
   'common_areas',
   'commercial_rentals',
+  'guest_mode',
 ] as const;
 
 export type BuildingModuleKey = (typeof BUILDING_MODULE_KEYS)[number];
@@ -46,6 +47,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'announcements',
   'general_meeting',
   'building_documents',
+  'guest_mode',
 ] as const;
 
 export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];
@@ -102,6 +104,7 @@ export function emptyBuildingModulesState(): BuildingModulesState {
     inventory: false,
     common_areas: false,
     commercial_rentals: false,
+    guest_mode: false,
   };
 }
 
@@ -204,6 +207,7 @@ export function moduleLabelMessageKey(key: string): string | null {
     inventory: 'moduleInventory',
     common_areas: 'moduleCommonAreas',
     commercial_rentals: 'moduleCommercialRentals',
+    guest_mode: 'moduleGuestMode',
   };
   return map[key] ?? null;
 }

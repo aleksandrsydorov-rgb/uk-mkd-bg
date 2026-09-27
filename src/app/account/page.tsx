@@ -24,7 +24,14 @@ import {
   labelPriority,
   labelTransfer,
 } from '@/i18n/labels';
-import { resolveAccess, staffHomePath } from '@/lib/access';
+import {
+  mergeAccountProperties,
+  isGuestOnlyProperty,
+  resolveAccess,
+  staffHomePath,
+  type AccessProfile,
+} from '@/lib/access';
+import { OwnerGuestMode } from '@/components/account/OwnerGuestMode';
 import { normalizeEmail } from '@/lib/email';
 import { annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import {
@@ -192,33 +199,64 @@ export default function AccountPage() {
   const announcementsEnabled = isBuildingModuleEnabled(buildingModules, 'announcements');
   const generalMeetingEnabled = isBuildingModuleEnabled(buildingModules, 'general_meeting');
   const buildingDocumentsEnabled = isBuildingModuleEnabled(buildingModules, 'building_documents');
+  const guestModeEnabled = isBuildingModuleEnabled(buildingModules, 'guest_mode');
   const documentsNavEnabled = generalMeetingEnabled || buildingDocumentsEnabled;
   const managementNavEnabled = requestsEnabled || announcementsEnabled || chatEnabled;
+  const [accessProfile, setAccessProfile] = useState<AccessProfile | null>(null);
+  const guestContext = useMemo(() => {
+    if (!property || !accessProfile) return false;
+    return isGuestOnlyProperty(accessProfile, property.id);
+  }, [property, accessProfile]);
   // Module Core disabled always wins; information modes apply only when module is on.
   const waterEnabled = waterModuleOn && isOwnerModuleEnabled(waterMode);
   const electricityEnabled = electricityModuleOn && isOwnerModuleEnabled(electricityMode);
-  const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = [
-    { key: 'обзор', label: t('account.overview'), icon: '▦' },
-    { key: 'квартира', label: t('account.apt'), icon: '🏠' },
-    { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
-    ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled || internetEnabled
-      ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
-      : []),
-    ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
-    ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
-    ...(waterEnabled || electricityEnabled
-      ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
-      : []),
-    ...(documentsNavEnabled
-      ? [{ key: 'документы' as const, label: t('account.docsMenu'), icon: '📁' }]
-      : []),
-    ...(pollsEnabled
-      ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️' }]
-      : []),
-    ...(managementNavEnabled
-      ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
-      : []),
-  ];
+  const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = useMemo(() => {
+    if (guestContext) {
+      return [
+        { key: 'обзор', label: t('account.overview'), icon: '▦' },
+        ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
+        ...(requestsEnabled || chatEnabled
+          ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
+          : []),
+      ];
+    }
+    return [
+      { key: 'обзор', label: t('account.overview'), icon: '▦' },
+      { key: 'квартира', label: t('account.apt'), icon: '🏠' },
+      { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
+      ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled || internetEnabled
+        ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
+        : []),
+      ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
+      ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
+      ...(waterEnabled || electricityEnabled
+        ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
+        : []),
+      ...(documentsNavEnabled
+        ? [{ key: 'документы' as const, label: t('account.docsMenu'), icon: '📁' }]
+        : []),
+      ...(pollsEnabled
+        ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️' }]
+        : []),
+      ...(managementNavEnabled
+        ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
+        : []),
+    ];
+  }, [
+    guestContext,
+    t,
+    supportFeeEnabled,
+    waterEnabled,
+    electricityEnabled,
+    capitalEnabled,
+    internetEnabled,
+    securityEnabled,
+    documentsNavEnabled,
+    pollsEnabled,
+    managementNavEnabled,
+    requestsEnabled,
+    chatEnabled,
+  ]);
   const [waterTariff, setWaterTariff] = useState<CurrentWaterTariffView | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<CurrentElectricityTariffView | null>(null);
   const [supportLedger, setSupportLedger] = useState<SupportFeeEntry[]>([]);
@@ -350,6 +388,7 @@ export default function AccountPage() {
     } finally {
       setDevEmail('');
       setIsStaff(false);
+      setAccessProfile(null);
       setProperties([]);
       setSelectedPropertyId(null);
       setRequests([]);
@@ -383,9 +422,10 @@ export default function AccountPage() {
       try {
         const access = await resolveAccess(devEmail, supabase);
         setIsStaff(access.isStaff);
-        if (!access.isOwner) {
+        if (!access.isOwner && !access.isGuest) {
           setProperties([]);
           setSelectedPropertyId(null);
+          setAccessProfile(null);
           if (access.isStaff) {
             router.replace(staffHomePath(access.staff?.role));
             return;
@@ -394,14 +434,16 @@ export default function AccountPage() {
           return;
         }
 
-        setProperties(access.properties);
+        setAccessProfile(access);
+        const accountProperties = mergeAccountProperties(access);
+        setProperties(accountProperties);
         const nextId =
-          selectedPropertyId && access.properties.some((p) => p.id === selectedPropertyId)
+          selectedPropertyId && accountProperties.some((p) => p.id === selectedPropertyId)
             ? selectedPropertyId
-            : access.properties[0].id;
+            : accountProperties[0].id;
         setSelectedPropertyId(nextId);
-        const ids = access.properties.map((p) => p.id);
-        const selected = access.properties.find((p) => p.id === nextId) ?? access.properties[0];
+        const ids = accountProperties.map((p) => p.id);
+        const selected = accountProperties.find((p) => p.id === nextId) ?? accountProperties[0];
         setPetInfo(selected.pet_info ?? '');
 
         const { data: reqData, error: reqErr } = await supabase
@@ -848,6 +890,13 @@ export default function AccountPage() {
       setManagementTab(requestsEnabled ? 'заявки' : announcementsEnabled ? 'объявления' : 'расходы');
     }
   }, [managementTab, requestsEnabled, announcementsEnabled, chatEnabled]);
+
+  useEffect(() => {
+    if (!guestContext) return;
+    if (managementTab === 'объявления' || managementTab === 'расходы') {
+      setManagementTab(requestsEnabled ? 'заявки' : chatEnabled ? 'чат' : 'заявки');
+    }
+  }, [guestContext, managementTab, requestsEnabled, chatEnabled]);
 
   // ===================================================================
   // ЧАТ — ПОЛИНГ
@@ -1667,6 +1716,7 @@ export default function AccountPage() {
               setActiveMenu('ук');
             }}
             onOpenDocuments={() => setActiveMenu('документы')}
+            guestLimited={guestContext}
           />
         );
       }
@@ -1697,6 +1747,10 @@ export default function AccountPage() {
             listingSaving={listingSaving}
             onUpdateListing={handleUpdateListing}
             extra={(
+              <>
+              {guestModeEnabled && property && !guestContext ? (
+                <OwnerGuestMode supabase={supabase} propertyId={property.id} />
+              ) : null}
               <div className="rounded-xl border border-border bg-background px-3 py-3">
               <p className="text-sm text-secondary mb-3">
                 {t('account.transferLead')}
@@ -1764,6 +1818,7 @@ export default function AccountPage() {
                 </div>
               )}
               </div>
+              </>
             )}
           />
         );
@@ -2126,8 +2181,9 @@ export default function AccountPage() {
             onRequestFormOpen={setShowRequestForm}
             unreadChatCount={unreadChatCount}
             requestsEnabled={requestsEnabled}
-            announcementsEnabled={announcementsEnabled}
+            announcementsEnabled={guestContext ? false : announcementsEnabled}
             chatEnabled={chatEnabled}
+            expensesEnabled={!guestContext}
             requestForm={
               <form onSubmit={handleCreateRequest} className="space-y-3 rounded-[14px] border border-border bg-surface px-4 py-3">
                 <h3 className="text-sm font-semibold">

@@ -93,6 +93,7 @@ export function OwnerManagement({
   requestsEnabled = true,
   announcementsEnabled = true,
   chatEnabled = true,
+  expensesEnabled = true,
 }: {
   tab: ManagementTab;
   onTab: (tab: ManagementTab) => void;
@@ -110,6 +111,7 @@ export function OwnerManagement({
   requestsEnabled?: boolean;
   announcementsEnabled?: boolean;
   chatEnabled?: boolean;
+  expensesEnabled?: boolean;
   chat: {
     messages: ChatRow[];
     input: string;
@@ -185,7 +187,7 @@ export function OwnerManagement({
     ...(announcementsEnabled
       ? [{ id: 'объявления' as const, label: t('account.announcements'), count: announcements.length || undefined }]
       : []),
-    { id: 'расходы', label: t('account.mgmtTabExpenses') },
+    ...(expensesEnabled ? [{ id: 'расходы' as const, label: t('account.mgmtTabExpenses') }] : []),
     ...(chatEnabled
       ? [{ id: 'чат' as const, label: t('account.tabChat'), count: unreadChatCount || undefined }]
       : []),

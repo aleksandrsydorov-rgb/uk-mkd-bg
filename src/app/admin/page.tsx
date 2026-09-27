@@ -941,7 +941,7 @@ function AdminPortal() {
         const access = await resolveAccess(email, supabase);
         if (cancelled) return;
         if (!access.isStaff) {
-          router.replace(access.isOwner ? '/account' : '/');
+          router.replace(access.isOwner || access.isGuest ? '/account' : '/');
           return;
         }
         if (isGuardRole(access.staff?.role)) {

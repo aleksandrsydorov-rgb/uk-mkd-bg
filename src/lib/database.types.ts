@@ -313,6 +313,7 @@ export interface Database {
           poll_id: number;
           option_id: number;
           property_id: number;
+          registry_people_id: number | null;
           weight: number | null;
         };
         Insert: {
@@ -321,6 +322,7 @@ export interface Database {
           poll_id: number;
           option_id: number;
           property_id: number;
+          registry_people_id?: number | null;
           weight?: number | null;
         };
         Update: {
@@ -329,6 +331,7 @@ export interface Database {
           poll_id?: number;
           option_id?: number;
           property_id?: number;
+          registry_people_id?: number | null;
           weight?: number | null;
         };
         Relationships: [];
@@ -693,6 +696,42 @@ export interface Database {
           photo_urls?: string[] | null;
           approved_by?: string | null;
           approved_at?: string | null;
+        };
+        Relationships: [];
+      };
+      property_guest_accesses: {
+        Row: {
+          id: string;
+          property_id: number;
+          email: string;
+          relation_type: string;
+          valid_from: string;
+          valid_until: string | null;
+          status: string;
+          created_by_email: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          email: string;
+          relation_type: string;
+          valid_from?: string;
+          valid_until?: string | null;
+          status?: string;
+          created_by_email: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          email?: string;
+          relation_type?: string;
+          valid_from?: string;
+          valid_until?: string | null;
+          status?: string;
+          created_by_email?: string;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -1448,16 +1487,19 @@ export interface Database {
           version_id: string;
           component_key: string;
           rate: number;
+          subject_kind: string;
         };
         Insert: {
           version_id: string;
           component_key: string;
           rate: number;
+          subject_kind?: string;
         };
         Update: {
           version_id?: string;
           component_key?: string;
           rate?: number;
+          subject_kind?: string;
         };
         Relationships: [];
       };
@@ -2080,10 +2122,12 @@ export interface Database {
           meeting_id: string;
           decision_id: string;
           property_id: number;
+          registry_people_id: number | null;
           participant_id: string | null;
           vote: string;
           ideal_parts_percent_snapshot: number | null;
           vote_method: string;
+          vote_source: string | null;
           recorded_at: string;
           recorded_by_email: string | null;
         };
@@ -2092,10 +2136,12 @@ export interface Database {
           meeting_id: string;
           decision_id: string;
           property_id: number;
+          registry_people_id?: number | null;
           participant_id?: string | null;
           vote: string;
           ideal_parts_percent_snapshot?: number | null;
           vote_method: string;
+          vote_source?: string | null;
           recorded_at?: string;
           recorded_by_email?: string | null;
         };
@@ -2104,10 +2150,12 @@ export interface Database {
           meeting_id?: string;
           decision_id?: string;
           property_id?: number;
+          registry_people_id?: number | null;
           participant_id?: string | null;
           vote?: string;
           ideal_parts_percent_snapshot?: number | null;
           vote_method?: string;
+          vote_source?: string | null;
           recorded_at?: string;
           recorded_by_email?: string | null;
         };
@@ -2409,7 +2457,10 @@ export interface Database {
       publish_tariff_version: {
         Args: {
           p_tariff_id: string;
-          p_rates: Record<string, number>;
+          p_rates: Record<string, number> | {
+            natural?: Record<string, number>;
+            legal?: Record<string, number>;
+          };
           p_basis_type: string;
           p_basis_note: string;
           p_idempotency_key: string;
@@ -3491,6 +3542,28 @@ export interface Database {
       accept_property_invite: {
         Args: { p_token: string; p_mark_accepted?: boolean };
         Returns: Record<string, unknown>;
+      };
+      list_my_guest_properties: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['properties']['Row'][];
+      };
+      owner_list_guest_accesses: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['property_guest_accesses']['Row'][];
+      };
+      owner_create_guest_access: {
+        Args: {
+          p_property_id: number;
+          p_email: string;
+          p_relation_type: string;
+          p_valid_from?: string;
+          p_valid_until?: string | null;
+        };
+        Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
+      };
+      owner_revoke_guest_access: {
+        Args: { p_access_id: string };
+        Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
       };
     };
     Enums: Record<string, never>;

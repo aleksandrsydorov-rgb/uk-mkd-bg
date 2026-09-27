@@ -78,6 +78,7 @@ export function OwnerOverview({
   onOpenRequests,
   onOpenChat,
   onOpenDocuments,
+  guestLimited = false,
 }: {
   supabase: SupabaseClient<Database>;
   property: {
@@ -117,8 +118,17 @@ export function OwnerOverview({
   onOpenRequests: () => void;
   onOpenChat: () => void;
   onOpenDocuments: () => void;
+  guestLimited?: boolean;
 }) {
   const { t, dateLocale, locale } = useI18n();
+  const showSupport = !guestLimited && supportFeeEnabled;
+  const showWater = !guestLimited && waterEnabled;
+  const showElectricity = !guestLimited && electricityEnabled;
+  const showCapital = !guestLimited && capitalEnabled;
+  const showInternet = !guestLimited && internetEnabled;
+  const showPolls = !guestLimited && pollsEnabled;
+  const showMeetings = !guestLimited && meetingsEnabled;
+  const showDocuments = !guestLimited && documentsEnabled;
   const [extrasLoading, setExtrasLoading] = useState(true);
   const [waterBalance, setWaterBalance] = useState<UtilityBalance>(emptyBalance());
   const [electricityBalance, setElectricityBalance] = useState<UtilityBalance>(emptyBalance());
@@ -132,8 +142,19 @@ export function OwnerOverview({
   const loadExtras = useCallback(async () => {
     setExtrasLoading(true);
     try {
+      if (guestLimited) {
+        setUpcomingMeeting(null);
+        setLatestDecision(null);
+        setCapitalBalance(emptyBalance());
+        setInternetBalance(emptyBalance());
+        setWaterBalance(emptyBalance());
+        setElectricityBalance(emptyBalance());
+        setWaterMeter(null);
+        setLastWater(null);
+        return;
+      }
       const jobs: Promise<unknown>[] = [];
-      if (meetingsEnabled) {
+      if (showMeetings) {
         jobs.push(
           Promise.resolve(supabase.from('general_meetings').select('*').order('meeting_date', { ascending: true })).then((res) => {
             if (res.error) {
@@ -159,7 +180,7 @@ export function OwnerOverview({
         setUpcomingMeeting(null);
         setLatestDecision(null);
       }
-      if (capitalEnabled) {
+      if (showCapital) {
         jobs.push(
           Promise.resolve(supabase.rpc('get_capital_repair_balance', { p_property_id: property.id })).then((capRes) => {
             if (!capRes.error) setCapitalBalance(firstBalance(capRes.data as UtilityBalance[] | null));
@@ -169,7 +190,7 @@ export function OwnerOverview({
       } else {
         setCapitalBalance(emptyBalance());
       }
-      if (internetEnabled) {
+      if (showInternet) {
         jobs.push(
           Promise.resolve(supabase.rpc('get_internet_balance', { p_property_id: property.id })).then((netRes) => {
             if (!netRes.error) setInternetBalance(firstBalance(netRes.data as UtilityBalance[] | null));
@@ -179,7 +200,7 @@ export function OwnerOverview({
       } else {
         setInternetBalance(emptyBalance());
       }
-      if (waterEnabled) {
+      if (showWater) {
         jobs.push(
           (async () => {
             const [meterRes, readingsRes, waterBalRes] = await Promise.all([
@@ -214,7 +235,7 @@ export function OwnerOverview({
         setWaterMeter(null);
         setLastWater(null);
       }
-      if (electricityEnabled) {
+      if (showElectricity) {
         jobs.push(
           Promise.resolve(supabase.rpc('get_electricity_balance', { p_property_id: property.id })).then((elRes) => {
             if (!elRes.error) setElectricityBalance(firstBalance(elRes.data as UtilityBalance[] | null));
@@ -235,7 +256,16 @@ export function OwnerOverview({
     } finally {
       setExtrasLoading(false);
     }
-  }, [property.id, supabase, waterEnabled, electricityEnabled, capitalEnabled, internetEnabled, meetingsEnabled]);
+  }, [
+    property.id,
+    supabase,
+    guestLimited,
+    showWater,
+    showElectricity,
+    showCapital,
+    showInternet,
+    showMeetings,
+  ]);
 
   useEffect(() => {
     void loadExtras();
@@ -270,7 +300,7 @@ export function OwnerOverview({
   ].filter(Boolean).join(' · ');
 
   const attention: Array<{ key: string; title: string; detail: string; onClick: () => void }> = [];
-  if (supportFeeEnabled && supportDebt > 0) {
+  if (showSupport && supportDebt > 0) {
     attention.push({
       key: 'support',
       title: t('account.financeTabSupport'),
@@ -278,7 +308,7 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('support'),
     });
   }
-  if (waterEnabled && waterDebt > 0) {
+  if (showWater && waterDebt > 0) {
     attention.push({
       key: 'water',
       title: t('account.financeTabWater'),
@@ -286,7 +316,7 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('water'),
     });
   }
-  if (electricityEnabled && electricityDebt > 0) {
+  if (showElectricity && electricityDebt > 0) {
     attention.push({
       key: 'electricity',
       title: t('account.financeTabElectricity'),
@@ -294,7 +324,7 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('electricity'),
     });
   }
-  if (capitalEnabled && capitalDebt > 0) {
+  if (showCapital && capitalDebt > 0) {
     attention.push({
       key: 'capital',
       title: t('account.financeTabCapital'),
@@ -302,7 +332,7 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('capital'),
     });
   }
-  if (internetEnabled && internetDebt > 0) {
+  if (showInternet && internetDebt > 0) {
     attention.push({
       key: 'internet',
       title: t('account.financeTabInternet'),
@@ -310,7 +340,7 @@ export function OwnerOverview({
       onClick: () => onOpenFinance('internet'),
     });
   }
-  if (waterEnabled && !extrasLoading && !waterMeter) {
+  if (showWater && !extrasLoading && !waterMeter) {
     attention.push({
       key: 'no-water-meter',
       title: t('account.meterTabWater'),
@@ -318,7 +348,7 @@ export function OwnerOverview({
       onClick: () => onOpenMeters('water'),
     });
   }
-  if (electricityEnabled && !electricMeter) {
+  if (showElectricity && !electricMeter) {
     attention.push({
       key: 'no-el-meter',
       title: t('account.meterTabElectricity'),
@@ -326,7 +356,7 @@ export function OwnerOverview({
       onClick: () => onOpenMeters('electricity'),
     });
   }
-  if (pollsEnabled) {
+  if (showPolls) {
     for (const poll of unvotedPolls.slice(0, 3)) {
       attention.push({
         key: `poll-${poll.id}`,
@@ -352,7 +382,7 @@ export function OwnerOverview({
       onClick: onOpenChat,
     });
   }
-  if (meetingsEnabled && upcomingMeeting) {
+  if (showMeetings && upcomingMeeting) {
     attention.push({
       key: 'meeting',
       title: t('docs.attentionMeeting'),
@@ -362,14 +392,14 @@ export function OwnerOverview({
   }
 
   const financeCount =
-    (supportFeeEnabled ? 1 : 0)
-    + (waterEnabled ? 1 : 0)
-    + (electricityEnabled ? 1 : 0)
-    + (capitalEnabled ? 1 : 0)
-    + (internetEnabled ? 1 : 0);
+    (showSupport ? 1 : 0)
+    + (showWater ? 1 : 0)
+    + (showElectricity ? 1 : 0)
+    + (showCapital ? 1 : 0)
+    + (showInternet ? 1 : 0);
   const financeCols =
     financeCount >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : financeCount === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
-  const meterCount = (waterEnabled ? 1 : 0) + (electricityEnabled ? 1 : 0);
+  const meterCount = (showWater ? 1 : 0) + (showElectricity ? 1 : 0);
   const kpiGrid = 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4';
   const kpiBtn =
     'group flex w-full min-h-[6.5rem] flex-col items-center justify-center rounded-xl border border-border bg-surface px-3 py-3 text-center transition hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40';
@@ -386,15 +416,23 @@ export function OwnerOverview({
           </h2>
           <p className="mt-0.5 text-sm text-secondary">{heroMeta}</p>
         </div>
-        <button
-          type="button"
-          onClick={onOpenApartment}
-          className="hidden shrink-0 items-center gap-1 rounded-full border border-border px-3 py-1.5 text-sm text-secondary transition hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 md:inline-flex"
-        >
-          {t('account.overviewOpenApt')}
-          <span aria-hidden>→</span>
-        </button>
+        {!guestLimited ? (
+          <button
+            type="button"
+            onClick={onOpenApartment}
+            className="hidden shrink-0 items-center gap-1 rounded-full border border-border px-3 py-1.5 text-sm text-secondary transition hover:bg-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 md:inline-flex"
+          >
+            {t('account.overviewOpenApt')}
+            <span aria-hidden>→</span>
+          </button>
+        ) : null}
       </header>
+
+      {guestLimited ? (
+        <p className="rounded-xl border border-accent/20 bg-accent-bg px-3 py-2 text-sm text-accent">
+          {t('account.guestModeBanner')}
+        </p>
+      ) : null}
 
       {properties.length > 1 && (
         <div className="-mt-1">
@@ -433,7 +471,7 @@ export function OwnerOverview({
         <p className="text-xs text-secondary">✓ {t('account.overviewOk')}</p>
       )}
 
-      {(upcomingMeeting || latestDecision) ? (
+      {showMeetings && (upcomingMeeting || latestDecision) ? (
         <section className="overflow-hidden rounded-xl border border-border bg-background">
           <p className="px-3 pt-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
             {t('docs.overviewTitle')}
@@ -474,7 +512,7 @@ export function OwnerOverview({
       <section>
         <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.finance')}</p>
         <div className={financeCount >= 4 ? kpiGrid : `grid gap-2 ${financeCols}`}>
-          {supportFeeEnabled && (
+          {showSupport && (
           <button type="button" onClick={() => onOpenFinance('support')} className={kpiBtn}>
             <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabSupport')}</p>
             <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(supportNet)}`}>
@@ -495,7 +533,7 @@ export function OwnerOverview({
             ) : null}
           </button>
           )}
-          {waterEnabled && (
+          {showWater && (
             <button type="button" onClick={() => onOpenFinance('water')} className={kpiBtn}>
               <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabWater')}</p>
               <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(waterDebt)}`}>
@@ -504,7 +542,7 @@ export function OwnerOverview({
               <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(waterDebt, t)}</p>
             </button>
           )}
-          {electricityEnabled && (
+          {showElectricity && (
             <button type="button" onClick={() => onOpenFinance('electricity')} className={kpiBtn}>
               <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabElectricity')}</p>
               <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(electricityDebt)}`}>
@@ -513,7 +551,7 @@ export function OwnerOverview({
               <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(electricityDebt, t)}</p>
             </button>
           )}
-          {capitalEnabled && (
+          {showCapital && (
             <button type="button" onClick={() => onOpenFinance('capital')} className={kpiBtn}>
               <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabCapital')}</p>
               <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(capitalDebt)}`}>
@@ -522,7 +560,7 @@ export function OwnerOverview({
               <p className="mt-0.5 text-xs text-secondary">{extrasLoading ? '—' : statusLabel(capitalDebt, t)}</p>
             </button>
           )}
-          {internetEnabled && (
+          {showInternet && (
             <button type="button" onClick={() => onOpenFinance('internet')} className={kpiBtn}>
               <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.financeTabInternet')}</p>
               <p className={`mt-0.5 text-xl font-semibold tabular-nums md:text-2xl ${amountClass(internetDebt)}`}>
@@ -539,7 +577,7 @@ export function OwnerOverview({
         <section>
           <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">{t('account.meters')}</p>
           <div className={kpiGrid}>
-            {waterEnabled && (
+            {showWater && (
               <button type="button" onClick={() => onOpenMeters('water')} className={kpiBtn}>
                 <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.meterTabWater')}</p>
                 {extrasLoading ? (
@@ -559,7 +597,7 @@ export function OwnerOverview({
                 )}
               </button>
             )}
-            {electricityEnabled && (
+            {showElectricity && (
               <button type="button" onClick={() => onOpenMeters('electricity')} className={kpiBtn}>
                 <p className="text-[10px] uppercase tracking-wider text-muted">{t('account.meterTabElectricity')}</p>
                 {!electricMeter ? (
@@ -589,7 +627,7 @@ export function OwnerOverview({
       )}
 
       <section className="grid gap-1 border-t border-border pt-2 sm:grid-cols-2">
-        {pollsEnabled ? (
+        {showPolls ? (
         <button type="button" onClick={onOpenPolls} className={secondaryBtn}>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium text-foreground">{t('account.overviewPolls')}</span>
@@ -602,13 +640,15 @@ export function OwnerOverview({
           <span className="text-muted" aria-hidden>→</span>
         </button>
         ) : null}
-        <button type="button" onClick={onOpenApartment} className={`${secondaryBtn} md:hidden`}>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-foreground">{t('account.apt')}</span>
-            <span className="block text-xs text-secondary">{t('account.aptDetailsHint')}</span>
-          </span>
-          <span className="text-muted" aria-hidden>→</span>
-        </button>
+        {!guestLimited ? (
+          <button type="button" onClick={onOpenApartment} className={`${secondaryBtn} md:hidden`}>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-foreground">{t('account.apt')}</span>
+              <span className="block text-xs text-secondary">{t('account.aptDetailsHint')}</span>
+            </span>
+            <span className="text-muted" aria-hidden>→</span>
+          </button>
+        ) : null}
       </section>
     </div>
   );

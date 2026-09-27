@@ -74,9 +74,19 @@ export function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function propertyVoteWeight(area: number | null | undefined) {
-  const n = Number(area ?? 0);
+export function propertyVoteWeight(areaOrIdeal: number | null | undefined) {
+  const n = Number(areaOrIdeal ?? 0);
   return n > 0 ? n : 0;
+}
+
+/** Prefer ideal_parts when present; else area (legacy client tally). */
+export function propertyIdealOrAreaWeight(p: {
+  ideal_parts_percent?: number | null;
+  area_sqm?: number | null;
+}) {
+  const ideal = Number(p.ideal_parts_percent ?? 0);
+  if (ideal > 0) return ideal;
+  return propertyVoteWeight(p.area_sqm);
 }
 
 export function accountVoteWeight(properties: AreaShare[]) {

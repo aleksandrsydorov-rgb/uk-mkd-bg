@@ -17,9 +17,11 @@ export interface StaffRecord {
 export interface AccessProfile {
   email: string;
   properties: Property[];
+  guestProperties: Property[];
   staff: StaffRecord | null;
   isStaff: boolean;
   isOwner: boolean;
+  isGuest: boolean;
 }
 
 export { isGuardRole, staffHomePath };
@@ -27,7 +29,19 @@ export { isGuardRole, staffHomePath };
 /** Staff cabinet after login: `/guard` for охрана, otherwise `/admin`. */
 export function resolveStaffHome(access: AccessProfile): '/guard' | '/admin' | '/account' {
   if (access.isStaff) return staffHomePath(access.staff?.role);
+  if (access.isOwner || access.isGuest) return '/account';
   return '/account';
+}
+
+export function mergeAccountProperties(access: AccessProfile): Property[] {
+  const ownedIds = new Set(access.properties.map((p) => p.id));
+  const guestOnly = access.guestProperties.filter((p) => !ownedIds.has(p.id));
+  return [...access.properties, ...guestOnly];
+}
+
+export function isGuestOnlyProperty(access: AccessProfile, propertyId: number): boolean {
+  if (access.properties.some((p) => p.id === propertyId)) return false;
+  return access.guestProperties.some((p) => p.id === propertyId);
 }
 
 function isMissingColumn(error: { message?: string } | null | undefined, column: string) {
@@ -62,13 +76,29 @@ async function loadOwnedProperties(
   return (propsRes.data as Property[]) ?? [];
 }
 
+async function loadGuestProperties(
+  supabase: SupabaseClient<Database>,
+): Promise<Property[]> {
+  const guestRes = await supabase.rpc('list_my_guest_properties');
+  if (!guestRes.error) {
+    return (guestRes.data as Property[] | null) ?? [];
+  }
+  if (!isMissingRpc(guestRes.error, 'list_my_guest_properties')) {
+    throw guestRes.error;
+  }
+  return [];
+}
+
 export async function resolveAccess(
   emailRaw: string,
   supabase: SupabaseClient<Database>,
 ): Promise<AccessProfile> {
   const email = normalizeEmail(emailRaw);
 
-  const properties = await loadOwnedProperties(email, supabase);
+  const [properties, guestProperties] = await Promise.all([
+    loadOwnedProperties(email, supabase),
+    loadGuestProperties(supabase),
+  ]);
 
   let staff: StaffRecord | null = null;
   const staffRes = await supabase
@@ -87,8 +117,10 @@ export async function resolveAccess(
   return {
     email,
     properties,
+    guestProperties,
     staff,
     isStaff: Boolean(staff),
     isOwner: properties.length > 0,
+    isGuest: guestProperties.length > 0,
   };
 }

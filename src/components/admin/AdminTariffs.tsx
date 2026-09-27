@@ -171,6 +171,7 @@ export function AdminTariffs({
 
   const [supportForm, setSupportForm] = useState({
     rate: '',
+    rate_legal: '',
     application_year: String(nextYear),
     basis_mode: 'general_meeting' as 'general_meeting' | 'external_decision',
     decision_id: '',
@@ -180,6 +181,7 @@ export function AdminTariffs({
   });
   const [waterForm, setWaterForm] = useState({
     rate: '',
+    rate_legal: '',
     valid_from: today,
     basis_reference: '',
     basis_date: today,
@@ -188,6 +190,8 @@ export function AdminTariffs({
   const [elForm, setElForm] = useState({
     day: '',
     night: '',
+    day_legal: '',
+    night_legal: '',
     valid_from: today,
     basis_reference: '',
     basis_date: today,
@@ -195,6 +199,7 @@ export function AdminTariffs({
   });
   const [internetForm, setInternetForm] = useState({
     month: '',
+    month_legal: '',
     valid_from: today,
     basis_reference: '',
     basis_date: today,
@@ -294,7 +299,8 @@ export function AdminTariffs({
     setError(null);
     try {
       const rate = Number(supportForm.rate);
-      if (!(rate > 0)) throw new Error(t('admin.tcErrRate'));
+      const rateLegal = Number(supportForm.rate_legal.trim() || supportForm.rate);
+      if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
       const year = Number(supportForm.application_year);
       const minYear = tariffKey === 'capital_repair' ? currentYear : nextYear;
       if (!Number.isFinite(year) || year < minYear) throw new Error(t('admin.tcErrSupportYear'));
@@ -302,7 +308,7 @@ export function AdminTariffs({
       if (!supportForm.basis_date) throw new Error(t('admin.tcErrBasisDate'));
       const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
         p_tariff_id: tariff.tariff_id,
-        p_rates: { base: rate },
+        p_rates: { natural: { base: rate }, legal: { base: rateLegal } },
         p_basis_type: supportForm.basis_mode,
         p_basis_note: supportForm.basis_note.trim(),
         p_idempotency_key: crypto.randomUUID(),
@@ -320,7 +326,7 @@ export function AdminTariffs({
       });
       if (rpcErr) throw rpcErr;
       setPublishKey(null);
-      setSupportForm((f) => ({ ...f, rate: '', basis_note: '' }));
+      setSupportForm((f) => ({ ...f, rate: '', rate_legal: '', basis_note: '' }));
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));
@@ -345,13 +351,16 @@ export function AdminTariffs({
     setError(null);
     try {
       const rate = Number(waterForm.rate);
-      if (!(rate >= 0) || Number.isNaN(rate)) throw new Error(t('admin.tcErrRate'));
+      const rateLegal = Number(waterForm.rate_legal.trim() || waterForm.rate);
+      if (!(rate >= 0) || Number.isNaN(rate) || !(rateLegal >= 0) || Number.isNaN(rateLegal)) {
+        throw new Error(t('admin.tcErrRate'));
+      }
       if (!waterForm.valid_from || waterForm.valid_from < today) throw new Error(t('admin.tcErrValidFrom'));
       if (!waterForm.basis_reference.trim()) throw new Error(t('admin.tcErrSupplierRef'));
       if (!waterForm.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
       const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
         p_tariff_id: tariff.tariff_id,
-        p_rates: { base: rate },
+        p_rates: { natural: { base: rate }, legal: { base: rateLegal } },
         p_basis_type: 'supplier_notice',
         p_basis_note: waterForm.basis_note.trim(),
         p_idempotency_key: crypto.randomUUID(),
@@ -363,7 +372,7 @@ export function AdminTariffs({
       });
       if (rpcErr) throw rpcErr;
       setPublishKey(null);
-      setWaterForm((f) => ({ ...f, rate: '', basis_note: '' }));
+      setWaterForm((f) => ({ ...f, rate: '', rate_legal: '', basis_note: '' }));
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));
@@ -381,7 +390,12 @@ export function AdminTariffs({
     try {
       const day = Number(elForm.day);
       const night = Number(elForm.night);
-      if (Number.isNaN(day) || Number.isNaN(night) || day < 0 || night < 0) {
+      const dayLegal = Number(elForm.day_legal.trim() || elForm.day);
+      const nightLegal = Number(elForm.night_legal.trim() || elForm.night);
+      if (
+        Number.isNaN(day) || Number.isNaN(night) || day < 0 || night < 0
+        || Number.isNaN(dayLegal) || Number.isNaN(nightLegal) || dayLegal < 0 || nightLegal < 0
+      ) {
         throw new Error(t('admin.tcErrRate'));
       }
       if (!elForm.valid_from || elForm.valid_from < today) throw new Error(t('admin.tcErrValidFrom'));
@@ -389,7 +403,10 @@ export function AdminTariffs({
       if (!elForm.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
       const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
         p_tariff_id: tariff.tariff_id,
-        p_rates: { day, night },
+        p_rates: {
+          natural: { day, night },
+          legal: { day: dayLegal, night: nightLegal },
+        },
         p_basis_type: 'supplier_notice',
         p_basis_note: elForm.basis_note.trim(),
         p_idempotency_key: crypto.randomUUID(),
@@ -401,7 +418,7 @@ export function AdminTariffs({
       });
       if (rpcErr) throw rpcErr;
       setPublishKey(null);
-      setElForm((f) => ({ ...f, day: '', night: '', basis_note: '' }));
+      setElForm((f) => ({ ...f, day: '', night: '', day_legal: '', night_legal: '', basis_note: '' }));
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));
@@ -418,7 +435,8 @@ export function AdminTariffs({
     setError(null);
     try {
       const month = Number(internetForm.month);
-      if (Number.isNaN(month) || month < 0) {
+      const monthLegal = Number(internetForm.month_legal.trim() || internetForm.month);
+      if (Number.isNaN(month) || month < 0 || Number.isNaN(monthLegal) || monthLegal < 0) {
         throw new Error(t('admin.tcErrRate'));
       }
       if (!internetForm.valid_from || internetForm.valid_from < today) throw new Error(t('admin.tcErrValidFrom'));
@@ -426,7 +444,7 @@ export function AdminTariffs({
       if (!internetForm.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
       const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
         p_tariff_id: tariff.tariff_id,
-        p_rates: { month },
+        p_rates: { natural: { month }, legal: { month: monthLegal } },
         p_basis_type: 'supplier_notice',
         p_basis_note: internetForm.basis_note.trim(),
         p_idempotency_key: crypto.randomUUID(),
@@ -438,7 +456,7 @@ export function AdminTariffs({
       });
       if (rpcErr) throw rpcErr;
       setPublishKey(null);
-      setInternetForm((f) => ({ ...f, month: '', basis_note: '' }));
+      setInternetForm((f) => ({ ...f, month: '', month_legal: '', basis_note: '' }));
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));
@@ -499,6 +517,7 @@ export function AdminTariffs({
           </p>
           <label className="grid gap-1 text-sm text-secondary">
             {isCapital ? t('admin.tcAnnualAmount') : t('admin.tcNewRate')}
+            <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
             <input
               className={adminFieldClass}
               type="number"
@@ -507,6 +526,19 @@ export function AdminTariffs({
               value={supportForm.rate}
               onChange={(e) => setSupportForm({ ...supportForm, rate: e.target.value })}
               required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {isCapital ? t('admin.tcAnnualAmount') : t('admin.tcNewRate')}
+            <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={supportForm.rate_legal}
+              onChange={(e) => setSupportForm({ ...supportForm, rate_legal: e.target.value })}
+              placeholder={supportForm.rate || undefined}
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
@@ -601,6 +633,7 @@ export function AdminTariffs({
           <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
           <label className="grid gap-1 text-sm text-secondary">
             {t('admin.tcNewRate')}
+            <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
             <input
               className={adminFieldClass}
               type="number"
@@ -609,6 +642,19 @@ export function AdminTariffs({
               value={waterForm.rate}
               onChange={(e) => setWaterForm({ ...waterForm, rate: e.target.value })}
               required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcNewRate')}
+            <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0"
+              value={waterForm.rate_legal}
+              onChange={(e) => setWaterForm({ ...waterForm, rate_legal: e.target.value })}
+              placeholder={waterForm.rate || undefined}
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
@@ -666,7 +712,7 @@ export function AdminTariffs({
         <form onSubmit={publishElectricity} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
           <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcCompDay')}
+            {t('admin.tcCompDay')} · {t('admin.tcSubjectNatural')}
             <input
               className={adminFieldClass}
               type="number"
@@ -678,7 +724,7 @@ export function AdminTariffs({
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcCompNight')}
+            {t('admin.tcCompNight')} · {t('admin.tcSubjectNatural')}
             <input
               className={adminFieldClass}
               type="number"
@@ -687,6 +733,30 @@ export function AdminTariffs({
               value={elForm.night}
               onChange={(e) => setElForm({ ...elForm, night: e.target.value })}
               required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcCompDay')} · {t('admin.tcSubjectLegal')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0"
+              value={elForm.day_legal}
+              onChange={(e) => setElForm({ ...elForm, day_legal: e.target.value })}
+              placeholder={elForm.day || undefined}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcCompNight')} · {t('admin.tcSubjectLegal')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.0001"
+              min="0"
+              value={elForm.night_legal}
+              onChange={(e) => setElForm({ ...elForm, night_legal: e.target.value })}
+              placeholder={elForm.night || undefined}
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
@@ -744,7 +814,7 @@ export function AdminTariffs({
         <form onSubmit={publishInternet} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
           <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcCompMonth')}
+            {t('admin.tcCompMonth')} · {t('admin.tcSubjectNatural')}
             <input
               className={adminFieldClass}
               type="number"
@@ -753,6 +823,18 @@ export function AdminTariffs({
               value={internetForm.month}
               onChange={(e) => setInternetForm({ ...internetForm, month: e.target.value })}
               required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcCompMonth')} · {t('admin.tcSubjectLegal')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.01"
+              min="0"
+              value={internetForm.month_legal}
+              onChange={(e) => setInternetForm({ ...internetForm, month_legal: e.target.value })}
+              placeholder={internetForm.month || undefined}
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">

@@ -2955,59 +2955,89 @@ function AdminPortal() {
                 </h3>
                 <p className="text-xs font-medium text-muted">{t('admin.aptGroupObject')}</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.phAptNo')} value={propForm.apartment_number}
-                    onChange={(e) => setPropForm({ ...propForm, apartment_number: e.target.value })} required />
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.phFloor')} type="number" value={propForm.floor}
-                    onChange={(e) => setPropForm({ ...propForm, floor: e.target.value })} />
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.phArea')} type="number" value={propForm.area_sqm}
-                    onChange={(e) => setPropForm({ ...propForm, area_sqm: e.target.value })} />
-                  <select className={adminFieldClass}
-                    value={propForm.status}
-                    onChange={(e) => setPropForm({ ...propForm, status: e.target.value })}>
-                    <option value="в собственности">{t('account.owned')}</option>
-                    <option value="на продаже">{t('account.forSale')}</option>
-                  </select>
-                  <select className={adminFieldClass}
-                    value={propForm.occupancy_status}
-                    onChange={(e) => setPropForm({ ...propForm, occupancy_status: e.target.value })}>
-                    <option value="owner">{t('status.occOwner')}</option>
-                    <option value="standby">{t('status.occStandby')}</option>
-                    <option value="rented">{t('status.occRented')}</option>
-                  </select>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.phAptNo')}
+                    <input className={adminFieldClass}
+                      value={propForm.apartment_number}
+                      onChange={(e) => setPropForm({ ...propForm, apartment_number: e.target.value })} required />
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.phFloor')}
+                    <input className={adminFieldClass}
+                      type="number" value={propForm.floor}
+                      onChange={(e) => setPropForm({ ...propForm, floor: e.target.value })} />
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.phArea')}
+                    <input className={adminFieldClass}
+                      type="number" value={propForm.area_sqm}
+                      onChange={(e) => setPropForm({ ...propForm, area_sqm: e.target.value })} />
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.status')}
+                    <select className={adminFieldClass}
+                      value={propForm.status}
+                      onChange={(e) => setPropForm({ ...propForm, status: e.target.value })}>
+                      <option value="в собственности">{t('account.owned')}</option>
+                      <option value="на продаже">{t('account.forSale')}</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.aptStayNow')}
+                    <select className={adminFieldClass}
+                      value={propForm.occupancy_status}
+                      onChange={(e) => setPropForm({ ...propForm, occupancy_status: e.target.value })}>
+                      <option value="owner">{t('status.occOwner')}</option>
+                      <option value="standby">{t('status.occStandby')}</option>
+                      <option value="rented">{t('status.occRented')}</option>
+                    </select>
+                  </label>
                 </div>
                 <p className="text-xs font-medium text-muted">{t('admin.aptGroupOwner')}</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.phOwner')} value={propForm.owner_name}
-                    onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })}
-                    readOnly={!canManageCriticalAccess}
-                    required />
-                  <input className={adminFieldClass}
-                    placeholder="Email" type="email" value={propForm.owner_email}
-                    onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })}
-                    readOnly={!canManageCriticalAccess}
-                    required />
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.phPhone')} value={propForm.owner_phone}
-                    onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })}
-                    readOnly={!canManageCriticalAccess} />
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.phOwner')}
+                    <input className={adminFieldClass}
+                      value={propForm.owner_name}
+                      onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })}
+                      readOnly={!canManageCriticalAccess}
+                      required />
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    Email
+                    <input className={adminFieldClass}
+                      type="email" value={propForm.owner_email}
+                      onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })}
+                      readOnly={!canManageCriticalAccess}
+                      required />
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.phPhone')}
+                    <input className={adminFieldClass}
+                      value={propForm.owner_phone}
+                      onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })}
+                      readOnly={!canManageCriticalAccess} />
+                  </label>
                 </div>
                 <p className="text-xs font-medium text-muted">{t('admin.aptGroupMore')}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <select className={adminFieldClass}
-                    value={propForm.owner_type}
-                    onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}
-                    disabled={!canManageCriticalAccess}>
-                    <option value="физическое лицо">{t('ownerType.personShort')}</option>
-                    <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
-                  </select>
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.phCompany')} value={propForm.company_name}
-                    onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })}
-                    readOnly={!canManageCriticalAccess} />
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.bookEntityKind')}
+                    <select className={adminFieldClass}
+                      value={propForm.owner_type}
+                      onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}
+                      disabled={!canManageCriticalAccess}>
+                      <option value="физическое лицо">{t('ownerType.personShort')}</option>
+                      <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-xs text-secondary">
+                    {t('admin.phCompany')}
+                    <input className={adminFieldClass}
+                      value={propForm.company_name}
+                      onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })}
+                      readOnly={!canManageCriticalAccess} />
+                  </label>
                 </div>
                 {editingProp ? (
                   <p className="text-xs text-secondary">

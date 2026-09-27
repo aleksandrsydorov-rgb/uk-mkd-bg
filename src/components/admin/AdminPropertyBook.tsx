@@ -85,6 +85,8 @@ export function AdminPropertyBook({
   const [selectedId, setSelectedId] = useState<number | ''>('');
   const [apartmentNumber, setApartmentNumber] = useState('');
   const [floor, setFloor] = useState('');
+  const [sectionCode, setSectionCode] = useState('');
+  const [blockCode, setBlockCode] = useState('');
   const [purpose, setPurpose] = useState('');
   const [areaSqm, setAreaSqm] = useState('');
   const [idealParts, setIdealParts] = useState('');
@@ -108,6 +110,28 @@ export function AdminPropertyBook({
   const [invites, setInvites] = useState<
     Array<{ id: string; email: string; status: string; expires_at: string; created_at: string }>
   >([]);
+  const [massFloor, setMassFloor] = useState('');
+  const [massSection, setMassSection] = useState('');
+  const [massBlock, setMassBlock] = useState('');
+  const [massResult, setMassResult] = useState<{
+    dry_run: boolean;
+    property_count: number;
+    created_count: number;
+    skipped_count: number;
+    created: Array<{
+      property_id: number;
+      apartment_number: string;
+      email: string;
+      token?: string;
+      status?: string;
+    }>;
+    skipped: Array<{
+      property_id: number;
+      apartment_number: string;
+      email: string | null;
+      reason: string;
+    }>;
+  } | null>(null);
 
   const sortedProps = useMemo(
     () =>
@@ -170,6 +194,8 @@ export function AdminPropertyBook({
           id: number;
           apartment_number?: number | string | null;
           floor?: number | null;
+          section_code?: string | null;
+          block_code?: string | null;
           purpose: string | null;
           area_sqm: number | null;
           ideal_parts_percent: number | null;
@@ -186,6 +212,8 @@ export function AdminPropertyBook({
           : '',
       );
       setFloor(payload.property.floor != null ? String(payload.property.floor) : '');
+      setSectionCode(payload.property.section_code ?? '');
+      setBlockCode(payload.property.block_code ?? '');
       setPurpose(payload.property.purpose ?? '');
       setAreaSqm(payload.property.area_sqm != null ? String(payload.property.area_sqm) : '');
       setIdealParts(
@@ -272,6 +300,8 @@ export function AdminPropertyBook({
         p_floor: Number(floor) || null,
         p_ideal_parts_note: idealPartsNote || null,
         p_ideal_parts_meeting_ref: null,
+        p_section_code: sectionCode.trim() || '',
+        p_block_code: blockCode.trim() || '',
       });
       if (objErr) throw objErr;
 
@@ -315,6 +345,78 @@ export function AdminPropertyBook({
             changes: (row.changes as Record<string, unknown>) ?? {},
           })),
         );
+      }
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runMassInvite(dryRun: boolean) {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('admin_mass_create_property_invites', {
+        p_floor: massFloor.trim() ? Number(massFloor) : null,
+        p_section_code: massSection.trim() || null,
+        p_block_code: massBlock.trim() || null,
+        p_dry_run: dryRun,
+        p_skip_existing: true,
+      });
+      if (rpcErr) {
+        if (isMissingRelation(rpcErr, 'admin_mass_create_property_invites')) {
+          setError(t('admin.bookMigrationNeeded'));
+          return;
+        }
+        throw rpcErr;
+      }
+      const result = data as {
+        dry_run: boolean;
+        property_count: number;
+        created_count: number;
+        skipped_count: number;
+        created: Array<{
+          property_id: number;
+          apartment_number: string;
+          email: string;
+          token?: string;
+          status?: string;
+        }>;
+        skipped: Array<{
+          property_id: number;
+          apartment_number: string;
+          email: string | null;
+          reason: string;
+        }>;
+      };
+      setMassResult(result);
+      if (dryRun) {
+        setSuccess(
+          t('admin.bookMassInvitePreview', {
+            n: String(result.created_count ?? 0),
+            p: String(result.property_count ?? 0),
+          }),
+        );
+      } else {
+        const links = (result.created ?? [])
+          .filter((c) => c.token)
+          .map(
+            (c) =>
+              `${c.apartment_number}\t${c.email}\t${window.location.origin}/auth/invite?token=${c.token}`,
+          )
+          .join('\n');
+        if (links) {
+          try {
+            await navigator.clipboard.writeText(links);
+            setSuccess(t('admin.bookMassInviteCopied', { n: String(result.created_count ?? 0) }));
+          } catch {
+            setSuccess(t('admin.bookMassInviteDone', { n: String(result.created_count ?? 0) }));
+          }
+        } else {
+          setSuccess(t('admin.bookMassInviteDone', { n: String(result.created_count ?? 0) }));
+        }
       }
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
@@ -435,6 +537,108 @@ export function AdminPropertyBook({
         ) : null}
       </section>
 
+      <section className={`${adminCardClass} space-y-3 p-4`}>
+        <h3 className="text-sm font-semibold text-foreground">{t('admin.bookMassInvite')}</h3>
+        <p className="text-xs text-secondary">{t('admin.bookMassInviteHint')}</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.bookSection')}
+            <input
+              className={adminFieldClass}
+              placeholder={t('admin.bookSectionPh')}
+              value={massSection}
+              onChange={(e) => setMassSection(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.bookBlock')}
+            <input
+              className={adminFieldClass}
+              placeholder={t('admin.bookBlockPh')}
+              value={massBlock}
+              onChange={(e) => setMassBlock(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.phFloor')}
+            <input
+              className={adminFieldClass}
+              type="number"
+              placeholder={t('admin.bookMassFloorPh')}
+              value={massFloor}
+              onChange={(e) => setMassFloor(e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="text-xs text-muted">{t('admin.bookMassInviteEmptyFilter')}</p>
+        <div className="flex flex-wrap gap-2">
+          <AdminSecondaryButton
+            type="button"
+            disabled={busy}
+            onClick={() => void runMassInvite(true)}
+          >
+            {t('admin.bookMassInvitePreviewBtn')}
+          </AdminSecondaryButton>
+          <AdminPrimaryButton
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!confirm(t('admin.bookMassInviteConfirm'))) return;
+              void runMassInvite(false);
+            }}
+          >
+            {t('admin.bookMassInviteSend')}
+          </AdminPrimaryButton>
+        </div>
+        {massResult ? (
+          <div className="space-y-2 text-xs">
+            <p className="text-secondary">
+              {t('admin.bookMassInviteStats', {
+                p: String(massResult.property_count),
+                c: String(massResult.created_count),
+                s: String(massResult.skipped_count),
+              })}
+            </p>
+            {massResult.created.length > 0 ? (
+              <AdminTableShell>
+                <table className="w-full min-w-[28rem] text-sm">
+                  <thead>
+                    <tr className={adminTableHeadRowClass}>
+                      <th className={adminTableCellClass}>{t('admin.apartments')}</th>
+                      <th className={adminTableCellClass}>Email</th>
+                      <th className={adminTableCellClass}>{t('admin.status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {massResult.created.slice(0, 40).map((row, idx) => (
+                      <tr key={`${row.property_id}-${row.email}-${idx}`} className={adminTableRowClass}>
+                        <td className={adminTableCellClass}>{row.apartment_number}</td>
+                        <td className={adminTableCellClass}>{row.email}</td>
+                        <td className={adminTableCellClass}>
+                          {massResult.dry_run
+                            ? t('admin.bookMassInviteWould')
+                            : t('admin.bookInviteStatus_pending')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </AdminTableShell>
+            ) : null}
+            {massResult.skipped.length > 0 ? (
+              <p className="text-muted">
+                {t('admin.bookMassInviteSkipped')}:{' '}
+                {massResult.skipped
+                  .slice(0, 12)
+                  .map((s) => `${s.apartment_number}${s.email ? ` (${s.email})` : ''} — ${s.reason}`)
+                  .join('; ')}
+                {massResult.skipped.length > 12 ? '…' : ''}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-semibold text-foreground">{t('admin.bookList')}</h3>
@@ -460,10 +664,13 @@ export function AdminPropertyBook({
           <AdminEmptyState title={t('admin.bookEmpty')} />
         ) : (
           <AdminTableShell>
-            <table className="w-full min-w-[40rem] text-sm">
+            <table className="w-full min-w-[48rem] text-sm">
               <thead>
                 <tr className={adminTableHeadRowClass}>
                   <th className={adminTableCellClass}>{t('admin.apartments')}</th>
+                  <th className={adminTableCellClass}>{t('admin.bookBlock')}</th>
+                  <th className={adminTableCellClass}>{t('admin.bookSection')}</th>
+                  <th className={adminTableCellClass}>{t('admin.phFloor')}</th>
                   <th className={adminTableCellClass}>{t('admin.bookOwnershipType')}</th>
                   <th className={adminTableCellClass}>{t('admin.bookOwners')}</th>
                   <th className={adminTableCellClass}>{t('admin.status')}</th>
@@ -474,6 +681,11 @@ export function AdminPropertyBook({
                 {filtered.map((row) => (
                   <tr key={row.property_id} className={adminTableRowClass}>
                     <td className={adminTableCellClass}>{row.apartment_number}</td>
+                    <td className={adminTableCellClass}>{row.block_code || '—'}</td>
+                    <td className={adminTableCellClass}>{row.section_code || '—'}</td>
+                    <td className={adminTableCellClass}>
+                      {row.floor != null ? String(row.floor) : '—'}
+                    </td>
                     <td className={adminTableCellClass}>
                       {row.ownership_type
                         ? t(`admin.bookType_${row.ownership_type}`)
@@ -531,6 +743,24 @@ export function AdminPropertyBook({
                 type="number"
                 value={floor}
                 onChange={(e) => setFloor(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-secondary">
+              {t('admin.bookSection')}
+              <input
+                className={adminFieldClass}
+                placeholder={t('admin.bookSectionPh')}
+                value={sectionCode}
+                onChange={(e) => setSectionCode(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-secondary">
+              {t('admin.bookBlock')}
+              <input
+                className={adminFieldClass}
+                placeholder={t('admin.bookBlockPh')}
+                value={blockCode}
+                onChange={(e) => setBlockCode(e.target.value)}
               />
             </label>
             <label className="grid gap-1 text-sm text-secondary">

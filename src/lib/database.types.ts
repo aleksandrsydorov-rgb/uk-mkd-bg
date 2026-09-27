@@ -390,6 +390,8 @@ export interface Database {
           created_at: string;
           apartment_number: string;
           floor: number | null;
+          section_code: string | null;
+          block_code: string | null;
           area_sqm: number | null;
           status: string | null;
           owner_name: string | null;
@@ -420,6 +422,8 @@ export interface Database {
           created_at?: string;
           apartment_number?: string;
           floor?: number | null;
+          section_code?: string | null;
+          block_code?: string | null;
           area_sqm?: number | null;
           status?: string | null;
           owner_name?: string | null;
@@ -450,6 +454,8 @@ export interface Database {
           created_at?: string;
           apartment_number?: string;
           floor?: number | null;
+          section_code?: string | null;
+          block_code?: string | null;
           area_sqm?: number | null;
           status?: string | null;
           owner_name?: string | null;
@@ -3479,6 +3485,9 @@ export interface Database {
         Returns: {
           property_id: number;
           apartment_number: string;
+          floor: number | null;
+          section_code: string | null;
+          block_code: string | null;
           purpose: string | null;
           area_sqm: number | null;
           ideal_parts_percent: number | null;
@@ -3504,6 +3513,8 @@ export interface Database {
           p_floor?: number | null;
           p_ideal_parts_note?: string | null;
           p_ideal_parts_meeting_ref?: string | null;
+          p_section_code?: string | null;
+          p_block_code?: string | null;
         };
         Returns: Record<string, unknown>;
       };
@@ -3548,6 +3559,16 @@ export interface Database {
       };
       admin_create_property_invite: {
         Args: { p_property_id: number; p_email: string };
+        Returns: Record<string, unknown>;
+      };
+      admin_mass_create_property_invites: {
+        Args: {
+          p_floor?: number | null;
+          p_section_code?: string | null;
+          p_block_code?: string | null;
+          p_dry_run?: boolean;
+          p_skip_existing?: boolean;
+        };
         Returns: Record<string, unknown>;
       };
       admin_revoke_property_invite: {

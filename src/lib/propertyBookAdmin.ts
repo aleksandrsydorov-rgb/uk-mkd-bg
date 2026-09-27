@@ -11,6 +11,9 @@ export type BookEntityKind = (typeof BOOK_ENTITY_KINDS)[number];
 export type PropertyBookListRow = {
   property_id: number;
   apartment_number: string;
+  floor: number | null;
+  section_code: string | null;
+  block_code: string | null;
   purpose: string | null;
   area_sqm: number | null;
   ideal_parts_percent: number | null;
@@ -40,6 +43,9 @@ export type PropertyBookOwnerInput = {
 
 export type PropertyBookObjectCsv = {
   apartment_number: string;
+  floor?: string;
+  section_code?: string;
+  block_code?: string;
   purpose: string;
   area_sqm: string;
   ideal_parts_percent: string;
@@ -55,6 +61,9 @@ export const BOOK_OWNERS_SHEET = 'owners';
 
 export const BOOK_OBJECTS_CSV_HEADERS = [
   'apartment_number',
+  'floor',
+  'section_code',
+  'block_code',
   'purpose',
   'area_sqm',
   'ideal_parts_percent',
@@ -140,6 +149,9 @@ function objectsTemplateRows(): Record<string, string>[] {
   return [
     {
       apartment_number: '12',
+      floor: '3',
+      section_code: 'A',
+      block_code: '1',
       purpose: 'апартамент',
       area_sqm: '78.5',
       ideal_parts_percent: '1.234567',
@@ -147,6 +159,9 @@ function objectsTemplateRows(): Record<string, string>[] {
     },
     {
       apartment_number: '14',
+      floor: '3',
+      section_code: 'A',
+      block_code: '1',
       purpose: 'апартамент',
       area_sqm: '92',
       ideal_parts_percent: '2.5',

@@ -364,7 +364,13 @@ export default function HomePage() {
       const access = await resolveAccess(authenticatedEmail, supabase);
       router.replace(resolveStaffHome(access));
     } catch (err: unknown) {
-      setLoginError(err instanceof Error ? err.message : 'Sign in failed');
+      const msg =
+        err instanceof Error
+          ? err.message
+          : err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
+            ? (err as { message: string }).message
+            : 'Sign in failed';
+      setLoginError(msg || 'Sign in failed');
     } finally {
       setLoginLoading(false);
     }

@@ -54,6 +54,15 @@ function isMissingRpc(error: { message?: string; code?: string } | null | undefi
   return msg.includes(name) || msg.includes('schema cache') || error?.code === 'PGRST202';
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return 'Sign in failed';
+}
+
 async function loadOwnedProperties(
   email: string,
   supabase: SupabaseClient<Database>,
@@ -63,7 +72,7 @@ async function loadOwnedProperties(
     return (ownedRes.data as Property[] | null) ?? [];
   }
   if (!isMissingRpc(ownedRes.error, 'list_my_owned_properties')) {
-    throw ownedRes.error;
+    throw new Error(errorMessage(ownedRes.error));
   }
 
   const pattern = escapeIlike(email);
@@ -72,7 +81,7 @@ async function loadOwnedProperties(
     .select('*')
     .ilike('owner_email', pattern)
     .order('apartment_number', { ascending: true });
-  if (propsRes.error) throw propsRes.error;
+  if (propsRes.error) throw new Error(errorMessage(propsRes.error));
   return (propsRes.data as Property[]) ?? [];
 }
 
@@ -83,8 +92,9 @@ async function loadGuestProperties(
   if (!guestRes.error) {
     return (guestRes.data as Property[] | null) ?? [];
   }
+  // Guest list must never block staff/owner login.
   if (!isMissingRpc(guestRes.error, 'list_my_guest_properties')) {
-    throw guestRes.error;
+    console.warn('list_my_guest_properties:', errorMessage(guestRes.error));
   }
   return [];
 }
@@ -108,7 +118,7 @@ export async function resolveAccess(
     .limit(5);
 
   if (staffRes.error) {
-    if (!isMissingColumn(staffRes.error, 'email')) throw staffRes.error;
+    if (!isMissingColumn(staffRes.error, 'email')) throw new Error(errorMessage(staffRes.error));
   } else {
     const rows = (staffRes.data as StaffRecord[]) ?? [];
     staff = rows.find((s) => s.active === true) ?? null;

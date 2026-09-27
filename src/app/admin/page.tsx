@@ -93,6 +93,7 @@ import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
 import { AdminSecurity } from '@/components/admin/AdminSecurity';
 import { AdminCleaning } from '@/components/admin/AdminCleaning';
+import { AdminBudget } from '@/components/admin/AdminBudget';
 import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
@@ -125,6 +126,7 @@ import { canSeeInternetAdmin } from '@/lib/internet';
 import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import { canSeeSecurityAdmin, isGuardRole, staffHomePath } from '@/lib/security';
 import { canSeeCleaningAdmin } from '@/lib/cleaning';
+import { canSeeBudgetAdmin, categoryLabel, type BudgetCategory } from '@/lib/budget';
 import {
   OVERVIEW_CARD_KEYS,
   defaultOverviewCardPrefs,
@@ -278,6 +280,7 @@ type AdminSection =
   | 'блокировка'
   | 'охрана'
   | 'уборка'
+  | 'бюджет'
   | 'расходы'
   | 'опросы'
   | 'документы'
@@ -305,6 +308,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'блокировка',
   'охрана',
   'уборка',
+  'бюджет',
   'расходы',
   'опросы',
   'документы',
@@ -392,6 +396,7 @@ function AdminPortal() {
       { key: 'блокировка', label: t('admin.serviceLock'), icon: '🔒' },
       { key: 'охрана', label: t('admin.security'), icon: '🛡️' },
       { key: 'уборка', label: t('admin.cleaning'), icon: '🧹' },
+      { key: 'бюджет', label: t('admin.budget'), icon: '📈' },
       { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
       { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
       { key: 'тарифы', label: t('admin.tariffsCore'), icon: '📑' },
@@ -419,6 +424,8 @@ function AdminPortal() {
     canSeeSecurityAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'security');
   const showCleaning =
     canSeeCleaningAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'cleaning');
+  const showBudget =
+    canSeeBudgetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'budget');
   const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -478,6 +485,7 @@ function AdminPortal() {
         label: t('admin.menuFinance'),
         items: [
           'расходы',
+          ...(showBudget ? (['бюджет'] as const) : []),
           ...(showTariffCore ? (['тарифы'] as const) : []),
           ...(canReadSupportFinance ? (['отчётность'] as const) : []),
         ],
@@ -508,6 +516,7 @@ function AdminPortal() {
     showServiceLock,
     showSecurity,
     showCleaning,
+    showBudget,
     showSupportFee,
     showRequests,
     showWorkOrdersAdmin,
@@ -693,9 +702,11 @@ function AdminPortal() {
     amount: '',
     title: '',
     created_by: 'УК',
+    budget_category_id: '' as string,
   });
   const [expensePhotoFiles, setExpensePhotoFiles] = useState<File[]>([]);
   const [expenseExistingUrls, setExpenseExistingUrls] = useState<string[]>([]);
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>([]);
 
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
@@ -1059,6 +1070,30 @@ function AdminPortal() {
       cancelled = true;
     };
   }, [allowed, showServiceLock, supabase, activeMenu]);
+
+  useEffect(() => {
+    if (!allowed || !showBudget) {
+      setBudgetCategories([]);
+      return;
+    }
+    let cancelled = false;
+    void supabase.rpc('list_budget_categories_for_expenses').then(({ data, error: rpcErr }) => {
+      if (cancelled) return;
+      if (rpcErr) {
+        setBudgetCategories([]);
+        return;
+      }
+      setBudgetCategories(
+        ((data as BudgetCategory[] | null) ?? []).map((c) => ({
+          ...c,
+          id: String(c.id),
+        })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [allowed, showBudget, supabase]);
 
   const activeNavGroup = useMemo(() => {
     const group = MENU_GROUPS.find((item) => item.id !== 'overview' && item.items.includes(activeMenu));
@@ -2024,6 +2059,7 @@ function AdminPortal() {
       amount: '',
       title: '',
       created_by: sessionEmail || 'УК',
+      budget_category_id: '',
     });
     setExpensePhotoFiles([]);
     setExpenseExistingUrls([]);
@@ -2037,6 +2073,7 @@ function AdminPortal() {
       amount: String(e.amount ?? ''),
       title: e.title ?? '',
       created_by: e.created_by ?? (sessionEmail || 'УК'),
+      budget_category_id: e.budget_category_id ? String(e.budget_category_id) : '',
     });
     setExpensePhotoFiles([]);
     setExpenseExistingUrls(expensePhotoUrls(e));
@@ -2067,6 +2104,11 @@ function AdminPortal() {
     }
     const published = editingExpense ? isExpensePublished(editingExpense) : false;
     const keepPublished = published && canApproveUkExpenses(staffRole);
+    const budgetCategoryId = expenseForm.budget_category_id.trim() || null;
+    if (showBudget && keepPublished && !budgetCategoryId) {
+      setError(t('admin.expBudgetCategoryRequired'));
+      return;
+    }
     const payload = {
       expense_date: expenseForm.expense_date,
       amount,
@@ -2075,6 +2117,7 @@ function AdminPortal() {
       status: keepPublished ? EXPENSE_PUBLISHED : EXPENSE_PENDING,
       approved_by: keepPublished ? (editingExpense?.approved_by ?? sessionEmail) : null,
       approved_at: keepPublished ? (editingExpense?.approved_at ?? null) : null,
+      ...(showBudget ? { budget_category_id: budgetCategoryId } : {}),
     };
     try {
       let expenseId = editingExpense?.id;
@@ -2122,6 +2165,10 @@ function AdminPortal() {
   async function handleApproveExpense(exp: UkExpense) {
     if (!canApproveUkExpenses(staffRole)) {
       setError('Публиковать расходы может только администратор.');
+      return;
+    }
+    if (showBudget && !exp.budget_category_id) {
+      setError(t('admin.expBudgetCategoryRequired'));
       return;
     }
     try {
@@ -3714,6 +3761,9 @@ function AdminPortal() {
           />
         );
 
+      case 'бюджет':
+        return <AdminBudget supabase={supabase} staffRole={staffRole} />;
+
       case 'документы':
         return (
           <AdminDocumentsDecisions
@@ -4150,6 +4200,28 @@ function AdminPortal() {
                     onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
                     required
                   />
+                  {showBudget ? (
+                    <label className="grid gap-1 text-xs text-secondary sm:col-span-2 lg:col-span-4">
+                      {t('admin.expBudgetCategory')}
+                      <select
+                        className={adminFieldClass}
+                        value={expenseForm.budget_category_id}
+                        onChange={(e) =>
+                          setExpenseForm({ ...expenseForm, budget_category_id: e.target.value })
+                        }
+                        required={
+                          !!(editingExpense && isExpensePublished(editingExpense) && canApproveUkExpenses(staffRole))
+                        }
+                      >
+                        <option value="">{t('admin.expBudgetCategoryNone')}</option>
+                        {budgetCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {categoryLabel(c, locale)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <div>
                   <p className="mb-2 text-xs text-secondary">

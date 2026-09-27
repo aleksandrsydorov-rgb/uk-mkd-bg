@@ -42,6 +42,7 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 | module_key | Category | Billing | Admin surface | Owner surface |
 |------------|----------|---------|---------------|---------------|
 | `tariffs` | finance | — (gates Tariff Core admin UI) | Финансы → Тарифы | — |
+| `budget` | finance | none (plan vs fact; no owner billing) | Финансы → Бюджет; статья в расходах УК | План/факт бюджета (published/adopted/closed) |
 | `support_fee` | utilities | Tariff Core (€/m²·year) + annual policy (discount/deadline) | Такса; ставка в Тарифы | Account support fee |
 | `capital_repair` | utilities | Tariff Core fixed €/apartment·year + assessment/ledger | Капитальный ремонт; сумма в Тарифы | Capital balances |
 | `water` | utilities | Tariff Core (€/m³) + modes | Вода | Water (mode-gated) |
@@ -60,7 +61,7 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 Keys must stay aligned with `IMPLEMENTED_MODULE_KEYS` in [`src/lib/modules.ts`](../src/lib/modules.ts)
 and `module_catalog.implemented=true` seed.
 
-Finance category in Settings has **only** `tariffs`. Fee, capital and internet live under utilities.
+Finance category in Settings has `tariffs` and `budget`. Fee, capital and internet live under utilities.
 
 ## Stub modules (implemented = false)
 

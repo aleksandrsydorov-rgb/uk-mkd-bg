@@ -46,6 +46,7 @@ import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import { OwnerInternet } from '@/components/account/OwnerInternet';
 import { OwnerSecurity } from '@/components/account/OwnerSecurity';
 import { OwnerCleaning } from '@/components/account/OwnerCleaning';
+import { OwnerBudget } from '@/components/account/OwnerBudget';
 import { firstServiceLock, isScopeLocked, type PropertyServiceLockView } from '@/lib/serviceLock';
 import {
   sofiaCalendarYear,
@@ -154,6 +155,7 @@ type MenuSection =
   | 'интернет'
   | 'охрана'
   | 'уборка'
+  | 'бюджет'
   | 'ук'
   | 'счётчики'
   | 'документы'
@@ -194,6 +196,7 @@ export default function AccountPage() {
   const internetEnabled = isBuildingModuleEnabled(buildingModules, 'internet');
   const securityEnabled = isBuildingModuleEnabled(buildingModules, 'security');
   const cleaningEnabled = isBuildingModuleEnabled(buildingModules, 'cleaning');
+  const budgetEnabled = isBuildingModuleEnabled(buildingModules, 'budget');
   const serviceLockEnabled = isBuildingModuleEnabled(buildingModules, 'service_lock');
   const supportFeeEnabled = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const requestsEnabled = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -233,6 +236,7 @@ export default function AccountPage() {
       ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
       ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
       ...(cleaningEnabled ? [{ key: 'уборка' as const, label: t('account.navCleaning'), icon: '🧹' }] : []),
+      ...(budgetEnabled ? [{ key: 'бюджет' as const, label: t('account.navBudget'), icon: '📈' }] : []),
       ...(waterEnabled || electricityEnabled
         ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
         : []),
@@ -256,6 +260,7 @@ export default function AccountPage() {
     internetEnabled,
     securityEnabled,
     cleaningEnabled,
+    budgetEnabled,
     documentsNavEnabled,
     pollsEnabled,
     managementNavEnabled,
@@ -1905,6 +1910,12 @@ export default function AccountPage() {
             serviceLocked={scopeLocked('cleaning')}
           />
         );
+
+      case 'бюджет':
+        if (!budgetEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
+        return <OwnerBudget supabase={supabase} />;
 
       case 'финансы': {
         const totalDebt = Number(property?.debt ?? 0);

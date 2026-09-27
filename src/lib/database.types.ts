@@ -738,6 +738,7 @@ export interface Database {
           photo_urls: string[] | null;
           approved_by: string | null;
           approved_at: string | null;
+          budget_category_id: string | null;
         };
         Insert: {
           id?: number;
@@ -750,6 +751,7 @@ export interface Database {
           photo_urls?: string[] | null;
           approved_by?: string | null;
           approved_at?: string | null;
+          budget_category_id?: string | null;
         };
         Update: {
           id?: number;
@@ -762,6 +764,145 @@ export interface Database {
           photo_urls?: string[] | null;
           approved_by?: string | null;
           approved_at?: string | null;
+          budget_category_id?: string | null;
+        };
+        Relationships: [];
+      };
+      budget_categories: {
+        Row: {
+          id: string;
+          code: string;
+          name_ru: string;
+          name_en: string;
+          name_bg: string;
+          sort_order: number;
+          active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          name_ru: string;
+          name_en: string;
+          name_bg: string;
+          sort_order?: number;
+          active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          name_ru?: string;
+          name_en?: string;
+          name_bg?: string;
+          sort_order?: number;
+          active?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      budget_years: {
+        Row: {
+          id: string;
+          calendar_year: number;
+          status: string;
+          title: string | null;
+          decision_note: string | null;
+          decision_id: string | null;
+          published_at: string | null;
+          adopted_at: string | null;
+          closed_at: string | null;
+          created_by_email: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          calendar_year: number;
+          status?: string;
+          title?: string | null;
+          decision_note?: string | null;
+          decision_id?: string | null;
+          published_at?: string | null;
+          adopted_at?: string | null;
+          closed_at?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          calendar_year?: number;
+          status?: string;
+          title?: string | null;
+          decision_note?: string | null;
+          decision_id?: string | null;
+          published_at?: string | null;
+          adopted_at?: string | null;
+          closed_at?: string | null;
+          created_by_email?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      budget_lines: {
+        Row: {
+          id: string;
+          year_id: string;
+          category_id: string;
+          planned_amount_eur: number;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          year_id: string;
+          category_id: string;
+          planned_amount_eur?: number;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          year_id?: string;
+          category_id?: string;
+          planned_amount_eur?: number;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      budget_adjustments: {
+        Row: {
+          id: string;
+          year_id: string;
+          category_id: string;
+          amount_eur: number;
+          reason: string;
+          created_by_email: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          year_id: string;
+          category_id: string;
+          amount_eur: number;
+          reason: string;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          year_id?: string;
+          category_id?: string;
+          amount_eur?: number;
+          reason?: string;
+          created_by_email?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -3425,6 +3566,88 @@ export interface Database {
           p_create_work_order?: boolean;
         };
         Returns: Database['public']['Tables']['cleaning_orders']['Row'];
+      };
+      admin_list_budget_categories: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['budget_categories']['Row'][];
+      };
+      admin_list_budget_years: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['budget_years']['Row'][];
+      };
+      admin_create_budget_year: {
+        Args: { p_calendar_year: number; p_title?: string | null };
+        Returns: Database['public']['Tables']['budget_years']['Row'];
+      };
+      admin_list_budget_lines: {
+        Args: { p_year_id: string };
+        Returns: {
+          id: string;
+          year_id: string;
+          category_id: string;
+          category_code: string;
+          category_name_ru: string;
+          planned_amount_eur: number;
+          note: string | null;
+        }[];
+      };
+      admin_upsert_budget_line: {
+        Args: {
+          p_year_id: string;
+          p_category_id: string;
+          p_planned_amount_eur: number;
+          p_note?: string | null;
+        };
+        Returns: Database['public']['Tables']['budget_lines']['Row'];
+      };
+      admin_set_budget_year_status: {
+        Args: {
+          p_year_id: string;
+          p_status: string;
+          p_decision_note?: string | null;
+          p_decision_id?: string | null;
+        };
+        Returns: Database['public']['Tables']['budget_years']['Row'];
+      };
+      admin_create_budget_adjustment: {
+        Args: {
+          p_year_id: string;
+          p_category_id: string;
+          p_amount_eur: number;
+          p_reason: string;
+        };
+        Returns: Database['public']['Tables']['budget_adjustments']['Row'];
+      };
+      admin_list_budget_adjustments: {
+        Args: { p_year_id: string };
+        Returns: Database['public']['Tables']['budget_adjustments']['Row'][];
+      };
+      admin_budget_execution: {
+        Args: { p_year_id: string };
+        Returns: {
+          category_id: string;
+          category_code: string;
+          category_name_ru: string;
+          planned_amount_eur: number;
+          expenses_amount_eur: number;
+          adjustments_amount_eur: number;
+          actual_amount_eur: number;
+          remaining_amount_eur: number;
+        }[];
+      };
+      owner_get_budget_year: {
+        Args: { p_calendar_year?: number | null };
+        Returns: Json;
+      };
+      list_budget_categories_for_expenses: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          code: string;
+          name_ru: string;
+          name_en: string;
+          name_bg: string;
+        }[];
       };
       admin_list_security_posts: {
         Args: Record<string, never>;

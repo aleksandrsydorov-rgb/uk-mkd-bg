@@ -20,6 +20,7 @@ export const BUILDING_MODULE_KEYS = [
   'security',
   'rental',
   'cleaning',
+  'budget',
   'maintenance',
   'access_control',
   'contractors',
@@ -49,6 +50,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'building_documents',
   'guest_mode',
   'cleaning',
+  'budget',
 ] as const;
 
 export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];
@@ -99,6 +101,7 @@ export function emptyBuildingModulesState(): BuildingModulesState {
     security: false,
     rental: false,
     cleaning: false,
+    budget: false,
     maintenance: false,
     access_control: false,
     contractors: false,
@@ -202,6 +205,7 @@ export function moduleLabelMessageKey(key: string): string | null {
     security: 'moduleSecurity',
     rental: 'moduleRental',
     cleaning: 'moduleCleaning',
+    budget: 'moduleBudget',
     maintenance: 'moduleMaintenance',
     access_control: 'moduleAccessControl',
     contractors: 'moduleContractors',

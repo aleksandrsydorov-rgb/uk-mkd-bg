@@ -92,6 +92,7 @@ import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
 import { AdminSecurity } from '@/components/admin/AdminSecurity';
+import { AdminCleaning } from '@/components/admin/AdminCleaning';
 import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
@@ -123,6 +124,7 @@ import {
 import { canSeeInternetAdmin } from '@/lib/internet';
 import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import { canSeeSecurityAdmin, isGuardRole, staffHomePath } from '@/lib/security';
+import { canSeeCleaningAdmin } from '@/lib/cleaning';
 import {
   OVERVIEW_CARD_KEYS,
   defaultOverviewCardPrefs,
@@ -275,6 +277,7 @@ type AdminSection =
   | 'интернет'
   | 'блокировка'
   | 'охрана'
+  | 'уборка'
   | 'расходы'
   | 'опросы'
   | 'документы'
@@ -301,6 +304,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'интернет',
   'блокировка',
   'охрана',
+  'уборка',
   'расходы',
   'опросы',
   'документы',
@@ -387,6 +391,7 @@ function AdminPortal() {
       { key: 'интернет', label: t('admin.internet'), icon: '🌐' },
       { key: 'блокировка', label: t('admin.serviceLock'), icon: '🔒' },
       { key: 'охрана', label: t('admin.security'), icon: '🛡️' },
+      { key: 'уборка', label: t('admin.cleaning'), icon: '🧹' },
       { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
       { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
       { key: 'тарифы', label: t('admin.tariffsCore'), icon: '📑' },
@@ -412,6 +417,8 @@ function AdminPortal() {
     canSeeServiceLockAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'service_lock');
   const showSecurity =
     canSeeSecurityAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'security');
+  const showCleaning =
+    canSeeCleaningAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'cleaning');
   const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -451,6 +458,7 @@ function AdminPortal() {
               'смены',
               ...(showServiceLock ? (['блокировка'] as const) : []),
               ...(showSecurity ? (['охрана'] as const) : []),
+              ...(showCleaning ? (['уборка'] as const) : []),
             ] as AdminSection[],
           }]
         : []),
@@ -499,6 +507,7 @@ function AdminPortal() {
     showInternet,
     showServiceLock,
     showSecurity,
+    showCleaning,
     showSupportFee,
     showRequests,
     showWorkOrdersAdmin,
@@ -3690,6 +3699,15 @@ function AdminPortal() {
       case 'охрана':
         return (
           <AdminSecurity
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+          />
+        );
+
+      case 'уборка':
+        return (
+          <AdminCleaning
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}

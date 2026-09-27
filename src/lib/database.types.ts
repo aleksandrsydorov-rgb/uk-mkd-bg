@@ -597,6 +597,66 @@ export interface Database {
         };
         Relationships: [];
       };
+      cleaning_orders: {
+        Row: {
+          id: string;
+          property_id: number;
+          service_kind: string;
+          status: string;
+          preferred_date: string | null;
+          time_slot: string;
+          note: string | null;
+          admin_note: string | null;
+          created_by_role: string;
+          created_by_email: string;
+          work_order_id: string | null;
+          confirmed_by: number | null;
+          confirmed_at: string | null;
+          completed_at: string | null;
+          cancelled_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          service_kind: string;
+          status?: string;
+          preferred_date?: string | null;
+          time_slot?: string;
+          note?: string | null;
+          admin_note?: string | null;
+          created_by_role: string;
+          created_by_email: string;
+          work_order_id?: string | null;
+          confirmed_by?: number | null;
+          confirmed_at?: string | null;
+          completed_at?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          service_kind?: string;
+          status?: string;
+          preferred_date?: string | null;
+          time_slot?: string;
+          note?: string | null;
+          admin_note?: string | null;
+          created_by_role?: string;
+          created_by_email?: string;
+          work_order_id?: string | null;
+          confirmed_by?: number | null;
+          confirmed_at?: string | null;
+          completed_at?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       work_orders: {
         Row: {
           id: string;
@@ -3307,6 +3367,64 @@ export interface Database {
           p_salary_eur: number | null;
         };
         Returns: number;
+      };
+      owner_create_cleaning_order: {
+        Args: {
+          p_property_id: number;
+          p_service_kind: string;
+          p_preferred_date?: string | null;
+          p_time_slot?: string;
+          p_note?: string | null;
+        };
+        Returns: Database['public']['Tables']['cleaning_orders']['Row'];
+      };
+      owner_list_my_cleaning_orders: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['cleaning_orders']['Row'][];
+      };
+      owner_cancel_cleaning_order: {
+        Args: { p_order_id: string };
+        Returns: Database['public']['Tables']['cleaning_orders']['Row'];
+      };
+      admin_list_cleaning_orders: {
+        Args: { p_limit?: number };
+        Returns: {
+          id: string;
+          property_id: number;
+          apartment_number: string;
+          service_kind: string;
+          status: string;
+          preferred_date: string | null;
+          time_slot: string;
+          note: string | null;
+          admin_note: string | null;
+          created_by_role: string;
+          created_by_email: string;
+          work_order_id: string | null;
+          confirmed_at: string | null;
+          completed_at: string | null;
+          cancelled_at: string | null;
+          created_at: string;
+        }[];
+      };
+      admin_create_cleaning_order: {
+        Args: {
+          p_property_id: number;
+          p_service_kind: string;
+          p_preferred_date?: string | null;
+          p_time_slot?: string;
+          p_note?: string | null;
+        };
+        Returns: Database['public']['Tables']['cleaning_orders']['Row'];
+      };
+      admin_set_cleaning_order_status: {
+        Args: {
+          p_order_id: string;
+          p_status: string;
+          p_admin_note?: string | null;
+          p_create_work_order?: boolean;
+        };
+        Returns: Database['public']['Tables']['cleaning_orders']['Row'];
       };
       admin_list_security_posts: {
         Args: Record<string, never>;

@@ -48,6 +48,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'general_meeting',
   'building_documents',
   'guest_mode',
+  'cleaning',
 ] as const;
 
 export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];

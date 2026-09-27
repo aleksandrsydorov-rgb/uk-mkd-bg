@@ -45,6 +45,7 @@ import {
 import { OwnerSupportFee } from '@/components/account/OwnerSupportFee';
 import { OwnerInternet } from '@/components/account/OwnerInternet';
 import { OwnerSecurity } from '@/components/account/OwnerSecurity';
+import { OwnerCleaning } from '@/components/account/OwnerCleaning';
 import { firstServiceLock, isScopeLocked, type PropertyServiceLockView } from '@/lib/serviceLock';
 import {
   sofiaCalendarYear,
@@ -152,6 +153,7 @@ type MenuSection =
   | 'финансы'
   | 'интернет'
   | 'охрана'
+  | 'уборка'
   | 'ук'
   | 'счётчики'
   | 'документы'
@@ -191,6 +193,7 @@ export default function AccountPage() {
   const capitalEnabled = isBuildingModuleEnabled(buildingModules, 'capital_repair');
   const internetEnabled = isBuildingModuleEnabled(buildingModules, 'internet');
   const securityEnabled = isBuildingModuleEnabled(buildingModules, 'security');
+  const cleaningEnabled = isBuildingModuleEnabled(buildingModules, 'cleaning');
   const serviceLockEnabled = isBuildingModuleEnabled(buildingModules, 'service_lock');
   const supportFeeEnabled = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const requestsEnabled = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -229,6 +232,7 @@ export default function AccountPage() {
         : []),
       ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
       ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
+      ...(cleaningEnabled ? [{ key: 'уборка' as const, label: t('account.navCleaning'), icon: '🧹' }] : []),
       ...(waterEnabled || electricityEnabled
         ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
         : []),
@@ -251,6 +255,7 @@ export default function AccountPage() {
     capitalEnabled,
     internetEnabled,
     securityEnabled,
+    cleaningEnabled,
     documentsNavEnabled,
     pollsEnabled,
     managementNavEnabled,
@@ -1886,6 +1891,18 @@ export default function AccountPage() {
             supabase={supabase}
             propertyId={property.id}
             serviceLocked={scopeLocked('security')}
+          />
+        );
+
+      case 'уборка':
+        if (!property || !cleaningEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
+        return (
+          <OwnerCleaning
+            supabase={supabase}
+            propertyId={property.id}
+            serviceLocked={scopeLocked('cleaning')}
           />
         );
 

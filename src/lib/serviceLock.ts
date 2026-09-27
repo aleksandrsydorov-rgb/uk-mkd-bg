@@ -10,6 +10,7 @@ export const SERVICE_LOCK_SCOPES = [
   'internet',
   'occupancy',
   'security',
+  'cleaning',
   'elevator',
   'parking',
   'access_control',
@@ -28,6 +29,7 @@ export const SERVICE_LOCK_LIVE_SCOPES: readonly ServiceLockScope[] = [
   'internet',
   'occupancy',
   'security',
+  'cleaning',
 ];
 
 export const SERVICE_LOCK_FUTURE_SCOPES: readonly ServiceLockScope[] = [

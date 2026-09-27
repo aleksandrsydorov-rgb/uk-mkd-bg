@@ -1599,10 +1599,10 @@ function AdminPortal() {
     // Сортировка
     switch (aptSort) {
       case 'apartment_number_asc':
-        result.sort((a, b) => String(a.apartment_number).localeCompare(String(b.apartment_number), 'numeric'));
+        result.sort((a, b) => Number(a.apartment_number) - Number(b.apartment_number));
         break;
       case 'apartment_number_desc':
-        result.sort((a, b) => String(b.apartment_number).localeCompare(String(a.apartment_number), 'numeric'));
+        result.sort((a, b) => Number(b.apartment_number) - Number(a.apartment_number));
         break;
       case 'debt_desc':
         result.sort((a, b) => Number(b.debt ?? 0) - Number(a.debt ?? 0));

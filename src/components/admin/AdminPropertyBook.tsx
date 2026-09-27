@@ -97,18 +97,22 @@ export function AdminPropertyBook({
 
   const sortedProps = useMemo(
     () =>
-      [...properties].sort((a, b) =>
-        aptLabel(a.apartment_number).localeCompare(aptLabel(b.apartment_number), undefined, {
-          numeric: true,
-        }),
+      [...properties].sort(
+        (a, b) => Number(a.apartment_number) - Number(b.apartment_number),
       ),
     [properties],
   );
 
   const filtered = useMemo(() => {
-    if (filter === 'complete') return rows.filter((r) => r.book_complete);
-    if (filter === 'incomplete') return rows.filter((r) => !r.book_complete);
-    return rows;
+    const list =
+      filter === 'complete'
+        ? rows.filter((r) => r.book_complete)
+        : filter === 'incomplete'
+          ? rows.filter((r) => !r.book_complete)
+          : [...rows];
+    return list.sort(
+      (a, b) => Number(a.apartment_number) - Number(b.apartment_number),
+    );
   }, [rows, filter]);
 
   const load = useCallback(async () => {

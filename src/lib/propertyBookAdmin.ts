@@ -1,4 +1,6 @@
-/** Property book (книга этажной собственности) — helpers + CSV template. */
+/** Property book (книга этажной собственности) — helpers + Excel template. */
+
+import * as XLSX from 'xlsx';
 
 export const OWNERSHIP_TYPES = ['sole', 'shared'] as const;
 export type OwnershipType = (typeof OWNERSHIP_TYPES)[number];
@@ -48,6 +50,9 @@ export type PropertyBookOwnerCsv = PropertyBookOwnerInput & {
   apartment_number: string;
 };
 
+export const BOOK_OBJECTS_SHEET = 'objects';
+export const BOOK_OWNERS_SHEET = 'owners';
+
 export const BOOK_OBJECTS_CSV_HEADERS = [
   'apartment_number',
   'purpose',
@@ -73,64 +78,66 @@ export function canSeePropertyBookAdmin(role?: string | null) {
   return role === 'администрация';
 }
 
-export function parseCsv(text: string): Record<string, string>[] {
-  const raw = text.replace(/^\uFEFF/, '').trim();
-  if (!raw) return [];
-  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return [];
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
-  return lines.slice(1).map((line) => {
-    const cells = splitCsvLine(line);
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => {
-      row[h] = (cells[i] ?? '').trim();
-    });
-    return row;
+function cellToString(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value).trim();
+  if (value instanceof Date) return value.toISOString();
+  return String(value).trim();
+}
+
+function sheetToRecords(
+  sheet: XLSX.WorkSheet | undefined,
+  requiredHeaders: readonly string[],
+): Record<string, string>[] {
+  if (!sheet) return [];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: '',
+    raw: false,
   });
-}
-
-function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        cur += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
+  return rows.map((row) => {
+    const out: Record<string, string> = {};
+    for (const key of Object.keys(row)) {
+      out[String(key).trim()] = cellToString(row[key]);
     }
-  }
-  out.push(cur);
-  return out;
+    for (const h of requiredHeaders) {
+      if (!(h in out)) out[h] = '';
+    }
+    return out;
+  }).filter((row) =>
+    requiredHeaders.some((h) => (row[h] ?? '').trim() !== ''),
+  );
 }
 
-export function toCsv(headers: readonly string[], rows: Record<string, string>[]): string {
-  const esc = (v: string) => {
-    if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-    return v;
+export type PropertyBookWorkbookPayload = {
+  objects: Record<string, string>[];
+  owners: Record<string, string>[];
+};
+
+/** Parse one Excel workbook with sheets `objects` and `owners`. */
+export async function parsePropertyBookWorkbook(file: File): Promise<PropertyBookWorkbookPayload> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+
+  const objectsName =
+    wb.SheetNames.find((n) => n.trim().toLowerCase() === BOOK_OBJECTS_SHEET) ??
+    wb.SheetNames[0];
+  const ownersName =
+    wb.SheetNames.find((n) => n.trim().toLowerCase() === BOOK_OWNERS_SHEET) ??
+    wb.SheetNames.find((n) => n !== objectsName);
+
+  if (!objectsName || !ownersName || objectsName === ownersName) {
+    throw new Error('Excel must contain sheets "objects" and "owners"');
+  }
+
+  return {
+    objects: sheetToRecords(wb.Sheets[objectsName], BOOK_OBJECTS_CSV_HEADERS),
+    owners: sheetToRecords(wb.Sheets[ownersName], BOOK_OWNERS_CSV_HEADERS),
   };
-  const lines = [headers.join(',')];
-  for (const row of rows) {
-    lines.push(headers.map((h) => esc(row[h] ?? '')).join(','));
-  }
-  return `\uFEFF${lines.join('\n')}\n`;
 }
 
-export function bookObjectsTemplateCsv(): string {
-  return toCsv(BOOK_OBJECTS_CSV_HEADERS, [
+function objectsTemplateRows(): Record<string, string>[] {
+  return [
     {
       apartment_number: '12',
       purpose: 'апартамент',
@@ -145,11 +152,11 @@ export function bookObjectsTemplateCsv(): string {
       ideal_parts_percent: '2.5',
       ownership_type: 'shared',
     },
-  ]);
+  ];
 }
 
-export function bookOwnersTemplateCsv(): string {
-  return toCsv(BOOK_OWNERS_CSV_HEADERS, [
+function ownersTemplateRows(): Record<string, string>[] {
+  return [
     {
       apartment_number: '12',
       entity_kind: 'natural_person',
@@ -186,15 +193,19 @@ export function bookOwnersTemplateCsv(): string {
       entity_name: '',
       eik_bulstat: '',
     },
-  ]);
+  ];
 }
 
-export function downloadTextFile(filename: string, content: string, mime = 'text/csv;charset=utf-8') {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+/** One Excel template: sheets objects + owners. */
+export function downloadPropertyBookExcelTemplate(filename = 'property_book_template.xlsx') {
+  const wb = XLSX.utils.book_new();
+  const objectsSheet = XLSX.utils.json_to_sheet(objectsTemplateRows(), {
+    header: [...BOOK_OBJECTS_CSV_HEADERS],
+  });
+  const ownersSheet = XLSX.utils.json_to_sheet(ownersTemplateRows(), {
+    header: [...BOOK_OWNERS_CSV_HEADERS],
+  });
+  XLSX.utils.book_append_sheet(wb, objectsSheet, BOOK_OBJECTS_SHEET);
+  XLSX.utils.book_append_sheet(wb, ownersSheet, BOOK_OWNERS_SHEET);
+  XLSX.writeFile(wb, filename);
 }

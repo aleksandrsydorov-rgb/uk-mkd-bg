@@ -70,7 +70,7 @@
 
 ### Шаблон
 
-Два листа, ключ объекта = **`apartment_number`** (текст, trim).
+Один файл Excel (`.xlsx`), два листа; ключ объекта = **`apartment_number`** (текст, trim).
 
 **objects**
 

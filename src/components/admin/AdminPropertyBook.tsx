@@ -9,11 +9,9 @@ import { isMissingRelation } from '@/lib/polls';
 import {
   BOOK_ENTITY_KINDS,
   OWNERSHIP_TYPES,
-  bookObjectsTemplateCsv,
-  bookOwnersTemplateCsv,
   canSeePropertyBookAdmin,
-  downloadTextFile,
-  parseCsv,
+  downloadPropertyBookExcelTemplate,
+  parsePropertyBookWorkbook,
   type BookEntityKind,
   type OwnershipType,
   type PropertyBookListRow,
@@ -256,18 +254,15 @@ export function AdminPropertyBook({
     }
   }
 
-  async function runImport(objectsFile: File, ownersFile: File, dryRun: boolean) {
+  async function runImport(file: File, dryRun: boolean) {
     setBusy(true);
     setError(null);
     setSuccess(null);
     setImportErrors(null);
     try {
-      const [objectsText, ownersText] = await Promise.all([
-        objectsFile.text(),
-        ownersFile.text(),
-      ]);
-      const objectRows = parseCsv(objectsText);
-      const ownerRows = parseCsv(ownersText);
+      const { objects: objectRows, owners: ownerRows } = await parsePropertyBookWorkbook(file);
+      if (objectRows.length === 0) throw new Error(t('admin.bookExcelEmptyObjects'));
+      if (ownerRows.length === 0) throw new Error(t('admin.bookExcelEmptyOwners'));
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
         p_objects: objectRows,
         p_owners: ownerRows,
@@ -319,39 +314,31 @@ export function AdminPropertyBook({
         <div className="flex flex-wrap gap-2">
           <AdminSecondaryButton
             type="button"
-            onClick={() => downloadTextFile('book_objects_template.csv', bookObjectsTemplateCsv())}
+            onClick={() => downloadPropertyBookExcelTemplate('property_book_template.xlsx')}
           >
-            {t('admin.bookTplObjects')}
-          </AdminSecondaryButton>
-          <AdminSecondaryButton
-            type="button"
-            onClick={() => downloadTextFile('book_owners_template.csv', bookOwnersTemplateCsv())}
-          >
-            {t('admin.bookTplOwners')}
+            {t('admin.bookTplExcel')}
           </AdminSecondaryButton>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.bookFileObjects')}
-            <input id="book-objects-file" type="file" accept=".csv,text/csv" className={adminFieldClass} />
-          </label>
-          <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.bookFileOwners')}
-            <input id="book-owners-file" type="file" accept=".csv,text/csv" className={adminFieldClass} />
-          </label>
-        </div>
+        <label className="grid max-w-xl gap-1 text-sm text-secondary">
+          {t('admin.bookFileExcel')}
+          <input
+            id="book-excel-file"
+            type="file"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            className={adminFieldClass}
+          />
+        </label>
         <div className="flex flex-wrap gap-2">
           <AdminSecondaryButton
             type="button"
             disabled={busy}
             onClick={() => {
-              const o = (document.getElementById('book-objects-file') as HTMLInputElement)?.files?.[0];
-              const w = (document.getElementById('book-owners-file') as HTMLInputElement)?.files?.[0];
-              if (!o || !w) {
-                setError(t('admin.bookFilesRequired'));
+              const f = (document.getElementById('book-excel-file') as HTMLInputElement)?.files?.[0];
+              if (!f) {
+                setError(t('admin.bookFileRequired'));
                 return;
               }
-              void runImport(o, w, true);
+              void runImport(f, true);
             }}
           >
             {t('admin.bookDryRun')}
@@ -360,14 +347,13 @@ export function AdminPropertyBook({
             type="button"
             disabled={busy}
             onClick={() => {
-              const o = (document.getElementById('book-objects-file') as HTMLInputElement)?.files?.[0];
-              const w = (document.getElementById('book-owners-file') as HTMLInputElement)?.files?.[0];
-              if (!o || !w) {
-                setError(t('admin.bookFilesRequired'));
+              const f = (document.getElementById('book-excel-file') as HTMLInputElement)?.files?.[0];
+              if (!f) {
+                setError(t('admin.bookFileRequired'));
                 return;
               }
               if (!confirm(t('admin.bookImportConfirm'))) return;
-              void runImport(o, w, false);
+              void runImport(f, false);
             }}
           >
             {t('admin.bookApplyImport')}

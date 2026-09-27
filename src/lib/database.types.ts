@@ -3500,12 +3500,31 @@ export interface Database {
           p_ideal_parts_percent: number;
           p_ownership_type: string;
           p_ideal_parts_source?: string | null;
+          p_apartment_number?: number | null;
+          p_floor?: number | null;
+          p_ideal_parts_note?: string | null;
+          p_ideal_parts_meeting_ref?: string | null;
         };
         Returns: Record<string, unknown>;
       };
       admin_replace_property_book_owners: {
         Args: { p_property_id: number; p_owners: unknown };
         Returns: Record<string, unknown>;
+      };
+      admin_list_property_change_log: {
+        Args: { p_property_id: number; p_limit?: number };
+        Returns: {
+          id: string;
+          property_id: number;
+          changed_at: string;
+          changed_by_email: string | null;
+          changed_by_uid: string | null;
+          source: string;
+          entity: string;
+          action: string;
+          changes: Record<string, unknown>;
+          note: string | null;
+        }[];
       };
       admin_import_property_book: {
         Args: {

@@ -83,11 +83,25 @@ export function AdminPropertyBook({
   const [filter, setFilter] = useState<'all' | 'complete' | 'incomplete'>('all');
 
   const [selectedId, setSelectedId] = useState<number | ''>('');
+  const [apartmentNumber, setApartmentNumber] = useState('');
+  const [floor, setFloor] = useState('');
   const [purpose, setPurpose] = useState('');
   const [areaSqm, setAreaSqm] = useState('');
   const [idealParts, setIdealParts] = useState('');
+  const [idealPartsSource, setIdealPartsSource] = useState('');
+  const [idealPartsNote, setIdealPartsNote] = useState('');
   const [ownershipType, setOwnershipType] = useState<OwnershipType>('sole');
   const [owners, setOwners] = useState<OwnerForm[]>([emptyOwner()]);
+  const [changeLog, setChangeLog] = useState<
+    Array<{
+      id: string;
+      changed_at: string;
+      changed_by_email: string | null;
+      entity: string;
+      action: string;
+      changes: Record<string, unknown>;
+    }>
+  >([]);
   const [importErrors, setImportErrors] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -154,14 +168,24 @@ export function AdminPropertyBook({
       const payload = data as {
         property: {
           id: number;
+          apartment_number?: number | string | null;
+          floor?: number | null;
           purpose: string | null;
           area_sqm: number | null;
           ideal_parts_percent: number | null;
+          ideal_parts_source?: string | null;
+          ideal_parts_note?: string | null;
           ownership_type: string | null;
         };
         owners: Array<Record<string, unknown>>;
       };
       setSelectedId(id);
+      setApartmentNumber(
+        payload.property.apartment_number != null
+          ? String(payload.property.apartment_number)
+          : '',
+      );
+      setFloor(payload.property.floor != null ? String(payload.property.floor) : '');
       setPurpose(payload.property.purpose ?? '');
       setAreaSqm(payload.property.area_sqm != null ? String(payload.property.area_sqm) : '');
       setIdealParts(
@@ -169,6 +193,8 @@ export function AdminPropertyBook({
           ? String(payload.property.ideal_parts_percent)
           : '',
       );
+      setIdealPartsSource(payload.property.ideal_parts_source ?? '');
+      setIdealPartsNote(payload.property.ideal_parts_note ?? '');
       setOwnershipType(
         payload.property.ownership_type === 'shared' ? 'shared' : 'sole',
       );
@@ -202,6 +228,24 @@ export function AdminPropertyBook({
       } else {
         setInvites([]);
       }
+      const { data: logData, error: logErr } = await supabase.rpc('admin_list_property_change_log', {
+        p_property_id: id,
+        p_limit: 40,
+      });
+      if (!logErr && Array.isArray(logData)) {
+        setChangeLog(
+          (logData as Array<Record<string, unknown>>).map((row) => ({
+            id: String(row.id),
+            changed_at: String(row.changed_at ?? ''),
+            changed_by_email: row.changed_by_email != null ? String(row.changed_by_email) : null,
+            entity: String(row.entity ?? 'property'),
+            action: String(row.action ?? 'update'),
+            changes: (row.changes as Record<string, unknown>) ?? {},
+          })),
+        );
+      } else {
+        setChangeLog([]);
+      }
       setInviteLink(null);
       setInviteEmail(mapped[0]?.email ?? '');
     } catch (e: unknown) {
@@ -223,6 +267,11 @@ export function AdminPropertyBook({
         p_area_sqm: Number(areaSqm),
         p_ideal_parts_percent: Number(idealParts),
         p_ownership_type: ownershipType,
+        p_ideal_parts_source: idealPartsSource || null,
+        p_apartment_number: Number(apartmentNumber) || null,
+        p_floor: Number(floor) || null,
+        p_ideal_parts_note: idealPartsNote || null,
+        p_ideal_parts_meeting_ref: null,
       });
       if (objErr) throw objErr;
 
@@ -251,6 +300,22 @@ export function AdminPropertyBook({
         setSuccess(t('admin.bookSaved'));
       }
       await load();
+      const { data: logData } = await supabase.rpc('admin_list_property_change_log', {
+        p_property_id: selectedId,
+        p_limit: 40,
+      });
+      if (Array.isArray(logData)) {
+        setChangeLog(
+          (logData as Array<Record<string, unknown>>).map((row) => ({
+            id: String(row.id),
+            changed_at: String(row.changed_at ?? ''),
+            changed_by_email: row.changed_by_email != null ? String(row.changed_by_email) : null,
+            entity: String(row.entity ?? 'property'),
+            action: String(row.action ?? 'update'),
+            changes: (row.changes as Record<string, unknown>) ?? {},
+          })),
+        );
+      }
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
     } finally {
@@ -451,11 +516,30 @@ export function AdminPropertyBook({
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm text-secondary">
+              {t('admin.phAptNo')}
+              <input
+                className={adminFieldClass}
+                type="number"
+                value={apartmentNumber}
+                onChange={(e) => setApartmentNumber(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-secondary">
+              {t('admin.phFloor')}
+              <input
+                className={adminFieldClass}
+                type="number"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-secondary">
               {t('admin.bookPurpose')}
               <input className={adminFieldClass} value={purpose} onChange={(e) => setPurpose(e.target.value)} />
             </label>
             <label className="grid gap-1 text-sm text-secondary">
               {t('admin.bookArea')}
+              <span className="text-xs text-muted">{t('admin.bookAreaHint')}</span>
               <input className={adminFieldClass} value={areaSqm} onChange={(e) => setAreaSqm(e.target.value)} />
             </label>
             <label className="grid gap-1 text-sm text-secondary">
@@ -479,6 +563,22 @@ export function AdminPropertyBook({
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              {t('admin.bookIdealSource')}
+              <input
+                className={adminFieldClass}
+                value={idealPartsSource}
+                onChange={(e) => setIdealPartsSource(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              {t('admin.bookIdealNote')}
+              <input
+                className={adminFieldClass}
+                value={idealPartsNote}
+                onChange={(e) => setIdealPartsNote(e.target.value)}
+              />
             </label>
           </div>
 
@@ -749,6 +849,32 @@ export function AdminPropertyBook({
                 ))}
               </ul>
             ) : null}
+          </div>
+
+          <div className="space-y-3 border-t border-border pt-4">
+            <h4 className="text-sm font-semibold">{t('admin.bookHistory')}</h4>
+            {changeLog.length === 0 ? (
+              <p className="text-xs text-muted">{t('admin.bookHistoryEmpty')}</p>
+            ) : (
+              <ul className="max-h-64 space-y-2 overflow-auto text-xs">
+                {changeLog.map((entry) => (
+                  <li key={entry.id} className="rounded-lg border border-border bg-background p-2">
+                    <div className="text-secondary">
+                      {entry.changed_at
+                        ? new Date(entry.changed_at).toLocaleString()
+                        : '—'}
+                      {entry.changed_by_email
+                        ? ` · ${t('admin.bookHistoryBy')} ${entry.changed_by_email}`
+                        : ''}
+                      {` · ${entry.entity}/${entry.action}`}
+                    </div>
+                    <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] text-foreground">
+                      {JSON.stringify(entry.changes, null, 2)}
+                    </pre>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
       ) : null}

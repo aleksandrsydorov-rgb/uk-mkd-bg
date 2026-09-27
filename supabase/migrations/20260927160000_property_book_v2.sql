@@ -280,7 +280,7 @@ begin
     p.id,
     p.apartment_number::text,
     p.purpose,
-    p.area_sqm,
+    p.area_sqm::numeric,
     p.ideal_parts_percent,
     p.ownership_type,
     (

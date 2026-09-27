@@ -1310,9 +1310,9 @@ export const ru = {
     serviceLock: 'Блокировка услуг',
     security: 'Охрана',
     securityLead: 'Посты охраны и заявки: пропуск, доставка, передача.',
-    book: 'Книга',
+    book: 'Книга этажной собственности',
     bookLead:
-      'Книга этажной собственности: объекты, доли, идеальные части, импорт Excel.',
+      'Объекты, доли, идеальные части и импорт Excel по ЗУЕС.',
     bookMigrationNeeded: 'Примените миграцию книги (db push), затем обновите страницу.',
     bookImport: 'Импорт из Excel',
     bookImportHint:
@@ -2666,7 +2666,7 @@ export const en: Messages = {
     cleaning: 'Cleaning',
     heating: 'Heating',
     other: 'Other',
-    book: 'Condominium book',
+    book: 'Book of condominium ownership',
   },
   pollCat: {
     buy: 'purchase',
@@ -3328,9 +3328,9 @@ export const en: Messages = {
     serviceLock: 'Service lock',
     security: 'Security',
     securityLead: 'Security posts and requests: guest pass, delivery, handover.',
-    book: 'Ownership book',
+    book: 'Book of condominium ownership',
     bookLead:
-      'Condominium ownership book: units, shares, ideal parts, Excel import.',
+      'Units, shares, ideal parts and Excel import under condominium law.',
     bookMigrationNeeded: 'Apply the property-book migration (db push), then refresh.',
     bookImport: 'Excel import',
     bookImportHint:
@@ -4684,7 +4684,7 @@ export const bg: Messages = {
     cleaning: 'Почистване',
     heating: 'Отопление',
     other: 'Друго',
-    book: 'Книга',
+    book: 'Книга на етажната собственост',
   },
   pollCat: {
     buy: 'покупка',
@@ -5346,9 +5346,9 @@ export const bg: Messages = {
     serviceLock: 'Блокиране на услуги',
     security: 'Охрана',
     securityLead: 'Постове на охраната и заявки: пропуск, доставка, предаване.',
-    book: 'Книга',
+    book: 'Книга на етажната собственост',
     bookLead:
-      'Книга на етажната собственост: обекти, дялове, идеални части, импорт Excel.',
+      'Обекти, дялове, идеални части и Excel импорт по ЗУЕС.',
     bookMigrationNeeded: 'Приложете миграцията на книгата (db push) и опреснете страницата.',
     bookImport: 'Импорт от Excel',
     bookImportHint:

@@ -295,7 +295,8 @@ type AdminSection =
   | 'тарифы'
   | 'чат'
   | 'рабочие_задачи'
-  | 'мои_задачи';
+  | 'мои_задачи'
+  | 'платформа';
 
 const ADMIN_SECTIONS: readonly AdminSection[] = [
   'обзор',
@@ -326,6 +327,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'чат',
   'рабочие_задачи',
   'мои_задачи',
+  'платформа',
 ] as const;
 
 const DEFAULT_ADMIN_SECTION: AdminSection = 'обзор';
@@ -360,6 +362,7 @@ function NavGroupIcon({ id }: { id: string }) {
     comms: 'M3 4.5h10v6.2H6.2L3.5 13V4.5z',
     docs: 'M4 2.5h5.2L12.5 6v7.5h-8.5zM9 2.8V6h3.1',
     system: 'M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM8 2.5v1.2M8 12.3v1.2M3.4 4.2l.9.9M11.7 10.9l.9.9M2.5 8h1.2M12.3 8h1.2M3.4 11.8l.9-.9M11.7 5.1l.9-.9',
+    platform: 'M3.5 11.5 8 3.5l4.5 8H3.5zM8 7v2.2M8 11.2h.01',
   };
   return (
     <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden>
@@ -414,6 +417,7 @@ function AdminPortal() {
       { key: 'документы', label: t('admin.navDocuments'), icon: '📁' },
       { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
       { key: 'чат', label: t('admin.chat'), icon: '💬' },
+      { key: 'платформа', label: t('admin.platformTitle'), icon: '🛰️' },
     ],
     [t],
   );
@@ -522,6 +526,13 @@ function AdminPortal() {
             ] as AdminSection[],
           }]
         : []),
+      ...(showPlatformSupport
+        ? [{
+            id: 'platform',
+            label: t('admin.platformTitle'),
+            items: ['платформа'] as AdminSection[],
+          }]
+        : []),
       { id: 'system', label: t('admin.menuSystem'), items: ['персонал', 'настройки'] },
     ];
     return groups.filter((group) => group.items.length > 0);
@@ -544,6 +555,7 @@ function AdminPortal() {
     showChat,
     showGeneralMeeting,
     showBuildingDocuments,
+    showPlatformSupport,
     canManageCriticalAccess,
     canReadSupportFinance,
     showTariffCore,
@@ -4659,7 +4671,10 @@ function AdminPortal() {
           if (msgKey) return t(`admin.${msgKey}` as 'admin.moduleCategoryFinance');
           return category;
         };
-        const groupedModules = groupModulesByCategory(moduleCatalog);
+        // Platform-core has its own left-nav entry — keep Settings free of that surface.
+        const groupedModules = groupModulesByCategory(
+          moduleCatalog.filter((row) => !isPlatformCoreModuleKey(row.module_key)),
+        );
         const overviewCardEligibility: Record<OverviewCardKey, boolean> = {
           apartments: canReadPropertyDirectory,
           active_requests: canManageCriticalAccess && showRequests,
@@ -4795,14 +4810,13 @@ function AdminPortal() {
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                           {group.modules.map((row) => {
                             const enabled = row.enabled === true;
-                            const platformCore = isPlatformCoreModuleKey(row.module_key);
                             const toggleable = isModuleToggleable(row.module_key, row.implemented === true);
                             const saving = moduleSavingKey === row.module_key;
                             return (
                               <div
                                 key={row.module_key}
                                 className={`${adminCardClass} flex items-start justify-between gap-3 p-4 ${
-                                  (enabled && toggleable) || platformCore ? 'ring-1 ring-accent/20' : ''
+                                  enabled && toggleable ? 'ring-1 ring-accent/20' : ''
                                 }`}
                               >
                                 <div className="min-w-0">
@@ -4810,22 +4824,16 @@ function AdminPortal() {
                                     {resolveModuleLabel(row)}
                                   </p>
                                   <p className="mt-1 text-xs text-muted">
-                                    {platformCore
-                                      ? t('admin.modulePlatformCoreLocked')
-                                      : !row.implemented
-                                        ? t('admin.moduleNotImplemented')
-                                        : saving
-                                          ? t('admin.moduleSaving')
-                                          : enabled
-                                            ? t('admin.moduleEnabled')
-                                            : t('admin.moduleDisabled')}
+                                    {!row.implemented
+                                      ? t('admin.moduleNotImplemented')
+                                      : saving
+                                        ? t('admin.moduleSaving')
+                                        : enabled
+                                          ? t('admin.moduleEnabled')
+                                          : t('admin.moduleDisabled')}
                                   </p>
                                 </div>
-                                {platformCore ? (
-                                  <span className="rounded-full bg-accent-bg px-2.5 py-1 text-[11px] font-medium text-accent">
-                                    {t('admin.modulePlatformCoreBadge')}
-                                  </span>
-                                ) : toggleable ? (
+                                {toggleable ? (
                                   canChangeBuildingModules ? (
                                     <AdminToggle
                                       checked={enabled}
@@ -4854,19 +4862,27 @@ function AdminPortal() {
                 </div>
               )}
             </section>
-
-            {showPlatformSupport ? (
-              <section className="space-y-3 border-t border-border pt-6">
-                <AdminPlatformSupport
-                  supabase={supabase}
-                  staffRole={staffRole}
-                  buildingModules={buildingModules}
-                />
-              </section>
-            ) : null}
           </div>
         );
       }
+
+      case 'платформа':
+        if (!showPlatformSupport) {
+          return (
+            <AdminEmptyState
+              title={t('admin.platformTitle')}
+              text={t('admin.platformAccessDenied')}
+            />
+          );
+        }
+        return (
+          <AdminPlatformSupport
+            supabase={supabase}
+            staffRole={staffRole}
+            buildingModules={buildingModules}
+          />
+        );
+
       // =============================================================
       // ОПРОСЫ
       // =============================================================

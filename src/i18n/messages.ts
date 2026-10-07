@@ -3588,7 +3588,7 @@ export const en: Messages = {
     settingsWorkspaceOff: 'Hidden',
     settingsRateAlso: 'The same rate can also be changed in the support-fee section.',
     settingsModesReadOnly: 'Water and electricity modes are changed in those module sections.',
-    platformTitle: 'Platform & support',
+    platformTitle: 'Platform & Support',
     platformLead: 'Talk to the platform operator and view service invoices.',
     platformTabSupport: 'Support',
     platformTabBilling: 'Invoices & payments',

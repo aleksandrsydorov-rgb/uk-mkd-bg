@@ -116,7 +116,7 @@ export function AdminMeetingInvitationDispatch({
       p_meeting_id: meeting.id,
     });
     if (error) {
-      onError(ownerVisibleError(error.message, t));
+      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
       return;
     }
     setReady(parseInvitationDispatchReady(data));
@@ -159,7 +159,7 @@ export function AdminMeetingInvitationDispatch({
     });
     setLocalBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t));
+      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
       return;
     }
     await onReload();
@@ -175,7 +175,7 @@ export function AdminMeetingInvitationDispatch({
     });
     setLocalBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t));
+      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
       return;
     }
     const row = (data ?? {}) as { sent?: number; skipped?: number; already_sent?: boolean };

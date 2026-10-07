@@ -2284,6 +2284,8 @@ export interface Database {
           description?: string | null;
           proposed_decision_text?: string | null;
           created_at?: string;
+          majority_rule?: string;
+          decision_category?: string | null;
           source_poll_id?: number | null;
         };
         Relationships: [];

@@ -168,7 +168,7 @@ export function AdminMeetingElectionCandidates({
     ]);
 
     if (ownersRes.error) {
-      onError(ownerVisibleError(ownersRes.error.message, t));
+      onError(ownerVisibleError(ownersRes.error.message, t('admin.errGeneric')));
       return;
     }
     setOwners(sortOwnerOptions((ownersRes.data ?? []) as OwnerOption[]));
@@ -242,7 +242,7 @@ export function AdminMeetingElectionCandidates({
     });
     setBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t));
+      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
       return;
     }
     await load();
@@ -264,7 +264,7 @@ export function AdminMeetingElectionCandidates({
     });
     setBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t));
+      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
       return;
     }
     if (electionType === 'control_board') setControlMode('board');
@@ -281,7 +281,7 @@ export function AdminMeetingElectionCandidates({
     });
     setBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t));
+      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
       return;
     }
     setControlMode('controller');

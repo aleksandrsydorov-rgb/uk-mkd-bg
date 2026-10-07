@@ -1,0 +1,119 @@
+AMADEUS 11 — PLATFORM SUPPORT MODULE / IMPLEMENTATION REPORT (UPDATED)
+Date: 2026-10-08
+Repo: uk-mkd-bg
+Status: READY after final architecture review
+(NOT deployed, NOT db pushed, NOT committed)
+
+See also: audit_exports/platform_support_final_review.txt
+
+==============================================================================
+ARCHITECTURE USED
+==============================================================================
+
+1) PLATFORM-CORE (not optional business module)
+   - Still registered in Module Core as `platform_support` for identity/catalog.
+   - Complex admin CANNOT disable it (UI locked + RPC guard + trigger).
+   - Always available to `администрация`; never shown to owners/guests/engineers.
+   - Remains reachable under SUSPENDED_NONPAYMENT.
+
+2) SERVICE BOUNDARY
+   - UI → PlatformControlService only.
+   - Local adapter: createLocalPlatformControlAdapter (awaiting_master).
+   - Future: Master Control API adapter (live) without UI rewrite.
+
+3) PRE-MASTER HONESTY (option B)
+   - No live ALSYD delivery/reply path today.
+   - Support messages may be stored locally as queued notes.
+   - UI clearly states awaiting Master; button = "Save locally".
+   - Invoices empty until real Master sync; no fake history.
+
+==============================================================================
+MODULE CORE INTEGRATION
+==============================================================================
+
+- Catalog: platform_support / services / implemented=true / sort_order=5
+- building_modules: forced enabled=true
+- PLATFORM_CORE_MODULE_KEYS + isModuleToggleable() in src/lib/modules.ts
+- Settings UI: locked badge, no toggle
+- Access: role-only (not isBuildingModuleEnabled)
+
+==============================================================================
+TABLES / RPCS
+==============================================================================
+
+Migration: supabase/migrations/20261008010000_platform_support_module.sql
+
+Tables: platform_installations, platform_account_state, platform_support_threads,
+platform_support_messages, platform_billing_invoices, platform_support_audit
+
+RPCs: ensure_bootstrap, get_account, list_invoices, get_conversation,
+send_message, mark_read, unread_count
+
+Guards added in same migration:
+- set_building_module_enabled refuses disable of platform_support
+- trigger platform_support_prevent_disable_biu
+- assert_admin = role only (no module-toggle gate)
+- audit action SUPPORT_MESSAGE_QUEUED_LOCAL (delivery=awaiting_master)
+
+==============================================================================
+PERMISSIONS / RLS
+==============================================================================
+
+- RLS on; revoke direct authenticated table access
+- RPC security definer + has_staff_role('администрация')
+- tech_context sanitizer strips secrets/tokens/passwords
+- No platform_operator client write path (Master later)
+- Single-tenant installation — no cross-complex operator ACL (N/A until Master)
+
+==============================================================================
+UI
+==============================================================================
+
+Admin → Settings → Platform & support (always for complex admin)
+Tabs: Support | Invoices & payments
+Pre-Master banners + local-save composer + empty billing honesty
+
+==============================================================================
+FILES CHANGED (FINAL REVIEW DELTA + ORIGINAL)
+==============================================================================
+
+- docs/architecture-cores.md
+- src/app/admin/page.tsx
+- src/i18n/messages.ts
+- src/lib/database.types.ts
+- src/lib/modules.ts
+- src/lib/platformControl.ts
+- src/components/admin/AdminPlatformSupport.tsx
+- supabase/migrations/20261008010000_platform_support_module.sql
+- supabase/platform_support_preflight.sql
+- supabase/platform_support_verify.sql
+- supabase/platform_support_smoke.sql
+- audit_exports/platform_support_module_report.txt
+- audit_exports/platform_support_final_review.txt
+
+==============================================================================
+VERIFICATION
+==============================================================================
+
+npx tsc --noEmit → PASS
+npm run build    → PASS
+
+SQL safety artifacts updated; production SQL NOT executed.
+
+==============================================================================
+PRODUCTION STEPS (NOT EXECUTED)
+==============================================================================
+
+1) Apply migration 20261008010000_platform_support_module.sql
+2) Run preflight/verify; optional smoke (ROLLBACK)
+3) Deploy app
+4) Later: Master adapter → live delivery + invoice sync
+
+==============================================================================
+REMAINING RISKS
+==============================================================================
+
+- Migration not applied yet.
+- Local notes are not ALSYD tickets until Master exists.
+- Operator reply path absent until Master.
+- Attachment upload still reserved, not wired.

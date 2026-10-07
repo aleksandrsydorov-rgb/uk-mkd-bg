@@ -1,0 +1,99 @@
+AMADEUS 11 — PLATFORM SUPPORT FINAL ARCHITECTURE REVIEW
+Date: 2026-10-08
+Repo: uk-mkd-bg
+Status: REVIEW READY (NOT deployed / NOT db pushed / NOT committed)
+
+==============================================================================
+EXPLICIT ANSWERS
+==============================================================================
+
+1. Can complex admin disable Platform & Support?
+   NO.
+   - UI: Settings catalog shows locked "Платформа" badge; no toggle.
+   - Client: handleSetBuildingModule rejects isPlatformCoreModuleKey.
+   - DB: set_building_module_enabled refuses enabled=false for platform_support.
+   - DB: trigger platform_support_prevent_disable_biu blocks disable.
+   - RPCs: platform_support_assert_admin is role-gated only (not module-toggle-gated).
+
+2. Can ordinary owner/resident see it?
+   NO.
+   - UI: showPlatformSupport = canSeePlatformSupportAdmin = isUkAdminRole only.
+   - RPC: has_staff_role('администрация') required.
+   - Owners/guests/engineers/accountant: no surface, no RPC access.
+
+3. Where do support messages go BEFORE Master exists?
+   Local installation DB only, via PlatformControlService → local Supabase adapter →
+   platform_support_* RPCs → platform_support_messages.
+   Delivery mode = awaiting_master. UI labels: "Сохранить локально" / queued locally.
+   Not delivered to ALSYD. No cross-project access. No fake Master.
+
+4. Can ALSYD currently reply? YES/NO and exact mechanism.
+   NO.
+   There is no secure operational path for platform_operator to receive or reply today.
+   No Master Control API, no operator inbox, no cross-complex operator grants.
+   Authenticated client can only insert as complex_admin via RPC.
+   Operator replies would require Master Control later.
+
+5. What changes when Master Control is introduced?
+   Replace createLocalPlatformControlAdapter with Master API adapter implementing the
+   same PlatformControlService interface:
+   - getSupportDeliveryMode() → 'live'
+   - getBillingSyncMode() → 'live'
+   - send/list/sync via Master; local tables become cache/migration source if needed.
+   AdminPlatformSupport UI stays; copy switches from pre-Master to live labels.
+
+6. Are invoices currently real data only?
+   YES.
+   platform_billing_invoices starts empty. No seed/fake history.
+   Empty state is honest ("awaiting Master sync").
+   Smoke may insert CANCELLED row inside BEGIN/ROLLBACK only (rolled back).
+
+7. Does future suspension still allow admin access to billing/support?
+   YES.
+   - assert_admin does not check account status.
+   - platformSupportVisibleDuringSuspension() always returns true.
+   - showPlatformSupport is role-only (not status-gated).
+   - Smoke inserts SUSPENDED_NONPAYMENT account row successfully (rolled back).
+
+8. Were any unrelated business modules changed?
+   NO product logic changes to Support Fee / Capital / Water / Electricity / Requests /
+   Work Orders / Chat / Announcements / Polls / Documents / Property Book / GM.
+   Only set_building_module_enabled was recreated in the platform_support migration
+   with an added platform_support disable guard (same function, additive guard).
+   Catalog upsert touches only platform_support row.
+
+9. Is migration safe for existing Amadeus production data?
+   YES for additive apply (not executed yet):
+   - New tables only; no DROP of business data.
+   - No invented invoices.
+   - Force-enable updates only platform_support building_modules row.
+   - RLS deny-direct; RPC boundary.
+   - Tech context sanitizer strips secrets.
+   - Single-tenant installation model (no cross-complex operator ACL yet — intentional).
+   - Unapplied locally; production SQL not executed per request.
+
+==============================================================================
+PRE-MASTER SUPPORT BEHAVIOR (OPTION B)
+==============================================================================
+
+Chosen: B — no legitimate live ALSYD receive/reply mechanism exists yet.
+
+Honest UI:
+- Warning banner on Support tab
+- Composer button "Save locally"
+- Per-message status "Saved locally · awaiting Master"
+- No claim of operator read/delivery while awaiting_master
+
+Billing:
+- Info banner + empty invoice list until Master sync
+- Account status row may exist (ACTIVE defaults; no fake money)
+
+==============================================================================
+VALIDATION
+==============================================================================
+
+npx tsc --noEmit → PASS
+npm run build    → PASS
+Preflight/verify/smoke SQL updated; smoke is BEGIN/ROLLBACK only.
+Production SQL NOT executed.
+Deploy / db push / commit / push NOT performed.

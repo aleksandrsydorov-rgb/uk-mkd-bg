@@ -21,6 +21,7 @@ export const BUILDING_MODULE_KEYS = [
   'rental',
   'cleaning',
   'budget',
+  'platform_support',
   'maintenance',
   'access_control',
   'contractors',
@@ -51,9 +52,27 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'guest_mode',
   'cleaning',
   'budget',
+  'platform_support',
 ] as const;
 
 export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];
+
+/**
+ * Platform-core keys stay in Module Core for identity/catalog, but are NOT
+ * optional business toggles. Complex admins cannot disable them.
+ */
+export const PLATFORM_CORE_MODULE_KEYS = ['platform_support'] as const;
+
+export type PlatformCoreModuleKey = (typeof PLATFORM_CORE_MODULE_KEYS)[number];
+
+export function isPlatformCoreModuleKey(value: unknown): value is PlatformCoreModuleKey {
+  return (PLATFORM_CORE_MODULE_KEYS as readonly string[]).includes(String(value ?? ''));
+}
+
+/** Settings toggle: implemented business modules only — never platform-core. */
+export function isModuleToggleable(moduleKey: string, implemented: boolean): boolean {
+  return implemented === true && !isPlatformCoreModuleKey(moduleKey);
+}
 
 export const MODULE_CATEGORIES = [
   'finance',
@@ -102,6 +121,7 @@ export function emptyBuildingModulesState(): BuildingModulesState {
     rental: false,
     cleaning: false,
     budget: false,
+    platform_support: false,
     maintenance: false,
     access_control: false,
     contractors: false,
@@ -206,6 +226,7 @@ export function moduleLabelMessageKey(key: string): string | null {
     rental: 'moduleRental',
     cleaning: 'moduleCleaning',
     budget: 'moduleBudget',
+    platform_support: 'modulePlatformSupport',
     maintenance: 'moduleMaintenance',
     access_control: 'moduleAccessControl',
     contractors: 'moduleContractors',

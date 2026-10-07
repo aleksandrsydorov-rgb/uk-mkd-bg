@@ -2512,6 +2512,216 @@ export interface Database {
         };
         Relationships: [];
       };
+      platform_installations: {
+        Row: {
+          id: string;
+          installation_id: string;
+          complex_name: string;
+          deployment_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          installation_id?: string;
+          complex_name?: string;
+          deployment_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          installation_id?: string;
+          complex_name?: string;
+          deployment_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_account_state: {
+        Row: {
+          id: string;
+          installation_id: string;
+          status: string;
+          fixed_service_price: number | null;
+          currency: string;
+          next_payment_date: string | null;
+          amount_due: number | null;
+          debt_amount: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          installation_id: string;
+          status?: string;
+          fixed_service_price?: number | null;
+          currency?: string;
+          next_payment_date?: string | null;
+          amount_due?: number | null;
+          debt_amount?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          installation_id?: string;
+          status?: string;
+          fixed_service_price?: number | null;
+          currency?: string;
+          next_payment_date?: string | null;
+          amount_due?: number | null;
+          debt_amount?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_support_threads: {
+        Row: {
+          id: string;
+          installation_id: string;
+          subject: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          installation_id: string;
+          subject?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          installation_id?: string;
+          subject?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_support_messages: {
+        Row: {
+          id: string;
+          thread_id: string;
+          sender_role: string;
+          body: string;
+          tech_context: Json;
+          attachment_url: string | null;
+          attachment_name: string | null;
+          read_by_complex_admin: boolean;
+          read_by_platform_operator: boolean;
+          created_by_email: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          thread_id: string;
+          sender_role: string;
+          body: string;
+          tech_context?: Json;
+          attachment_url?: string | null;
+          attachment_name?: string | null;
+          read_by_complex_admin?: boolean;
+          read_by_platform_operator?: boolean;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          thread_id?: string;
+          sender_role?: string;
+          body?: string;
+          tech_context?: Json;
+          attachment_url?: string | null;
+          attachment_name?: string | null;
+          read_by_complex_admin?: boolean;
+          read_by_platform_operator?: boolean;
+          created_by_email?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_billing_invoices: {
+        Row: {
+          id: string;
+          installation_id: string;
+          invoice_number: string;
+          billing_period_start: string | null;
+          billing_period_end: string | null;
+          issue_date: string;
+          due_date: string | null;
+          amount: number;
+          currency: string;
+          status: string;
+          paid_at: string | null;
+          payment_reference: string | null;
+          document_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          installation_id: string;
+          invoice_number: string;
+          billing_period_start?: string | null;
+          billing_period_end?: string | null;
+          issue_date: string;
+          due_date?: string | null;
+          amount: number;
+          currency?: string;
+          status: string;
+          paid_at?: string | null;
+          payment_reference?: string | null;
+          document_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          installation_id?: string;
+          invoice_number?: string;
+          billing_period_start?: string | null;
+          billing_period_end?: string | null;
+          issue_date?: string;
+          due_date?: string | null;
+          amount?: number;
+          currency?: string;
+          status?: string;
+          paid_at?: string | null;
+          payment_reference?: string | null;
+          document_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_support_audit: {
+        Row: {
+          id: number;
+          installation_id: string | null;
+          action: string;
+          actor_email: string | null;
+          detail: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          installation_id?: string | null;
+          action: string;
+          actor_email?: string | null;
+          detail?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          installation_id?: string | null;
+          action?: string;
+          actor_email?: string | null;
+          detail?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -4235,6 +4445,39 @@ export interface Database {
           p_meeting_id?: string | null;
         };
         Returns: Record<string, unknown>;
+      };
+      platform_support_get_account: {
+        Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
+        Returns: Json;
+      };
+      platform_support_list_invoices: {
+        Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
+        Returns: Json;
+      };
+      platform_support_get_conversation: {
+        Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
+        Returns: Json;
+      };
+      platform_support_send_message: {
+        Args: {
+          p_body: string;
+          p_tech_context?: Json;
+          p_complex_name?: string | null;
+          p_deployment_id?: string | null;
+        };
+        Returns: Json;
+      };
+      platform_support_mark_read: {
+        Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
+        Returns: number;
+      };
+      platform_support_unread_count: {
+        Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
+        Returns: number;
+      };
+      platform_support_ensure_bootstrap: {
+        Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
+        Returns: string;
       };
     };
     Enums: Record<string, never>;

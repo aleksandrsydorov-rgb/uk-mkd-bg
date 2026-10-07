@@ -127,6 +127,8 @@ import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import { canSeeSecurityAdmin, isGuardRole, staffHomePath } from '@/lib/security';
 import { canSeeCleaningAdmin } from '@/lib/cleaning';
 import { canSeeBudgetAdmin, categoryLabel, type BudgetCategory } from '@/lib/budget';
+import { canSeePlatformSupportAdmin } from '@/lib/platformControl';
+import { AdminPlatformSupport } from '@/components/admin/AdminPlatformSupport';
 import {
   OVERVIEW_CARD_KEYS,
   defaultOverviewCardPrefs,
@@ -142,6 +144,8 @@ import {
   groupModulesByCategory,
   isBuildingModuleEnabled,
   isImplementedModuleKey,
+  isModuleToggleable,
+  isPlatformCoreModuleKey,
   moduleCategoryMessageKey,
   moduleLabelMessageKey,
   type BuildingModulesState,
@@ -432,6 +436,8 @@ function AdminPortal() {
     canSeeCleaningAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'cleaning');
   const showBudget =
     canSeeBudgetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'budget');
+  // Platform-core: always available to complex admin (not an optional module toggle).
+  const showPlatformSupport = canSeePlatformSupportAdmin(staffRole);
   const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -1970,7 +1976,7 @@ function AdminPortal() {
   }
 
   async function handleSetBuildingModule(key: string, enabled: boolean) {
-    if (!canChangeBuildingModules || !isImplementedModuleKey(key)) {
+    if (!canChangeBuildingModules || !isImplementedModuleKey(key) || isPlatformCoreModuleKey(key)) {
       setError(t('admin.errNoAccess'));
       return;
     }
@@ -4759,9 +4765,12 @@ function AdminPortal() {
               ) : (
                 <div className="space-y-5">
                   {groupedModules.map((group) => {
-                    const toggleableCount = group.modules.filter((m) => m.implemented === true).length;
+                    const toggleableCount = group.modules.filter((m) =>
+                      isModuleToggleable(m.module_key, m.implemented === true),
+                    ).length;
                     const enabledCount = group.modules.filter(
-                      (m) => m.implemented === true && m.enabled === true,
+                      (m) =>
+                        isModuleToggleable(m.module_key, m.implemented === true) && m.enabled === true,
                     ).length;
                     return (
                       <div key={group.category} className="space-y-2.5">
@@ -4786,13 +4795,14 @@ function AdminPortal() {
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                           {group.modules.map((row) => {
                             const enabled = row.enabled === true;
-                            const toggleable = row.implemented === true;
+                            const platformCore = isPlatformCoreModuleKey(row.module_key);
+                            const toggleable = isModuleToggleable(row.module_key, row.implemented === true);
                             const saving = moduleSavingKey === row.module_key;
                             return (
                               <div
                                 key={row.module_key}
                                 className={`${adminCardClass} flex items-start justify-between gap-3 p-4 ${
-                                  enabled && toggleable ? 'ring-1 ring-accent/20' : ''
+                                  (enabled && toggleable) || platformCore ? 'ring-1 ring-accent/20' : ''
                                 }`}
                               >
                                 <div className="min-w-0">
@@ -4800,16 +4810,22 @@ function AdminPortal() {
                                     {resolveModuleLabel(row)}
                                   </p>
                                   <p className="mt-1 text-xs text-muted">
-                                    {!toggleable
-                                      ? t('admin.moduleNotImplemented')
-                                      : saving
-                                        ? t('admin.moduleSaving')
-                                        : enabled
-                                          ? t('admin.moduleEnabled')
-                                          : t('admin.moduleDisabled')}
+                                    {platformCore
+                                      ? t('admin.modulePlatformCoreLocked')
+                                      : !row.implemented
+                                        ? t('admin.moduleNotImplemented')
+                                        : saving
+                                          ? t('admin.moduleSaving')
+                                          : enabled
+                                            ? t('admin.moduleEnabled')
+                                            : t('admin.moduleDisabled')}
                                   </p>
                                 </div>
-                                {toggleable ? (
+                                {platformCore ? (
+                                  <span className="rounded-full bg-accent-bg px-2.5 py-1 text-[11px] font-medium text-accent">
+                                    {t('admin.modulePlatformCoreBadge')}
+                                  </span>
+                                ) : toggleable ? (
                                   canChangeBuildingModules ? (
                                     <AdminToggle
                                       checked={enabled}
@@ -4838,6 +4854,16 @@ function AdminPortal() {
                 </div>
               )}
             </section>
+
+            {showPlatformSupport ? (
+              <section className="space-y-3 border-t border-border pt-6">
+                <AdminPlatformSupport
+                  supabase={supabase}
+                  staffRole={staffRole}
+                  buildingModules={buildingModules}
+                />
+              </section>
+            ) : null}
           </div>
         );
       }

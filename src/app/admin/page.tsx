@@ -129,6 +129,8 @@ import { canSeeCleaningAdmin } from '@/lib/cleaning';
 import { canSeeBudgetAdmin, categoryLabel, type BudgetCategory } from '@/lib/budget';
 import { canSeePlatformSupportAdmin } from '@/lib/platformControl';
 import { AdminPlatformSupport } from '@/components/admin/AdminPlatformSupport';
+import { canSeeUserActivationAdmin } from '@/lib/userActivation';
+import { AdminUserActivation } from '@/components/admin/AdminUserActivation';
 import {
   OVERVIEW_CARD_KEYS,
   defaultOverviewCardPrefs,
@@ -296,7 +298,8 @@ type AdminSection =
   | 'чат'
   | 'рабочие_задачи'
   | 'мои_задачи'
-  | 'платформа';
+  | 'платформа'
+  | 'активация';
 
 const ADMIN_SECTIONS: readonly AdminSection[] = [
   'обзор',
@@ -328,6 +331,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'рабочие_задачи',
   'мои_задачи',
   'платформа',
+  'активация',
 ] as const;
 
 const DEFAULT_ADMIN_SECTION: AdminSection = 'обзор';
@@ -363,6 +367,7 @@ function NavGroupIcon({ id }: { id: string }) {
     docs: 'M4 2.5h5.2L12.5 6v7.5h-8.5zM9 2.8V6h3.1',
     system: 'M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM8 2.5v1.2M8 12.3v1.2M3.4 4.2l.9.9M11.7 10.9l.9.9M2.5 8h1.2M12.3 8h1.2M3.4 11.8l.9-.9M11.7 5.1l.9-.9',
     platform: 'M3.5 11.5 8 3.5l4.5 8H3.5zM8 7v2.2M8 11.2h.01',
+    activation: 'M8 8.2a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8zM3.5 13.2c.7-2.2 2.4-3.4 4.5-3.4s3.8 1.2 4.5 3.4',
   };
   return (
     <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" aria-hidden>
@@ -418,6 +423,7 @@ function AdminPortal() {
       { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
       { key: 'чат', label: t('admin.chat'), icon: '💬' },
       { key: 'платформа', label: t('admin.platformTitle'), icon: '🛰️' },
+      { key: 'активация', label: t('admin.uaTitle'), icon: '👤' },
     ],
     [t],
   );
@@ -442,6 +448,7 @@ function AdminPortal() {
     canSeeBudgetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'budget');
   // Platform-core: always available to complex admin (not an optional module toggle).
   const showPlatformSupport = canSeePlatformSupportAdmin(staffRole);
+  const showUserActivation = canSeeUserActivationAdmin(staffRole);
   const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
@@ -533,7 +540,18 @@ function AdminPortal() {
             items: ['платформа'] as AdminSection[],
           }]
         : []),
-      { id: 'system', label: t('admin.menuSystem'), items: ['персонал', 'настройки'] },
+      ...(showUserActivation
+        ? [{
+            id: 'activation',
+            label: t('admin.uaTitle'),
+            items: ['активация'] as AdminSection[],
+          }]
+        : []),
+      {
+        id: 'system',
+        label: t('admin.menuSystem'),
+        items: ['персонал', 'настройки'] as AdminSection[],
+      },
     ];
     return groups.filter((group) => group.items.length > 0);
   }, [
@@ -556,6 +574,7 @@ function AdminPortal() {
     showGeneralMeeting,
     showBuildingDocuments,
     showPlatformSupport,
+    showUserActivation,
     canManageCriticalAccess,
     canReadSupportFinance,
     showTariffCore,
@@ -4882,6 +4901,14 @@ function AdminPortal() {
             buildingModules={buildingModules}
           />
         );
+
+      case 'активация':
+        if (!showUserActivation) {
+          return (
+            <AdminEmptyState title={t('admin.uaTitle')} text={t('admin.uaAccessDenied')} />
+          );
+        }
+        return <AdminUserActivation supabase={supabase} staffRole={staffRole} />;
 
       // =============================================================
       // ОПРОСЫ

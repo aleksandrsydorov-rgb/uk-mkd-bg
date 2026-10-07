@@ -94,6 +94,10 @@ import {
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { ownerMgmtParam, ownerSectionParam, parseOwnerNav } from '@/lib/ownerNav';
+import {
+  USER_ACTIVATION_ACTIVITY_THROTTLE_MINUTES,
+  touchUserActivationActivity,
+} from '@/lib/userActivation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -651,6 +655,26 @@ export default function AccountPage() {
     }
     load();
   }, [devEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Platform-core adoption heartbeat (throttled server-side; ignore failures).
+  useEffect(() => {
+    if (!accessProfile || (!accessProfile.isOwner && !accessProfile.isGuest)) return;
+    let cancelled = false;
+    const beat = () => {
+      void touchUserActivationActivity(supabase).catch(() => {
+        /* optional until migration applied */
+      });
+    };
+    beat();
+    const ms = USER_ACTIVATION_ACTIVITY_THROTTLE_MINUTES * 60 * 1000;
+    const id = window.setInterval(() => {
+      if (!cancelled) beat();
+    }, ms);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [accessProfile, supabase]);
 
   useEffect(() => {
     try {

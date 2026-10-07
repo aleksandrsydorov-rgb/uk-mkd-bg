@@ -4479,6 +4479,28 @@ export interface Database {
         Args: { p_complex_name?: string | null; p_deployment_id?: string | null };
         Returns: string;
       };
+      user_activation_touch_activity: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      admin_user_activation_dashboard: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      admin_user_activation_list: {
+        Args: { p_filter?: string | null; p_search?: string | null };
+        Returns: Json;
+      };
+      admin_user_activation_create_reminder: {
+        Args: {
+          p_owner_email: string;
+          p_reminder_type?: string;
+          p_property_id?: number | null;
+          p_note?: string | null;
+          p_resend_invite?: boolean;
+        };
+        Returns: Json;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

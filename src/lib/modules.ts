@@ -22,6 +22,7 @@ export const BUILDING_MODULE_KEYS = [
   'cleaning',
   'budget',
   'platform_support',
+  'user_activation',
   'maintenance',
   'access_control',
   'contractors',
@@ -53,6 +54,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'cleaning',
   'budget',
   'platform_support',
+  'user_activation',
 ] as const;
 
 export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];
@@ -61,7 +63,7 @@ export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];
  * Platform-core keys stay in Module Core for identity/catalog, but are NOT
  * optional business toggles. Complex admins cannot disable them.
  */
-export const PLATFORM_CORE_MODULE_KEYS = ['platform_support'] as const;
+export const PLATFORM_CORE_MODULE_KEYS = ['platform_support', 'user_activation'] as const;
 
 export type PlatformCoreModuleKey = (typeof PLATFORM_CORE_MODULE_KEYS)[number];
 
@@ -122,6 +124,7 @@ export function emptyBuildingModulesState(): BuildingModulesState {
     cleaning: false,
     budget: false,
     platform_support: false,
+    user_activation: false,
     maintenance: false,
     access_control: false,
     contractors: false,
@@ -227,6 +230,7 @@ export function moduleLabelMessageKey(key: string): string | null {
     cleaning: 'moduleCleaning',
     budget: 'moduleBudget',
     platform_support: 'modulePlatformSupport',
+    user_activation: 'moduleUserActivation',
     maintenance: 'moduleMaintenance',
     access_control: 'moduleAccessControl',
     contractors: 'moduleContractors',

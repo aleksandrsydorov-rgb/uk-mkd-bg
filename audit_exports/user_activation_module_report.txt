@@ -1,0 +1,107 @@
+AMADEUS 11 — USER ACTIVATION MODULE v1 / IMPLEMENTATION REPORT
+Date: 2026-10-08
+Repo: uk-mkd-bg
+Status: READY (NOT applied / NOT committed / NOT pushed)
+
+==============================================================================
+ARCHITECTURE
+==============================================================================
+
+Reusable platform-core adoption module (not Amadeus-hardcoded).
+
+- Module Core key: user_activation (PLATFORM CORE — mandatory)
+- implemented=true, default/forced enabled=true
+- Not toggleable in Settings; filtered via PLATFORM_CORE_MODULE_KEYS
+- Client reject: isPlatformCoreModuleKey in handleSetBuildingModule
+- DB: is_platform_core_module_key + set_building_module_enabled guard
+- DB trigger: platform_core_prevent_disable_biu
+- Access: has_staff_role('администрация') only (role-gated, not toggle-gated)
+- Left nav: dedicated standalone group (not under Settings / Personnel / Platform Support)
+- Auth.users: only via SECURITY DEFINER admin RPCs (email, created_at,
+  email_confirmed_at) — no tokens/secrets
+
+==============================================================================
+SOURCE OF TRUTH
+==============================================================================
+
+Owners: property_registry_people (active owners) + legacy properties.owner_email
+Invites: property_access_invites
+Auth: auth.users (safe columns)
+Activity: user_activation_profiles (first_login_at, last_login_at,
+  last_activity_at, login_count) via throttled user_activation_touch_activity
+
+Identity: unique normalized email; multi-property associations aggregated.
+
+==============================================================================
+ACTIVATION STATES (derived)
+==============================================================================
+
+NOT_INVITED | INVITED | REGISTERED | FIRST_LOGIN_DONE | ACTIVE | DORMANT
+
+Thresholds (code + SQL constants):
+- inactive: 30 days
+- online/recent: 5 minutes
+- invite stale / needs attention: 3 days
+- activity throttle: 5 minutes
+
+==============================================================================
+ONLINE DEFINITION
+==============================================================================
+
+recently_active := last_activity_at >= now() - 5 minutes
+UI explains this is recent activity, not guaranteed open session.
+
+==============================================================================
+REMINDERS
+==============================================================================
+
+user_activation_reminders with honest delivery_status:
+LOCAL_ONLY (invite link created in-app, no email provider)
+PROVIDER_NOT_CONFIGURED (nudge without channel)
+Resend reuses admin_create_property_invite; never claims email sent.
+
+==============================================================================
+MIGRATION / SQL SAFETY
+==============================================================================
+
+supabase/migrations/20261008020000_user_activation_module.sql
+supabase/user_activation_preflight.sql
+supabase/user_activation_verify.sql
+supabase/user_activation_smoke.sql (BEGIN/ROLLBACK)
+
+NOT applied to production.
+
+==============================================================================
+VALIDATION
+==============================================================================
+
+npx tsc --noEmit — PASS
+npm run build — PASS
+
+==============================================================================
+FILES CHANGED
+==============================================================================
+
+- supabase/migrations/20261008020000_user_activation_module.sql
+- supabase/user_activation_preflight.sql
+- supabase/user_activation_verify.sql
+- supabase/user_activation_smoke.sql
+- supabase/platform_support_verify.sql (trigger name compatibility)
+- src/lib/modules.ts
+- src/lib/userActivation.ts
+- src/lib/database.types.ts
+- src/components/admin/AdminUserActivation.tsx
+- src/app/admin/page.tsx
+- src/app/account/page.tsx (heartbeat)
+- src/i18n/messages.ts
+- docs/architecture-cores.md
+- audit_exports/user_activation_module_report.txt
+
+==============================================================================
+REMAINING RISKS
+==============================================================================
+
+- Migration not applied → UI shows migration-needed until db push.
+- No email provider → invite delivery LOCAL_ONLY (honest).
+- Auth last_sign_in_at not used as app first_login (by design).
+- Property coverage query is approximate join; unique-owner metrics are primary.

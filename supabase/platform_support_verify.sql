@@ -97,10 +97,10 @@ checks as (
            join pg_namespace n on n.oid = c.relnamespace
            where n.nspname = 'public'
              and c.relname = 'building_modules'
-             and t.tgname = 'platform_support_prevent_disable_biu'
+             and t.tgname in ('platform_core_prevent_disable_biu', 'platform_support_prevent_disable_biu')
              and not t.tgisinternal
          ) then 'OK' else 'FAIL' end,
-         'prevent-disable trigger on building_modules'
+         'prevent-disable trigger on building_modules (platform-core)'
   from objs o
   union all
   -- No static FROM platform_billing_invoices (would crash if verify run pre-apply).

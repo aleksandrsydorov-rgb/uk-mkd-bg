@@ -1,6 +1,6 @@
 # AMADEUS 11 — Platform cores and modules
 
-Canonical map for scale. Live product = 14 implemented modules.
+Canonical map for scale. Live product = 15 implemented modules.
 Stub catalog keys are future-only. Do not implement stub UIs until a real product brief exists.
 
 ## Platform cores
@@ -43,7 +43,8 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 |------------|----------|---------|---------------|---------------|
 | `tariffs` | finance | — (gates Tariff Core admin UI) | Финансы → Тарифы | — |
 | `budget` | finance | none (plan vs fact; no owner billing) | Финансы → Бюджет; статья в расходах УК | План/факт бюджета (published/adopted/closed) |
-| `platform_support` | services | none (platform-core; invoices from Master later) | Настройки → Платформа и поддержка (always on for admin) | — |
+| `platform_support` | services | none (platform-core; invoices from Master later) | Left nav → Платформа и поддержка (always on for admin) | — |
+| `user_activation` | services | none (platform-core; adoption metrics) | Left nav → Активация пользователей (standalone; always on for admin) | heartbeat via `user_activation_touch_activity` |
 | `support_fee` | utilities | Tariff Core (€/m²·year) + annual policy (discount/deadline) | Такса; ставка в Тарифы | Account support fee |
 | `capital_repair` | utilities | Tariff Core fixed €/apartment·year + assessment/ledger | Капитальный ремонт; сумма в Тарифы | Capital balances |
 | `water` | utilities | Tariff Core (€/m³) + modes | Вода | Water (mode-gated) |
@@ -84,6 +85,8 @@ Always role-gated, not `module_key` toggles:
 
 **Platform Support** (`platform_support`) is **platform-core** (not an optional business toggle). It remains registered in Module Core for identity/catalog, but complex admins cannot disable it. Access is role-gated (`администрация` only). Persistence is local behind `PlatformControlService` (`src/lib/platformControl.ts`); pre-Master delivery mode is `awaiting_master` (honest UI — no live ALSYD channel). Master Control API adapter replaces the local adapter later. Billing/support stay reachable under future `SUSPENDED_NONPAYMENT`.
 
+**User Activation** (`user_activation`) is also **platform-core**. Complex admins cannot disable it. Admin surface is a dedicated left-nav section (`активация`), administration-only — not nested under Settings, Personnel, or Platform Support. It derives adoption states from Property Book + invites + Auth (safe columns via SECURITY DEFINER) + throttled app activity. Shared disable guard: `is_platform_core_module_key` + `platform_core_prevent_disable_biu`.
+
 Tariff Core admin (`тарифы`) is **role-gated and** toggled by the `tariffs` finance module (UX only; publish still checks water/support_fee/electricity/internet module flags).
 
 Do not convert remaining platform services into modules without a product decision.
@@ -99,6 +102,6 @@ Do not convert remaining platform services into modules without a product decisi
 
 ## Launch rule
 
-First test launch = all **14 live** modules behave under one rule set
-(off → hidden; on → full path; tariff-backed → Core only).
+First test launch = all **15 live** modules behave under one rule set
+(off → hidden; on → full path; tariff-backed → Core only; platform-core always on).
 Stubs stay stubs. See [`audit_exports/v1_launch_checklist.md`](../audit_exports/v1_launch_checklist.md).

@@ -218,7 +218,7 @@ export function AdminInlineAlert({
   children,
   onDismiss,
 }: {
-  tone: 'danger' | 'warning' | 'success';
+  tone: 'danger' | 'warning' | 'success' | 'info';
   children: ReactNode;
   onDismiss?: () => void;
 }) {
@@ -227,7 +227,9 @@ export function AdminInlineAlert({
       ? 'border-danger/25 bg-danger-bg text-danger'
       : tone === 'warning'
         ? 'border-warning/25 bg-warning-bg text-warning'
-        : 'border-success/25 bg-success-bg text-success';
+        : tone === 'info'
+          ? 'border-accent/25 bg-accent-bg text-accent'
+          : 'border-success/25 bg-success-bg text-success';
   return (
     <div className={`flex items-start justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${cls}`}>
       <div className="min-w-0 flex-1">{children}</div>

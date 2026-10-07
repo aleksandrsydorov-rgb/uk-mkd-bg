@@ -22,6 +22,7 @@ export type VoteMethod = 'in_person' | 'online' | 'absentee';
 export type MeetingFileType =
   | 'invitation'
   | 'invitation_posting_protocol'
+  | 'invitation_posting_photo'
   | 'agenda'
   | 'minutes'
   | 'minutes_notice'
@@ -75,6 +76,19 @@ export type GeneralMeeting = {
   meeting_ended_at?: string | null;
   meeting_can_proceed?: boolean;
   quorum_rule?: string | null;
+  ruleset_id?: string | null;
+  legal_state?: string | null;
+  meeting_type?: string | null;
+  legal_convener_kind?: string | null;
+  legal_convener_note?: string | null;
+  invitation_locked_at?: string | null;
+  ownership_drift_alert?: boolean | null;
+  ownership_drift_detail?: string | null;
+  check_in_blocked_reason?: string | null;
+  show_live_results?: boolean | null;
+  filing_regime?: string | null;
+  filing_status?: string | null;
+  hybrid_house_rules_ok?: boolean | null;
 };
 
 export type MeetingAgendaItem = {
@@ -97,6 +111,7 @@ export type MeetingAgendaItem = {
   against_percent?: number | string | null;
   abstain_percent?: number | string | null;
   computed_threshold_status?: string | null;
+  source_poll_id?: number | null;
 };
 
 export type MeetingDecision = {
@@ -202,6 +217,31 @@ export function meetingStartsAt(meeting: Pick<GeneralMeeting, 'meeting_date' | '
   return new Date(`${meeting.meeting_date.slice(0, 10)}T${time.length === 5 ? `${time}:00` : time}`);
 }
 
+/** In-person desk / self check-in opens this many hours before start. */
+export const IN_PERSON_CHECK_IN_HOURS_BEFORE = 1;
+/** Online participation confirm is annulled this many hours before start. */
+export const ONLINE_CONFIRM_HOURS_BEFORE = 49;
+
+export function inPersonRegistrationOpen(
+  meeting: Pick<GeneralMeeting, 'meeting_date' | 'meeting_time'>,
+  now = new Date(),
+) {
+  const start = meetingStartsAt(meeting);
+  if (Number.isNaN(start.getTime())) return false;
+  return now.getTime() >= start.getTime() - IN_PERSON_CHECK_IN_HOURS_BEFORE * 36e5;
+}
+
+export function onlineConfirmOpen(
+  meeting: Pick<GeneralMeeting, 'meeting_date' | 'meeting_time' | 'status' | 'meeting_mode'>,
+  now = new Date(),
+) {
+  if (meeting.status !== 'published') return false;
+  if (meeting.meeting_mode !== 'hybrid') return false;
+  const start = meetingStartsAt(meeting);
+  if (Number.isNaN(start.getTime())) return false;
+  return now.getTime() < start.getTime() - ONLINE_CONFIRM_HOURS_BEFORE * 36e5;
+}
+
 export function isUpcomingMeeting(meeting: GeneralMeeting, now = new Date()) {
   if (['held', 'minutes_ready', 'archived', 'cancelled', 'rescheduled', 'draft'].includes(meeting.status)) {
     return false;
@@ -289,6 +329,7 @@ export function labelDocGroup(id: string, t: Translate) {
 export function labelFileType(raw: string, t: Translate) {
   if (raw === 'invitation') return t('docs.invitation');
   if (raw === 'invitation_posting_protocol') return t('docs.invitationPosting');
+  if (raw === 'invitation_posting_photo') return t('docs.invitePostingPhoto');
   if (raw === 'agenda') return t('docs.agendaShort');
   if (raw === 'minutes') return t('docs.minutes');
   if (raw === 'minutes_notice') return t('docs.minutesNotice');

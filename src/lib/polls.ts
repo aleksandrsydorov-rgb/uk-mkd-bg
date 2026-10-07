@@ -202,3 +202,54 @@ export function pollDecisionLabel(poll: Poll, accepted: boolean): PollResult {
   if (!isPollAcceptingVotes(poll) || poll.result === 'не принято') return 'не принято';
   return 'идёт';
 }
+
+/** Closed / finished polls suitable for OS ratification agenda. */
+export function isPollReadyForMeetingAgenda(poll: Poll) {
+  if (poll.status === 'закрыт') return true;
+  return poll.result === 'принято' || poll.result === 'не принято';
+}
+
+export function buildPollRatificationAgenda(args: {
+  poll: Poll;
+  tally: PollTally;
+  locale?: string;
+}): {
+  title: string;
+  description: string;
+  proposed_decision_text: string;
+} {
+  const { poll, tally } = args;
+  const resultLabel = pollDecisionLabel(poll, tally.accepted);
+  const winner = tally.winner;
+  const winnerPct = winner ? winner.pctOfTotal.toFixed(1) : '0';
+  const lines = [
+    `Опрос №${poll.id}: ${poll.title}`,
+    poll.body?.trim() ? poll.body.trim() : null,
+    poll.budget_eur != null ? `Бюджет: ${poll.budget_eur} €` : null,
+    `Статус опроса: ${poll.status}`,
+    `Результат опроса: ${resultLabel}`,
+    winner
+      ? `Лидирующий вариант: «${winner.option.label}» — ${winnerPct}% (вес ${winner.weight.toFixed(2)}, квартир ${winner.apartments})`
+      : 'Варианты без голосов.',
+    `Учтено веса: ${tally.votedWeight.toFixed(2)} из ${tally.total.toFixed(2)}`,
+    '',
+    'Варианты:',
+    ...tally.rows.map(
+      (r) =>
+        `• ${r.option.label}: ${r.pctOfTotal.toFixed(1)}% (вес ${r.weight.toFixed(2)}, квартир ${r.apartments})`,
+    ),
+  ].filter((x): x is string => Boolean(x));
+
+  const title = `Утверждение результата опроса: ${poll.title}`;
+  const proposed =
+    resultLabel === 'принято' && winner
+      ? `Общото събрание утвърждава резултата от допитването №${poll.id} «${poll.title}»: прието е предложението «${winner.option.label}» (${winnerPct}%).`
+      : `Общото събрание утвърждава резултата от допитването №${poll.id} «${poll.title}»: решението не е прието по допитването.`;
+
+  return {
+    title,
+    description: lines.join('\n'),
+    proposed_decision_text: proposed,
+  };
+}
+

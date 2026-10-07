@@ -26,6 +26,7 @@ import {
 import { OwnerMeetingLive } from '@/components/account/OwnerMeetingLive';
 import { EmptyState, PillTabs, SectionHeader } from '@/components/account/ownerUi';
 import { OWNER_MEETING_COLUMNS, labelMeetingWorkflowStatus } from '@/lib/generalMeetingWorkflow';
+import { labelLegalState } from '@/lib/meetingCore';
 
 type Tab = 'meetings' | 'decisions' | 'documents';
 
@@ -38,14 +39,30 @@ function fmtWhen(meeting: GeneralMeeting, locale: string) {
 export function OwnerDocumentsDecisions({
   supabase,
   meetingsEnabled = true,
+  decisionsEnabled,
   documentsEnabled = true,
+  mode,
 }: {
   supabase: SupabaseClient<Database>;
   meetingsEnabled?: boolean;
+  /** Defaults to meetingsEnabled when omitted (legacy combined view). */
+  decisionsEnabled?: boolean;
   documentsEnabled?: boolean;
+  /** Lock UI to one section (hides top tabs). */
+  mode?: 'meetings' | 'decisions' | 'documents';
 }) {
   const { t, dateLocale, locale } = useI18n();
-  const [tab, setTab] = useState<Tab>(meetingsEnabled ? 'meetings' : documentsEnabled ? 'documents' : 'meetings');
+  const showMeetings = mode ? mode === 'meetings' : meetingsEnabled;
+  const showDecisions = mode
+    ? mode === 'decisions'
+    : decisionsEnabled ?? meetingsEnabled;
+  const showDocuments = mode ? mode === 'documents' : documentsEnabled;
+  const initialTab: Tab = showMeetings
+    ? 'meetings'
+    : showDecisions
+      ? 'decisions'
+      : 'documents';
+  const [tab, setTab] = useState<Tab>(mode ?? initialTab);
   const [meetings, setMeetings] = useState<GeneralMeeting[]>([]);
   const [agenda, setAgenda] = useState<MeetingAgendaItem[]>([]);
   const [decisions, setDecisions] = useState<MeetingDecision[]>([]);
@@ -135,24 +152,25 @@ export function OwnerDocumentsDecisions({
     });
   }, [decisions, filter, query]);
 
-  const tabs: { id: Tab; label: string }[] = [
-    ...(meetingsEnabled
-      ? [
-          { id: 'meetings' as const, label: t('docs.tabMeetings') },
-          { id: 'decisions' as const, label: t('docs.tabDecisions') },
-        ]
-      : []),
-    ...(documentsEnabled ? [{ id: 'documents' as const, label: t('docs.tabDocuments') }] : []),
-  ];
+  const tabs: { id: Tab; label: string }[] = mode
+    ? []
+    : [
+        ...(showMeetings ? [{ id: 'meetings' as const, label: t('docs.tabMeetings') }] : []),
+        ...(showDecisions ? [{ id: 'decisions' as const, label: t('docs.tabDecisions') }] : []),
+        ...(showDocuments ? [{ id: 'documents' as const, label: t('docs.tabDocuments') }] : []),
+      ];
 
   useEffect(() => {
-    const allowed: Tab[] = [];
-    if (meetingsEnabled) {
-      allowed.push('meetings', 'decisions');
+    if (mode) {
+      setTab(mode);
+      return;
     }
-    if (documentsEnabled) allowed.push('documents');
+    const allowed: Tab[] = [];
+    if (showMeetings) allowed.push('meetings');
+    if (showDecisions) allowed.push('decisions');
+    if (showDocuments) allowed.push('documents');
     if (allowed.length > 0 && !allowed.includes(tab)) setTab(allowed[0]);
-  }, [meetingsEnabled, documentsEnabled, tab]);
+  }, [mode, showMeetings, showDecisions, showDocuments, tab]);
 
   function meetingCard(m: GeneralMeeting, upcomingCard: boolean) {
     const items = agenda.filter((a) => a.meeting_id === m.id);
@@ -171,6 +189,11 @@ export function OwnerDocumentsDecisions({
         <p className="mt-0.5 text-sm text-secondary">{fmtWhen(m, dateLocale)}</p>
         {m.location ? <p className="text-xs text-muted">{m.location}</p> : null}
         <p className="mt-1 text-xs text-muted">{labelMeetingWorkflowStatus(m, t, upcomingCard)}</p>
+        {m.legal_state ? (
+          <p className="mt-0.5 text-[11px] text-secondary">
+            {t('docs.mcTitle')}: {labelLegalState(m.legal_state, t)}
+          </p>
+        ) : null}
         {m.status === 'cancelled' && m.cancellation_reason ? (
           <p className="mt-1 text-xs text-secondary">{t('docs.cancelReason')}: {m.cancellation_reason}</p>
         ) : null}
@@ -221,9 +244,11 @@ export function OwnerDocumentsDecisions({
                   {t('docs.minutes')}
                 </button>
               ) : null}
-              <button type="button" className="text-xs text-accent hover:underline" onClick={() => { setTab('decisions'); }}>
-                {t('docs.tabDecisions')}
-              </button>
+              {showDecisions && !mode ? (
+                <button type="button" className="text-xs text-accent hover:underline" onClick={() => { setTab('decisions'); }}>
+                  {t('docs.tabDecisions')}
+                </button>
+              ) : null}
               {appendix ? (
                 <button type="button" className="text-xs text-accent hover:underline" onClick={() => void openDocument(appendix)}>
                   {t('docs.appendices')}
@@ -251,6 +276,7 @@ export function OwnerDocumentsDecisions({
               agenda={agenda}
               participants={participants}
               votes={votes}
+              decisions={decisions}
               owned={owned}
               onReload={load}
             />
@@ -275,8 +301,18 @@ export function OwnerDocumentsDecisions({
 
   return (
     <div className="space-y-4">
-      <SectionHeader title={t('account.docsMenu')} />
-      <PillTabs items={tabs} value={tab} onChange={setTab} />
+      <SectionHeader
+        title={
+          mode === 'meetings'
+            ? t('account.navMeetings')
+            : mode === 'decisions'
+              ? t('account.navDecisions')
+              : mode === 'documents'
+                ? t('account.navDocuments')
+                : t('account.docsMenu')
+        }
+      />
+      {tabs.length > 1 ? <PillTabs items={tabs} value={tab} onChange={setTab} /> : null}
       {error ? <p className="text-sm text-danger">{t('docs.loadFail')}</p> : null}
       {fileError ? <p className="text-sm text-danger">{fileError}</p> : null}
 

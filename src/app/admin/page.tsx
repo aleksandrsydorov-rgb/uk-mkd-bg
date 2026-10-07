@@ -281,6 +281,8 @@ type AdminSection =
   | 'охрана'
   | 'уборка'
   | 'бюджет'
+  | 'собрания'
+  | 'решения'
   | 'расходы'
   | 'опросы'
   | 'документы'
@@ -309,6 +311,8 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'охрана',
   'уборка',
   'бюджет',
+  'собрания',
+  'решения',
   'расходы',
   'опросы',
   'документы',
@@ -397,11 +401,13 @@ function AdminPortal() {
       { key: 'охрана', label: t('admin.security'), icon: '🛡️' },
       { key: 'уборка', label: t('admin.cleaning'), icon: '🧹' },
       { key: 'бюджет', label: t('admin.budget'), icon: '📈' },
+      { key: 'собрания', label: t('admin.navMeetings'), icon: '🏛️' },
+      { key: 'решения', label: t('admin.navDecisions'), icon: '📜' },
       { key: 'расходы', label: t('admin.expenses'), icon: '🧾' },
       { key: 'отчётность', label: t('admin.reports'), icon: '📄' },
       { key: 'тарифы', label: t('admin.tariffsCore'), icon: '📑' },
       { key: 'опросы', label: t('admin.polls'), icon: '🗳️' },
-      { key: 'документы', label: t('admin.docsMenu'), icon: '📁' },
+      { key: 'документы', label: t('admin.navDocuments'), icon: '📁' },
       { key: 'объявления', label: t('admin.announcements'), icon: '📢' },
       { key: 'чат', label: t('admin.chat'), icon: '💬' },
     ],
@@ -434,7 +440,6 @@ function AdminPortal() {
   const showAnnouncements = isBuildingModuleEnabled(buildingModules, 'announcements');
   const showGeneralMeeting = isBuildingModuleEnabled(buildingModules, 'general_meeting');
   const showBuildingDocuments = isBuildingModuleEnabled(buildingModules, 'building_documents');
-  const showDocumentsNav = showGeneralMeeting || showBuildingDocuments;
   const showElectricityFinance = canSeeElectricityFinance(staffRole);
   const canEditStaff = isUkAdminRole(staffRole);
   const canManageCriticalAccess = staffActive && isUkAdminRole(staffRole);
@@ -501,8 +506,15 @@ function AdminPortal() {
           ...(canManageCriticalAccess && showChat ? (['чат'] as const) : []),
         ],
       },
-      ...(showDocumentsNav
-        ? [{ id: 'docs', label: t('admin.menuDocs'), items: ['документы'] as AdminSection[] }]
+      ...(showGeneralMeeting || showBuildingDocuments
+        ? [{
+            id: 'docs',
+            label: t('admin.menuDocs'),
+            items: [
+              ...(showGeneralMeeting ? (['собрания', 'решения'] as const) : []),
+              ...(showBuildingDocuments ? (['документы'] as const) : []),
+            ] as AdminSection[],
+          }]
         : []),
       { id: 'system', label: t('admin.menuSystem'), items: ['персонал', 'настройки'] },
     ];
@@ -524,7 +536,8 @@ function AdminPortal() {
     showAnnouncements,
     showPolls,
     showChat,
-    showDocumentsNav,
+    showGeneralMeeting,
+    showBuildingDocuments,
     canManageCriticalAccess,
     canReadSupportFinance,
     showTariffCore,
@@ -3764,7 +3777,7 @@ function AdminPortal() {
       case 'бюджет':
         return <AdminBudget supabase={supabase} staffRole={staffRole} />;
 
-      case 'документы':
+      case 'собрания':
         return (
           <AdminDocumentsDecisions
             supabase={supabase}
@@ -3772,7 +3785,34 @@ function AdminPortal() {
             staffRole={staffRole}
             staffActive={staffActive}
             meetingsEnabled={showGeneralMeeting}
+            documentsEnabled={false}
+            mode="meetings"
+          />
+        );
+
+      case 'решения':
+        return (
+          <AdminDocumentsDecisions
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+            staffActive={staffActive}
+            meetingsEnabled={showGeneralMeeting}
+            documentsEnabled={false}
+            mode="decisions"
+          />
+        );
+
+      case 'документы':
+        return (
+          <AdminDocumentsDecisions
+            supabase={supabase}
+            properties={properties}
+            staffRole={staffRole}
+            staffActive={staffActive}
+            meetingsEnabled={false}
             documentsEnabled={showBuildingDocuments}
+            mode="documents"
           />
         );
 

@@ -78,6 +78,8 @@ export function OwnerOverview({
   onOpenRequests,
   onOpenChat,
   onOpenDocuments,
+  onOpenMeetings,
+  onOpenDecisions,
   guestLimited = false,
 }: {
   supabase: SupabaseClient<Database>;
@@ -118,9 +120,13 @@ export function OwnerOverview({
   onOpenRequests: () => void;
   onOpenChat: () => void;
   onOpenDocuments: () => void;
+  onOpenMeetings?: () => void;
+  onOpenDecisions?: () => void;
   guestLimited?: boolean;
 }) {
   const { t, dateLocale, locale } = useI18n();
+  const openMeetings = onOpenMeetings ?? onOpenDocuments;
+  const openDecisions = onOpenDecisions ?? onOpenDocuments;
   const showSupport = !guestLimited && supportFeeEnabled;
   const showWater = !guestLimited && waterEnabled;
   const showElectricity = !guestLimited && electricityEnabled;
@@ -387,7 +393,7 @@ export function OwnerOverview({
       key: 'meeting',
       title: t('docs.attentionMeeting'),
       detail: formatOwnerDate(upcomingMeeting.meeting_date, dateLocale),
-      onClick: onOpenDocuments,
+      onClick: openMeetings,
     });
   }
 
@@ -479,7 +485,7 @@ export function OwnerOverview({
           {upcomingMeeting ? (
             <button
               type="button"
-              onClick={onOpenDocuments}
+              onClick={openMeetings}
               className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover"
             >
               <span className="min-w-0 flex-1">
@@ -495,7 +501,7 @@ export function OwnerOverview({
           {latestDecision ? (
             <button
               type="button"
-              onClick={onOpenDocuments}
+              onClick={openDecisions}
               className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover"
             >
               <span className="min-w-0 flex-1">

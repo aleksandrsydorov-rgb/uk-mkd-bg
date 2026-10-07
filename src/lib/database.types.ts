@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -2120,6 +2120,19 @@ export interface Database {
           meeting_can_proceed: boolean;
           quorum_rule: string;
           quorum_rule_note: string | null;
+          ruleset_id: string | null;
+          legal_state: string | null;
+          meeting_type: string | null;
+          legal_convener_kind: string | null;
+          legal_convener_note: string | null;
+          invitation_locked_at: string | null;
+          ownership_drift_alert: boolean;
+          ownership_drift_detail: string | null;
+          check_in_blocked_reason: string | null;
+          show_live_results: boolean;
+          filing_regime: string | null;
+          filing_status: string | null;
+          hybrid_house_rules_ok: boolean;
         };
         Insert: {
           id?: string;
@@ -2159,6 +2172,19 @@ export interface Database {
           meeting_can_proceed?: boolean;
           quorum_rule?: string;
           quorum_rule_note?: string | null;
+          ruleset_id?: string | null;
+          legal_state?: string | null;
+          meeting_type?: string | null;
+          legal_convener_kind?: string | null;
+          legal_convener_note?: string | null;
+          invitation_locked_at?: string | null;
+          ownership_drift_alert?: boolean;
+          ownership_drift_detail?: string | null;
+          check_in_blocked_reason?: string | null;
+          show_live_results?: boolean;
+          filing_regime?: string | null;
+          filing_status?: string | null;
+          hybrid_house_rules_ok?: boolean;
         };
         Update: {
           id?: string;
@@ -2198,6 +2224,19 @@ export interface Database {
           meeting_can_proceed?: boolean;
           quorum_rule?: string;
           quorum_rule_note?: string | null;
+          ruleset_id?: string | null;
+          legal_state?: string | null;
+          meeting_type?: string | null;
+          legal_convener_kind?: string | null;
+          legal_convener_note?: string | null;
+          invitation_locked_at?: string | null;
+          ownership_drift_alert?: boolean;
+          ownership_drift_detail?: string | null;
+          check_in_blocked_reason?: string | null;
+          show_live_results?: boolean;
+          filing_regime?: string | null;
+          filing_status?: string | null;
+          hybrid_house_rules_ok?: boolean;
         };
         Relationships: [];
       };
@@ -2223,6 +2262,7 @@ export interface Database {
           against_percent: number | null;
           abstain_percent: number | null;
           computed_threshold_status: string | null;
+          source_poll_id: number | null;
         };
         Insert: {
           id?: string;
@@ -2233,6 +2273,8 @@ export interface Database {
           proposed_decision_text?: string | null;
           created_at?: string;
           majority_rule?: string;
+          decision_category?: string | null;
+          source_poll_id?: number | null;
         };
         Update: {
           id?: string;
@@ -2242,6 +2284,79 @@ export interface Database {
           description?: string | null;
           proposed_decision_text?: string | null;
           created_at?: string;
+          source_poll_id?: number | null;
+        };
+        Relationships: [];
+      };
+      meeting_candidates: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          election_type: string;
+          display_name: string;
+          registry_people_id: number | null;
+          staff_id: number | null;
+          status: string;
+          agenda_item_id: string | null;
+          locked_at: string | null;
+          created_at: string;
+          seat_index: number | null;
+          sort_order: number;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          election_type: string;
+          display_name: string;
+          registry_people_id?: number | null;
+          staff_id?: number | null;
+          status?: string;
+          agenda_item_id?: string | null;
+          locked_at?: string | null;
+          created_at?: string;
+          seat_index?: number | null;
+          sort_order?: number;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          election_type?: string;
+          display_name?: string;
+          registry_people_id?: number | null;
+          staff_id?: number | null;
+          status?: string;
+          agenda_item_id?: string | null;
+          locked_at?: string | null;
+          created_at?: string;
+          seat_index?: number | null;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      meeting_election_seats: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          election_type: string;
+          seat_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          election_type: string;
+          seat_count: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          meeting_id?: string;
+          election_type?: string;
+          seat_count?: number;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -2449,6 +2564,10 @@ export interface Database {
         Returns: Json;
       };
       open_general_meeting_registration: {
+        Args: { p_meeting_id: string };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      gm_ensure_registration_open: {
         Args: { p_meeting_id: string };
         Returns: Database['public']['Tables']['general_meetings']['Row'];
       };
@@ -3945,6 +4064,175 @@ export interface Database {
       owner_revoke_guest_access: {
         Args: { p_access_id: string };
         Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
+      };
+      gm_freeze_notice_snapshot: {
+        Args: { p_meeting_id: string };
+        Returns: Record<string, unknown>;
+      };
+      gm_freeze_voting_snapshot: {
+        Args: { p_meeting_id: string };
+        Returns: Record<string, unknown>;
+      };
+      gm_detect_ownership_drift: {
+        Args: { p_meeting_id: string };
+        Returns: Json;
+      };
+      gm_transition: {
+        Args: { p_meeting_id: string; p_to_state: string; p_note?: string | null };
+        Returns: Database['public']['Tables']['general_meetings']['Row'];
+      };
+      gm_lock_invitation_version: {
+        Args: {
+          p_meeting_id: string;
+          p_title_bg: string;
+          p_body_bg: string;
+          p_title_ru?: string | null;
+          p_body_ru?: string | null;
+          p_title_en?: string | null;
+          p_body_en?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_list_owner_candidates: {
+        Args: Record<string, never>;
+        Returns: {
+          picker_key: string;
+          source: string;
+          registry_people_id: number | null;
+          staff_id: number | null;
+          property_id: number | null;
+          apartment_number: string | null;
+          display_name: string;
+        }[];
+      };
+      gm_set_election_seat_count: {
+        Args: {
+          p_meeting_id: string;
+          p_election_type: string;
+          p_seat_count: number;
+        };
+        Returns: Database['public']['Tables']['meeting_election_seats']['Row'];
+      };
+      gm_clear_election_seat_count: {
+        Args: { p_meeting_id: string; p_election_type: string };
+        Returns: undefined;
+      };
+      gm_set_meeting_slot_candidates: {
+        Args: {
+          p_meeting_id: string;
+          p_election_type: string;
+          p_seat_index: number | null;
+          p_picker_keys: string[];
+        };
+        Returns: Database['public']['Tables']['meeting_candidates']['Row'][];
+      };
+      gm_meeting_election_ready: {
+        Args: { p_meeting_id: string };
+        Returns: Json;
+      };
+      gm_invitation_dispatch_ready: {
+        Args: { p_meeting_id: string };
+        Returns: Json;
+      };
+      gm_confirm_invitation_posting: {
+        Args: {
+          p_meeting_id: string;
+          p_posted_place: string;
+          p_posted_at?: string;
+        };
+        Returns: Json;
+      };
+      gm_dispatch_meeting_invitations: {
+        Args: { p_meeting_id: string };
+        Returns: Json;
+      };
+      gm_record_invitation_posting: {
+        Args: {
+          p_meeting_id: string;
+          p_posted_at: string;
+          p_posted_place: string;
+          p_photo_url?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_earliest_meeting_at: {
+        Args: { p_meeting_id: string };
+        Returns: string;
+      };
+      gm_create_proxy: {
+        Args: {
+          p_meeting_id: string;
+          p_principal_property_id: number;
+          p_representative_name: string;
+          p_representative_email?: string | null;
+          p_source?: string;
+          p_principal_registry_people_id?: number | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_log_notification: {
+        Args: {
+          p_meeting_id: string;
+          p_kind: string;
+          p_channel: string;
+          p_recipient_email?: string | null;
+          p_recipient_snapshot?: Json;
+          p_status?: string;
+          p_provider_id?: string | null;
+          p_error?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_upsert_protocol_draft: {
+        Args: {
+          p_meeting_id: string;
+          p_body_bg: string;
+          p_body_ru?: string | null;
+          p_body_en?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_sign_protocol_wet_scan: {
+        Args: { p_meeting_id: string; p_wet_scan_url: string };
+        Returns: Record<string, unknown>;
+      };
+      gm_open_challenge: {
+        Args: { p_meeting_id: string; p_reason: string; p_legal_hold?: boolean };
+        Returns: Record<string, unknown>;
+      };
+      gm_submit_absentee_declaration: {
+        Args: {
+          p_meeting_id: string;
+          p_agenda_item_id: string;
+          p_property_id: number;
+          p_vote: string;
+          p_registry_people_id?: number | null;
+          p_document_id?: number | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_seed_reporting_election_agenda: {
+        Args: { p_meeting_id: string };
+        Returns: number;
+      };
+      gm_register_document: {
+        Args: {
+          p_meeting_id: string;
+          p_doc_type: string;
+          p_title: string;
+          p_building_document_id?: number | null;
+          p_content_hash?: string | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      gm_create_governance_term: {
+        Args: {
+          p_body_kind: string;
+          p_started_at: string;
+          p_ends_at?: string | null;
+          p_meeting_id?: string | null;
+        };
+        Returns: Record<string, unknown>;
       };
     };
     Enums: Record<string, never>;

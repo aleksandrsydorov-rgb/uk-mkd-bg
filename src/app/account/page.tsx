@@ -156,6 +156,8 @@ type MenuSection =
   | 'охрана'
   | 'уборка'
   | 'бюджет'
+  | 'собрания'
+  | 'решения'
   | 'ук'
   | 'счётчики'
   | 'документы'
@@ -206,7 +208,6 @@ export default function AccountPage() {
   const generalMeetingEnabled = isBuildingModuleEnabled(buildingModules, 'general_meeting');
   const buildingDocumentsEnabled = isBuildingModuleEnabled(buildingModules, 'building_documents');
   const guestModeEnabled = isBuildingModuleEnabled(buildingModules, 'guest_mode');
-  const documentsNavEnabled = generalMeetingEnabled || buildingDocumentsEnabled;
   const managementNavEnabled = requestsEnabled || announcementsEnabled || chatEnabled;
   const [accessProfile, setAccessProfile] = useState<AccessProfile | null>(null);
   const guestContext = useMemo(() => {
@@ -237,11 +238,17 @@ export default function AccountPage() {
       ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
       ...(cleaningEnabled ? [{ key: 'уборка' as const, label: t('account.navCleaning'), icon: '🧹' }] : []),
       ...(budgetEnabled ? [{ key: 'бюджет' as const, label: t('account.navBudget'), icon: '📈' }] : []),
+      ...(generalMeetingEnabled
+        ? [
+            { key: 'собрания' as const, label: t('account.navMeetings'), icon: '🏛️' },
+            { key: 'решения' as const, label: t('account.navDecisions'), icon: '📜' },
+          ]
+        : []),
+      ...(buildingDocumentsEnabled
+        ? [{ key: 'документы' as const, label: t('account.navDocuments'), icon: '📁' }]
+        : []),
       ...(waterEnabled || electricityEnabled
         ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
-        : []),
-      ...(documentsNavEnabled
-        ? [{ key: 'документы' as const, label: t('account.docsMenu'), icon: '📁' }]
         : []),
       ...(pollsEnabled
         ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️' }]
@@ -261,7 +268,8 @@ export default function AccountPage() {
     securityEnabled,
     cleaningEnabled,
     budgetEnabled,
-    documentsNavEnabled,
+    generalMeetingEnabled,
+    buildingDocumentsEnabled,
     pollsEnabled,
     managementNavEnabled,
     requestsEnabled,
@@ -1699,7 +1707,7 @@ export default function AccountPage() {
             pollsEnabled={pollsEnabled}
             requestsEnabled={requestsEnabled}
             chatEnabled={chatEnabled}
-            documentsEnabled={documentsNavEnabled}
+            documentsEnabled={buildingDocumentsEnabled}
             meetingsEnabled={generalMeetingEnabled}
             supportDebt={Math.max(0, Number(property?.debt ?? 0))}
             supportOver={Math.max(0, Number(property?.overpayment ?? 0))}
@@ -1726,6 +1734,8 @@ export default function AccountPage() {
               setActiveMenu('ук');
             }}
             onOpenDocuments={() => setActiveMenu('документы')}
+            onOpenMeetings={() => setActiveMenu('собрания')}
+            onOpenDecisions={() => setActiveMenu('решения')}
             guestLimited={guestContext}
           />
         );
@@ -1916,6 +1926,34 @@ export default function AccountPage() {
           return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
         }
         return <OwnerBudget supabase={supabase} />;
+
+      case 'собрания':
+        if (!generalMeetingEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
+        return (
+          <OwnerDocumentsDecisions
+            supabase={supabase}
+            mode="meetings"
+            meetingsEnabled
+            decisionsEnabled={false}
+            documentsEnabled={false}
+          />
+        );
+
+      case 'решения':
+        if (!generalMeetingEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
+        return (
+          <OwnerDocumentsDecisions
+            supabase={supabase}
+            mode="decisions"
+            meetingsEnabled={false}
+            decisionsEnabled
+            documentsEnabled={false}
+          />
+        );
 
       case 'финансы': {
         const totalDebt = Number(property?.debt ?? 0);
@@ -2370,11 +2408,16 @@ export default function AccountPage() {
       // ЗАЯВКИ
       // ===========================================================
       case 'документы':
+        if (!buildingDocumentsEnabled) {
+          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
+        }
         return (
           <OwnerDocumentsDecisions
             supabase={supabase}
-            meetingsEnabled={generalMeetingEnabled}
-            documentsEnabled={buildingDocumentsEnabled}
+            mode="documents"
+            meetingsEnabled={false}
+            decisionsEnabled={false}
+            documentsEnabled
           />
         );
 

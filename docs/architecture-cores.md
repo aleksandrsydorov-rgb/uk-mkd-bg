@@ -55,11 +55,13 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 | `chat` | communication | none | Чат | Chat |
 | `polls` | communication | none | Опросы | Polls |
 | `announcements` | communication | none | Объявления | Announcements |
-| `general_meeting` | documents | none | Собрания | GM |
+| `general_meeting` | documents | none (Meeting Core: snapshots + ZUES ruleset; evolve in-place) | Собрания (wizard / conduct) | Собрания / live vote |
 | `building_documents` | documents | none | Документы | Docs |
 
 Keys must stay aligned with `IMPLEMENTED_MODULE_KEYS` in [`src/lib/modules.ts`](../src/lib/modules.ts)
 and `module_catalog.implemented=true` seed.
+
+**Meeting Core** (module `general_meeting`): see [`docs/meeting-core.md`](meeting-core.md). Property Book is SoT; meetings only freeze immutable snapshots. Do not treat generic polls as legal GM voting.
 
 Finance category in Settings has `tariffs` and `budget`. Fee, capital and internet live under utilities.
 

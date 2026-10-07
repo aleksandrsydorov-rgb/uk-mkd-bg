@@ -28,7 +28,7 @@ export type QuorumCalc = {
 };
 
 export const OWNER_MEETING_COLUMNS =
-  'id,title,description,meeting_date,meeting_time,location,meeting_mode,is_urgent,status,operational_phase,registration_opened_at,meeting_started_at,meeting_ended_at,quorum_stage,quorum_rule,represented_ideal_parts_percent,absentee_voting_enabled,cancelled_at,cancellation_reason,rescheduled_from_meeting_id,published_at,meeting_can_proceed,invitation_posted_at,minutes_completed_at,minutes_notice_posted_at,signed_document_uploaded,external_registry_ref';
+  'id,title,description,meeting_date,meeting_time,location,meeting_mode,is_urgent,status,operational_phase,registration_opened_at,meeting_started_at,meeting_ended_at,quorum_stage,quorum_rule,represented_ideal_parts_percent,absentee_voting_enabled,cancelled_at,cancellation_reason,rescheduled_from_meeting_id,published_at,meeting_can_proceed,invitation_posted_at,minutes_completed_at,minutes_notice_posted_at,signed_document_uploaded,external_registry_ref,legal_state,meeting_type,invitation_locked_at,ownership_drift_alert,check_in_blocked_reason,ruleset_id,show_live_results';
 
 export const MAJORITY_PRESETS: { id: MajorityRule; labelKey: string }[] = [
   { id: 'unanimous_all_ideal_parts', labelKey: 'docs.ruleUnanimous' },

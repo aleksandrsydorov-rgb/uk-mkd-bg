@@ -5,11 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { labelTransfer } from '@/i18n/labels';
-import {
-  transferStatusClass,
-  type OwnerTransfer,
-  type OwnershipTargetOwner,
-} from '@/lib/ownership';
+import { type OwnerTransfer, type OwnershipTargetOwner } from '@/lib/ownership';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import {
   OWNERSHIP_CHANGE_REASONS,
@@ -33,11 +29,20 @@ import {
   AdminCard,
   AdminEmptyState,
   AdminInlineAlert,
+  AdminMetricCard,
   AdminPageHeader,
   AdminPrimaryButton,
   AdminSecondaryButton,
   adminFieldClass,
 } from '@/components/admin/AdminUi';
+import {
+  OwnershipCompare,
+  OwnershipHint,
+  OwnershipProcessSteps,
+  OwnershipSectionCard,
+  OwnershipTransferCard,
+  ownerDisplayName,
+} from '@/components/ownership/OwnershipTransferUi';
 
 type DebtStatus = {
   overdue_unpaid_eur?: number;
@@ -79,6 +84,17 @@ function reasonLabel(reason: string, t: (k: string) => string) {
     other: t('xfer.reasonOther'),
   };
   return map[reason] ?? reason;
+}
+
+function kindLabel(kind: string | null | undefined, t: (k: string) => string) {
+  const map: Record<string, string> = {
+    ordinary: t('xfer.kindOrdinary'),
+    inheritance: t('xfer.kindInheritance'),
+    admin_initiated: t('xfer.kindAdmin'),
+    correction_link: t('xfer.reasonCorrection'),
+    entity_person: t('xfer.kindEntityPerson'),
+  };
+  return map[kind ?? 'ordinary'] ?? t('xfer.kindOrdinary');
 }
 
 export function AdminOwnershipTransfers({
@@ -546,13 +562,38 @@ export function AdminOwnershipTransfers({
     }
   }
 
+  const pendingTotal = rpcPendingCount ?? pendingCount;
+
   return (
     <div className="space-y-4">
       <AdminPageHeader
         title={t('admin.transfers')}
-        secondary={t('xfer.adminLead', {
-          n: rpcPendingCount ?? pendingCount,
-        })}
+        secondary={t('xfer.adminLead', { n: pendingTotal })}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <AdminMetricCard
+          label={t('xfer.metricPending')}
+          value={String(pendingTotal)}
+          secondary={t('xfer.metricPendingHint')}
+          alert={pendingTotal > 0}
+        />
+        <AdminMetricCard
+          label={t('xfer.metricApproved')}
+          value={String(transfers.filter((tr) => tr.status === 'утверждена').length)}
+        />
+        <AdminMetricCard
+          label={t('xfer.metricTotal')}
+          value={String(transfers.length)}
+        />
+      </div>
+
+      <OwnershipProcessSteps
+        steps={[
+          { title: t('xfer.processStep1Title'), text: t('xfer.processStep1Text') },
+          { title: t('xfer.processStep2Title'), text: t('xfer.processStep2Text') },
+          { title: t('xfer.processStep3Title'), text: t('xfer.processStep3Text') },
+        ]}
       />
 
       <AdminInlineAlert tone="info">{t('xfer.debtGateNote')}</AdminInlineAlert>
@@ -560,319 +601,329 @@ export function AdminOwnershipTransfers({
         <AdminInlineAlert tone="warning">{t('xfer.migrationPending')}</AdminInlineAlert>
       ) : null}
 
-      <AdminOwnershipStage3Panel
-        supabase={supabase}
-        properties={properties}
-        canManage={canManage}
-        sessionEmail={sessionEmail}
-        onError={onError}
-        onChanged={onChanged}
-      />
+      <OwnershipSectionCard title={t('xfer.stage3Title')} description={t('xfer.stage3Lead')}>
+        <AdminOwnershipStage3Panel
+          supabase={supabase}
+          properties={properties}
+          canManage={canManage}
+          sessionEmail={sessionEmail}
+          onError={onError}
+          onChanged={onChanged}
+        />
+      </OwnershipSectionCard>
 
-      <AdminCertifiedExtracts
-        supabase={supabase}
-        canManage={canManage}
-        propertyLabel={propertyLabel}
-        onError={onError}
-      />
+      <OwnershipSectionCard
+        title={t('xfer.certifiedAdminTitle')}
+        description={t('xfer.certifiedAdminLead')}
+      >
+        <AdminCertifiedExtracts
+          supabase={supabase}
+          canManage={canManage}
+          propertyLabel={propertyLabel}
+          onError={onError}
+        />
+      </OwnershipSectionCard>
 
       {canManage && (
-        <AdminCard>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm text-secondary">{t('xfer.adminInitiate')}</div>
-            <AdminSecondaryButton type="button" onClick={() => setAdminInitOpen((v) => !v)}>
-              {adminInitOpen ? t('xfer.hide') : t('xfer.show')}
-            </AdminSecondaryButton>
-          </div>
-          {adminInitOpen && (
-            <form onSubmit={handleAdminInitiate} className="mt-3 space-y-3">
-              <select
-                className={adminFieldClass}
-                value={initPropertyId}
-                onChange={(e) => {
-                  setInitPropertyId(e.target.value);
-                  const ideal = propertyIdealParts(Number(e.target.value));
-                  setInitRoster([
-                    {
-                      ...emptyRosterOwner(String(ideal || '')),
-                      ownership_share_percent: '100',
-                      ideal_parts_percent: String(ideal || ''),
-                    },
-                  ]);
-                }}
-                required
-              >
-                <option value="">{t('xfer.pickProperty')}</option>
-                {properties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {t('picker.apt', { n: p.apartment_number ?? p.id })} (#{p.id})
-                  </option>
-                ))}
-              </select>
-              <select
-                className={adminFieldClass}
-                value={initReason}
-                onChange={(e) => setInitReason(e.target.value as OwnershipChangeReason)}
-              >
-                {OWNERSHIP_CHANGE_REASONS.map((r) => (
-                  <option key={r} value={r}>
-                    {reasonLabel(r, t)}
-                  </option>
-                ))}
-              </select>
-              <OwnershipRosterEditor
-                owners={initRoster}
-                onChange={setInitRoster}
-                propertyIdealParts={propertyIdealParts(Number(initPropertyId) || 0)}
-              />
-              <textarea
-                className={adminFieldClass}
-                placeholder={t('account.phCommentUk')}
-                rows={2}
-                value={initNote}
-                onChange={(e) => setInitNote(e.target.value)}
-              />
-              <AdminPrimaryButton type="submit" disabled={busyId === -1}>
-                {t('xfer.submitAdmin')}
-              </AdminPrimaryButton>
-            </form>
-          )}
-        </AdminCard>
+        <OwnershipSectionCard
+          title={t('xfer.adminInitiate')}
+          description={t('xfer.adminInitiateLead')}
+          open={adminInitOpen}
+          onOpenChange={setAdminInitOpen}
+        >
+          <form onSubmit={handleAdminInitiate} className="space-y-3">
+            <select
+              className={adminFieldClass}
+              value={initPropertyId}
+              onChange={(e) => {
+                setInitPropertyId(e.target.value);
+                const ideal = propertyIdealParts(Number(e.target.value));
+                setInitRoster([
+                  {
+                    ...emptyRosterOwner(String(ideal || '')),
+                    ownership_share_percent: '100',
+                    ideal_parts_percent: String(ideal || ''),
+                  },
+                ]);
+              }}
+              required
+            >
+              <option value="">{t('xfer.pickProperty')}</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {t('picker.apt', { n: p.apartment_number ?? p.id })}
+                </option>
+              ))}
+            </select>
+            <select
+              className={adminFieldClass}
+              value={initReason}
+              onChange={(e) => setInitReason(e.target.value as OwnershipChangeReason)}
+            >
+              {OWNERSHIP_CHANGE_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {reasonLabel(r, t)}
+                </option>
+              ))}
+            </select>
+            <OwnershipRosterEditor
+              owners={initRoster}
+              onChange={setInitRoster}
+              propertyIdealParts={propertyIdealParts(Number(initPropertyId) || 0)}
+            />
+            <textarea
+              className={adminFieldClass}
+              placeholder={t('account.phCommentUk')}
+              rows={2}
+              value={initNote}
+              onChange={(e) => setInitNote(e.target.value)}
+            />
+            <AdminPrimaryButton type="submit" disabled={busyId === -1}>
+              {t('xfer.submitAdmin')}
+            </AdminPrimaryButton>
+          </form>
+        </OwnershipSectionCard>
       )}
 
       {canManage && (
         <AdminCard>
-          <div className="text-sm font-medium text-foreground">{t('xfer.modesTitle')}</div>
-          <p className="mt-1 text-xs text-muted">{t('xfer.modesLead')}</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">
-            <li>{t('xfer.modeNewTransfer')}</li>
-            <li>{t('xfer.modeBookCorrection')}</li>
-            <li>{t('xfer.modeLinkedCorrection')}</li>
+          <div className="text-sm font-semibold text-foreground">{t('xfer.modesTitle')}</div>
+          <p className="mt-1 text-sm text-secondary">{t('xfer.modesLead')}</p>
+          <ul className="mt-3 space-y-2 text-sm text-secondary">
+            <li className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-2">
+              {t('xfer.modeNewTransfer')}
+            </li>
+            <li className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-2">
+              {t('xfer.modeBookCorrection')}
+            </li>
+            <li className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-2">
+              {t('xfer.modeLinkedCorrection')}
+            </li>
           </ul>
         </AdminCard>
       )}
 
       {canManage && (
-        <AdminCard>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm text-secondary">{t('xfer.correctionTitle')}</div>
-            <AdminSecondaryButton type="button" onClick={() => setCorrectionOpen((v) => !v)}>
-              {correctionOpen ? t('xfer.hide') : t('xfer.show')}
-            </AdminSecondaryButton>
-          </div>
-          <p className="mt-2 text-xs text-muted">{t('xfer.correctionLead')}</p>
-          {correctionOpen && (
-            <form onSubmit={handleCorrection} className="mt-3 space-y-3">
-              <select
-                className={adminFieldClass}
-                value={corrPropertyId}
-                onChange={(e) => {
-                  setCorrPropertyId(e.target.value);
-                  const id = Number(e.target.value);
-                  if (id) void loadBookIntoCorrection(id);
-                }}
-                required
-              >
-                <option value="">{t('xfer.pickProperty')}</option>
-                {properties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {t('picker.apt', { n: p.apartment_number ?? p.id })} (#{p.id})
-                  </option>
-                ))}
-              </select>
-              <input
-                className={adminFieldClass}
-                placeholder={t('xfer.correctionReason')}
-                value={corrReason}
-                onChange={(e) => setCorrReason(e.target.value)}
-                required
-              />
-              <OwnershipRosterEditor
-                owners={corrRoster}
-                onChange={setCorrRoster}
-                propertyIdealParts={propertyIdealParts(Number(corrPropertyId) || 0)}
-              />
-              <input
-                className={adminFieldClass}
-                type="file"
-                accept=".pdf,image/*"
-                onChange={(e) => setCorrFile(e.target.files?.[0] ?? null)}
-                required
-              />
-              <textarea
-                className={adminFieldClass}
-                placeholder={t('xfer.evidenceNote')}
-                rows={2}
-                value={corrEvidenceNote}
-                onChange={(e) => setCorrEvidenceNote(e.target.value)}
-              />
-              <AdminPrimaryButton type="submit" disabled={busyId === -2}>
-                {t('xfer.applyCorrection')}
-              </AdminPrimaryButton>
-            </form>
-          )}
-        </AdminCard>
+        <OwnershipSectionCard title={t('xfer.correctionTitle')} description={t('xfer.correctionLead')}>
+          <form onSubmit={handleCorrection} className="space-y-3">
+            <select
+              className={adminFieldClass}
+              value={corrPropertyId}
+              onChange={(e) => {
+                setCorrPropertyId(e.target.value);
+                const id = Number(e.target.value);
+                if (id) void loadBookIntoCorrection(id);
+              }}
+              required
+            >
+              <option value="">{t('xfer.pickProperty')}</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {t('picker.apt', { n: p.apartment_number ?? p.id })}
+                </option>
+              ))}
+            </select>
+            <input
+              className={adminFieldClass}
+              placeholder={t('xfer.correctionReason')}
+              value={corrReason}
+              onChange={(e) => setCorrReason(e.target.value)}
+              required
+            />
+            <OwnershipRosterEditor
+              owners={corrRoster}
+              onChange={setCorrRoster}
+              propertyIdealParts={propertyIdealParts(Number(corrPropertyId) || 0)}
+            />
+            <OwnershipHint>{t('xfer.docsHintAdmin')}</OwnershipHint>
+            <input
+              className={adminFieldClass}
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => setCorrFile(e.target.files?.[0] ?? null)}
+              required
+            />
+            <textarea
+              className={adminFieldClass}
+              placeholder={t('xfer.evidenceNote')}
+              rows={2}
+              value={corrEvidenceNote}
+              onChange={(e) => setCorrEvidenceNote(e.target.value)}
+            />
+            <AdminPrimaryButton type="submit" disabled={busyId === -2}>
+              {t('xfer.applyCorrection')}
+            </AdminPrimaryButton>
+          </form>
+        </OwnershipSectionCard>
       )}
 
       {canManage && (
-        <AdminCard>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm text-secondary">{t('xfer.linkedTitle')}</div>
-            <AdminSecondaryButton type="button" onClick={() => setLinkedOpen((v) => !v)}>
-              {linkedOpen ? t('xfer.hide') : t('xfer.show')}
-            </AdminSecondaryButton>
-          </div>
-          <p className="mt-2 text-xs text-muted">{t('xfer.linkedLead')}</p>
-          {linkedOpen && (
-            <form onSubmit={handleLinkedCorrection} className="mt-3 space-y-3">
-              <select
-                className={adminFieldClass}
-                value={linkedSourceId}
-                onChange={(e) => {
-                  setLinkedSourceId(e.target.value);
-                  const id = Number(e.target.value);
-                  if (id) loadApprovedIntoLinked(id);
-                }}
-                required
-              >
-                <option value="">{t('xfer.pickApprovedTransfer')}</option>
-                {approvedTransfers.map((tr) => (
-                  <option key={tr.id} value={tr.id}>
-                    #{tr.id} · {propertyLabel(tr.property_id)} · {tr.to_owner_name}
-                    {tr.legal_effective_date ? ` · ${tr.legal_effective_date}` : ''}
-                  </option>
-                ))}
-              </select>
-              {approvedTransfers.length === 0 && (
-                <AdminInlineAlert tone="info">{t('xfer.noApprovedForLink')}</AdminInlineAlert>
-              )}
-              <textarea
-                className={adminFieldClass}
-                placeholder={t('xfer.linkedReason')}
-                rows={2}
-                value={linkedNote}
-                onChange={(e) => setLinkedNote(e.target.value)}
-                required
-              />
-              <OwnershipRosterEditor
-                owners={linkedRoster}
-                onChange={setLinkedRoster}
-                propertyIdealParts={
-                  propertyIdealParts(
-                    approvedTransfers.find((x) => x.id === Number(linkedSourceId))?.property_id ?? 0
-                  )
+        <OwnershipSectionCard
+          title={t('xfer.linkedTitle')}
+          description={t('xfer.linkedLead')}
+          open={linkedOpen}
+          onOpenChange={setLinkedOpen}
+        >
+          <form onSubmit={handleLinkedCorrection} className="space-y-3">
+            <select
+              className={adminFieldClass}
+              value={linkedSourceId}
+              onChange={(e) => {
+                setLinkedSourceId(e.target.value);
+                const id = Number(e.target.value);
+                if (id) {
+                  setLinkedOpen(true);
+                  loadApprovedIntoLinked(id);
                 }
-              />
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  className={adminFieldClass}
-                  type="date"
-                  value={linkedLegalDate}
-                  onChange={(e) => setLinkedLegalDate(e.target.value)}
-                  title={t('xfer.legalDate')}
-                />
-                <input
-                  className={adminFieldClass}
-                  placeholder={t('xfer.docType')}
-                  value={linkedDocType}
-                  onChange={(e) => setLinkedDocType(e.target.value)}
-                  required
-                />
-                <input
-                  className={adminFieldClass}
-                  placeholder={t('xfer.docNumber')}
-                  value={linkedDocNumber}
-                  onChange={(e) => setLinkedDocNumber(e.target.value)}
-                  required
-                />
-                <input
-                  className={adminFieldClass}
-                  type="date"
-                  value={linkedDocDate}
-                  onChange={(e) => setLinkedDocDate(e.target.value)}
-                  required
-                />
-              </div>
+              }}
+              required
+            >
+              <option value="">{t('xfer.pickApprovedTransfer')}</option>
+              {approvedTransfers.map((tr) => (
+                <option key={tr.id} value={tr.id}>
+                  {propertyLabel(tr.property_id)} · {tr.to_owner_name}
+                  {tr.legal_effective_date ? ` · ${tr.legal_effective_date}` : ''}
+                </option>
+              ))}
+            </select>
+            {approvedTransfers.length === 0 && (
+              <AdminInlineAlert tone="info">{t('xfer.noApprovedForLink')}</AdminInlineAlert>
+            )}
+            <textarea
+              className={adminFieldClass}
+              placeholder={t('xfer.linkedReason')}
+              rows={2}
+              value={linkedNote}
+              onChange={(e) => setLinkedNote(e.target.value)}
+              required
+            />
+            <OwnershipRosterEditor
+              owners={linkedRoster}
+              onChange={setLinkedRoster}
+              propertyIdealParts={
+                propertyIdealParts(
+                  approvedTransfers.find((x) => x.id === Number(linkedSourceId))?.property_id ?? 0
+                )
+              }
+            />
+            <div className="grid gap-2 sm:grid-cols-2">
               <input
                 className={adminFieldClass}
-                type="file"
-                accept=".pdf,image/*"
-                onChange={(e) => setLinkedFile(e.target.files?.[0] ?? null)}
+                type="date"
+                value={linkedLegalDate}
+                onChange={(e) => setLinkedLegalDate(e.target.value)}
+                title={t('xfer.legalDate')}
+              />
+              <input
+                className={adminFieldClass}
+                placeholder={t('xfer.docType')}
+                value={linkedDocType}
+                onChange={(e) => setLinkedDocType(e.target.value)}
                 required
               />
-              <AdminInlineAlert tone="warning">{t('xfer.linkedImmutableNote')}</AdminInlineAlert>
-              <AdminPrimaryButton type="submit" disabled={busyId === -3 || !linkedSourceId}>
-                {t('xfer.submitLinkedCorrection')}
-              </AdminPrimaryButton>
-            </form>
-          )}
-        </AdminCard>
+              <input
+                className={adminFieldClass}
+                placeholder={t('xfer.docNumber')}
+                value={linkedDocNumber}
+                onChange={(e) => setLinkedDocNumber(e.target.value)}
+                required
+              />
+              <input
+                className={adminFieldClass}
+                type="date"
+                value={linkedDocDate}
+                onChange={(e) => setLinkedDocDate(e.target.value)}
+                required
+              />
+            </div>
+            <input
+              className={adminFieldClass}
+              type="file"
+              accept=".pdf,image/*"
+              onChange={(e) => setLinkedFile(e.target.files?.[0] ?? null)}
+              required
+            />
+            <AdminInlineAlert tone="warning">{t('xfer.linkedImmutableNote')}</AdminInlineAlert>
+            <AdminPrimaryButton type="submit" disabled={busyId === -3 || !linkedSourceId}>
+              {t('xfer.submitLinkedCorrection')}
+            </AdminPrimaryButton>
+          </form>
+        </OwnershipSectionCard>
       )}
 
       <AdminCard>
+        <div className="mb-3 text-sm font-semibold text-foreground">{t('xfer.requestsTitle')}</div>
         {transfers.length === 0 ? (
-          <AdminEmptyState title={t('admin.noTransfers')} />
+          <AdminEmptyState title={t('admin.noTransfers')} text={t('xfer.emptyAdminList')} />
         ) : (
           <div className="space-y-3">
-            {transfers.map((tr) => (
-              <div key={tr.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm text-secondary">{propertyLabel(tr.property_id)}</div>
-                    <div className="mt-1 text-sm text-secondary">
-                      {tr.from_owner_name} ({tr.from_owner_email}) → {tr.to_owner_name} ({tr.to_owner_email})
-                    </div>
-                    <div className="mt-1 text-xs text-muted">
-                      {t('xfer.kind')}: {tr.change_kind ?? 'ordinary'}
-                      {tr.change_reason ? ` · ${reasonLabel(tr.change_reason, t)}` : ''}
-                      {tr.corrects_transfer_id
-                        ? ` · ${t('xfer.correctsLink', { id: String(tr.corrects_transfer_id) })}`
-                        : ''}
-                    </div>
-                    {Array.isArray(tr.target_owners) && tr.target_owners.length > 1 && (
-                      <div className="mt-1 text-xs text-muted">
-                        {t('xfer.multiOwners', { n: tr.target_owners.length })}
-                      </div>
-                    )}
-                    {tr.note && <div className="mt-2 text-sm text-secondary">{tr.note}</div>}
-                    {tr.reject_reason && (
-                      <div className="mt-1 text-xs text-danger">{t('form.reason', { n: tr.reject_reason })}</div>
-                    )}
-                    <div className="mt-2 text-xs text-muted">
-                      {formatOwnerDateTime(tr.created_at, locale)}
-                      {tr.decided_by ? ` · ${tr.decided_by}` : ''}
-                    </div>
-                    {tr.decided_at ? (
-                      <div className="mt-1 text-xs text-muted">
-                        {t('xfer.approvalDate')}: {formatOwnerDateTime(tr.decided_at, locale)}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-medium ${transferStatusClass(tr.status)}`}>
-                      {labelTransfer(tr.status, t)}
-                    </div>
-                    {tr.status === 'ожидает' && canManage && (
-                      <div className="mt-2 flex flex-wrap justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setApproveId(tr.id === approveId ? null : tr.id)}
-                          className="rounded-lg border border-accent/25 bg-accent-bg px-3 py-1.5 text-xs text-accent"
-                        >
-                          {t('admin.approve')}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyId === tr.id}
-                          onClick={() => void handleReject(tr)}
-                          className="rounded-lg border border-danger/25 bg-danger-bg px-3 py-1.5 text-xs text-danger"
-                        >
-                          {t('admin.reject')}
-                        </button>
-                      </div>
-                    )}
-                    {tr.status === 'утверждена' && canManage && (
-                      <div className="mt-2 flex flex-wrap justify-end gap-2">
+            {transfers.map((tr) => {
+              const afterOwners = asTargetOwners(tr.target_owners);
+              const beforeOwners = asTargetOwners(tr.baseline_owners);
+              const afterTitle = afterOwners?.length
+                ? afterOwners.map(ownerDisplayName).join(', ')
+                : tr.to_owner_name;
+              return (
+                <OwnershipTransferCard
+                  key={tr.id}
+                  title={propertyLabel(tr.property_id)}
+                  subtitle={`${tr.from_owner_name ?? '—'} → ${afterTitle}`}
+                  status={tr.status}
+                  statusLabel={labelTransfer(tr.status, t)}
+                  note={tr.note}
+                  rejectReason={tr.reject_reason}
+                  meta={
+                    <>
+                      <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                        {kindLabel(tr.change_kind, t)}
+                      </span>
+                      {tr.change_reason ? (
+                        <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                          {reasonLabel(tr.change_reason, t)}
+                        </span>
+                      ) : null}
+                      {tr.corrects_transfer_id ? (
+                        <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                          {t('xfer.correctsLink', { id: String(tr.corrects_transfer_id) })}
+                        </span>
+                      ) : null}
+                      {Array.isArray(tr.target_owners) && tr.target_owners.length > 1 ? (
+                        <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                          {t('xfer.multiOwners', { n: tr.target_owners.length })}
+                        </span>
+                      ) : null}
+                      <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                        {formatOwnerDateTime(tr.created_at, locale)}
+                      </span>
+                      {tr.decided_at ? (
+                        <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                          {t('xfer.approvalDate')}: {formatOwnerDateTime(tr.decided_at, locale)}
+                        </span>
+                      ) : null}
+                    </>
+                  }
+                  actions={
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {tr.status === 'ожидает' && canManage ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setApproveId(tr.id === approveId ? null : tr.id)}
+                            className="rounded-full border border-accent/25 bg-accent-bg px-3 py-1.5 text-xs font-medium text-accent"
+                          >
+                            {t('admin.approve')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === tr.id}
+                            onClick={() => void handleReject(tr)}
+                            className="rounded-full border border-danger/25 bg-danger-bg px-3 py-1.5 text-xs font-medium text-danger"
+                          >
+                            {t('admin.reject')}
+                          </button>
+                        </>
+                      ) : null}
+                      {tr.status === 'утверждена' && canManage ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -880,155 +931,184 @@ export function AdminOwnershipTransfers({
                             setLinkedSourceId(String(tr.id));
                             loadApprovedIntoLinked(tr.id);
                           }}
-                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-secondary"
+                          className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-secondary"
                         >
                           {t('xfer.correctThisTransfer')}
                         </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                      ) : null}
+                    </div>
+                  }
+                >
+                  {(beforeOwners?.length || afterOwners?.length) && tr.status === 'ожидает' ? (
+                    <div className="mt-3 border-t border-border pt-3">
+                      <OwnershipCompare
+                        beforeLabel={t('xfer.compareBefore')}
+                        afterLabel={t('xfer.compareAfter')}
+                        before={beforeOwners}
+                        after={afterOwners}
+                        emptyBefore={t('xfer.compareEmptyBefore')}
+                        emptyAfter={t('xfer.compareEmptyAfter')}
+                        shareLabel={t('xfer.sharePercent')}
+                        idealLabel={t('xfer.idealParts')}
+                      />
+                    </div>
+                  ) : null}
 
-                {approveId === tr.id && (
-                  <div className="mt-3 space-y-3 border-t border-border pt-3">
-                    {approveDebtLoading ? (
-                      <div className="text-xs text-muted">{t('common.loading')}</div>
-                    ) : null}
-                    {approveDebt && Number(approveDebt.overdue_unpaid_eur ?? 0) > 0 && (
-                      <AdminInlineAlert tone="warning">
-                        {t('xfer.debtOverdueWarning', {
-                          amount: String(approveDebt.overdue_unpaid_eur ?? 0),
-                          reason: String(approveDebt.reason ?? 'overdue_unpaid_obligations'),
-                        })}
-                        {tr.change_kind === 'inheritance' || tr.change_reason === 'inheritance'
-                          ? ` ${t('xfer.debtInheritanceExempt')}`
-                          : approveDebt.ordinary_debt_gate_enabled
-                            ? ` ${t('xfer.debtGateWillBlock')}`
-                            : ` ${t('xfer.debtGateDisabledWarn')}`}
-                      </AdminInlineAlert>
-                    )}
-                    <div className="text-sm font-medium text-foreground">{t('xfer.rosterEditor')}</div>
-                    <select
-                      className={adminFieldClass}
-                      value={changeReason}
-                      onChange={(e) => setChangeReason(e.target.value as OwnershipChangeReason)}
-                    >
-                      {OWNERSHIP_CHANGE_REASONS.map((r) => (
-                        <option key={r} value={r}>
-                          {reasonLabel(r, t)}
-                        </option>
-                      ))}
-                    </select>
-                    <OwnershipRosterEditor
-                      owners={roster}
-                      onChange={setRoster}
-                      propertyIdealParts={propertyIdealParts(tr.property_id)}
-                    />
-                    <div className="space-y-1">
-                      <label htmlFor={`xfer-legal-date-${tr.id}`} className="block text-xs font-medium text-foreground">
-                        {t('xfer.legalDate')}
-                      </label>
-                      <p id={`xfer-legal-date-help-${tr.id}`} className="text-xs text-muted">
-                        {t('xfer.legalDateHelp')}
-                      </p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <input
-                          id={`xfer-legal-date-${tr.id}`}
-                          className={adminFieldClass}
-                          type="date"
-                          value={legalDate}
-                          onChange={(e) => setLegalDate(e.target.value)}
-                          aria-describedby={`xfer-legal-date-help-${tr.id}`}
-                        />
-                        <AdminSecondaryButton
-                          type="button"
-                          disabled={busyId === tr.id}
-                          onClick={() => void handleSavePendingRoster(tr)}
+                  {approveId === tr.id && (
+                    <div className="mt-3 space-y-3 border-t border-border pt-3">
+                      {approveDebtLoading ? (
+                        <div className="text-xs text-muted">{t('common.loading')}</div>
+                      ) : null}
+                      {approveDebt && Number(approveDebt.overdue_unpaid_eur ?? 0) > 0 && (
+                        <AdminInlineAlert tone="warning">
+                          {t('xfer.debtOverdueWarning', {
+                            amount: String(approveDebt.overdue_unpaid_eur ?? 0),
+                            reason: t('xfer.debtReasonOverdue'),
+                          })}
+                          {tr.change_kind === 'inheritance' || tr.change_reason === 'inheritance'
+                            ? ` ${t('xfer.debtInheritanceExempt')}`
+                            : approveDebt.ordinary_debt_gate_enabled
+                              ? ` ${t('xfer.debtGateWillBlock')}`
+                              : ` ${t('xfer.debtGateDisabledWarn')}`}
+                        </AdminInlineAlert>
+                      )}
+                      <div className="text-sm font-medium text-foreground">{t('xfer.rosterEditor')}</div>
+                      <select
+                        className={adminFieldClass}
+                        value={changeReason}
+                        onChange={(e) => setChangeReason(e.target.value as OwnershipChangeReason)}
+                      >
+                        {OWNERSHIP_CHANGE_REASONS.map((r) => (
+                          <option key={r} value={r}>
+                            {reasonLabel(r, t)}
+                          </option>
+                        ))}
+                      </select>
+                      <OwnershipRosterEditor
+                        owners={roster}
+                        onChange={setRoster}
+                        propertyIdealParts={propertyIdealParts(tr.property_id)}
+                      />
+                      <div className="space-y-1">
+                        <label
+                          htmlFor={`xfer-legal-date-${tr.id}`}
+                          className="block text-xs font-medium text-foreground"
                         >
-                          {busyId === tr.id ? t('common.saving') : t('xfer.savePendingRoster')}
+                          {t('xfer.legalDate')}
+                        </label>
+                        <p id={`xfer-legal-date-help-${tr.id}`} className="text-xs text-muted">
+                          {t('xfer.legalDateHelp')}
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            id={`xfer-legal-date-${tr.id}`}
+                            className={adminFieldClass}
+                            type="date"
+                            value={legalDate}
+                            onChange={(e) => setLegalDate(e.target.value)}
+                            aria-describedby={`xfer-legal-date-help-${tr.id}`}
+                          />
+                          <AdminSecondaryButton
+                            type="button"
+                            disabled={busyId === tr.id}
+                            onClick={() => void handleSavePendingRoster(tr)}
+                          >
+                            {busyId === tr.id ? t('common.saving') : t('xfer.savePendingRoster')}
+                          </AdminSecondaryButton>
+                        </div>
+                      </div>
+                      <div className="text-sm font-medium text-foreground">{t('xfer.docSection')}</div>
+                      <OwnershipHint>{t('xfer.docsHintAdmin')}</OwnershipHint>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <label
+                            htmlFor={`xfer-doc-type-${tr.id}`}
+                            className="block text-xs font-medium text-foreground"
+                          >
+                            {t('xfer.docType')}
+                          </label>
+                          <input
+                            id={`xfer-doc-type-${tr.id}`}
+                            className={adminFieldClass}
+                            placeholder={t('xfer.docType')}
+                            value={docType}
+                            onChange={(e) => setDocType(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label
+                            htmlFor={`xfer-doc-number-${tr.id}`}
+                            className="block text-xs font-medium text-foreground"
+                          >
+                            {t('xfer.docNumber')}
+                          </label>
+                          <input
+                            id={`xfer-doc-number-${tr.id}`}
+                            className={adminFieldClass}
+                            placeholder={t('xfer.docNumber')}
+                            value={docNumber}
+                            onChange={(e) => setDocNumber(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label
+                            htmlFor={`xfer-doc-date-${tr.id}`}
+                            className="block text-xs font-medium text-foreground"
+                          >
+                            {t('xfer.docDate')}
+                          </label>
+                          <input
+                            id={`xfer-doc-date-${tr.id}`}
+                            className={adminFieldClass}
+                            type="date"
+                            value={docDate}
+                            onChange={(e) => setDocDate(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label
+                            htmlFor={`xfer-doc-file-${tr.id}`}
+                            className="block text-xs font-medium text-foreground"
+                          >
+                            {t('xfer.supportingFile')}
+                          </label>
+                          <input
+                            id={`xfer-doc-file-${tr.id}`}
+                            className={adminFieldClass}
+                            type="file"
+                            accept=".pdf,image/*"
+                            onChange={(e) => {
+                              setDocFile(e.target.files?.[0] ?? null);
+                              setUploadedPath(null);
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {docFile ? <div className="text-xs text-muted">{docFile.name}</div> : null}
+                      {!docFile && !uploadedPath ? (
+                        <AdminInlineAlert tone="warning">{t('xfer.docUploadBlocked')}</AdminInlineAlert>
+                      ) : (
+                        <div className="text-xs text-success">
+                          {uploadedPath ? t('xfer.docAttached') : t('xfer.docReady')}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <AdminPrimaryButton
+                          type="button"
+                          disabled={busyId === tr.id || (!docFile && !uploadedPath)}
+                          onClick={() => void handleApprove(tr)}
+                        >
+                          {busyId === tr.id ? t('common.saving') : t('xfer.confirmApprove')}
+                        </AdminPrimaryButton>
+                        <AdminSecondaryButton type="button" onClick={() => setApproveId(null)}>
+                          {t('common.cancel')}
                         </AdminSecondaryButton>
                       </div>
                     </div>
-                    <div className="text-sm font-medium text-foreground">{t('xfer.docSection')}</div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label htmlFor={`xfer-doc-type-${tr.id}`} className="block text-xs font-medium text-foreground">
-                          {t('xfer.docType')}
-                        </label>
-                        <input
-                          id={`xfer-doc-type-${tr.id}`}
-                          className={adminFieldClass}
-                          placeholder={t('xfer.docType')}
-                          value={docType}
-                          onChange={(e) => setDocType(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label htmlFor={`xfer-doc-number-${tr.id}`} className="block text-xs font-medium text-foreground">
-                          {t('xfer.docNumber')}
-                        </label>
-                        <input
-                          id={`xfer-doc-number-${tr.id}`}
-                          className={adminFieldClass}
-                          placeholder={t('xfer.docNumber')}
-                          value={docNumber}
-                          onChange={(e) => setDocNumber(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label htmlFor={`xfer-doc-date-${tr.id}`} className="block text-xs font-medium text-foreground">
-                          {t('xfer.docDate')}
-                        </label>
-                        <input
-                          id={`xfer-doc-date-${tr.id}`}
-                          className={adminFieldClass}
-                          type="date"
-                          value={docDate}
-                          onChange={(e) => setDocDate(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label htmlFor={`xfer-doc-file-${tr.id}`} className="block text-xs font-medium text-foreground">
-                          {t('xfer.supportingFile')}
-                        </label>
-                        <input
-                          id={`xfer-doc-file-${tr.id}`}
-                          className={adminFieldClass}
-                          type="file"
-                          accept=".pdf,image/*"
-                          onChange={(e) => {
-                            setDocFile(e.target.files?.[0] ?? null);
-                            setUploadedPath(null);
-                          }}
-                        />
-                      </div>
-                    </div>
-                    {docFile ? (
-                      <div className="text-xs text-muted">{docFile.name}</div>
-                    ) : null}
-                    {!docFile && !uploadedPath ? (
-                      <AdminInlineAlert tone="warning">{t('xfer.docUploadBlocked')}</AdminInlineAlert>
-                    ) : (
-                      <div className="text-xs text-success">
-                        {uploadedPath ? t('xfer.docAttached') : t('xfer.docReady')}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <AdminPrimaryButton
-                        type="button"
-                        disabled={busyId === tr.id || (!docFile && !uploadedPath)}
-                        onClick={() => void handleApprove(tr)}
-                      >
-                        {busyId === tr.id ? t('common.saving') : t('xfer.confirmApprove')}
-                      </AdminPrimaryButton>
-                      <AdminSecondaryButton type="button" onClick={() => setApproveId(null)}>
-                        {t('xfer.hide')}
-                      </AdminSecondaryButton>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </OwnershipTransferCard>
+              );
+            })}
           </div>
         )}
       </AdminCard>

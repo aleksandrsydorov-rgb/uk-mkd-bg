@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { labelTransfer } from '@/i18n/labels';
-import { transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
+import { type OwnerTransfer, type OwnershipTargetOwner } from '@/lib/ownership';
 import { ownerVisibleError } from '@/lib/ownerError';
 import {
   OWNERSHIP_CHANGE_REASONS,
@@ -19,6 +19,18 @@ import {
 } from '@/lib/ownershipChange';
 import { OwnershipRosterEditor } from '@/components/ownership/OwnershipRosterEditor';
 import { OwnerOwnershipExtractsPanel } from '@/components/account/OwnerOwnershipExtractsPanel';
+import { CompactCard, PrimaryButton, SectionHeader } from '@/components/account/ownerUi';
+import {
+  OwnershipCompare,
+  OwnershipEmptyList,
+  OwnershipHint,
+  OwnershipProcessSteps,
+  OwnershipSuccessBanner,
+  OwnershipTransferCard,
+  OwnershipWarningBanner,
+  OwnershipWizardSteps,
+  ownerDisplayName,
+} from '@/components/ownership/OwnershipTransferUi';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -32,6 +44,14 @@ type Props = {
   onError: (message: string) => void;
 };
 
+function reasonTitle(reason: OwnershipChangeReason, t: (k: string) => string) {
+  if (reason === 'sale') return t('xfer.reasonSale');
+  if (reason === 'donation') return t('xfer.reasonDonation');
+  if (reason === 'partial_transfer') return t('xfer.reasonPartial');
+  if (reason === 'inheritance') return t('xfer.reasonInheritance');
+  return t('xfer.reasonOther');
+}
+
 export function OwnerOwnershipPanel({
   supabase,
   propertyId,
@@ -44,6 +64,7 @@ export function OwnerOwnershipPanel({
   onError,
 }: Props) {
   const { t } = useI18n();
+  const [step, setStep] = useState(0);
   const [roster, setRoster] = useState<RosterOwnerForm[]>([
     {
       ...emptyRosterOwner(String(idealPartsPercent || '')),
@@ -56,11 +77,21 @@ export function OwnerOwnershipPanel({
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [rpcMissing, setRpcMissing] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   const validation = useMemo(
     () => validateRosterForms(roster, idealPartsPercent),
     [roster, idealPartsPercent]
   );
+
+  const currentOwners = useMemo(() => {
+    const pending = pendingTransfer?.baseline_owners;
+    if (Array.isArray(pending) && pending.length) return pending as OwnershipTargetOwner[];
+    const approved = transfers.find(
+      (tr) => tr.status === 'утверждена' && Array.isArray(tr.target_owners) && tr.target_owners.length
+    );
+    return (approved?.target_owners as OwnershipTargetOwner[] | undefined) ?? null;
+  }, [pendingTransfer, transfers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +107,6 @@ export function OwnerOwnershipPanel({
     };
   }, [supabase, propertyId]);
 
-  // Keep blank proposal ideals aligned with the Book object after cancel/submit reset.
   useEffect(() => {
     if (pendingTransfer) return;
     setRoster((prev) => {
@@ -131,6 +161,8 @@ export function OwnerOwnershipPanel({
       setNote('');
       setPhone('');
       setChangeReason('sale');
+      setStep(0);
+      setJustSubmitted(true);
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
       else onError(ownerVisibleError(err, t('err.transfer')));
@@ -148,6 +180,7 @@ export function OwnerOwnershipPanel({
       });
       if (error) throw error;
       await reloadTransfers();
+      setJustSubmitted(false);
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
       else onError(ownerVisibleError(err, t('xfer.errCancel')));
@@ -157,106 +190,235 @@ export function OwnerOwnershipPanel({
   }
 
   const mine = transfers.filter((tr) => tr.property_id === propertyId);
+  const wizardLabels = [
+    t('xfer.stepReason'),
+    t('xfer.stepOwners'),
+    t('xfer.stepDetails'),
+    t('xfer.stepReview'),
+  ];
+
+  const fieldClass =
+    'w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-accent/30';
 
   return (
-    <div className="rounded-xl border border-border bg-background px-3 py-3 space-y-4">
-      <p className="text-sm text-secondary">{t('account.transferLead')}</p>
-      <p className="text-xs text-muted">{t('xfer.ownerProposeLead')}</p>
+    <div className="space-y-4">
+      <CompactCard className="space-y-3">
+        <SectionHeader title={t('xfer.ownerTitle')} secondary={t('account.transferLead')} />
+        <OwnershipProcessSteps
+          steps={[
+            { title: t('xfer.processStep1Title'), text: t('xfer.processStep1Text') },
+            { title: t('xfer.processStep2Title'), text: t('xfer.processStep2Text') },
+            { title: t('xfer.processStep3Title'), text: t('xfer.processStep3Text') },
+          ]}
+        />
+        <OwnershipHint>{t('xfer.ownerProposeLead')}</OwnershipHint>
+        <OwnershipHint>{t('xfer.idealPartsHint')}</OwnershipHint>
+      </CompactCard>
+
       {rpcMissing ? (
-        <div className="rounded-lg border border-warning/25 bg-warning-bg px-3 py-2 text-xs text-warning">
-          {t('xfer.migrationPending')}
-        </div>
+        <OwnershipWarningBanner>{t('xfer.migrationPending')}</OwnershipWarningBanner>
       ) : null}
 
       {pendingTransfer ? (
-        <div className="rounded-xl border border-warning/25 bg-warning-bg p-3 text-sm text-warning">
-          {t('account.transferPending')}
-          <div className="mt-2 text-secondary">
-            {t('account.newOwner')}: {pendingTransfer.to_owner_name} ({pendingTransfer.to_owner_email})
-          </div>
-          {Array.isArray(pendingTransfer.target_owners) && pendingTransfer.target_owners.length > 1 && (
-            <div className="mt-1 text-xs text-muted">
-              {t('xfer.multiOwners', { n: pendingTransfer.target_owners.length })}
+        <OwnershipWarningBanner>
+          <div className="space-y-2">
+            <div className="font-medium">{t('account.transferPending')}</div>
+            <div className="text-sm opacity-90">
+              {t('account.newOwner')}:{' '}
+              {Array.isArray(pendingTransfer.target_owners) && pendingTransfer.target_owners.length
+                ? pendingTransfer.target_owners
+                    .map((o) => ownerDisplayName(o as OwnershipTargetOwner))
+                    .join(', ')
+                : `${pendingTransfer.to_owner_name} (${pendingTransfer.to_owner_email})`}
             </div>
-          )}
-          {sessionEmail &&
-            (pendingTransfer.submitted_by_email ?? pendingTransfer.from_owner_email)?.toLowerCase() ===
-              sessionEmail.toLowerCase() && (
+            <OwnershipCompare
+              beforeLabel={t('xfer.compareBefore')}
+              afterLabel={t('xfer.compareAfter')}
+              before={pendingTransfer.baseline_owners as OwnershipTargetOwner[] | null}
+              after={
+                (pendingTransfer.target_owners as OwnershipTargetOwner[] | null) ??
+                ([
+                  {
+                    entity_kind: 'natural_person',
+                    first_name: pendingTransfer.to_owner_name,
+                    email: pendingTransfer.to_owner_email,
+                    ownership_share_percent: 100,
+                    ideal_parts_percent: idealPartsPercent,
+                  },
+                ] as OwnershipTargetOwner[])
+              }
+              emptyBefore={t('xfer.compareEmptyBefore')}
+              emptyAfter={t('xfer.compareEmptyAfter')}
+              shareLabel={t('xfer.sharePercent')}
+              idealLabel={t('xfer.idealParts')}
+            />
+            {sessionEmail &&
+              (pendingTransfer.submitted_by_email ?? pendingTransfer.from_owner_email)?.toLowerCase() ===
+                sessionEmail.toLowerCase() && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void handleCancel(pendingTransfer)}
+                  className="mt-1 rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-foreground"
+                >
+                  {t('xfer.cancelRequest')}
+                </button>
+              )}
+          </div>
+        </OwnershipWarningBanner>
+      ) : (
+        <CompactCard className="space-y-4">
+          {justSubmitted ? (
+            <OwnershipSuccessBanner>{t('xfer.submitSuccess')}</OwnershipSuccessBanner>
+          ) : null}
+          <OwnershipWizardSteps steps={wizardLabels} current={step} />
+
+          <form
+            onSubmit={(e) => {
+              if (step < 3) {
+                e.preventDefault();
+                return;
+              }
+              void handleSubmit(e);
+            }}
+            className="space-y-4"
+          >
+            {step === 0 && (
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-foreground">{t('xfer.stepReason')}</label>
+                <select
+                  className={fieldClass}
+                  value={changeReason}
+                  onChange={(e) => setChangeReason(e.target.value as OwnershipChangeReason)}
+                >
+                  {OWNERSHIP_CHANGE_REASONS.filter((r) => r !== 'correction').map((r) => (
+                    <option key={r} value={r}>
+                      {reasonTitle(r, t)}
+                    </option>
+                  ))}
+                </select>
+                <OwnershipHint>{t('xfer.reasonHint')}</OwnershipHint>
+              </div>
+            )}
+
+            {step === 1 && (
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-foreground">{t('xfer.stepOwners')}</label>
+                <OwnershipHint>{t('xfer.shareHint')}</OwnershipHint>
+                <OwnershipRosterEditor
+                  owners={roster}
+                  onChange={setRoster}
+                  propertyIdealParts={idealPartsPercent}
+                  compact
+                />
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-foreground">{t('xfer.stepDetails')}</label>
+                <input
+                  className={fieldClass}
+                  placeholder={t('account.phPhoneOpt')}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <textarea
+                  className={fieldClass}
+                  placeholder={t('account.phCommentUk')}
+                  rows={3}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+                <OwnershipHint>{t('xfer.docsHintOwner')}</OwnershipHint>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-3">
+                <div className="rounded-[14px] border border-border bg-surface-secondary/40 px-3 py-3 text-sm">
+                  <div className="font-medium text-foreground">{reasonTitle(changeReason, t)}</div>
+                  {note ? <p className="mt-1 text-secondary">{note}</p> : null}
+                  {phone ? <p className="mt-1 text-xs text-muted">{phone}</p> : null}
+                </div>
+                <OwnershipCompare
+                  beforeLabel={t('xfer.compareBefore')}
+                  afterLabel={t('xfer.compareAfter')}
+                  before={currentOwners}
+                  after={roster}
+                  emptyBefore={t('xfer.compareEmptyBefore')}
+                  emptyAfter={t('xfer.compareEmptyAfter')}
+                  shareLabel={t('xfer.sharePercent')}
+                  idealLabel={t('xfer.idealParts')}
+                />
+                {!validation.ok ? (
+                  <OwnershipWarningBanner>{t('xfer.errRosterInvalid')}</OwnershipWarningBanner>
+                ) : (
+                  <OwnershipHint>{t('xfer.reviewHint')}</OwnershipHint>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
-                disabled={submitting}
-                onClick={() => void handleCancel(pendingTransfer)}
-                className="mt-3 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground"
+                disabled={step === 0 || submitting}
+                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                className="rounded-full border border-border bg-surface px-4 py-2 text-sm text-secondary disabled:opacity-40"
               >
-                {t('xfer.cancelRequest')}
+                {t('common.back')}
               </button>
-            )}
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <select
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            value={changeReason}
-            onChange={(e) => setChangeReason(e.target.value as OwnershipChangeReason)}
-          >
-            {OWNERSHIP_CHANGE_REASONS.filter((r) => r !== 'correction').map((r) => (
-              <option key={r} value={r}>
-                {r === 'sale'
-                  ? t('xfer.reasonSale')
-                  : r === 'donation'
-                    ? t('xfer.reasonDonation')
-                    : r === 'partial_transfer'
-                      ? t('xfer.reasonPartial')
-                      : r === 'inheritance'
-                        ? t('xfer.reasonInheritance')
-                        : t('xfer.reasonOther')}
-              </option>
-            ))}
-          </select>
-
-          <OwnershipRosterEditor
-            owners={roster}
-            onChange={setRoster}
-            propertyIdealParts={idealPartsPercent}
-            compact
-          />
-
-          <input
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder={t('account.phPhoneOpt')}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-          <textarea
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder={t('account.phCommentUk')}
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={submitting || !validation.ok}
-            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {submitting ? t('account.sending') : t('account.submitTransfer')}
-          </button>
-        </form>
-      )}
-
-      {mine.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-xs text-muted">{t('account.transferHistory')}</div>
-          {mine.slice(0, 8).map((tr) => (
-            <div key={tr.id} className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
-              <span className={transferStatusClass(tr.status)}>{labelTransfer(tr.status, t)}</span>
-              {' · '}
-              {tr.to_owner_name} ({tr.to_owner_email})
-              {tr.reject_reason ? ` · ${tr.reject_reason}` : ''}
+              {step < 3 ? (
+                <PrimaryButton
+                  type="button"
+                  disabled={step === 1 && !validation.ok}
+                  onClick={() => setStep((s) => Math.min(3, s + 1))}
+                >
+                  {t('xfer.nextStep')}
+                </PrimaryButton>
+              ) : (
+                <PrimaryButton type="submit" disabled={submitting || !validation.ok || scopeLocked}>
+                  {submitting ? t('account.sending') : t('account.submitTransfer')}
+                </PrimaryButton>
+              )}
             </div>
-          ))}
-        </div>
+          </form>
+        </CompactCard>
       )}
+
+      <CompactCard className="space-y-3">
+        <div className="text-sm font-semibold text-foreground">{t('account.transferHistory')}</div>
+        {mine.length === 0 ? (
+          <OwnershipEmptyList title={t('xfer.emptyOwnerHistory')} text={t('xfer.emptyOwnerHistoryText')} />
+        ) : (
+          <div className="space-y-2">
+            {mine.slice(0, 8).map((tr) => (
+              <OwnershipTransferCard
+                key={tr.id}
+                title={
+                  Array.isArray(tr.target_owners) && tr.target_owners.length
+                    ? tr.target_owners
+                        .map((o) => ownerDisplayName(o as OwnershipTargetOwner))
+                        .join(', ')
+                    : tr.to_owner_name
+                }
+                subtitle={tr.to_owner_email}
+                status={tr.status}
+                statusLabel={labelTransfer(tr.status, t)}
+                note={tr.note}
+                rejectReason={tr.reject_reason}
+                meta={
+                  <>
+                    <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5">
+                      {reasonTitle((tr.change_reason as OwnershipChangeReason) || 'sale', t)}
+                    </span>
+                  </>
+                }
+              />
+            ))}
+          </div>
+        )}
+      </CompactCard>
 
       <OwnerOwnershipExtractsPanel
         supabase={supabase}

@@ -34,15 +34,31 @@ export function OwnershipRosterEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span>
-          {t('xfer.shareSum')}: {validation.shareSum.toFixed(3)}% · {t('xfer.idealSum')}:{' '}
-          {validation.idealSum.toFixed(6)} / {propertyIdealParts}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <span
+            className={`rounded-full border px-2.5 py-1 font-medium ${
+              Math.abs(validation.shareSum - 100) < 0.001
+                ? 'border-success/25 bg-success-bg text-success'
+                : 'border-warning/25 bg-warning-bg text-warning'
+            }`}
+          >
+            {t('xfer.shareSum')}: {validation.shareSum.toFixed(2)}%
+          </span>
+          <span
+            className={`rounded-full border px-2.5 py-1 font-medium ${
+              Math.abs(validation.idealSum - propertyIdealParts) < 0.000001
+                ? 'border-success/25 bg-success-bg text-success'
+                : 'border-warning/25 bg-warning-bg text-warning'
+            }`}
+          >
+            {t('xfer.idealSum')}: {validation.idealSum.toFixed(3)} / {propertyIdealParts}
+          </span>
+        </div>
         {!disabled && (
           <button
             type="button"
-            className="rounded-lg border border-border bg-surface px-2 py-1 text-xs text-foreground"
+            className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-hover"
             onClick={() => onChange([...owners, emptyRosterOwner()])}
           >
             {t('xfer.addOwner')}
@@ -50,8 +66,12 @@ export function OwnershipRosterEditor({
         )}
       </div>
 
+      {!compact ? (
+        <p className="text-xs leading-relaxed text-muted">{t('xfer.shareHint')}</p>
+      ) : null}
+
       {!validation.ok && (
-        <div className="rounded-lg border border-danger/25 bg-danger-bg px-3 py-2 text-xs text-danger">
+        <div className="rounded-[14px] border border-danger/25 bg-danger-bg px-3 py-2 text-xs text-danger">
           {validation.errors.includes('share_total') && <div>{t('xfer.errShareTotal')}</div>}
           {validation.errors.includes('ideal_total') && <div>{t('xfer.errIdealTotal')}</div>}
           {(validation.errors.includes('email') ||
@@ -65,7 +85,7 @@ export function OwnershipRosterEditor({
       {owners.map((o, idx) => (
         <div
           key={o.key}
-          className={`space-y-2 rounded-xl border border-border bg-surface p-3 ${compact ? '' : ''}`}
+          className="space-y-2 rounded-[14px] border border-border bg-surface p-3 shadow-sm"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-medium text-secondary">

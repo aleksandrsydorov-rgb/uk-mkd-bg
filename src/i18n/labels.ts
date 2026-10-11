@@ -111,6 +111,7 @@ export function labelPollDecision(raw: string, t: Translate) {
 export function labelTransfer(raw: string, t: Translate) {
   if (raw === 'утверждена') return t('status.trOk');
   if (raw === 'отклонена') return t('status.trNo');
+  if (raw === 'отменена') return t('status.trCancel');
   return t('status.trWait');
 }
 

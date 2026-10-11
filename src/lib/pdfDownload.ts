@@ -1,4 +1,4 @@
-export async function downloadHtmlAsPdf(filename: string, html: string) {
+async function renderHtmlToPdf(html: string) {
   const [{ jsPDF }, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')]);
   const html2canvas = html2canvasMod.default;
   const host = document.createElement('div');
@@ -30,8 +30,39 @@ export async function downloadHtmlAsPdf(filename: string, html: string) {
       pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH);
       remaining -= pageH;
     }
-    pdf.save(filename);
+    return pdf;
   } finally {
     host.remove();
   }
+}
+
+export async function downloadHtmlAsPdf(filename: string, html: string) {
+  const pdf = await renderHtmlToPdf(html);
+  pdf.save(filename);
+}
+
+/** Build a real PDF Blob from frozen HTML (browser). */
+export async function htmlToPdfBlob(html: string): Promise<Blob> {
+  const pdf = await renderHtmlToPdf(html);
+  return pdf.output('blob');
+}
+
+export async function sha256HexOfBlob(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** True only when bytes start with %PDF */
+export function looksLikePdf(bytes: ArrayBuffer | Uint8Array): boolean {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  return (
+    u8.length >= 4 &&
+    u8[0] === 0x25 &&
+    u8[1] === 0x50 &&
+    u8[2] === 0x44 &&
+    u8[3] === 0x46
+  );
 }

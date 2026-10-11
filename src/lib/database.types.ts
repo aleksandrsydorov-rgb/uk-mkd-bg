@@ -177,6 +177,60 @@ export interface Database {
         };
         Relationships: [];
       };
+      ownership_tariff_transitions: {
+        Row: {
+          id: number;
+          property_id: number;
+          transfer_id: number | null;
+          subject_before: string;
+          subject_after: string;
+          legal_effective_date: string | null;
+          system_approval_at: string;
+          support_tariff_version_before: string | null;
+          support_tariff_version_after: string | null;
+          capital_tariff_version_before: string | null;
+          capital_tariff_version_after: string | null;
+          historic_assessments_untouched: boolean;
+          note: string | null;
+          created_at: string;
+          created_by_email: string | null;
+        };
+        Insert: {
+          id?: number;
+          property_id: number;
+          transfer_id?: number | null;
+          subject_before: string;
+          subject_after: string;
+          legal_effective_date?: string | null;
+          system_approval_at?: string;
+          support_tariff_version_before?: string | null;
+          support_tariff_version_after?: string | null;
+          capital_tariff_version_before?: string | null;
+          capital_tariff_version_after?: string | null;
+          historic_assessments_untouched?: boolean;
+          note?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+        };
+        Update: {
+          id?: number;
+          property_id?: number;
+          transfer_id?: number | null;
+          subject_before?: string;
+          subject_after?: string;
+          legal_effective_date?: string | null;
+          system_approval_at?: string;
+          support_tariff_version_before?: string | null;
+          support_tariff_version_after?: string | null;
+          capital_tariff_version_before?: string | null;
+          capital_tariff_version_after?: string | null;
+          historic_assessments_untouched?: boolean;
+          note?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+        };
+        Relationships: [];
+      };
       owner_transfers: {
         Row: {
           id: number;
@@ -193,6 +247,24 @@ export interface Database {
           decided_at: string | null;
           decided_by: string | null;
           reject_reason: string | null;
+          change_kind: string;
+          change_reason: string | null;
+          initiated_by: string;
+          document_type: string | null;
+          document_number: string | null;
+          document_date: string | null;
+          supporting_document_path: string | null;
+          supporting_document_mime: string | null;
+          legal_effective_date: string | null;
+          baseline_owners: Json | null;
+          baseline_roster_hash: string | null;
+          target_owners: Json | null;
+          submitted_by_email: string | null;
+          cancelled_at: string | null;
+          cancelled_by_email: string | null;
+          corrects_transfer_id: number | null;
+          debt_check_result: Json | null;
+          debt_gate_applied: boolean;
         };
         Insert: {
           id?: number;
@@ -209,6 +281,24 @@ export interface Database {
           decided_at?: string | null;
           decided_by?: string | null;
           reject_reason?: string | null;
+          change_kind?: string;
+          change_reason?: string | null;
+          initiated_by?: string;
+          document_type?: string | null;
+          document_number?: string | null;
+          document_date?: string | null;
+          supporting_document_path?: string | null;
+          supporting_document_mime?: string | null;
+          legal_effective_date?: string | null;
+          baseline_owners?: Json | null;
+          baseline_roster_hash?: string | null;
+          target_owners?: Json | null;
+          submitted_by_email?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by_email?: string | null;
+          corrects_transfer_id?: number | null;
+          debt_check_result?: Json | null;
+          debt_gate_applied?: boolean;
         };
         Update: {
           id?: number;
@@ -225,6 +315,318 @@ export interface Database {
           decided_at?: string | null;
           decided_by?: string | null;
           reject_reason?: string | null;
+          change_kind?: string;
+          change_reason?: string | null;
+          initiated_by?: string;
+          document_type?: string | null;
+          document_number?: string | null;
+          document_date?: string | null;
+          supporting_document_path?: string | null;
+          supporting_document_mime?: string | null;
+          legal_effective_date?: string | null;
+          baseline_owners?: Json | null;
+          baseline_roster_hash?: string | null;
+          target_owners?: Json | null;
+          submitted_by_email?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by_email?: string | null;
+          corrects_transfer_id?: number | null;
+          debt_check_result?: Json | null;
+          debt_gate_applied?: boolean;
+        };
+        Relationships: [];
+      };
+      ownership_change_settings: {
+        Row: {
+          id: number;
+          ordinary_debt_gate_enabled: boolean;
+          email_provider_configured: boolean;
+          updated_at: string;
+          updated_by_email: string | null;
+        };
+        Insert: {
+          id?: number;
+          ordinary_debt_gate_enabled?: boolean;
+          email_provider_configured?: boolean;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Update: {
+          id?: number;
+          ordinary_debt_gate_enabled?: boolean;
+          email_provider_configured?: boolean;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      ownership_change_notifications: {
+        Row: {
+          id: number;
+          transfer_id: number | null;
+          property_id: number;
+          event_kind: string;
+          recipient_email: string;
+          recipient_role: string;
+          in_app_delivered: boolean;
+          email_attempted: boolean;
+          email_delivered: boolean;
+          email_skip_reason: string | null;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          transfer_id?: number | null;
+          property_id: number;
+          event_kind: string;
+          recipient_email: string;
+          recipient_role?: string;
+          in_app_delivered?: boolean;
+          email_attempted?: boolean;
+          email_delivered?: boolean;
+          email_skip_reason?: string | null;
+          payload?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          transfer_id?: number | null;
+          property_id?: number;
+          event_kind?: string;
+          recipient_email?: string;
+          recipient_role?: string;
+          in_app_delivered?: boolean;
+          email_attempted?: boolean;
+          email_delivered?: boolean;
+          email_skip_reason?: string | null;
+          payload?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      ownership_admin_corrections: {
+        Row: {
+          id: number;
+          property_id: number;
+          reason: string;
+          evidence_document_path: string | null;
+          evidence_note: string | null;
+          before_owners: Json;
+          after_owners: Json;
+          created_at: string;
+          created_by_email: string;
+          book_result: Json | null;
+        };
+        Insert: {
+          id?: number;
+          property_id: number;
+          reason: string;
+          evidence_document_path?: string | null;
+          evidence_note?: string | null;
+          before_owners: Json;
+          after_owners: Json;
+          created_at?: string;
+          created_by_email: string;
+          book_result?: Json | null;
+        };
+        Update: {
+          id?: number;
+          property_id?: number;
+          reason?: string;
+          evidence_document_path?: string | null;
+          evidence_note?: string | null;
+          before_owners?: Json;
+          after_owners?: Json;
+          created_at?: string;
+          created_by_email?: string;
+          book_result?: Json | null;
+        };
+        Relationships: [];
+      };
+      ownership_inherited_liabilities: {
+        Row: {
+          id: number;
+          property_id: number;
+          transfer_id: number | null;
+          heir_email: string | null;
+          heir_name: string | null;
+          amount_eur: number;
+          basis_document_type: string;
+          basis_document_number: string;
+          basis_document_date: string;
+          note: string | null;
+          created_at: string;
+          created_by_email: string;
+          obligation_ref: string | null;
+          accepted_status: string;
+          inventory_limited: boolean;
+          decision_document_ref: string | null;
+          confirmed_at: string | null;
+          confirmed_by_email: string | null;
+        };
+        Insert: {
+          id?: number;
+          property_id: number;
+          transfer_id?: number | null;
+          heir_email?: string | null;
+          heir_name?: string | null;
+          amount_eur: number;
+          basis_document_type: string;
+          basis_document_number: string;
+          basis_document_date: string;
+          note?: string | null;
+          created_at?: string;
+          created_by_email: string;
+          obligation_ref?: string | null;
+          accepted_status?: string;
+          inventory_limited?: boolean;
+          decision_document_ref?: string | null;
+          confirmed_at?: string | null;
+          confirmed_by_email?: string | null;
+        };
+        Update: {
+          id?: number;
+          property_id?: number;
+          transfer_id?: number | null;
+          heir_email?: string | null;
+          heir_name?: string | null;
+          amount_eur?: number;
+          basis_document_type?: string;
+          basis_document_number?: string;
+          basis_document_date?: string;
+          note?: string | null;
+          created_at?: string;
+          created_by_email?: string;
+          obligation_ref?: string | null;
+          accepted_status?: string;
+          inventory_limited?: boolean;
+          decision_document_ref?: string | null;
+          confirmed_at?: string | null;
+          confirmed_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      legal_entity_representatives: {
+        Row: {
+          id: number;
+          property_id: number;
+          registry_people_id: number;
+          representative_name: string;
+          representative_email: string;
+          document_type: string | null;
+          document_number: string | null;
+          document_date: string | null;
+          supporting_document_path: string | null;
+          valid_from: string;
+          valid_until: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          note: string | null;
+        };
+        Insert: {
+          id?: number;
+          property_id: number;
+          registry_people_id: number;
+          representative_name: string;
+          representative_email: string;
+          document_type?: string | null;
+          document_number?: string | null;
+          document_date?: string | null;
+          supporting_document_path?: string | null;
+          valid_from?: string;
+          valid_until?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          note?: string | null;
+        };
+        Update: {
+          id?: number;
+          property_id?: number;
+          registry_people_id?: number;
+          representative_name?: string;
+          representative_email?: string;
+          document_type?: string | null;
+          document_number?: string | null;
+          document_date?: string | null;
+          supporting_document_path?: string | null;
+          valid_from?: string;
+          valid_until?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          note?: string | null;
+        };
+        Relationships: [];
+      };
+      property_book_extracts: {
+        Row: {
+          id: number;
+          extract_number: string;
+          property_id: number;
+          generated_at: string;
+          generated_by_email: string;
+          locale: string;
+          extract_kind: string;
+          is_signed: boolean;
+          is_informational: boolean;
+          content_sha256: string;
+          content_html: string;
+          storage_path: string | null;
+          linked_group_id: string;
+          excludes_restricted_personal_data: boolean;
+          book_snapshot: Json;
+          certified_request_status: string | null;
+          note: string | null;
+          pdf_sha256: string | null;
+          building_document_id: string | null;
+          has_pdf: boolean;
+          pdf_attached_at: string | null;
+        };
+        Insert: {
+          id?: number;
+          extract_number: string;
+          property_id: number;
+          generated_at?: string;
+          generated_by_email: string;
+          locale?: string;
+          extract_kind?: string;
+          is_signed?: boolean;
+          is_informational?: boolean;
+          content_sha256: string;
+          content_html: string;
+          storage_path?: string | null;
+          linked_group_id?: string;
+          excludes_restricted_personal_data?: boolean;
+          book_snapshot: Json;
+          certified_request_status?: string | null;
+          note?: string | null;
+          pdf_sha256?: string | null;
+          building_document_id?: string | null;
+          has_pdf?: boolean;
+          pdf_attached_at?: string | null;
+        };
+        Update: {
+          id?: number;
+          extract_number?: string;
+          property_id?: number;
+          generated_at?: string;
+          generated_by_email?: string;
+          locale?: string;
+          extract_kind?: string;
+          is_signed?: boolean;
+          is_informational?: boolean;
+          content_sha256?: string;
+          content_html?: string;
+          storage_path?: string | null;
+          linked_group_id?: string;
+          excludes_restricted_personal_data?: boolean;
+          book_snapshot?: Json;
+          certified_request_status?: string | null;
+          note?: string | null;
+          pdf_sha256?: string | null;
+          building_document_id?: string | null;
+          has_pdf?: boolean;
+          pdf_attached_at?: string | null;
         };
         Relationships: [];
       };
@@ -416,6 +818,7 @@ export interface Database {
           ideal_parts_meeting_ref: string | null;
           owner_user_management_agreement: string | null;
           ownership_type: string | null;
+          archived_at: string | null;
         };
         Insert: {
           id?: number;
@@ -448,6 +851,7 @@ export interface Database {
           ideal_parts_meeting_ref?: string | null;
           owner_user_management_agreement?: string | null;
           ownership_type?: string | null;
+          archived_at?: string | null;
         };
         Update: {
           id?: number;
@@ -480,6 +884,7 @@ export interface Database {
           ideal_parts_meeting_ref?: string | null;
           owner_user_management_agreement?: string | null;
           ownership_type?: string | null;
+          archived_at?: string | null;
         };
         Relationships: [];
       };
@@ -999,6 +1404,12 @@ export interface Database {
           note: string | null;
           ownership_share_percent: number | null;
           ideal_parts_percent: number | null;
+          admin_status: string;
+          voting_eligible: boolean;
+          death_document_type: string | null;
+          death_document_number: string | null;
+          death_document_date: string | null;
+          death_document_path: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1019,6 +1430,12 @@ export interface Database {
           note?: string | null;
           ownership_share_percent?: number | null;
           ideal_parts_percent?: number | null;
+          admin_status?: string;
+          voting_eligible?: boolean;
+          death_document_type?: string | null;
+          death_document_number?: string | null;
+          death_document_date?: string | null;
+          death_document_path?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1039,6 +1456,12 @@ export interface Database {
           note?: string | null;
           ownership_share_percent?: number | null;
           ideal_parts_percent?: number | null;
+          admin_status?: string;
+          voting_eligible?: boolean;
+          death_document_type?: string | null;
+          death_document_number?: string | null;
+          death_document_date?: string | null;
+          death_document_path?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -4214,6 +4637,8 @@ export interface Database {
           p_objects: unknown;
           p_owners: unknown;
           p_dry_run?: boolean;
+          p_allow_create_missing?: boolean;
+          p_allow_overwrite?: boolean;
         };
         Returns: Record<string, unknown>;
       };
@@ -4230,7 +4655,272 @@ export interface Database {
         Returns: Database['public']['Tables']['properties']['Row'][];
       };
       admin_create_property_invite: {
-        Args: { p_property_id: number; p_email: string };
+        Args: {
+          p_property_id: number;
+          p_registry_people_id?: number;
+          p_email?: string;
+        };
+        Returns: Record<string, unknown>;
+      };
+      admin_resend_property_invite: {
+        Args: { p_invite_id: string };
+        Returns: Record<string, unknown>;
+      };
+      admin_approve_owner_transfer: {
+        Args: {
+          p_transfer_id: number;
+          p_target_owners?: Json | null;
+          p_document_type?: string | null;
+          p_document_number?: string | null;
+          p_document_date?: string | null;
+          p_supporting_document_path?: string | null;
+          p_legal_effective_date?: string | null;
+          p_record_inherited_liabilities?: Json | null;
+        };
+        Returns: Json;
+      };
+      admin_reject_owner_transfer: {
+        Args: { p_transfer_id: number; p_reason: string };
+        Returns: Json;
+      };
+      submit_ownership_change: {
+        Args: {
+          p_property_id: number;
+          p_target_owners: Json;
+          p_change_kind?: string;
+          p_document_type?: string | null;
+          p_document_number?: string | null;
+          p_document_date?: string | null;
+          p_supporting_document_path?: string | null;
+          p_supporting_document_mime?: string | null;
+          p_legal_effective_date?: string | null;
+          p_note?: string | null;
+          p_to_owner_phone?: string | null;
+          p_corrects_transfer_id?: number | null;
+          p_as_admin?: boolean;
+          p_change_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_update_pending_ownership_targets: {
+        Args: {
+          p_transfer_id: number;
+          p_target_owners: Json;
+          p_legal_effective_date?: string | null;
+          p_change_reason?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      cancel_ownership_change: {
+        Args: { p_transfer_id: number };
+        Returns: Json;
+      };
+      admin_pending_ownership_change_count: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      ownership_change_overdue_debt: {
+        Args: { p_property_id: number };
+        Returns: Json;
+      };
+      admin_get_ownership_debt_status: {
+        Args: { p_property_id: number };
+        Returns: Json;
+      };
+      admin_get_ownership_change_settings: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['ownership_change_settings']['Row'];
+      };
+      admin_set_ordinary_debt_gate: {
+        Args: { p_enabled: boolean };
+        Returns: Json;
+      };
+      admin_backfill_support_fee_early_deadlines: {
+        Args: { p_property_id?: number | null };
+        Returns: Json;
+      };
+      ownership_change_book_owners_json: {
+        Args: { p_property_id: number };
+        Returns: Json;
+      };
+      admin_set_inheritance_pending: {
+        Args: {
+          p_registry_people_id: number;
+          p_mark_deceased?: boolean;
+          p_note?: string | null;
+          p_death_document_type?: string | null;
+          p_death_document_number?: string | null;
+          p_death_document_date?: string | null;
+          p_death_document_path?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_grant_inheritance_guest_access: {
+        Args: {
+          p_property_id: number;
+          p_email: string;
+          p_valid_until?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
+      };
+      admin_revoke_inheritance_guest_access: {
+        Args: { p_access_id: string };
+        Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
+      };
+      admin_record_inherited_liability: {
+        Args: {
+          p_property_id: number;
+          p_heir_email: string | null;
+          p_heir_name: string | null;
+          p_amount_eur: number;
+          p_basis_document_type: string;
+          p_basis_document_number: string;
+          p_basis_document_date: string;
+          p_obligation_ref?: string | null;
+          p_accepted_status?: string;
+          p_inventory_limited?: boolean;
+          p_decision_document_ref?: string | null;
+          p_transfer_id?: number | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_confirm_inherited_liability: {
+        Args: {
+          p_liability_id: number;
+          p_accepted_status: string;
+          p_confirmed_amount_eur?: number | null;
+          p_decision_document_ref?: string | null;
+          p_inventory_limited?: boolean | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_update_legal_entity_representative: {
+        Args: {
+          p_registry_people_id: number;
+          p_representative_name: string;
+          p_representative_email: string;
+          p_document_type?: string | null;
+          p_document_number?: string | null;
+          p_document_date?: string | null;
+          p_supporting_document_path?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_record_ownership_correction: {
+        Args: {
+          p_property_id: number;
+          p_after_owners: Json;
+          p_reason: string;
+          p_evidence_document_path?: string | null;
+          p_evidence_note?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_submit_linked_ownership_correction: {
+        Args: {
+          p_approved_transfer_id: number;
+          p_target_owners: Json;
+          p_document_type: string;
+          p_document_number: string;
+          p_document_date: string;
+          p_supporting_document_path: string;
+          p_legal_effective_date?: string | null;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      owner_generate_property_book_extract: {
+        Args: { p_property_id: number; p_locales?: string[] };
+        Returns: Json;
+      };
+      owner_attach_property_book_extract_pdf: {
+        Args: {
+          p_extract_id: number;
+          p_storage_path: string;
+          p_pdf_sha256: string;
+          p_building_document_id?: string | null;
+        };
+        Returns: Json;
+      };
+      owner_verify_and_attach_extract_pdf: {
+        Args: {
+          p_extract_id: number;
+          p_building_document_id: string;
+          p_pdf_sha256: string;
+          p_magic_ok: boolean;
+        };
+        Returns: Json;
+      };
+      ownership_roster_tariff_subject: {
+        Args: { p_owners: Json };
+        Returns: string;
+      };
+      ownership_record_tariff_transition: {
+        Args: {
+          p_property_id: number;
+          p_transfer_id: number;
+          p_baseline_owners: Json;
+          p_target_owners: Json;
+          p_legal_effective_date: string | null;
+          p_system_approval_at?: string;
+        };
+        Returns: Json;
+      };
+      owner_get_property_book_extract: {
+        Args: { p_extract_id: number };
+        Returns: Json;
+      };
+      owner_request_certified_extract: {
+        Args: { p_property_id: number; p_note?: string | null };
+        Returns: Json;
+      };
+      admin_fulfill_certified_extract: {
+        Args: { p_extract_id: number; p_note?: string | null };
+        Returns: Json;
+      };
+      admin_reject_certified_extract: {
+        Args: { p_extract_id: number; p_reason: string };
+        Returns: Json;
+      };
+      admin_list_certified_extract_requests: {
+        Args: Record<string, never>;
+        Returns: Database['public']['Tables']['property_book_extracts']['Row'][];
+      };
+      admin_get_ownership_supporting_document_path: {
+        Args: { p_transfer_id: number };
+        Returns: string | null;
+      };
+      owner_list_property_book_extracts: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['property_book_extracts']['Row'][];
+      };
+      owner_list_ownership_history: {
+        Args: { p_property_id: number };
+        Returns: Json;
+      };
+      owner_list_ownership_notifications: {
+        Args: { p_limit?: number };
+        Returns: Database['public']['Tables']['ownership_change_notifications']['Row'][];
+      };
+      property_book_voting_eligible_owner: {
+        Args: { p_registry_people_id: number };
+        Returns: boolean;
+      };
+      admin_property_lifecycle_inspect: {
+        Args: { p_property_id: number };
+        Returns: Record<string, unknown>;
+      };
+      admin_retire_property: {
+        Args: { p_property_id: number };
+        Returns: Record<string, unknown>;
+      };
+      property_book_ownership_audit_report: {
+        Args: Record<string, never>;
         Returns: Record<string, unknown>;
       };
       admin_mass_create_property_invites: {

@@ -7,7 +7,13 @@ import type { OccupantKind } from '@/lib/registry';
 import type { ApartmentPet } from '@/lib/registry';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
-import { displayedPropertyOwners, type PropertyRegistryPerson } from '@/lib/propertyBook';
+import {
+  displayedPropertyOwners,
+  formatIdealPartsPercent,
+  formatOwnershipSharePercent,
+  sessionOwnerDisplayName,
+  type PropertyRegistryPerson,
+} from '@/lib/propertyBook';
 import { useEffect, useState } from 'react';
 
 export type OccupancyStatus = 'owner' | 'standby' | 'rented';
@@ -104,6 +110,7 @@ export function OwnerOccupancy({
   occupantUntil,
   ownerName,
   ownerEmail,
+  sessionEmail,
   registryPeople,
   bookRequestOpen,
   guests,
@@ -132,6 +139,7 @@ export function OwnerOccupancy({
   occupantUntil: string | null;
   ownerName: string | null;
   ownerEmail: string | null;
+  sessionEmail: string | null;
   registryPeople: PropertyRegistryPerson[];
   bookRequestOpen?: boolean;
   guests: OccupancyGuest[];
@@ -149,7 +157,7 @@ export function OwnerOccupancy({
   onRemovePet: (id: number) => Promise<void>;
   onReportChange: (message: string) => Promise<void>;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, locale, dateLocale } = useI18n();
   const [draft, setDraft] = useState<OccupancyStatus>(occupancyStatus);
   const [rentedKind, setRentedKind] = useState<OccupantKind>(
     occupantKind === 'owner' ? 'tenant' : occupantKind,
@@ -219,7 +227,10 @@ export function OwnerOccupancy({
     { owner_name: ownerName, owner_email: ownerEmail },
     registryPeople,
   );
-  const primaryOwnerName = displayedOwners.find((o) => o.name)?.name ?? null;
+  const primaryOwnerName =
+    sessionOwnerDisplayName(registryPeople, sessionEmail) ??
+    displayedOwners.find((o) => o.name)?.name ??
+    null;
   const ownerNameMissing = displayedOwners.every((o) => !o.name);
   const summaryPeople =
     occupancyStatus === 'owner'
@@ -436,15 +447,25 @@ export function OwnerOccupancy({
             {t('account.occWhoLives')}
           </p>
           <div className="mt-3 grid gap-2">
-            {displayedOwners.map((o) => (
-              <article key={o.key} className="rounded-xl border border-border bg-background px-3 py-3">
-                <p className="text-sm font-medium text-foreground">
-                  {o.name || t('account.occOwnerNameMissing')}
-                </p>
-                <p className="mt-0.5 text-xs text-muted">{t('book.owner')}</p>
-                {o.email ? <p className="mt-0.5 text-xs text-secondary">{o.email}</p> : null}
-              </article>
-            ))}
+            {displayedOwners.map((o) => {
+              const share = formatOwnershipSharePercent(o.ownershipSharePercent, locale);
+              const ideals = formatIdealPartsPercent(o.idealPartsPercent, locale);
+              return (
+                <article key={o.key} className="rounded-xl border border-border bg-background px-3 py-3">
+                  <p className="text-sm font-medium text-foreground">
+                    {o.name || t('account.occOwnerNameMissing')}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">{t('book.owner')}</p>
+                  {share != null || ideals != null ? (
+                    <p className="mt-0.5 text-xs text-secondary">
+                      {share != null ? `${t('book.ownershipShare')}: ${share} %` : null}
+                      {share != null && ideals != null ? ' · ' : null}
+                      {ideals != null ? `${t('book.ownerIdealParts')}: ${ideals} %` : null}
+                    </p>
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
           {ownerNameMissing ? (
             <div className="mt-3">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback, Suspense, type ReactNode } from 'react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
+import { signOutFully } from '@/lib/authSession';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
@@ -16,7 +17,8 @@ import {
   type PollVoteHistory,
 } from '@/lib/polls';
 import { PollDetails, PollOptionBars } from '@/components/PollPanel';
-import { listingStatus, transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
+import { listingStatus, type OwnerTransfer } from '@/lib/ownership';
+import { AdminOwnershipTransfers } from '@/components/admin/AdminOwnershipTransfers';
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { resolveAccess } from '@/lib/access';
@@ -1046,18 +1048,33 @@ function AdminPortal() {
     };
   }, [router]);
 
+  function clearAdminClientState() {
+    setSessionEmail('');
+    setStaffRole('');
+    setStaffActive(false);
+    setWorkClaimProfile(null);
+    setHasCabinet(false);
+    setAllowed(false);
+    setBuildingModules(emptyBuildingModulesState());
+  }
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        clearAdminClientState();
+        router.replace('/');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [supabase, router]);
+
   async function handleLogout() {
     try {
-      await supabase.auth.signOut();
-    } catch {
-      // logout UI должен продолжиться
+      await signOutFully(supabase);
     } finally {
-      setSessionEmail('');
-        setStaffRole('');
-        setStaffActive(false);
-      setWorkClaimProfile(null);
-      setHasCabinet(false);
-      setAllowed(false);
+      clearAdminClientState();
       router.replace('/');
     }
   }
@@ -1794,7 +1811,8 @@ function AdminPortal() {
       setError('Добавлять квартиры может только активный администратор.');
       return;
     }
-    const operationalPayload = {
+    // PB-1.7: ownership fields (owner_*) are mutated only via Property Book RPCs.
+    const payload = {
       apartment_number: propForm.apartment_number.trim(),
       floor: Number(propForm.floor) || null,
       area_sqm: Number(propForm.area_sqm) || null,
@@ -1807,16 +1825,6 @@ function AdminPortal() {
       occupant_until: propForm.occupant_until || null,
       pet_info: propForm.pet_info.trim() || null,
     };
-    const payload = canManageCriticalAccess
-      ? {
-          ...operationalPayload,
-          owner_name: propForm.owner_name.trim(),
-          owner_email: normalizeEmail(propForm.owner_email),
-          owner_phone: propForm.owner_phone.trim() || null,
-          owner_type: propForm.owner_type,
-          company_name: propForm.company_name.trim() || null,
-        }
-      : operationalPayload;
     try {
       if (editingProp) {
         const { error: updErr } = await supabase.from('properties').update(payload).eq('id', editingProp.id);
@@ -1842,13 +1850,43 @@ function AdminPortal() {
       setError('Удалять квартиры может только активный администратор.');
       return;
     }
-    if (!confirm(t('confirm.deleteApt'))) return;
+    if (!confirm(t('confirm.retireApt'))) return;
     try {
-      const { error } = await supabase.from('properties').delete().eq('id', id);
+      const { data: inspect, error: inspErr } = await supabase.rpc('admin_property_lifecycle_inspect', {
+        p_property_id: id,
+      });
+      if (inspErr) throw inspErr;
+      const inspectPayload = inspect as {
+        already_archived?: boolean;
+        must_archive?: boolean;
+        can_delete?: boolean;
+        blockers?: Array<{ code?: string; count?: number }>;
+      } | null;
+      if (inspectPayload?.already_archived) {
+        setError(t('admin.aptAlreadyArchived'));
+        return;
+      }
+      const { data, error } = await supabase.rpc('admin_retire_property', {
+        p_property_id: id,
+      });
       if (error) throw error;
+      const result = data as {
+        action?: string;
+        blockers?: Array<{ code?: string; count?: number }>;
+      } | null;
       await loadAll();
+      if (result?.action === 'deleted') {
+        setError(null);
+        setDetailProperty(null);
+      } else if (result?.action === 'archived') {
+        const reasons = (result.blockers ?? inspectPayload?.blockers ?? [])
+          .map((b) => `${b.code ?? '?'}${b.count != null ? ` (${b.count})` : ''}`)
+          .join(', ');
+        setError(t('admin.aptRetiredArchived', { reasons: reasons || '—' }));
+        setDetailProperty(null);
+      }
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка удаления');
+      setError(e?.message ?? t('admin.aptRetireFailed'));
     }
   }
 
@@ -2561,59 +2599,7 @@ function AdminPortal() {
     }
   }
 
-  async function handleApproveTransfer(tr: OwnerTransfer) {
-    if (!canManageCriticalAccess) {
-      setError('Решение по смене собственника принимает только активный администратор.');
-      return;
-    }
-    if (!confirm(t('admin.approveTransfer', { n: propertyNameById(tr.property_id) }))) return;
-    try {
-      const { error: updErr } = await supabase
-        .from('properties')
-        .update({
-          owner_name: tr.to_owner_name,
-          owner_email: normalizeEmail(tr.to_owner_email),
-          owner_phone: tr.to_owner_phone,
-        })
-        .eq('id', tr.property_id);
-      if (updErr) throw updErr;
-      const { error } = await supabase
-        .from('owner_transfers')
-        .update({
-          status: 'утверждена',
-          decided_at: new Date().toISOString(),
-          decided_by: sessionEmail,
-        })
-        .eq('id', tr.id);
-      if (error) throw error;
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message ?? 'Ошибка утверждения');
-    }
-  }
-
-  async function handleRejectTransfer(t: OwnerTransfer) {
-    if (!canManageCriticalAccess) {
-      setError('Решение по смене собственника принимает только активный администратор.');
-      return;
-    }
-    const reason = prompt('Причина отклонения (необязательно):') ?? '';
-    try {
-      const { error } = await supabase
-        .from('owner_transfers')
-        .update({
-          status: 'отклонена',
-          decided_at: new Date().toISOString(),
-          decided_by: sessionEmail,
-          reject_reason: reason.trim() || null,
-        })
-        .eq('id', t.id);
-      if (error) throw error;
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message ?? 'Ошибка отклонения');
-    }
-  }
+  // Ownership approve/reject handled by AdminOwnershipTransfers (PKG-XFER).
 
   async function handleUpdateRequestStatus(reqId: number, newStatus: string) {
     if (!canManageCriticalAccess) {
@@ -3100,50 +3086,28 @@ function AdminPortal() {
                   </label>
                 </div>
                 <p className="text-xs font-medium text-muted">{t('admin.aptGroupOwner')}</p>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <label className="grid gap-1 text-xs text-secondary">
-                    {t('admin.phOwner')}
-                    <input className={adminFieldClass}
-                      value={propForm.owner_name}
-                      onChange={(e) => setPropForm({ ...propForm, owner_name: e.target.value })}
-                      readOnly={!canManageCriticalAccess}
-                      required />
-                  </label>
-                  <label className="grid gap-1 text-xs text-secondary">
-                    Email
-                    <input className={adminFieldClass}
-                      type="email" value={propForm.owner_email}
-                      onChange={(e) => setPropForm({ ...propForm, owner_email: e.target.value })}
-                      readOnly={!canManageCriticalAccess}
-                      required />
-                  </label>
-                  <label className="grid gap-1 text-xs text-secondary">
-                    {t('admin.phPhone')}
-                    <input className={adminFieldClass}
-                      value={propForm.owner_phone}
-                      onChange={(e) => setPropForm({ ...propForm, owner_phone: e.target.value })}
-                      readOnly={!canManageCriticalAccess} />
-                  </label>
-                </div>
-                <p className="text-xs font-medium text-muted">{t('admin.aptGroupMore')}</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-xs text-secondary">
-                    {t('admin.bookEntityKind')}
-                    <select className={adminFieldClass}
-                      value={propForm.owner_type}
-                      onChange={(e) => setPropForm({ ...propForm, owner_type: e.target.value })}
-                      disabled={!canManageCriticalAccess}>
-                      <option value="физическое лицо">{t('ownerType.personShort')}</option>
-                      <option value="юридическое лицо">{t('ownerType.companyShort')}</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-xs text-secondary">
-                    {t('admin.phCompany')}
-                    <input className={adminFieldClass}
-                      value={propForm.company_name}
-                      onChange={(e) => setPropForm({ ...propForm, company_name: e.target.value })}
-                      readOnly={!canManageCriticalAccess} />
-                  </label>
+                <div className="rounded-lg border border-border bg-background/60 px-3 py-3 text-sm text-secondary">
+                  <p className="text-xs text-muted">{t('admin.aptOwnerBookOnly')}</p>
+                  <p className="mt-2 font-medium text-foreground">
+                    {(propForm.owner_name || '').trim() || '—'}
+                  </p>
+                  <p className="text-xs">
+                    {(propForm.owner_email || '').trim() || '—'}
+                    {propForm.owner_phone?.trim() ? ` · ${propForm.owner_phone.trim()}` : ''}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {propForm.owner_type}
+                    {propForm.company_name?.trim() ? ` · ${propForm.company_name.trim()}` : ''}
+                  </p>
+                  {canManageCriticalAccess ? (
+                    <button
+                      type="button"
+                      className="mt-2 text-xs font-medium text-accent hover:underline"
+                      onClick={() => navigateAdminSection('книга')}
+                    >
+                      {t('admin.aptOpenBook')}
+                    </button>
+                  ) : null}
                 </div>
                 {editingProp ? (
                   <p className="text-xs text-secondary">
@@ -3261,7 +3225,12 @@ function AdminPortal() {
                       <div className="font-semibold text-foreground">№ {p.apartment_number}</div>
                       <div className="truncate text-sm text-secondary">{ownerPrimary}</div>
                     </div>
-                    <StatusBadge label={occupancyLabel(p.occupancy_status)} tone={p.occupancy_status === 'standby' ? 'warning' : 'info'} />
+                    <div className="flex flex-col items-end gap-1">
+                      {p.archived_at ? (
+                        <StatusBadge label={t('admin.aptArchivedBadge')} tone="warning" />
+                      ) : null}
+                      <StatusBadge label={occupancyLabel(p.occupancy_status)} tone={p.occupancy_status === 'standby' ? 'warning' : 'info'} />
+                    </div>
                   </div>
                   <div className="mt-1 text-xs text-muted">
                     {p.area_sqm ?? '—'} {t('common.sqm')} · {p.floor ?? '—'} {t('common.floor')}
@@ -3301,7 +3270,12 @@ function AdminPortal() {
                         className={`${adminTableRowClass} cursor-pointer`}
                         onClick={() => setDetailProperty(p)}
                       >
-                        <td className={`${adminTableCellClass} font-semibold text-foreground`}>№ {p.apartment_number}</td>
+                        <td className={`${adminTableCellClass} font-semibold text-foreground`}>
+                          № {p.apartment_number}
+                          {p.archived_at ? (
+                            <span className="ml-2 text-xs font-medium text-warning">{t('admin.aptArchivedBadge')}</span>
+                          ) : null}
+                        </td>
                         <td className={adminTableCellClass}>
                           <div className="text-foreground">{ownerName || ownerMail || '—'}</div>
                           {ownerName && ownerMail ? <div className="text-xs text-muted">{ownerMail}</div> : null}
@@ -3359,7 +3333,11 @@ function AdminPortal() {
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
                 onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); navigateAdminSection('чат'); }}
                 onChanged={loadAll}
-                onDelete={canManageCriticalAccess ? () => { void handleDeleteProp(detailProperty.id); } : undefined}
+                onDelete={
+                  canManageCriticalAccess && !detailProperty.archived_at
+                    ? () => { void handleDeleteProp(detailProperty.id); }
+                    : undefined
+                }
                 onOpenTransfer={() => { setDetailProperty(null); navigateAdminSection('смены'); }}
                 onTakePayment={() => {
                   setPayPropertyId(detailProperty.id);
@@ -3385,61 +3363,24 @@ function AdminPortal() {
       // =============================================================
       case 'смены':
         return (
-          <div className="space-y-4">
-            <AdminPageHeader title={t('admin.transfers')} secondary={t('admin.transferLead')} />
-            <AdminCard>
-            {ownerTransfers.length === 0 ? (
-              <AdminEmptyState title={t('admin.noTransfers')} />
-            ) : (
-              <div className="space-y-3">
-                {ownerTransfers.map((tr) => (
-                  <div key={tr.id} className="rounded-[14px] border border-border bg-surface p-4 shadow-card">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm text-secondary">{propertyFullById(tr.property_id)}</div>
-                        <div className="mt-1 text-sm text-secondary">
-                          {tr.from_owner_name} ({tr.from_owner_email}) → {tr.to_owner_name} ({tr.to_owner_email})
-                        </div>
-                        {tr.to_owner_phone && (
-                          <div className="text-xs text-muted">{t('form.tel', { n: tr.to_owner_phone })}</div>
-                        )}
-                        {tr.note && <div className="mt-2 text-sm text-secondary">{tr.note}</div>}
-                        {tr.reject_reason && (
-                          <div className="mt-1 text-xs text-danger">{t('form.reason', { n: tr.reject_reason })}</div>
-                        )}
-                        <div className="mt-2 text-xs text-muted">
-                          {formatOwnerDateTime(tr.created_at, locale)}
-                          {tr.decided_by ? ` · ${tr.decided_by}` : ''}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-medium ${transferStatusClass(tr.status)}`}>{labelTransfer(tr.status, t)}</div>
-                        {tr.status === 'ожидает' && canManageCriticalAccess && (
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleApproveTransfer(tr)}
-                              className="rounded-lg bg-accent-bg border border-accent/25 px-3 py-1.5 text-xs text-accent"
-                            >
-                              {t('admin.approve')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRejectTransfer(tr)}
-                              className="rounded-lg bg-danger-bg border border-danger/25 px-3 py-1.5 text-xs text-danger"
-                            >
-                              {t('admin.reject')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            </AdminCard>
-          </div>
+          <AdminOwnershipTransfers
+            supabase={supabase}
+            transfers={ownerTransfers}
+            properties={properties.map((p) => ({
+              id: p.id,
+              apartment_number: p.apartment_number,
+              ideal_parts_percent: p.ideal_parts_percent,
+            }))}
+            canManage={canManageCriticalAccess}
+            propertyLabel={propertyFullById}
+            propertyIdealParts={(id) => {
+              const p = properties.find((x) => x.id === id);
+              return Number(p?.ideal_parts_percent ?? 0);
+            }}
+            sessionEmail={sessionEmail}
+            onChanged={loadAll}
+            onError={setError}
+          />
         );
 
       case 'заявки': {
@@ -6286,6 +6227,9 @@ function ApartmentDetailModal({
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
               <span>{property.area_sqm ?? '—'} {t('common.sqm')} · {property.floor ?? '—'} {t('common.floor')}</span>
+              {property.archived_at ? (
+                <StatusBadge label={t('admin.aptArchivedBadge')} tone="warning" />
+              ) : null}
               <StatusBadge
                 label={labelOccupancy(property.occupancy_status, t)}
                 tone={property.occupancy_status === 'standby' ? 'warning' : 'info'}

@@ -67,6 +67,8 @@ async function loadOwnedProperties(
   email: string,
   supabase: SupabaseClient<Database>,
 ): Promise<Property[]> {
+  // PB-1: ownership access is enforced in list_my_owned_properties / owns_property (Book).
+  // No client-side owner_email fallback — that would bypass the access-truth rules.
   const ownedRes = await supabase.rpc('list_my_owned_properties');
   if (!ownedRes.error) {
     return (ownedRes.data as Property[] | null) ?? [];
@@ -74,15 +76,9 @@ async function loadOwnedProperties(
   if (!isMissingRpc(ownedRes.error, 'list_my_owned_properties')) {
     throw new Error(errorMessage(ownedRes.error));
   }
-
-  const pattern = escapeIlike(email);
-  const propsRes = await supabase
-    .from('properties')
-    .select('*')
-    .ilike('owner_email', pattern)
-    .order('apartment_number', { ascending: true });
-  if (propsRes.error) throw new Error(errorMessage(propsRes.error));
-  return (propsRes.data as Property[]) ?? [];
+  // Pre-PB-1 databases only: empty list rather than legacy email scan.
+  void email;
+  return [];
 }
 
 async function loadGuestProperties(

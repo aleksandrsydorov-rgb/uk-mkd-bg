@@ -1,0 +1,90 @@
+-- PB-1 OWNER UI SMOKE — browser procedure (manual + Cursor browser).
+-- Do NOT store passwords here. Do NOT insert into auth.users.
+-- Do NOT modify existing apartment owners (1–15).
+--
+-- Prerequisite: migration 20261011120000 applied (lifecycle) optional for transfer
+-- path; PB-1 book migrations already applied.
+--
+-- ============================================================
+-- FIXTURE PLAN (disposable only)
+-- ============================================================
+-- Apartment: NEW number e.g. 99490 (create via Admin → Apartments → +).
+-- Owner A Book email: mailbox YOU control (invite signup target).
+-- Owner B Book email: second mailbox YOU control.
+-- Passwords: chosen only in the invite UI; never written to repo/env/logs.
+--
+-- ============================================================
+-- ACCOUNT CREATION METHOD (supported app flow only)
+-- ============================================================
+-- 1) Admin creates apartment 99490 (object fields only; no owner_* edits).
+-- 2) Admin → Property Book → open 99490 → sole owner A (complete Book).
+-- 3) Admin → Create invite link (24h) for Owner A → copy link.
+-- 4) In a PRIVATE / second browser profile (not the admin session):
+--      open invite URL → set password → submit.
+--    If Supabase requires email confirmation:
+--      USER ACTION: enter OTP / confirm email from the inbox for Owner A.
+-- 5) After Owner A session works, admin later invites Owner B the same way
+--    AFTER transfer approval updates the Book to Owner B.
+--
+-- Ready: NO until the user completes steps 4 (and later B invite).
+-- Never create accounts by inserting into auth.users.
+--
+-- ============================================================
+-- BROWSER TEST SEQUENCE
+-- ============================================================
+-- A. Admin session (existing):
+--    - Confirm /admin dashboard.
+--    - Create apt 99490; confirm Book-only owner mirror (no owner_* inputs).
+--    - Book: sole Owner A complete; create invite; copy link.
+--
+-- B. Owner A session (new profile):
+--    - Accept invite → land on /account.
+--    - Confirm apartment 99490 visible.
+--    - Submit ownership transfer to Owner B (name + email B).
+--    - Confirm pending transfer shown.
+--
+-- C. Admin session:
+--    - Admin → Transfers (Смена собственника).
+--    - Approve pending transfer for 99490.
+--    - Property Book → 99490 shows Owner B; Owner A deregistered in history.
+--    - Create invite for Owner B; copy link.
+--
+-- D. Owner A session:
+--    - Refresh /account → 99490 MUST NOT appear (access revoked).
+--    - Unrelated apartments (if any for that email) unchanged — for disposable
+--      A email, expect empty or only non-99490 fixtures.
+--
+-- E. Owner B session (new profile / after logout):
+--    - Accept invite → /account shows 99490.
+--
+-- F. Cleanup (admin + SQL if needed):
+--    - Revoke pending invites for 99490.
+--    - Prefer Admin → Delete/archive on 99490 (PB-1.8 retire RPC).
+--      With Book/transfer history this ARCHIVES (does not hard-delete).
+--    - Optional SQL cleanup of disposable archived fixture ONLY on test DB:
+--        -- see CLEANUP block below (run only when authorized on disposable DB)
+--    - Do not delete production apartments 1–15.
+--
+-- ============================================================
+-- CLEANUP SQL (test DB / disposable fixtures only — NOT auto-run)
+-- ============================================================
+-- begin;
+-- -- revoke invites
+-- update public.property_access_invites i
+--    set status = 'revoked'
+--  where i.property_id in (select id from public.properties where apartment_number = 99490)
+--    and i.status = 'pending';
+-- -- archive via RPC as staff JWT, or:
+-- -- select public.admin_retire_property((select id from public.properties where apartment_number = 99490));
+-- -- Physical delete of archived fixture with history is intentionally blocked.
+-- -- Auth users created via invite remain; delete only via Supabase Auth UI if desired.
+-- commit;
+--
+-- ============================================================
+-- PASS CRITERIA
+-- ============================================================
+-- Owner A gains access via invite auth.
+-- Transfer submit → admin approve → Book = Owner B.
+-- Owner A loses access; Owner B gains via invite.
+-- Former owner retained (deregistered_at).
+-- Existing apartments 1–15 owners untouched.

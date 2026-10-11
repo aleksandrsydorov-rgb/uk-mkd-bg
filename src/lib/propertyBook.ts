@@ -24,6 +24,8 @@ export interface PropertyRegistryPerson {
   deregistered_at: string | null;
   lives_on_property: boolean | null;
   note: string | null;
+  ownership_share_percent?: number | string | null;
+  ideal_parts_percent?: number | string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -101,13 +103,61 @@ export type DisplayedOwner = {
   key: string;
   name: string | null;
   email: string | null;
+  ownershipSharePercent: number | null;
+  idealPartsPercent: number | null;
+  entityKind: string;
 };
 
+/** Current Book owners only — historical deregistered rows never count. */
+export function isActiveBookOwner(person: PropertyRegistryPerson): boolean {
+  return person.relation_type === 'owner' && person.deregistered_at == null;
+}
+
+export function activeBookOwners(people: PropertyRegistryPerson[]): PropertyRegistryPerson[] {
+  return people.filter(isActiveBookOwner);
+}
+
+function normalizeOwnerEmail(email: string | null | undefined): string {
+  return (email ?? '').trim().toLowerCase();
+}
+
+export function bookOwnerForEmail(
+  people: PropertyRegistryPerson[],
+  email: string | null | undefined,
+): PropertyRegistryPerson | null {
+  const needle = normalizeOwnerEmail(email);
+  if (!needle) return null;
+  return (
+    activeBookOwners(people).find((p) => normalizeOwnerEmail(p.email) === needle) ?? null
+  );
+}
+
+/** Logged-in owner's display name from active Book row (never properties.owner_name). */
+export function sessionOwnerDisplayName(
+  people: PropertyRegistryPerson[],
+  email: string | null | undefined,
+): string | null {
+  const me = bookOwnerForEmail(people, email);
+  if (!me) return null;
+  return registryPersonDisplayName(me) || null;
+}
+
+export function formatOwnershipSharePercent(
+  raw: number | string | null | undefined,
+  locale: string,
+): string | null {
+  return formatIdealPartsPercent(raw, locale);
+}
+
+/**
+ * Current ownership presentation from Property Book.
+ * Falls back to legacy properties.owner_* only when the Book has no active owners.
+ */
 export function displayedPropertyOwners(
   property: { owner_name: string | null; owner_email: string | null },
   people: PropertyRegistryPerson[],
 ): DisplayedOwner[] {
-  const owners = people.filter((p) => p.relation_type === 'owner');
+  const owners = activeBookOwners(people);
   if (owners.length > 0) {
     const portalName = (property.owner_name ?? '').trim();
     return owners.map((p) => {
@@ -115,7 +165,10 @@ export function displayedPropertyOwners(
       return {
         key: `reg-owner-${p.id}`,
         name: fromRegistry || (owners.length === 1 ? portalName || null : null),
-        email: (p.email ?? property.owner_email ?? '').trim() || null,
+        email: (p.email ?? '').trim() || null,
+        ownershipSharePercent: idealPartsPercent(p.ownership_share_percent),
+        idealPartsPercent: idealPartsPercent(p.ideal_parts_percent),
+        entityKind: String(p.entity_kind ?? 'natural_person'),
       };
     });
   }
@@ -124,6 +177,9 @@ export function displayedPropertyOwners(
       key: 'property-owner',
       name: (property.owner_name ?? '').trim() || null,
       email: (property.owner_email ?? '').trim() || null,
+      ownershipSharePercent: null,
+      idealPartsPercent: null,
+      entityKind: 'natural_person',
     },
   ];
 }

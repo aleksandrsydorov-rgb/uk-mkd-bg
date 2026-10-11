@@ -52,7 +52,12 @@ function InviteAcceptInner() {
         }
       } catch (e: unknown) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : t('invite.errGeneric'));
+          const msg = e instanceof Error ? e.message : t('invite.errGeneric');
+          if (/mismatch/i.test(msg)) setError(t('invite.errEmailMismatch'));
+          else if (/ownership changed|not a current Book owner/i.test(msg))
+            setError(t('invite.errOwnershipChanged'));
+          else if (/incomplete/i.test(msg)) setError(t('invite.errIncompleteBook'));
+          else setError(msg);
         }
       } finally {
         if (!cancelled) setLoading(false);

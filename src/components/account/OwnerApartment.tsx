@@ -14,8 +14,11 @@ import { useI18n } from '@/i18n/I18nProvider';
 import type { ApartmentPet } from '@/lib/registry';
 import { householdPeople } from '@/lib/registry';
 import {
+  activeBookOwners,
+  bookOwnerForEmail,
   displayedPropertyOwners,
   formatIdealPartsPercent,
+  formatOwnershipSharePercent,
   registryPersonLabel,
   type PropertyAbsencePeriod,
   type PropertyRegistryPerson,
@@ -63,6 +66,7 @@ export function OwnerApartment({
   pets,
   people,
   absences,
+  sessionEmail,
   bookRequestOpen,
   listingSaving,
   onSelectProperty,
@@ -78,6 +82,7 @@ export function OwnerApartment({
   pets: ApartmentPet[];
   people: PropertyRegistryPerson[];
   absences: PropertyAbsencePeriod[];
+  sessionEmail: string | null;
   bookRequestOpen: boolean;
   listingSaving: boolean;
   onSelectProperty: (id: number) => void;
@@ -100,15 +105,18 @@ export function OwnerApartment({
     setTransferOpen(false);
   }, [property.id]);
 
-  const owners = people.filter((p) => p.relation_type === 'owner');
-  const users = people.filter((p) => p.relation_type === 'user_of_property');
+  const owners = activeBookOwners(people);
+  const users = people.filter((p) => p.relation_type === 'user_of_property' && p.deregistered_at == null);
   const bookHousehold = people.filter((p) => p.relation_type === 'household_member');
   const occupants = people.filter((p) => p.relation_type === 'occupant');
   const ownerModeGuests = occupancyStatus === 'owner';
   const household = ownerModeGuests ? guests : householdPeople(guests);
   const guestOccupants = ownerModeGuests ? [] : guests.filter((g) => g.is_permanent === false);
 
-  const ideal = formatIdealPartsPercent(property.ideal_parts_percent, locale);
+  const apartmentIdeal = formatIdealPartsPercent(property.ideal_parts_percent, locale);
+  const myBookOwner = bookOwnerForEmail(people, sessionEmail);
+  const myShare = formatOwnershipSharePercent(myBookOwner?.ownership_share_percent, locale);
+  const myIdeal = formatIdealPartsPercent(myBookOwner?.ideal_parts_percent, locale);
   const listing = listingStatus(property.status);
   const purpose = (property.purpose ?? '').trim();
   const sourceLabel = labelIdealPartsSource(property.ideal_parts_source, t);
@@ -127,7 +135,12 @@ export function OwnerApartment({
         lines: [
           property.owner_type ? labelOwnerType(property.owner_type, t) : '',
           property.company_name || '',
-          o.email || '',
+          o.ownershipSharePercent != null
+            ? `${t('book.ownershipShare')}: ${formatOwnershipSharePercent(o.ownershipSharePercent, locale)} %`
+            : '',
+          o.idealPartsPercent != null
+            ? `${t('book.ownerIdealParts')}: ${formatIdealPartsPercent(o.idealPartsPercent, locale)} %`
+            : '',
         ].filter(Boolean),
       });
     }
@@ -137,7 +150,6 @@ export function OwnerApartment({
         name: property.occupant_name || '—',
         role: labelOccupantKind(property.occupant_kind, t),
         lines: [
-          property.occupant_email || '',
           property.occupant_until
             ? `${t('book.deregisteredAt')}: ${fmtDate(property.occupant_until)}`
             : '',
@@ -155,7 +167,12 @@ export function OwnerApartment({
           src && (src.entity_kind === 'legal_entity' || src.entity_kind === 'sole_trader')
             ? `${t('book.eik')}: ${src.eik_bulstat || '—'}`
             : '',
-          o.email || '',
+          o.ownershipSharePercent != null
+            ? `${t('book.ownershipShare')}: ${formatOwnershipSharePercent(o.ownershipSharePercent, locale)} %`
+            : '',
+          o.idealPartsPercent != null
+            ? `${t('book.ownerIdealParts')}: ${formatIdealPartsPercent(o.idealPartsPercent, locale)} %`
+            : '',
         ].filter(Boolean),
       });
     }
@@ -164,7 +181,7 @@ export function OwnerApartment({
         key: `u-${p.id}`,
         name: registryPersonLabel(p),
         role: labelRegistryRelation('user_of_property', t),
-        lines: [p.email || ''].filter(Boolean),
+        lines: [],
       });
     }
   }
@@ -278,11 +295,49 @@ export function OwnerApartment({
             <dd className="font-medium text-foreground">{labelOccupancy(occupancyStatus, t)}</dd>
           </div>
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <dt className="text-muted">{t('book.idealParts')}:</dt>
-            <dd className="font-medium text-foreground">{ideal ? `${ideal} %` : t('book.idealUnknown')}</dd>
+            <dt className="text-muted">{t('book.apartmentIdealParts')}:</dt>
+            <dd className="font-medium text-foreground">
+              {apartmentIdeal ? `${apartmentIdeal} %` : t('book.idealUnknown')}
+            </dd>
           </div>
+          {myShare != null ? (
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <dt className="text-muted">{t('book.myOwnershipShare')}:</dt>
+              <dd className="font-medium text-foreground">{myShare} %</dd>
+            </div>
+          ) : null}
+          {myIdeal != null ? (
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <dt className="text-muted">{t('book.myIdealParts')}:</dt>
+              <dd className="font-medium text-foreground">{myIdeal} %</dd>
+            </div>
+          ) : null}
         </dl>
-        {ideal == null ? <p className="mt-1 text-xs text-muted">{t('book.idealHint')}</p> : null}
+        {apartmentIdeal == null ? <p className="mt-1 text-xs text-muted">{t('book.idealHint')}</p> : null}
+        {displayedOwners.length > 0 ? (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-xs font-medium text-muted">{t('book.currentOwners')}</p>
+            <ul className="space-y-1">
+              {displayedOwners.map((o) => {
+                const share = formatOwnershipSharePercent(o.ownershipSharePercent, locale);
+                const ideals = formatIdealPartsPercent(o.idealPartsPercent, locale);
+                return (
+                  <li key={o.key} className="text-sm text-foreground">
+                    <span className="font-medium">{o.name || t('account.occOwnerNameMissing')}</span>
+                    {share != null || ideals != null ? (
+                      <span className="text-secondary">
+                        {' · '}
+                        {share != null ? `${share} %` : '—'}
+                        {' / '}
+                        {ideals != null ? `${ideals} %` : '—'}
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={() => setChangeOpen((v) => !v)}
@@ -346,10 +401,26 @@ export function OwnerApartment({
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted">{t('book.idealParts')}</dt>
-                <dd className="font-medium text-foreground">{ideal ? `${ideal} %` : t('book.idealUnknown')}</dd>
-                {ideal == null ? <p className="mt-0.5 text-xs text-muted">{t('book.idealHint')}</p> : null}
+                <dt className="text-xs text-muted">{t('book.apartmentIdealParts')}</dt>
+                <dd className="font-medium text-foreground">
+                  {apartmentIdeal ? `${apartmentIdeal} %` : t('book.idealUnknown')}
+                </dd>
+                {apartmentIdeal == null ? (
+                  <p className="mt-0.5 text-xs text-muted">{t('book.idealHint')}</p>
+                ) : null}
               </div>
+              {myShare != null ? (
+                <div>
+                  <dt className="text-xs text-muted">{t('book.myOwnershipShare')}</dt>
+                  <dd className="font-medium text-foreground">{myShare} %</dd>
+                </div>
+              ) : null}
+              {myIdeal != null ? (
+                <div>
+                  <dt className="text-xs text-muted">{t('book.myIdealParts')}</dt>
+                  <dd className="font-medium text-foreground">{myIdeal} %</dd>
+                </div>
+              ) : null}
               {sourceLabel ? (
                 <div>
                   <dt className="text-xs text-muted">{t('book.idealSource')}</dt>

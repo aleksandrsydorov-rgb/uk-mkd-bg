@@ -72,6 +72,7 @@ export function AdminSupportFeeAnnual({
   const [corrId, setCorrId] = useState('');
   const [corrAmt, setCorrAmt] = useState('');
   const [corrReason, setCorrReason] = useState('');
+  const [finalizePropertyId, setFinalizePropertyId] = useState('');
 
   const y = Number(year);
   const sampleBase = useMemo(
@@ -191,6 +192,25 @@ export function AdminSupportFeeAnnual({
     setSaving(true);
     try {
       const { error } = await supabase.rpc('finalize_support_fee_year', { p_billing_year: Number(year) });
+      if (error) throw error;
+      await load();
+      await onReload();
+    } catch (e: unknown) {
+      onError(e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : t('admin.sfSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function finalizeOneProperty() {
+    if (!canPay || !finalizePropertyId) return;
+    setSaving(true);
+    try {
+      const args = {
+        p_property_id: Number(finalizePropertyId),
+        p_billing_year: Number(year),
+      };
+      const { error } = await supabase.rpc('finalize_support_fee_assessment', args);
       if (error) throw error;
       await load();
       await onReload();
@@ -426,6 +446,52 @@ export function AdminSupportFeeAnnual({
         </table>
         </AdminTableShell>
         )}
+        {canPay ? (
+          <form
+            className="mt-4 grid gap-2 sm:grid-cols-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void finalizeOneProperty();
+            }}
+          >
+            <p className="sm:col-span-3 text-sm font-medium">{t('admin.sfFinalizeOne')}</p>
+            <p className="sm:col-span-3 text-xs text-muted">{t('admin.sfFinalizeOneHint')}</p>
+            <div className="sm:col-span-3 flex flex-wrap gap-2">
+              {yearChoices.map((choice) => (
+                <button
+                  key={`finalize-y-${choice}`}
+                  type="button"
+                  onClick={() => setYear(String(choice))}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-sm ${
+                    choice === y ? 'border-accent/30 bg-accent-bg text-accent' : 'border-border text-secondary'
+                  }`}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+            <select
+              required
+              value={finalizePropertyId}
+              onChange={(e) => setFinalizePropertyId(e.target.value)}
+              className={adminFieldClass}
+            >
+              <option value="">{t('form.pickApt')}</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  № {p.apartment_number}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={saving || !finalizePropertyId}
+              className="rounded-full border border-border px-4 py-2 text-sm disabled:opacity-50 sm:col-span-2"
+            >
+              {t('admin.sfFinalizeOneAction', { y: year })}
+            </button>
+          </form>
+        ) : null}
         {canPay ? (
           <form
             className="mt-4 grid gap-2 sm:grid-cols-4"

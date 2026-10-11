@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
+import { signOutFully } from '@/lib/authSession';
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -285,8 +286,15 @@ function GuardCabinetInner() {
   }
 
   async function logout() {
-    await supabase.auth.signOut();
-    router.replace('/');
+    try {
+      await signOutFully(supabase);
+    } finally {
+      setAllowed(false);
+      setStaffName('');
+      setQueue([]);
+      setShift(null);
+      router.replace('/');
+    }
   }
 
   function rowDetail(row: GuardQueueRow) {

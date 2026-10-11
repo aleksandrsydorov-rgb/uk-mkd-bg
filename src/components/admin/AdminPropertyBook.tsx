@@ -37,6 +37,7 @@ type PropertyOption = {
 };
 
 type OwnerForm = {
+  id?: number | null;
   entity_kind: BookEntityKind;
   first_name: string;
   middle_name: string;
@@ -49,6 +50,7 @@ type OwnerForm = {
 };
 
 const emptyOwner = (): OwnerForm => ({
+  id: null,
   entity_kind: 'natural_person',
   first_name: '',
   middle_name: '',
@@ -105,11 +107,21 @@ export function AdminPropertyBook({
     }>
   >([]);
   const [importErrors, setImportErrors] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteOwnerId, setInviteOwnerId] = useState<number | ''>('');
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [invites, setInvites] = useState<
-    Array<{ id: string; email: string; status: string; expires_at: string; created_at: string }>
+    Array<{
+      id: string;
+      email: string;
+      status: string;
+      expires_at: string;
+      created_at: string;
+      registry_people_id?: number | null;
+    }>
   >([]);
+  const [importAllowCreate, setImportAllowCreate] = useState(false);
+  const [importAllowOverwrite, setImportAllowOverwrite] = useState(false);
+  const [importPreview, setImportPreview] = useState<string | null>(null);
   const [massFloor, setMassFloor] = useState('');
   const [massSection, setMassSection] = useState('');
   const [massBlock, setMassBlock] = useState('');
@@ -227,6 +239,7 @@ export function AdminPropertyBook({
         payload.property.ownership_type === 'shared' ? 'shared' : 'sole',
       );
       const mapped = (payload.owners ?? []).map((o) => ({
+        id: o.id != null ? Number(o.id) : null,
         entity_kind: (String(o.entity_kind || 'natural_person') as BookEntityKind),
         first_name: String(o.first_name ?? ''),
         middle_name: String(o.middle_name ?? ''),
@@ -240,6 +253,7 @@ export function AdminPropertyBook({
           o.ideal_parts_percent != null ? String(o.ideal_parts_percent) : '',
       }));
       setOwners(mapped.length > 0 ? mapped : [emptyOwner()]);
+      setInviteOwnerId(mapped.find((o) => o.id != null)?.id ?? '');
       const { data: invData, error: invErr } = await supabase.rpc('admin_list_property_invites', {
         p_property_id: id,
       });
@@ -251,6 +265,8 @@ export function AdminPropertyBook({
             status: String(i.status ?? ''),
             expires_at: String(i.expires_at ?? ''),
             created_at: String(i.created_at ?? ''),
+            registry_people_id:
+              i.registry_people_id != null ? Number(i.registry_people_id) : null,
           })),
         );
       } else {
@@ -275,7 +291,6 @@ export function AdminPropertyBook({
         setChangeLog([]);
       }
       setInviteLink(null);
-      setInviteEmail(mapped[0]?.email ?? '');
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
     } finally {
@@ -320,7 +335,29 @@ export function AdminPropertyBook({
         })),
       });
       if (ownErr) throw ownErr;
-      const validation = (data as { validation?: { ok?: boolean; errors?: string[] } })?.validation;
+      const payload = data as {
+        validation?: { ok?: boolean; errors?: string[] };
+        owners?: Array<Record<string, unknown>>;
+      };
+      const validation = payload?.validation;
+      if (Array.isArray(payload.owners)) {
+        const mapped = payload.owners.map((o) => ({
+          id: o.id != null ? Number(o.id) : null,
+          entity_kind: (String(o.entity_kind || 'natural_person') as BookEntityKind),
+          first_name: String(o.first_name ?? ''),
+          middle_name: String(o.middle_name ?? ''),
+          last_name: String(o.last_name ?? ''),
+          entity_name: String(o.entity_name ?? ''),
+          eik_bulstat: String(o.eik_bulstat ?? ''),
+          email: String(o.email ?? ''),
+          ownership_share_percent:
+            o.ownership_share_percent != null ? String(o.ownership_share_percent) : '',
+          ideal_parts_percent:
+            o.ideal_parts_percent != null ? String(o.ideal_parts_percent) : '',
+        }));
+        setOwners(mapped.length > 0 ? mapped : [emptyOwner()]);
+        setInviteOwnerId(mapped.find((o) => o.id != null)?.id ?? '');
+      }
       if (validation && validation.ok === false) {
         setSuccess(null);
         setError(
@@ -430,6 +467,7 @@ export function AdminPropertyBook({
     setError(null);
     setSuccess(null);
     setImportErrors(null);
+    setImportPreview(null);
     try {
       const { objects: objectRows, owners: ownerRows } = await parsePropertyBookWorkbook(file);
       if (objectRows.length === 0) throw new Error(t('admin.bookExcelEmptyObjects'));
@@ -438,6 +476,8 @@ export function AdminPropertyBook({
         p_objects: objectRows,
         p_owners: ownerRows,
         p_dry_run: dryRun,
+        p_allow_create_missing: importAllowCreate,
+        p_allow_overwrite: importAllowOverwrite,
       });
       if (rpcErr) throw rpcErr;
       const result = data as {
@@ -445,7 +485,27 @@ export function AdminPropertyBook({
         dry_run: boolean;
         errors: unknown[];
         complete_count?: number;
+        existing_properties?: unknown[];
+        new_properties?: unknown[];
+        changes?: unknown[];
+        duplicates?: unknown[];
+        requires_create_confirmation?: boolean;
+        requires_overwrite_confirmation?: boolean;
       };
+      setImportPreview(
+        JSON.stringify(
+          {
+            existing: result.existing_properties ?? [],
+            new_properties: result.new_properties ?? [],
+            changes: result.changes ?? [],
+            duplicates: result.duplicates ?? [],
+            requires_create_confirmation: result.requires_create_confirmation,
+            requires_overwrite_confirmation: result.requires_overwrite_confirmation,
+          },
+          null,
+          2,
+        ),
+      );
       if (!result.ok) {
         setImportErrors(JSON.stringify(result.errors, null, 2));
         setError(t('admin.bookImportHasErrors'));
@@ -499,6 +559,22 @@ export function AdminPropertyBook({
             className={adminFieldClass}
           />
         </label>
+        <label className="flex items-center gap-2 text-sm text-secondary">
+          <input
+            type="checkbox"
+            checked={importAllowCreate}
+            onChange={(e) => setImportAllowCreate(e.target.checked)}
+          />
+          {t('admin.bookImportAllowCreate')}
+        </label>
+        <label className="flex items-center gap-2 text-sm text-secondary">
+          <input
+            type="checkbox"
+            checked={importAllowOverwrite}
+            onChange={(e) => setImportAllowOverwrite(e.target.checked)}
+          />
+          {t('admin.bookImportAllowOverwrite')}
+        </label>
         <div className="flex flex-wrap gap-2">
           <AdminSecondaryButton
             type="button"
@@ -530,6 +606,11 @@ export function AdminPropertyBook({
             {t('admin.bookApplyImport')}
           </AdminPrimaryButton>
         </div>
+        {importPreview ? (
+          <pre className="max-h-56 overflow-auto rounded-lg bg-background p-3 text-xs text-secondary">
+            {importPreview}
+          </pre>
+        ) : null}
         {importErrors ? (
           <pre className="max-h-48 overflow-auto rounded-lg bg-background p-3 text-xs text-danger">
             {importErrors}
@@ -968,21 +1049,36 @@ export function AdminPropertyBook({
 
           <div className="space-y-3 border-t border-border pt-4">
             <h4 className="text-sm font-semibold">{t('admin.bookInvite')}</h4>
+            <p className="text-xs text-secondary">{t('admin.bookInviteHint')}</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <label className="grid min-w-0 flex-1 gap-1 text-sm text-secondary">
-                {t('admin.bookInviteEmail')}
-                <input
+                {t('admin.bookInviteOwner')}
+                <select
                   className={adminFieldClass}
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                />
+                  value={inviteOwnerId === '' ? '' : String(inviteOwnerId)}
+                  onChange={(e) =>
+                    setInviteOwnerId(e.target.value ? Number(e.target.value) : '')
+                  }
+                >
+                  <option value="">{t('admin.bookInviteOwnerPick')}</option>
+                  {owners
+                    .filter((o) => o.id != null && o.email.trim())
+                    .map((o) => (
+                      <option key={o.id!} value={o.id!}>
+                        {o.email}
+                        {o.last_name || o.entity_name
+                          ? ` — ${[o.first_name, o.last_name, o.entity_name].filter(Boolean).join(' ')}`
+                          : ''}
+                      </option>
+                    ))}
+                </select>
               </label>
               <AdminPrimaryButton
                 type="button"
-                disabled={busy || !inviteEmail.trim()}
+                disabled={busy || inviteOwnerId === ''}
                 onClick={() => {
                   void (async () => {
-                    if (!selectedId) return;
+                    if (!selectedId || inviteOwnerId === '') return;
                     setBusy(true);
                     setError(null);
                     try {
@@ -990,18 +1086,23 @@ export function AdminPropertyBook({
                         'admin_create_property_invite',
                         {
                           p_property_id: selectedId,
-                          p_email: inviteEmail.trim(),
+                          p_registry_people_id: inviteOwnerId,
                         },
                       );
                       if (rpcErr) throw rpcErr;
-                      const token = String((data as { token?: string })?.token ?? '');
+                      const payload = data as {
+                        token?: string;
+                        email_sent?: boolean;
+                        delivery_status?: string;
+                      };
+                      const token = String(payload.token ?? '');
                       const link = `${window.location.origin}/auth/invite?token=${token}`;
                       setInviteLink(link);
                       try {
                         await navigator.clipboard.writeText(link);
                         setSuccess(t('admin.bookInviteCopied'));
                       } catch {
-                        setSuccess(t('admin.bookInviteLink'));
+                        setSuccess(t('admin.bookInviteLinkReady'));
                       }
                       const { data: invData } = await supabase.rpc('admin_list_property_invites', {
                         p_property_id: selectedId,
@@ -1013,6 +1114,8 @@ export function AdminPropertyBook({
                           status: String(i.status ?? ''),
                           expires_at: String(i.expires_at ?? ''),
                           created_at: String(i.created_at ?? ''),
+                          registry_people_id:
+                            i.registry_people_id != null ? Number(i.registry_people_id) : null,
                         })),
                       );
                     } catch (e: unknown) {
@@ -1045,36 +1148,95 @@ export function AdminPropertyBook({
                       {inv.email} ·{' '}
                       {t(`admin.bookInviteStatus_${inv.status}` as 'admin.bookInviteStatus_pending')}
                     </span>
-                    {inv.status === 'pending' ? (
-                      <button
-                        type="button"
-                        className="text-xs text-danger hover:underline"
-                        disabled={busy}
-                        onClick={() => {
-                          void (async () => {
-                            setBusy(true);
-                            try {
-                              const { error: rpcErr } = await supabase.rpc(
-                                'admin_revoke_property_invite',
-                                { p_invite_id: inv.id },
-                              );
-                              if (rpcErr) throw rpcErr;
-                              setInvites((prev) =>
-                                prev.map((x) =>
-                                  x.id === inv.id ? { ...x, status: 'revoked' } : x,
-                                ),
-                              );
-                            } catch (e: unknown) {
-                              setError(ownerVisibleError(e, t('admin.errGeneric')));
-                            } finally {
-                              setBusy(false);
-                            }
-                          })();
-                        }}
-                      >
-                        {t('admin.bookInviteRevoke')}
-                      </button>
-                    ) : null}
+                    <span className="flex flex-wrap gap-3">
+                      {(inv.status === 'pending' || inv.status === 'expired') &&
+                      inv.registry_people_id != null ? (
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          disabled={busy}
+                          onClick={() => {
+                            void (async () => {
+                              setBusy(true);
+                              setError(null);
+                              try {
+                                const { data, error: rpcErr } = await supabase.rpc(
+                                  'admin_resend_property_invite',
+                                  { p_invite_id: inv.id },
+                                );
+                                if (rpcErr) throw rpcErr;
+                                const token = String(
+                                  (data as { token?: string })?.token ?? '',
+                                );
+                                const link = `${window.location.origin}/auth/invite?token=${token}`;
+                                setInviteLink(link);
+                                try {
+                                  await navigator.clipboard.writeText(link);
+                                  setSuccess(t('admin.bookInviteCopied'));
+                                } catch {
+                                  setSuccess(t('admin.bookInviteLinkReady'));
+                                }
+                                const { data: invData } = await supabase.rpc(
+                                  'admin_list_property_invites',
+                                  { p_property_id: selectedId as number },
+                                );
+                                setInvites(
+                                  ((invData as Array<Record<string, unknown>>) ?? []).map(
+                                    (i) => ({
+                                      id: String(i.id),
+                                      email: String(i.email ?? ''),
+                                      status: String(i.status ?? ''),
+                                      expires_at: String(i.expires_at ?? ''),
+                                      created_at: String(i.created_at ?? ''),
+                                      registry_people_id:
+                                        i.registry_people_id != null
+                                          ? Number(i.registry_people_id)
+                                          : null,
+                                    }),
+                                  ),
+                                );
+                              } catch (e: unknown) {
+                                setError(ownerVisibleError(e, t('admin.errGeneric')));
+                              } finally {
+                                setBusy(false);
+                              }
+                            })();
+                          }}
+                        >
+                          {t('admin.bookInviteResend')}
+                        </button>
+                      ) : null}
+                      {inv.status === 'pending' ? (
+                        <button
+                          type="button"
+                          className="text-xs text-danger hover:underline"
+                          disabled={busy}
+                          onClick={() => {
+                            void (async () => {
+                              setBusy(true);
+                              try {
+                                const { error: rpcErr } = await supabase.rpc(
+                                  'admin_revoke_property_invite',
+                                  { p_invite_id: inv.id },
+                                );
+                                if (rpcErr) throw rpcErr;
+                                setInvites((prev) =>
+                                  prev.map((x) =>
+                                    x.id === inv.id ? { ...x, status: 'revoked' } : x,
+                                  ),
+                                );
+                              } catch (e: unknown) {
+                                setError(ownerVisibleError(e, t('admin.errGeneric')));
+                              } finally {
+                                setBusy(false);
+                              }
+                            })();
+                          }}
+                        >
+                          {t('admin.bookInviteRevoke')}
+                        </button>
+                      ) : null}
+                    </span>
                   </li>
                 ))}
               </ul>

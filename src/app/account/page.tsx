@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { signOutFully } from '@/lib/authSession';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
 import {
@@ -16,14 +17,14 @@ import {
 } from '@/lib/polls';
 import { BrandMark } from '@/components/BrandMark';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
-import { listingStatus, listingStatusClass, transferStatusClass, type OwnerTransfer } from '@/lib/ownership';
+import { listingStatus, listingStatusClass, type OwnerTransfer } from '@/lib/ownership';
 import {
   labelListing,
   labelOwnerType,
   labelOccupantKind,
   labelPriority,
-  labelTransfer,
 } from '@/i18n/labels';
+import { OwnerOwnershipPanel } from '@/components/account/OwnerOwnershipPanel';
 import {
   mergeAccountProperties,
   isGuestOnlyProperty,
@@ -88,6 +89,7 @@ import { isExpensePublished } from '@/lib/expenses';
 import { MAX_CHAT_FILE_BYTES } from '@/lib/chatMedia';
 import { normalizeOccupantKind, type ApartmentPet, type OccupantKind } from '@/lib/registry';
 import {
+  sessionOwnerDisplayName,
   type PropertyAbsencePeriod,
   type PropertyRegistryPerson,
 } from '@/lib/propertyBook';
@@ -360,13 +362,35 @@ export default function AccountPage() {
   const [votingPollId, setVotingPollId] = useState<number | null>(null);
   const [listingSaving, setListingSaving] = useState(false);
   const [transfers, setTransfers] = useState<OwnerTransfer[]>([]);
-  const [transferSubmitting, setTransferSubmitting] = useState(false);
-  const [transferForm, setTransferForm] = useState({
-    to_owner_name: '',
-    to_owner_email: '',
-    to_owner_phone: '',
-    note: '',
-  });
+
+  function clearAccountClientState() {
+    setDevEmail('');
+    setIsStaff(false);
+    setAccessProfile(null);
+    setProperties([]);
+    setSelectedPropertyId(null);
+    setBuildingModules(emptyBuildingModulesState());
+    setSupportRate(null);
+    setElectricityMode(DEFAULT_ELECTRICITY_MODE);
+    setWaterMode(DEFAULT_WATER_MODE);
+    setRequests([]);
+    setAnnouncements([]);
+    setUkExpenses([]);
+    setPolls([]);
+    setPollOptions([]);
+    setPollVotes([]);
+    setPollTallies([]);
+    setTransfers([]);
+    setGuests([]);
+    setRegistryPeople([]);
+    setAbsences([]);
+    setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
+    setElectricityMeters([]);
+    setChatMessages([]);
+    setUnreadChatCount(0);
+    setActiveMenu('обзор');
+    setError(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -387,7 +411,28 @@ export default function AccountPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [supabase]);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Ignore INITIAL_SESSION here — restoreUser owns first paint.
+      if (event === 'SIGNED_OUT') {
+        clearAccountClientState();
+        router.replace('/');
+        return;
+      }
+      if (
+        session &&
+        (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED')
+      ) {
+        const nextEmail = normalizeEmail(session.user?.email ?? '');
+        if (nextEmail) setDevEmail(nextEmail);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [supabase, router]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -404,31 +449,9 @@ export default function AccountPage() {
 
   async function handleLogout() {
     try {
-      await supabase.auth.signOut();
-    } catch {
-      // Local session is still cleared below.
+      await signOutFully(supabase);
     } finally {
-      setDevEmail('');
-      setIsStaff(false);
-      setAccessProfile(null);
-      setProperties([]);
-      setSelectedPropertyId(null);
-      setRequests([]);
-      setAnnouncements([]);
-      setUkExpenses([]);
-      setPolls([]);
-      setPollOptions([]);
-      setPollVotes([]);
-      setPollTallies([]);
-      setTransfers([]);
-      setGuests([]);
-      setRegistryPeople([]);
-      setAbsences([]);
-      setMeterReadings({ electricity_day: [], electricity_night: [], cold_water: [] });
-      setElectricityMeters([]);
-      setChatMessages([]);
-      setUnreadChatCount(0);
-      setError(null);
+      clearAccountClientState();
       router.replace('/');
     }
   }
@@ -441,6 +464,10 @@ export default function AccountPage() {
       if (!devEmail) return;
       setLoading(true);
       setError(null);
+      // Fail-closed before fetch so a prior user's modules/properties cannot flash.
+      setBuildingModules(emptyBuildingModulesState());
+      setAccessProfile(null);
+      setProperties([]);
       try {
         const access = await resolveAccess(devEmail, supabase);
         setIsStaff(access.isStaff);
@@ -560,7 +587,9 @@ export default function AccountPage() {
 
         const modulesRes = await supabase.rpc('get_building_modules_v2');
         if (modulesRes.error) {
-          // Load error != enabled fallback.
+          // Fail closed: load error must not enable modules. Book co-owners need
+          // is_owner() Book-only so this RPC is allowed (legacy owner_email gate hid nav).
+          console.warn('get_building_modules_v2:', modulesRes.error.message ?? modulesRes.error);
           setBuildingModules(emptyBuildingModulesState());
         } else {
           setBuildingModules(
@@ -924,21 +953,32 @@ export default function AccountPage() {
   }, [MENU_ITEMS, activeMenu]);
 
   useEffect(() => {
-    if (managementTab === 'заявки' && !requestsEnabled) {
-      setManagementTab(announcementsEnabled ? 'объявления' : chatEnabled ? 'чат' : 'расходы');
-    } else if (managementTab === 'объявления' && !announcementsEnabled) {
-      setManagementTab(requestsEnabled ? 'заявки' : chatEnabled ? 'чат' : 'расходы');
-    } else if (managementTab === 'чат' && !chatEnabled) {
-      setManagementTab(requestsEnabled ? 'заявки' : announcementsEnabled ? 'объявления' : 'расходы');
-    }
-  }, [managementTab, requestsEnabled, announcementsEnabled, chatEnabled]);
+    // Guests cannot use announcements/expenses. Keep a single fallback path so
+    // module flags and guest restrictions cannot bounce managementTab forever.
+    const announcementsOk = !guestContext && announcementsEnabled;
+    const expensesOk = !guestContext;
+    const allowed: ManagementTab[] = [];
+    if (requestsEnabled) allowed.push('заявки');
+    if (announcementsOk) allowed.push('объявления');
+    if (chatEnabled) allowed.push('чат');
+    if (expensesOk) allowed.push('расходы');
 
-  useEffect(() => {
-    if (!guestContext) return;
-    if (managementTab === 'объявления' || managementTab === 'расходы') {
-      setManagementTab(requestsEnabled ? 'заявки' : chatEnabled ? 'чат' : 'заявки');
+    if (allowed.includes(managementTab)) return;
+
+    const fallback: ManagementTab = requestsEnabled
+      ? 'заявки'
+      : chatEnabled
+        ? 'чат'
+        : announcementsOk
+          ? 'объявления'
+          : expensesOk
+            ? 'расходы'
+            : 'заявки';
+
+    if (managementTab !== fallback) {
+      setManagementTab(fallback);
     }
-  }, [guestContext, managementTab, requestsEnabled, chatEnabled]);
+  }, [managementTab, requestsEnabled, announcementsEnabled, chatEnabled, guestContext]);
 
   // ===================================================================
   // ЧАТ — ПОЛИНГ
@@ -1208,50 +1248,6 @@ export default function AccountPage() {
       setError(ownerVisibleError(e, t('err.listing')));
     } finally {
       setListingSaving(false);
-    }
-  }
-
-  async function handleSubmitTransfer(e: React.FormEvent) {
-    e.preventDefault();
-    if (!property) return;
-    if (scopeLocked('occupancy')) {
-      setError(t('account.serviceLockBanner'));
-      return;
-    }
-    const toName = transferForm.to_owner_name.trim();
-    const toEmail = normalizeEmail(transferForm.to_owner_email);
-    if (!toName || !toEmail) return;
-    setTransferSubmitting(true);
-    setError(null);
-    try {
-      const { error: insErr } = await supabase.from('owner_transfers').insert({
-        property_id: property.id,
-        from_owner_name: property.owner_name,
-        from_owner_email: property.owner_email,
-        from_owner_phone: property.owner_phone,
-        to_owner_name: toName,
-        to_owner_email: toEmail,
-        to_owner_phone: transferForm.to_owner_phone.trim() || null,
-        note: transferForm.note.trim() || null,
-        status: 'ожидает',
-      });
-      if (insErr) throw insErr;
-      const { data } = await supabase
-        .from('owner_transfers')
-        .select('*')
-        .in('property_id', properties.map((p) => p.id))
-        .order('created_at', { ascending: false });
-      setTransfers((data as OwnerTransfer[]) ?? []);
-      setTransferForm({ to_owner_name: '', to_owner_email: '', to_owner_phone: '', note: '' });
-    } catch (e: any) {
-      const msg = e?.message ?? t('err.transfer');
-      setError(
-        msg.includes('owner_transfers')
-          ? t('err.transferSql', { msg })
-          : msg
-      );
-    } finally {
-      setTransferSubmitting(false);
     }
   }
 
@@ -1650,6 +1646,10 @@ export default function AccountPage() {
         : undefined,
     [transfers, property]
   );
+  const cabinetOwnerName = useMemo(
+    () => (property ? sessionOwnerDisplayName(registryPeople, devEmail) : null),
+    [property, registryPeople, devEmail],
+  );
   const electricityHistory = useMemo(
     () => pairElectricityReadings([...meterReadings.electricity_day, ...meterReadings.electricity_night], electricityMeters),
     [meterReadings.electricity_day, meterReadings.electricity_night, electricityMeters],
@@ -1784,6 +1784,7 @@ export default function AccountPage() {
             pets={pets}
             people={registryPeople}
             absences={absences}
+            sessionEmail={devEmail}
             bookRequestOpen={bookRequestOpen}
             onSelectProperty={setSelectedPropertyId}
             onOpenOccupancy={() => setActiveMenu('жильцы')}
@@ -1795,73 +1796,27 @@ export default function AccountPage() {
               {guestModeEnabled && property && !guestContext ? (
                 <OwnerGuestMode supabase={supabase} propertyId={property.id} />
               ) : null}
-              <div className="rounded-xl border border-border bg-background px-3 py-3">
-              <p className="text-sm text-secondary mb-3">
-                {t('account.transferLead')}
-              </p>
-              {pendingTransfer ? (
-                <div className="rounded-xl border border-warning/25 bg-warning-bg p-3 text-sm text-warning">
-                  {t('account.transferPending')}
-                  <div className="mt-2 text-secondary">
-                    {t('account.newOwner')}: {pendingTransfer.to_owner_name} ({pendingTransfer.to_owner_email})
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmitTransfer} className="space-y-3">
-                  <input
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('account.phOwnerName')}
-                    value={transferForm.to_owner_name}
-                    onChange={(e) => setTransferForm({ ...transferForm, to_owner_name: e.target.value })}
-                    required
-                  />
-                  <input
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('account.phOwnerEmail')}
-                    type="email"
-                    value={transferForm.to_owner_email}
-                    onChange={(e) => setTransferForm({ ...transferForm, to_owner_email: e.target.value })}
-                    required
-                  />
-                  <input
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('account.phPhoneOpt')}
-                    value={transferForm.to_owner_phone}
-                    onChange={(e) => setTransferForm({ ...transferForm, to_owner_phone: e.target.value })}
-                  />
-                  <textarea
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder={t('account.phCommentUk')}
-                    rows={3}
-                    value={transferForm.note}
-                    onChange={(e) => setTransferForm({ ...transferForm, note: e.target.value })}
-                  />
-                  <button
-                    type="submit"
-                    disabled={transferSubmitting}
-                    className="rounded-xl bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                  >
-                    {transferSubmitting ? t('account.sending') : t('account.submitTransfer')}
-                  </button>
-                </form>
-              )}
-              {transfers.filter((tr) => tr.property_id === property?.id).length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <div className="text-xs text-muted">{t('account.transferHistory')}</div>
-                  {transfers
-                    .filter((tr) => tr.property_id === property?.id)
-                    .slice(0, 5)
-                    .map((tr) => (
-                      <div key={tr.id} className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
-                        <span className={transferStatusClass(tr.status)}>{labelTransfer(tr.status, t)}</span>
-                        {' · '}
-                        {tr.to_owner_name} ({tr.to_owner_email})
-                        {tr.reject_reason ? ` · ${tr.reject_reason}` : ''}
-                      </div>
-                    ))}
-                </div>
-              )}
-              </div>
+              {property ? (
+                <OwnerOwnershipPanel
+                  supabase={supabase}
+                  propertyId={property.id}
+                  idealPartsPercent={Number(property.ideal_parts_percent ?? 0)}
+                  transfers={transfers}
+                  pendingTransfer={pendingTransfer ?? null}
+                  sessionEmail={devEmail}
+                  scopeLocked={scopeLocked('occupancy')}
+                  onTransfersChanged={(rows) => {
+                    setTransfers((prev) => {
+                      const others = prev.filter((tr) => tr.property_id !== property.id);
+                      return [...rows, ...others].sort(
+                        (a, b) =>
+                          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                      );
+                    });
+                  }}
+                  onError={setError}
+                />
+              ) : null}
               </>
             )}
           />
@@ -1883,6 +1838,7 @@ export default function AccountPage() {
             occupantUntil={property?.occupant_until ? String(property.occupant_until).slice(0, 10) : null}
             ownerName={property?.owner_name ?? null}
             ownerEmail={property?.owner_email ?? null}
+            sessionEmail={devEmail}
             registryPeople={registryPeople}
             bookRequestOpen={requests.some(
               (r) =>
@@ -2477,6 +2433,27 @@ export default function AccountPage() {
     );
   }
 
+  // Bottom primary slots always derive from MENU_ITEMS so guestContext and
+  // module flags stay a single authorization policy (sidebar + mobile).
+  const bottomNavKeys: MenuSection[] = guestContext
+    ? ['обзор', 'охрана', 'ук']
+    : ['обзор', 'финансы', 'ук', 'опросы'];
+  const bottomNavItems = bottomNavKeys
+    .map((key) => MENU_ITEMS.find((item) => item.key === key))
+    .filter((item): item is (typeof MENU_ITEMS)[number] => Boolean(item))
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
+      icon: item.icon,
+      badge:
+        item.key === 'ук' && chatEnabled
+          ? unreadChatCount || undefined
+          : item.key === 'опросы'
+            ? unansweredPollsCount || undefined
+            : undefined,
+    }));
+  const bottomNavKeySet = new Set(bottomNavItems.map((item) => item.key));
+
   // ===================================================================
   // ОСНОВНОЙ LAYOUT
   // ===================================================================
@@ -2610,7 +2587,7 @@ export default function AccountPage() {
             <p className="truncate text-xs font-bold tracking-[0.02em] text-foreground">{t('brand.name')}</p>
             <h1 className="truncate text-base font-semibold md:text-lg">
               {property ? `№ ${property.apartment_number}` : MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
-              {property?.owner_name ? ` · ${property.owner_name}` : ''}
+              {cabinetOwnerName ? ` · ${cabinetOwnerName}` : ''}
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -2691,20 +2668,9 @@ export default function AccountPage() {
         </div>
       </main>
       <MobileBottomNav
-        items={[
-          { key: 'обзор', label: t('account.overview'), icon: '▦' },
-          ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled || internetEnabled
-            ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
-            : []),
-          ...(managementNavEnabled
-            ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢', badge: chatEnabled ? (unreadChatCount || undefined) : undefined }]
-            : []),
-          ...(pollsEnabled
-            ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️', badge: unansweredPollsCount || undefined }]
-            : []),
-        ]}
+        items={bottomNavItems}
         activeKey={activeMenu}
-        moreActive={!MENU_ITEMS.filter((i) => ['обзор', 'финансы', 'ук', 'опросы'].includes(i.key)).map((i) => i.key).includes(activeMenu)}
+        moreActive={!bottomNavKeySet.has(activeMenu)}
         onSelect={(key) => setActiveMenu(key as MenuSection)}
         onMore={() => setSidebarOpen(true)}
         hidden={sidebarOpen}

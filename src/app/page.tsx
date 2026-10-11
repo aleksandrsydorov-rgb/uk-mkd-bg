@@ -319,7 +319,8 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+
+    async function refreshCabinetHref() {
       const { data } = await supabase.auth.getUser();
       const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
       if (!authenticatedEmail) {
@@ -335,9 +336,24 @@ export default function HomePage() {
       } catch {
         if (!cancelled) setCabinetHref('#resident-login');
       }
-    })();
+    }
+
+    void refreshCabinetHref();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === 'SIGNED_OUT' ||
+        event === 'SIGNED_IN' ||
+        event === 'USER_UPDATED' ||
+        event === 'TOKEN_REFRESHED'
+      ) {
+        void refreshCabinetHref();
+      }
+    });
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
     };
   }, [supabase]);
 

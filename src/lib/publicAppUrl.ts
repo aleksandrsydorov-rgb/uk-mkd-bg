@@ -4,12 +4,17 @@
  * Configure per installation via NEXT_PUBLIC_SITE_URL (preferred) or
  * NEXT_PUBLIC_APP_URL. Example production: https://amadeus11.online
  *
- * Invite / Auth redirect links MUST use this helper — never raw
- * window.location.origin for production invite payloads (avoids localhost leaks
- * when an admin opens a local Next.js against the production database).
+ * IMPORTANT: Next.js only inlines *static* `process.env.NEXT_PUBLIC_*` access
+ * into the client bundle. Never read these keys only via dynamic `env[name]`.
  */
 
 type EnvProbe = Record<string, string | undefined>;
+
+/** Inlined by Next at build time for client + server. */
+const INLINE_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const INLINE_APP_URL = process.env.NEXT_PUBLIC_APP_URL;
+const INLINE_VERCEL_ENV = process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.VERCEL_ENV;
+const INLINE_VERCEL_URL = process.env.NEXT_PUBLIC_VERCEL_URL ?? process.env.VERCEL_URL;
 
 export function isLocalhostOrigin(origin: string): boolean {
   try {
@@ -29,11 +34,11 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function configuredSiteUrl(env: EnvProbe): string | null {
-  const raw = (env.NEXT_PUBLIC_SITE_URL ?? env.NEXT_PUBLIC_APP_URL ?? '').trim();
-  if (!raw) return null;
+function parseSiteUrl(raw: string | undefined | null): string | null {
+  const t = (raw ?? '').trim();
+  if (!t) return null;
   try {
-    const withProtocol = raw.includes('://') ? raw : `https://${raw}`;
+    const withProtocol = t.includes('://') ? t : `https://${t}`;
     const u = new URL(withProtocol);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
     return stripTrailingSlash(u.origin);
@@ -42,8 +47,19 @@ function configuredSiteUrl(env: EnvProbe): string | null {
   }
 }
 
+function resolveEnv(override?: EnvProbe): EnvProbe {
+  return {
+    NEXT_PUBLIC_SITE_URL: INLINE_SITE_URL,
+    NEXT_PUBLIC_APP_URL: INLINE_APP_URL,
+    NEXT_PUBLIC_VERCEL_ENV: INLINE_VERCEL_ENV,
+    VERCEL_ENV: INLINE_VERCEL_ENV,
+    NEXT_PUBLIC_VERCEL_URL: INLINE_VERCEL_URL,
+    VERCEL_URL: INLINE_VERCEL_URL,
+    ...(override ?? {}),
+  };
+}
+
 function isProductionDeploy(env: EnvProbe): boolean {
-  // Prefer Vercel target — local `next build` sets NODE_ENV=production without being prod traffic.
   const v = (env.NEXT_PUBLIC_VERCEL_ENV ?? env.VERCEL_ENV ?? '').trim().toLowerCase();
   return v === 'production';
 }
@@ -55,20 +71,18 @@ function isProductionDeploy(env: EnvProbe): boolean {
  * 1. NEXT_PUBLIC_SITE_URL / NEXT_PUBLIC_APP_URL (installation config)
  * 2. Local browser origin when it is localhost (dev without config)
  * 3. https://VERCEL_URL for preview deploys without SITE_URL
- * 4. Safe fallback: localhost:3000 in non-production; throw-quality empty avoided
  */
 export function getPublicAppOrigin(
-  env: EnvProbe = process.env as EnvProbe,
+  envOverride?: EnvProbe,
   browserOrigin?: string | null
 ): string {
-  const configured = configuredSiteUrl(env);
+  const env = resolveEnv(envOverride);
+  const configured =
+    parseSiteUrl(env.NEXT_PUBLIC_SITE_URL) ?? parseSiteUrl(env.NEXT_PUBLIC_APP_URL);
   if (configured) {
-    // Always prefer installation URL — fixes local admin → production DB leak.
     return configured;
   }
 
-  // Production without SITE_URL must never fall back to the browser tab origin
-  // (admins often open localhost against the production database).
   if (isProductionDeploy(env)) {
     throw new Error(
       'Missing NEXT_PUBLIC_SITE_URL for production invite/auth links'
@@ -96,21 +110,21 @@ export function getPublicAppOrigin(
 
 export function buildAbsoluteAppUrl(
   path: string,
-  env?: EnvProbe,
+  envOverride?: EnvProbe,
   browserOrigin?: string | null
 ): string {
-  const origin = getPublicAppOrigin(env, browserOrigin);
+  const origin = getPublicAppOrigin(envOverride, browserOrigin);
   const p = path.startsWith('/') ? path : `/${path}`;
   return `${origin}${p}`;
 }
 
 export function buildInviteAbsoluteUrl(
   inviteToken: string,
-  env?: EnvProbe,
+  envOverride?: EnvProbe,
   browserOrigin?: string | null
 ): string {
   const token = encodeURIComponent(inviteToken);
-  return buildAbsoluteAppUrl(`/auth/invite?token=${token}`, env, browserOrigin);
+  return buildAbsoluteAppUrl(`/auth/invite?token=${token}`, envOverride, browserOrigin);
 }
 
 /** True when an absolute URL is unsafe to send (localhost / private). */

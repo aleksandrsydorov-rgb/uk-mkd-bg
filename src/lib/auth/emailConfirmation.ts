@@ -48,8 +48,7 @@ export function buildAuthCallbackUrl(opts: {
   browserOrigin?: string | null;
 }): string {
   const origin = (
-    opts.origin ??
-    getPublicAppOrigin(opts.env ?? (process.env as Record<string, string | undefined>), opts.browserOrigin)
+    opts.origin ?? getPublicAppOrigin(opts.env, opts.browserOrigin)
   ).replace(/\/$/, '');
   const next = opts.nextPath.startsWith('/') ? opts.nextPath : `/${opts.nextPath}`;
   const url = new URL('/auth/callback', origin);

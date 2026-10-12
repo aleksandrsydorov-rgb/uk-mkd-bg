@@ -100,6 +100,7 @@ import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
+import { AdminEmailSettings } from '@/components/admin/AdminEmailSettings';
 import { sofiaCalendarYear } from '@/lib/supportFeeAnnual';
 import { AdminWorkOrders } from '@/components/admin/AdminWorkOrders';
 import { AdminMyTasks } from '@/components/admin/AdminMyTasks';
@@ -4725,6 +4726,11 @@ function AdminPortal() {
                 </div>
               )}
             </section>
+
+            <AdminEmailSettings
+              supabase={supabase}
+              canManage={canManageCriticalAccess}
+            />
 
             <section className="space-y-4">
               <div className="px-0.5">

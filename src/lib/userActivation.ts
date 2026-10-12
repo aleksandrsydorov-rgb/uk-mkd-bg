@@ -220,16 +220,32 @@ export async function createUserActivationReminder(
   });
   if (error) throw error;
   const r = asRecord(data);
-  return {
+  const result: UserActivationReminderResult = {
     id: asString(r.id),
     owner_email: asString(r.owner_email),
     property_id: r.property_id == null ? null : asNumber(r.property_id),
     reminder_type: asString(r.reminder_type),
     channel: asString(r.channel),
+    // Preserve UA honesty (LOCAL_ONLY / PROVIDER_NOT_CONFIGURED). Email Core Phase A does not send.
     delivery_status: asString(r.delivery_status),
     invite_token: asNullableString(r.invite_token),
     invite_expires_at: asNullableString(r.invite_expires_at),
   };
+
+  // Best-effort outbox intent via Email Core adapter (blocked / missing RPC → keep honesty status).
+  try {
+    const { emailCoreNotifyUserActivation } = await import('@/lib/emailCoreAdapters');
+    await emailCoreNotifyUserActivation(supabase, {
+      ownerEmail: args.ownerEmail,
+      reminderType: result.reminder_type || (args.reminderType ?? 'activation_nudge'),
+      propertyId: result.property_id,
+      reminderId: result.id,
+    });
+  } catch {
+    /* keep existing delivery_status */
+  }
+
+  return result;
 }
 
 /** Throttled owner heartbeat — safe to call on account load / interval. */

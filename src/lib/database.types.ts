@@ -1527,6 +1527,210 @@ export interface Database {
         };
         Relationships: [];
       };
+      complex_email_settings: {
+        Row: {
+          id: number;
+          mail_provider: string;
+          sender_name: string;
+          sender_email: string | null;
+          reply_to_email: string | null;
+          verified_domain: string | null;
+          provider_domain_id: string | null;
+          domain_status: string;
+          email_enabled: boolean;
+          template_locale: string;
+          platform_disabled: boolean;
+          updated_at: string;
+          updated_by_email: string | null;
+        };
+        Insert: {
+          id?: number;
+          mail_provider?: string;
+          sender_name?: string;
+          sender_email?: string | null;
+          reply_to_email?: string | null;
+          verified_domain?: string | null;
+          provider_domain_id?: string | null;
+          domain_status?: string;
+          email_enabled?: boolean;
+          template_locale?: string;
+          platform_disabled?: boolean;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Update: {
+          id?: number;
+          mail_provider?: string;
+          sender_name?: string;
+          sender_email?: string | null;
+          reply_to_email?: string | null;
+          verified_domain?: string | null;
+          provider_domain_id?: string | null;
+          domain_status?: string;
+          email_enabled?: boolean;
+          template_locale?: string;
+          platform_disabled?: boolean;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      email_verified_senders: {
+        Row: {
+          id: number;
+          email: string;
+          domain: string;
+          status: string;
+          provider_sender_id: string | null;
+          verified_at: string | null;
+          created_at: string;
+          created_by: string;
+        };
+        Insert: {
+          id?: number;
+          email: string;
+          domain: string;
+          status?: string;
+          provider_sender_id?: string | null;
+          verified_at?: string | null;
+          created_at?: string;
+          created_by?: string;
+        };
+        Update: {
+          id?: number;
+          email?: string;
+          domain?: string;
+          status?: string;
+          provider_sender_id?: string | null;
+          verified_at?: string | null;
+          created_at?: string;
+          created_by?: string;
+        };
+        Relationships: [];
+      };
+      email_outbox: {
+        Row: {
+          id: number;
+          idempotency_key: string;
+          module_key: string;
+          template_key: string;
+          locale: string;
+          to_email: string;
+          to_email_hash: string;
+          subject: string | null;
+          payload: Json;
+          status: string;
+          attempts: number;
+          next_attempt_at: string | null;
+          last_error_code: string | null;
+          provider_message_id: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          idempotency_key: string;
+          module_key: string;
+          template_key: string;
+          locale?: string;
+          to_email: string;
+          to_email_hash: string;
+          subject?: string | null;
+          payload?: Json;
+          status?: string;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          last_error_code?: string | null;
+          provider_message_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          idempotency_key?: string;
+          module_key?: string;
+          template_key?: string;
+          locale?: string;
+          to_email?: string;
+          to_email_hash?: string;
+          subject?: string | null;
+          payload?: Json;
+          status?: string;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          last_error_code?: string | null;
+          provider_message_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      email_delivery_attempts: {
+        Row: {
+          id: number;
+          outbox_id: number;
+          attempt_no: number;
+          started_at: string;
+          finished_at: string | null;
+          result: string;
+          error_code: string | null;
+          provider_response_class: string | null;
+        };
+        Insert: {
+          id?: number;
+          outbox_id: number;
+          attempt_no: number;
+          started_at?: string;
+          finished_at?: string | null;
+          result?: string;
+          error_code?: string | null;
+          provider_response_class?: string | null;
+        };
+        Update: {
+          id?: number;
+          outbox_id?: number;
+          attempt_no?: number;
+          started_at?: string;
+          finished_at?: string | null;
+          result?: string;
+          error_code?: string | null;
+          provider_response_class?: string | null;
+        };
+        Relationships: [];
+      };
+      email_delivery_events: {
+        Row: {
+          id: number;
+          outbox_id: number | null;
+          provider_message_id: string | null;
+          event_type: string;
+          event_at: string;
+          payload_redacted: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          outbox_id?: number | null;
+          provider_message_id?: string | null;
+          event_type: string;
+          event_at?: string;
+          payload_redacted?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          outbox_id?: number | null;
+          provider_message_id?: string | null;
+          event_type?: string;
+          event_at?: string;
+          payload_redacted?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       building_modules: {
         Row: {
           module_key: string;
@@ -4731,6 +4935,79 @@ export interface Database {
       admin_get_ownership_change_settings: {
         Args: Record<string, never>;
         Returns: Database['public']['Tables']['ownership_change_settings']['Row'];
+      };
+      admin_get_email_settings: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      admin_update_email_settings: {
+        Args: {
+          p_sender_name?: string | null;
+          p_sender_email?: string | null;
+          p_reply_to_email?: string | null;
+          p_template_locale?: string | null;
+          p_email_enabled?: boolean | null;
+        };
+        Returns: Json;
+      };
+      admin_list_verified_email_senders: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      admin_list_email_diagnostics: {
+        Args: { p_limit?: number };
+        Returns: Json;
+      };
+      email_core_enqueue: {
+        Args: {
+          p_idempotency_key: string;
+          p_module_key: string;
+          p_template_key: string;
+          p_to_email: string;
+          p_locale?: string | null;
+          p_subject?: string | null;
+          p_payload?: Json;
+        };
+        Returns: Json;
+      };
+      email_core_is_ready: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      email_core_module_fallback_status: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      email_core_config_delivery_status: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      email_core_worker_get_context: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      email_core_claim_outbox_batch: {
+        Args: { p_limit?: number };
+        Returns: Json;
+      };
+      email_core_complete_outbox_send: {
+        Args: {
+          p_outbox_id: number;
+          p_ok: boolean;
+          p_provider_message_id?: string | null;
+          p_error_code?: string | null;
+          p_provider_response_class?: string | null;
+        };
+        Returns: Json;
+      };
+      email_core_record_delivery_event: {
+        Args: {
+          p_provider_message_id?: string | null;
+          p_event_type: string;
+          p_payload_redacted?: Json;
+          p_outbox_id?: number | null;
+        };
+        Returns: Json;
       };
       admin_set_ordinary_debt_gate: {
         Args: { p_enabled: boolean };

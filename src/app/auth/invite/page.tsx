@@ -7,6 +7,10 @@ import { normalizeEmail } from '@/lib/email';
 import {
   buildAuthCallbackUrl,
   buildInviteAcceptPath,
+  isAlreadyRegisteredAuthError,
+  isEmailNotConfirmedAuthError,
+  isInvalidOtpAuthError,
+  isSoftExistingSignupUser,
   signupOtpVerifyTypes,
 } from '@/lib/auth/emailConfirmation';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -29,13 +33,47 @@ function InviteAcceptInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [inviteBlocked, setInviteBlocked] = useState(false);
+
+  function inviteEmailRedirectTo() {
+    return buildAuthCallbackUrl({
+      nextPath: buildInviteAcceptPath(token),
+    });
+  }
 
   async function finishAccept() {
-    await supabase.rpc('accept_property_invite', {
+    const { error: accErr } = await supabase.rpc('accept_property_invite', {
       p_token: token,
       p_mark_accepted: true,
     });
+    if (accErr) throw accErr;
     router.replace('/account');
+  }
+
+  function mapInviteRpcError(msg: string): string {
+    if (/mismatch/i.test(msg)) return t('invite.errEmailMismatch');
+    if (/ownership changed|not a current Book owner/i.test(msg))
+      return t('invite.errOwnershipChanged');
+    if (/incomplete/i.test(msg)) return t('invite.errIncompleteBook');
+    if (/revoked/i.test(msg)) return t('invite.errRevoked');
+    if (/expired/i.test(msg)) return t('invite.errExpired');
+    if (/invalid token/i.test(msg)) return t('invite.errInvalidToken');
+    if (/authentication required/i.test(msg)) return t('invite.errAuthRequired');
+    return msg || t('invite.errGeneric');
+  }
+
+  async function requestSignupOtpResend(): Promise<void> {
+    await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: inviteEmailRedirectTo() },
+    });
+  }
+
+  async function enterOtpFlow(infoKey: 'invite.otpSent' | 'invite.otpResent' = 'invite.otpSent') {
+    setNeedOtp(true);
+    setInfo(t(infoKey));
+    setError(null);
   }
 
   useEffect(() => {
@@ -43,6 +81,7 @@ function InviteAcceptInner() {
     void (async () => {
       if (!token) {
         setError(t('invite.errToken'));
+        setInviteBlocked(true);
         setLoading(false);
         return;
       }
@@ -63,27 +102,31 @@ function InviteAcceptInner() {
         setApartment(String(payload.apartment_number ?? ''));
         if (payload.already_accepted) {
           setInfo(t('invite.alreadyAccepted'));
+          setInviteBlocked(true);
         }
 
-        // Magic-link / callback may already have established a session.
         const { data: userData } = await supabase.auth.getUser();
         const sessionEmail = normalizeEmail(userData.user?.email ?? '');
-        if (sessionEmail && sessionEmail === inviteEmail && !payload.already_accepted) {
-          await supabase.rpc('accept_property_invite', {
+        const confirmed = Boolean(userData.user?.email_confirmed_at);
+        if (
+          sessionEmail &&
+          sessionEmail === inviteEmail &&
+          confirmed &&
+          !payload.already_accepted
+        ) {
+          const { error: accErr } = await supabase.rpc('accept_property_invite', {
             p_token: token,
             p_mark_accepted: true,
           });
+          if (accErr) throw accErr;
           if (!cancelled) router.replace('/account');
           return;
         }
       } catch (e: unknown) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : t('invite.errGeneric');
-          if (/mismatch/i.test(msg)) setError(t('invite.errEmailMismatch'));
-          else if (/ownership changed|not a current Book owner/i.test(msg))
-            setError(t('invite.errOwnershipChanged'));
-          else if (/incomplete/i.test(msg)) setError(t('invite.errIncompleteBook'));
-          else setError(msg);
+          setError(mapInviteRpcError(msg));
+          setInviteBlocked(true);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -92,11 +135,33 @@ function InviteAcceptInner() {
     return () => {
       cancelled = true;
     };
-  }, [router, supabase, t, token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one load per invite token
+  }, [supabase, t, token, router]);
+
+  async function handleExistingOrUnconfirmed(): Promise<'accepted' | 'otp' | 'credentials'> {
+    const { error: inErr } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (!inErr) {
+      await finishAccept();
+      return 'accepted';
+    }
+    if (isEmailNotConfirmedAuthError(inErr.message)) {
+      try {
+        await requestSignupOtpResend();
+      } catch {
+        /* still show OTP UI — Auth may rate-limit */
+      }
+      await enterOtpFlow('invite.otpSent');
+      return 'otp';
+    }
+    return 'credentials';
+  }
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !email) return;
+    if (!token || !email || inviteBlocked) return;
     if (password.length < 8) {
       setError(t('invite.errPasswordShort'));
       return;
@@ -109,27 +174,26 @@ function InviteAcceptInner() {
     setError(null);
     try {
       const { data: existing } = await supabase.auth.getUser();
-      if (existing.user?.email && normalizeEmail(existing.user.email) === email) {
+      if (
+        existing.user?.email &&
+        normalizeEmail(existing.user.email) === email &&
+        existing.user.email_confirmed_at
+      ) {
         await finishAccept();
         return;
       }
 
-      const emailRedirectTo = buildAuthCallbackUrl({
-        origin: window.location.origin,
-        nextPath: buildInviteAcceptPath(token),
-      });
-
+      const emailRedirectTo = inviteEmailRedirectTo();
       const { data, error: signErr } = await supabase.auth.signUp({
         email,
         password,
         options: { emailRedirectTo },
       });
+
       if (signErr) {
-        // Already registered — ask to sign in, then mark accepted
-        if (/already|registered|exists/i.test(signErr.message)) {
-          const { error: inErr } = await supabase.auth.signInWithPassword({ email, password });
-          if (inErr) throw inErr;
-          await finishAccept();
+        if (isAlreadyRegisteredAuthError(signErr.message)) {
+          const outcome = await handleExistingOrUnconfirmed();
+          if (outcome === 'credentials') setError(t('invite.errCredentials'));
           return;
         }
         throw signErr;
@@ -140,11 +204,17 @@ function InviteAcceptInner() {
         return;
       }
 
-      // Email confirmation required (OTP code and/or magic link, depending on Auth template).
-      setNeedOtp(true);
-      setInfo(t('invite.otpSent'));
+      if (isSoftExistingSignupUser(data.user)) {
+        const outcome = await handleExistingOrUnconfirmed();
+        if (outcome === 'credentials') setError(t('invite.errCredentials'));
+        return;
+      }
+
+      // New user — Auth confirmation required (SMTP OTP / link).
+      await enterOtpFlow('invite.otpSent');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('invite.errGeneric'));
+      const msg = err instanceof Error ? err.message : t('invite.errGeneric');
+      setError(mapInviteRpcError(msg));
     } finally {
       setBusy(false);
     }
@@ -169,10 +239,18 @@ function InviteAcceptInner() {
         }
         lastErr = otpErr;
       }
-      if (lastErr) throw lastErr;
+      if (lastErr) {
+        if (isInvalidOtpAuthError(lastErr.message)) {
+          if (/expired/i.test(lastErr.message)) setError(t('invite.errOtpExpired'));
+          else setError(t('invite.errOtpInvalid'));
+          return;
+        }
+        throw lastErr;
+      }
       await finishAccept();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('invite.errGeneric'));
+      const msg = err instanceof Error ? err.message : t('invite.errGeneric');
+      setError(mapInviteRpcError(msg));
     } finally {
       setBusy(false);
     }
@@ -183,23 +261,17 @@ function InviteAcceptInner() {
     setBusy(true);
     setError(null);
     try {
-      const emailRedirectTo = buildAuthCallbackUrl({
-        origin: window.location.origin,
-        nextPath: buildInviteAcceptPath(token),
-      });
-      const { error: resendErr } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-        options: { emailRedirectTo },
-      });
-      if (resendErr) throw resendErr;
+      await requestSignupOtpResend();
       setInfo(t('invite.otpResent'));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('invite.errGeneric'));
+    } catch {
+      // Generic — avoid account enumeration / Auth error leakage.
+      setInfo(t('invite.otpResent'));
     } finally {
       setBusy(false);
     }
   }
+
+  const canShowRegister = !loading && Boolean(email) && !inviteBlocked;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -222,7 +294,7 @@ function InviteAcceptInner() {
             {info}
           </div>
         ) : null}
-        {!loading && !error && email ? (
+        {canShowRegister ? (
           <>
             <p className="text-sm text-secondary">
               {t('invite.lead', { email, apt: apartment || '—' })}
@@ -261,7 +333,7 @@ function InviteAcceptInner() {
               </form>
             ) : (
               <form onSubmit={(e) => void handleVerifyOtp(e)} className="space-y-3">
-                <p className="text-sm text-secondary">{t('invite.confirmHint')}</p>
+                <p className="text-sm text-secondary">{t('invite.authOtpHint')}</p>
                 <label className="grid gap-1 text-sm text-secondary">
                   {t('invite.otp')}
                   <input

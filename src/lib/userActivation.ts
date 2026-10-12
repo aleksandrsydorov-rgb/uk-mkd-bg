@@ -235,12 +235,8 @@ export async function createUserActivationReminder(
 
   try {
     const { emailCoreNotifyUserActivation } = await import('@/lib/emailCoreAdapters');
-    const origin =
-      typeof window !== 'undefined' && window.location?.origin
-        ? window.location.origin
-        : '';
-    const inviteLink =
-      inviteToken && origin ? `${origin}/auth/invite?token=${inviteToken}` : null;
+    const { buildInviteAbsoluteUrl } = await import('@/lib/publicAppUrl');
+    const inviteLink = inviteToken ? buildInviteAbsoluteUrl(inviteToken) : null;
     const notify = await emailCoreNotifyUserActivation(supabase, {
       ownerEmail: args.ownerEmail,
       reminderType: result.reminder_type || (args.reminderType ?? 'activation_nudge'),

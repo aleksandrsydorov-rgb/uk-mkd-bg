@@ -13,6 +13,7 @@ import {
   type EmailTemplateLocale,
   type ModuleHonestyStatus,
 } from '@/lib/emailCore';
+import { isNonPublicInviteUrl } from '@/lib/publicAppUrl';
 
 type Sb = SupabaseClient<Database>;
 
@@ -38,6 +39,10 @@ export async function emailCoreNotifyPb1Invite(
     locale?: EmailTemplateLocale;
   }
 ) {
+  const inviteLink =
+    input.inviteLink && !isNonPublicInviteUrl(input.inviteLink)
+      ? input.inviteLink
+      : null;
   const result = await safeEnqueue(supabase, {
     consumer: 'pb1',
     toEmail: input.toEmail,
@@ -45,7 +50,7 @@ export async function emailCoreNotifyPb1Invite(
     locale: input.locale,
     context: { inviteId: input.inviteId, version: 'v1' },
     payload: {
-      invite_link: input.inviteLink,
+      invite_link: inviteLink,
       apartment: input.apartment ?? null,
     },
   });
@@ -67,6 +72,10 @@ export async function emailCoreNotifyUserActivation(
     locale?: EmailTemplateLocale;
   }
 ) {
+  const inviteLink =
+    input.inviteLink && !isNonPublicInviteUrl(input.inviteLink)
+      ? input.inviteLink
+      : null;
   const result = await safeEnqueue(supabase, {
     consumer: 'userActivation',
     toEmail: input.ownerEmail,
@@ -80,7 +89,7 @@ export async function emailCoreNotifyUserActivation(
     },
     payload: {
       reminderType: input.reminderType,
-      invite_link: input.inviteLink ?? null,
+      invite_link: inviteLink,
       propertyId: input.propertyId ?? null,
     },
   });

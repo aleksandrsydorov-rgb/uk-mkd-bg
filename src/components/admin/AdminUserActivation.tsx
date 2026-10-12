@@ -19,6 +19,7 @@ import {
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
+import { buildInviteAbsoluteUrl } from '@/lib/publicAppUrl';
 import {
   USER_ACTIVATION_ONLINE_MINUTES,
   activationStateTone,
@@ -193,11 +194,11 @@ export function AdminUserActivation({
         resendInvite,
       });
       if (result.invite_token) {
-        const link = `${window.location.origin}/auth/invite?token=${result.invite_token}`;
+        const link = buildInviteAbsoluteUrl(result.invite_token);
         try {
           await navigator.clipboard.writeText(link);
           setSuccess(
-            t('admin.uaReminderInviteCopied', { status: result.delivery_status }),
+            `${t('admin.bookInviteLinkCopied')} ${t('admin.uaReminderCreated', { status: result.delivery_status })}`,
           );
         } catch {
           setSuccess(`${t('admin.uaReminderCreated', { status: result.delivery_status })} ${link}`);

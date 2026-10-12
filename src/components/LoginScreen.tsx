@@ -45,7 +45,6 @@ export function LoginScreen({
     try {
       const supabase = createClient();
       const emailRedirectTo = buildAuthCallbackUrl({
-        origin: window.location.origin,
         nextPath: '/auth/update-password',
       });
       const { error } = await supabase.auth.resetPasswordForEmail(nextEmail, {

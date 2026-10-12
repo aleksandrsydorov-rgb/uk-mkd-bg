@@ -30,6 +30,8 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { buildInviteAbsoluteUrl } from '@/lib/publicAppUrl';
+import { emailCoreNotifyPb1Invite } from '@/lib/emailCoreAdapters';
 
 type PropertyOption = {
   id: number;
@@ -441,7 +443,7 @@ export function AdminPropertyBook({
           .filter((c) => c.token)
           .map(
             (c) =>
-              `${c.apartment_number}\t${c.email}\t${window.location.origin}/auth/invite?token=${c.token}`,
+              `${c.apartment_number}\t${c.email}\t${buildInviteAbsoluteUrl(String(c.token))}`,
           )
           .join('\n');
         if (links) {
@@ -1098,13 +1100,10 @@ export function AdminPropertyBook({
                         delivery_status?: string;
                       };
                       const token = String(payload.token ?? '');
-                      const link = `${window.location.origin}/auth/invite?token=${token}`;
+                      const link = buildInviteAbsoluteUrl(token);
                       setInviteLink(link);
                       let honesty = String(payload.delivery_status ?? 'COPY_LINK');
                       try {
-                        const { emailCoreNotifyPb1Invite } = await import(
-                          '@/lib/emailCoreAdapters'
-                        );
                         const notify = await emailCoreNotifyPb1Invite(supabase, {
                           inviteId: String(payload.id ?? token),
                           toEmail: String(payload.email ?? ''),
@@ -1120,11 +1119,12 @@ export function AdminPropertyBook({
                       } catch {
                         /* clipboard optional */
                       }
-                      if (honesty === 'QUEUED' || honesty === 'SENT') {
-                        setSuccess(t('admin.bookInviteQueued'));
-                      } else {
-                        setSuccess(t('admin.bookInviteCopied'));
-                      }
+                      const linkMsg = t('admin.bookInviteLinkCopied');
+                      const emailMsg =
+                        honesty === 'QUEUED' || honesty === 'SENT'
+                          ? t('admin.bookInviteEmailQueued')
+                          : t('admin.bookInviteEmailNotSent');
+                      setSuccess(`${linkMsg} ${emailMsg}`);
                       const { data: invData } = await supabase.rpc('admin_list_property_invites', {
                         p_property_id: selectedId,
                       });
@@ -1192,13 +1192,10 @@ export function AdminPropertyBook({
                                   email?: string;
                                 };
                                 const token = String(payload.token ?? '');
-                                const link = `${window.location.origin}/auth/invite?token=${token}`;
+                                const link = buildInviteAbsoluteUrl(token);
                                 setInviteLink(link);
                                 let honesty = 'COPY_LINK';
                                 try {
-                                  const { emailCoreNotifyPb1Invite } = await import(
-                                    '@/lib/emailCoreAdapters'
-                                  );
                                   const notify = await emailCoreNotifyPb1Invite(supabase, {
                                     inviteId: String(payload.id ?? inv.id),
                                     toEmail: String(payload.email ?? inv.email),
@@ -1214,11 +1211,12 @@ export function AdminPropertyBook({
                                 } catch {
                                   /* clipboard optional */
                                 }
-                                if (honesty === 'QUEUED' || honesty === 'SENT') {
-                                  setSuccess(t('admin.bookInviteQueued'));
-                                } else {
-                                  setSuccess(t('admin.bookInviteCopied'));
-                                }
+                                const linkMsg = t('admin.bookInviteLinkCopied');
+                                const emailMsg =
+                                  honesty === 'QUEUED' || honesty === 'SENT'
+                                    ? t('admin.bookInviteEmailQueued')
+                                    : t('admin.bookInviteEmailNotSent');
+                                setSuccess(`${linkMsg} ${emailMsg}`);
                                 const { data: invData } = await supabase.rpc(
                                   'admin_list_property_invites',
                                   { p_property_id: selectedId as number },

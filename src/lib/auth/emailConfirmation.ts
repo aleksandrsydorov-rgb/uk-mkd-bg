@@ -1,15 +1,15 @@
 /**
  * Supabase Auth email confirmation helpers.
  *
- * Root cause of OTP mismatch: default Confirm signup templates use
- * {{ .ConfirmationURL }} (magic link). The invite UI expected a 6-digit OTP
- * via verifyOtp(type: 'signup'), which only works when the Auth template
- * includes {{ .Token }}. Current docs recommend verifyOtp type: 'email'.
- *
- * App strategy (dual-path):
+ * Dual-path:
  * 1) OTP code → verifyOtp({ email, token, type: 'email' }) with signup fallback
  * 2) Magic / confirm link → /auth/callback (code exchange or token_hash)
  */
+
+import {
+  buildInviteAbsoluteUrl,
+  getPublicAppOrigin,
+} from '@/lib/publicAppUrl';
 
 export type AuthEmailOtpType =
   | 'email'
@@ -31,7 +31,6 @@ const OTP_TYPES: AuthEmailOtpType[] = [
 export function normalizeAuthOtpType(raw: string | null | undefined): AuthEmailOtpType {
   const t = (raw ?? '').trim().toLowerCase();
   if ((OTP_TYPES as string[]).includes(t)) return t as AuthEmailOtpType;
-  // Legacy Supabase redirects may still say type=signup
   if (t === 'confirm' || t === 'confirmation') return 'email';
   return 'email';
 }
@@ -42,10 +41,16 @@ export function signupOtpVerifyTypes(): AuthEmailOtpType[] {
 }
 
 export function buildAuthCallbackUrl(opts: {
-  origin: string;
   nextPath: string;
+  /** Override origin (tests). Default: installation public origin. */
+  origin?: string;
+  env?: Record<string, string | undefined>;
+  browserOrigin?: string | null;
 }): string {
-  const origin = opts.origin.replace(/\/$/, '');
+  const origin = (
+    opts.origin ??
+    getPublicAppOrigin(opts.env ?? (process.env as Record<string, string | undefined>), opts.browserOrigin)
+  ).replace(/\/$/, '');
   const next = opts.nextPath.startsWith('/') ? opts.nextPath : `/${opts.nextPath}`;
   const url = new URL('/auth/callback', origin);
   url.searchParams.set('next', next);
@@ -56,8 +61,38 @@ export function buildInviteAcceptPath(inviteToken: string): string {
   return `/auth/invite?token=${encodeURIComponent(inviteToken)}`;
 }
 
+export function buildInviteAcceptAbsoluteUrl(
+  inviteToken: string,
+  env?: Record<string, string | undefined>,
+  browserOrigin?: string | null
+): string {
+  return buildInviteAbsoluteUrl(inviteToken, env, browserOrigin);
+}
+
 export function safeNextPath(raw: string | null | undefined, fallback = '/account'): string {
   const v = (raw ?? '').trim();
   if (!v.startsWith('/') || v.startsWith('//')) return fallback;
   return v;
+}
+
+export function isAlreadyRegisteredAuthError(message: string): boolean {
+  return /already|registered|exists|user already/i.test(message);
+}
+
+export function isEmailNotConfirmedAuthError(message: string): boolean {
+  return /not confirmed|email.*confirm|confirm.*email/i.test(message);
+}
+
+export function isInvalidOtpAuthError(message: string): boolean {
+  return /otp|token|code|invalid|expired/i.test(message) &&
+    /invalid|expired|otp|token|code/i.test(message);
+}
+
+/** Supabase may return 200 + empty identities when email already registered. */
+export function isSoftExistingSignupUser(user: {
+  identities?: Array<unknown> | null;
+} | null | undefined): boolean {
+  if (!user) return false;
+  const identities = user.identities;
+  return Array.isArray(identities) && identities.length === 0;
 }

@@ -4,6 +4,11 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { normalizeEmail } from '@/lib/email';
+import {
+  buildAuthCallbackUrl,
+  buildInviteAcceptPath,
+  signupOtpVerifyTypes,
+} from '@/lib/auth/emailConfirmation';
 import { useI18n } from '@/i18n/I18nProvider';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -25,6 +30,14 @@ function InviteAcceptInner() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  async function finishAccept() {
+    await supabase.rpc('accept_property_invite', {
+      p_token: token,
+      p_mark_accepted: true,
+    });
+    router.replace('/account');
+  }
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -45,10 +58,23 @@ function InviteAcceptInner() {
           already_accepted?: boolean;
         };
         if (cancelled) return;
-        setEmail(normalizeEmail(payload.email));
+        const inviteEmail = normalizeEmail(payload.email);
+        setEmail(inviteEmail);
         setApartment(String(payload.apartment_number ?? ''));
         if (payload.already_accepted) {
           setInfo(t('invite.alreadyAccepted'));
+        }
+
+        // Magic-link / callback may already have established a session.
+        const { data: userData } = await supabase.auth.getUser();
+        const sessionEmail = normalizeEmail(userData.user?.email ?? '');
+        if (sessionEmail && sessionEmail === inviteEmail && !payload.already_accepted) {
+          await supabase.rpc('accept_property_invite', {
+            p_token: token,
+            p_mark_accepted: true,
+          });
+          if (!cancelled) router.replace('/account');
+          return;
         }
       } catch (e: unknown) {
         if (!cancelled) {
@@ -66,7 +92,7 @@ function InviteAcceptInner() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, t, token]);
+  }, [router, supabase, t, token]);
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -84,43 +110,37 @@ function InviteAcceptInner() {
     try {
       const { data: existing } = await supabase.auth.getUser();
       if (existing.user?.email && normalizeEmail(existing.user.email) === email) {
-        await supabase.rpc('accept_property_invite', {
-          p_token: token,
-          p_mark_accepted: true,
-        });
-        router.replace('/account');
+        await finishAccept();
         return;
       }
+
+      const emailRedirectTo = buildAuthCallbackUrl({
+        origin: window.location.origin,
+        nextPath: buildInviteAcceptPath(token),
+      });
 
       const { data, error: signErr } = await supabase.auth.signUp({
         email,
         password,
+        options: { emailRedirectTo },
       });
       if (signErr) {
         // Already registered — ask to sign in, then mark accepted
         if (/already|registered|exists/i.test(signErr.message)) {
           const { error: inErr } = await supabase.auth.signInWithPassword({ email, password });
           if (inErr) throw inErr;
-          await supabase.rpc('accept_property_invite', {
-            p_token: token,
-            p_mark_accepted: true,
-          });
-          router.replace('/account');
+          await finishAccept();
           return;
         }
         throw signErr;
       }
 
       if (data.session) {
-        await supabase.rpc('accept_property_invite', {
-          p_token: token,
-          p_mark_accepted: true,
-        });
-        router.replace('/account');
+        await finishAccept();
         return;
       }
 
-      // Email confirmation / OTP required
+      // Email confirmation required (OTP code and/or magic link, depending on Auth template).
       setNeedOtp(true);
       setInfo(t('invite.otpSent'));
     } catch (err: unknown) {
@@ -136,17 +156,44 @@ function InviteAcceptInner() {
     setBusy(true);
     setError(null);
     try {
-      const { error: otpErr } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
+      let lastErr: Error | null = null;
+      for (const type of signupOtpVerifyTypes()) {
+        const { error: otpErr } = await supabase.auth.verifyOtp({
+          email,
+          token: otp.trim(),
+          type,
+        });
+        if (!otpErr) {
+          lastErr = null;
+          break;
+        }
+        lastErr = otpErr;
+      }
+      if (lastErr) throw lastErr;
+      await finishAccept();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('invite.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResendConfirmation() {
+    if (!email || !token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const emailRedirectTo = buildAuthCallbackUrl({
+        origin: window.location.origin,
+        nextPath: buildInviteAcceptPath(token),
+      });
+      const { error: resendErr } = await supabase.auth.resend({
         type: 'signup',
+        email,
+        options: { emailRedirectTo },
       });
-      if (otpErr) throw otpErr;
-      await supabase.rpc('accept_property_invite', {
-        p_token: token,
-        p_mark_accepted: true,
-      });
-      router.replace('/account');
+      if (resendErr) throw resendErr;
+      setInfo(t('invite.otpResent'));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('invite.errGeneric'));
     } finally {
@@ -214,22 +261,35 @@ function InviteAcceptInner() {
               </form>
             ) : (
               <form onSubmit={(e) => void handleVerifyOtp(e)} className="space-y-3">
+                <p className="text-sm text-secondary">{t('invite.confirmHint')}</p>
                 <label className="grid gap-1 text-sm text-secondary">
                   {t('invite.otp')}
                   <input
                     className="w-full min-h-10 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     required
                   />
                 </label>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {busy ? t('common.saving') : t('invite.verifyOtp')}
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {busy ? t('common.saving') : t('invite.verifyOtp')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleResendConfirmation()}
+                    className="inline-flex rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground disabled:opacity-50"
+                  >
+                    {t('invite.resendOtp')}
+                  </button>
+                </div>
               </form>
             )}
           </>

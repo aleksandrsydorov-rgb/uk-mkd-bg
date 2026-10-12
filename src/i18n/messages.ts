@@ -48,6 +48,11 @@ export const ru = {
   login: {
     title: 'Личный кабинет',
     hint: 'Для собственников и сотрудников. По email откроется кабинет апартаментов и/или панель УК.',
+    forgotPassword: 'Забыли пароль?',
+    resetSending: 'Отправляем ссылку…',
+    resetSent: 'Если аккаунт существует, на email отправлена ссылка для сброса пароля.',
+    resetNeedEmail: 'Сначала укажите email.',
+    resetFailed: 'Не удалось отправить ссылку для сброса пароля.',
   },
   home: {
     navAbout: 'Инфраструктура',
@@ -1177,7 +1182,9 @@ export const ru = {
     emailLoading: 'Загрузка настроек почты…',
     emailSystemStatus: 'Статус почтовой системы',
     emailPhaseANote:
-      'Phase B: worker/webhook готовы, но EMAIL_SENDING_ENABLED=false — письма не отправляются.',
+      'Phase C: интеграция готова. Письма уходят только при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+    emailPhaseNote:
+      'Phase C: интеграция готова. Письма уходят только при host EMAIL_SENDING_ENABLED и DB email_enabled.',
     emailProvider: 'Провайдер',
     emailDomain: 'Домен',
     emailDomainNone: 'не задан',
@@ -1190,9 +1197,21 @@ export const ru = {
       'Нет подтверждённых отправителей. Их добавляет оператор установки / ALSYD (не произвольный домен).',
     emailReplyTo: 'Reply-To',
     emailLocale: 'Язык шаблонов по умолчанию',
+    emailEnabledToggle: 'Разрешить отправку в этой базе (email_enabled)',
+    emailEnabledHint:
+      'Требует подтверждённый домен/отправитель и отдельный host-флаг. Включайте только для контролируемого теста.',
     emailSave: 'Сохранить',
     emailSaving: 'Сохранение…',
     emailSaved: 'Настройки почты сохранены.',
+    emailTestTitle: 'Контролируемый тест',
+    emailTestHint:
+      'Ставит одно письмо в outbox на указанный адрес. Отправка произойдёт только после включения обоих флагов и запуска worker.',
+    emailTestTo: 'Тестовый получатель',
+    emailTestQueue: 'В очередь',
+    emailTestQueuing: 'Ставим в очередь…',
+    emailTestQueued: 'Тестовое письмо поставлено в outbox (отправка ещё может быть выключена).',
+    emailTestBlocked: 'Письмо не поставлено в очередь ({status}). Проверьте готовность Email Core.',
+    emailTestInvalid: 'Укажите корректный email получателя.',
     emailStatusNotConfigured: 'Не настроено',
     emailStatusDomainPending: 'Ожидается проверка домена',
     emailStatusReady: 'Готово к отправке',
@@ -1654,6 +1673,7 @@ export const ru = {
     bookInviteSend: 'Создать ссылку (24 ч)',
     bookInviteResend: 'Повторно (новый токен)',
     bookInviteCopied: 'Ссылка скопирована. Email не отправлялся — передайте ссылку вручную.',
+    bookInviteQueued: 'Ссылка скопирована. Письмо-приглашение поставлено в очередь Email Core.',
     bookInviteLinkReady: 'Ссылка готова. Email не отправлялся.',
     bookInviteLink: 'Ссылка-приглашение',
     bookInvites: 'Приглашения',
@@ -2475,7 +2495,12 @@ export const ru = {
     submit: 'Создать доступ',
     otp: 'Код из письма (OTP)',
     verifyOtp: 'Подтвердить код',
-    otpSent: 'Проверьте почту и введите код подтверждения.',
+    otpSent:
+      'Проверьте почту: введите 6-значный код или откройте ссылку подтверждения из письма.',
+    confirmHint:
+      'Если в письме только ссылка — откройте её. Если есть код — введите его ниже. Шаблон Auth настраивает оператор.',
+    otpResent: 'Письмо подтверждения отправлено повторно.',
+    resendOtp: 'Отправить письмо снова',
     alreadyAccepted: 'Приглашение уже принято — войдите в кабинет.',
     errToken: 'Нет токена приглашения.',
     errPasswordShort: 'Пароль не короче 8 символов.',
@@ -2484,6 +2509,17 @@ export const ru = {
     errEmailMismatch: 'Войдите под email из приглашения.',
     errOwnershipChanged: 'Собственность изменилась — запросите новое приглашение.',
     errIncompleteBook: 'Данные собственника в Книге неполные — обратитесь к администрации.',
+  },
+  authCallback: {
+    title: 'Подтверждение входа',
+    working: 'Подтверждаем ссылку из письма…',
+    errMissing: 'В ссылке нет кода подтверждения. Запросите письмо снова.',
+    errGeneric: 'Не удалось подтвердить ссылку из письма.',
+  },
+  authUpdatePassword: {
+    title: 'Новый пароль',
+    lead: 'Задайте новый пароль для входа в кабинет.',
+    submit: 'Сохранить пароль',
   },
   guard: {
     title: 'Кабинет охраны',
@@ -2815,6 +2851,11 @@ export const en: Messages = {
   login: {
     title: 'Resident account',
     hint: 'For residents and staff. Your email opens the apartment cabinet and/or the management panel.',
+    forgotPassword: 'Forgot password?',
+    resetSending: 'Sending reset link…',
+    resetSent: 'If an account exists, a password reset link was sent to that email.',
+    resetNeedEmail: 'Enter your email first.',
+    resetFailed: 'Could not send the password reset link.',
   },
   home: {
     navAbout: 'Infrastructure',
@@ -3943,7 +3984,9 @@ export const en: Messages = {
     emailLoading: 'Loading email settings…',
     emailSystemStatus: 'Mail system status',
     emailPhaseANote:
-      'Phase B: worker/webhook are ready, but EMAIL_SENDING_ENABLED=false — no emails are sent.',
+      'Phase C: integration ready. Mail sends only when host EMAIL_SENDING_ENABLED and DB email_enabled are on.',
+    emailPhaseNote:
+      'Phase C: integration ready. Mail sends only when host EMAIL_SENDING_ENABLED and DB email_enabled are on.',
     emailProvider: 'Provider',
     emailDomain: 'Domain',
     emailDomainNone: 'not set',
@@ -3956,9 +3999,21 @@ export const en: Messages = {
       'No verified senders yet. Installation ops / ALSYD add them (admins cannot invent domains).',
     emailReplyTo: 'Reply-To',
     emailLocale: 'Default template locale',
+    emailEnabledToggle: 'Allow sending in this database (email_enabled)',
+    emailEnabledHint:
+      'Requires verified domain/sender plus the separate host flag. Enable only for a controlled test.',
     emailSave: 'Save',
     emailSaving: 'Saving…',
     emailSaved: 'Email settings saved.',
+    emailTestTitle: 'Controlled test',
+    emailTestHint:
+      'Queues one outbox message to the typed address. Sending happens only after both flags are on and the worker runs.',
+    emailTestTo: 'Test recipient',
+    emailTestQueue: 'Queue',
+    emailTestQueuing: 'Queuing…',
+    emailTestQueued: 'Test email queued in outbox (sending may still be disabled).',
+    emailTestBlocked: 'Email was not queued ({status}). Check Email Core readiness.',
+    emailTestInvalid: 'Enter a valid recipient email.',
     emailStatusNotConfigured: 'Not configured',
     emailStatusDomainPending: 'Domain verification pending',
     emailStatusReady: 'Ready to send',
@@ -4422,6 +4477,7 @@ export const en: Messages = {
     bookInviteSend: 'Create link (24h)',
     bookInviteResend: 'Resend (new token)',
     bookInviteCopied: 'Link copied. Email was not sent — share the link manually.',
+    bookInviteQueued: 'Link copied. Invitation email was queued in Email Core.',
     bookInviteLinkReady: 'Link ready. Email was not sent.',
     bookInviteLink: 'Invite link',
     bookInvites: 'Invites',
@@ -5242,7 +5298,12 @@ export const en: Messages = {
     submit: 'Create access',
     otp: 'Code from email (OTP)',
     verifyOtp: 'Verify code',
-    otpSent: 'Check your email and enter the confirmation code.',
+    otpSent:
+      'Check your email: enter the 6-digit code or open the confirmation link from the message.',
+    confirmHint:
+      'If the email only has a link — open it. If it has a code — enter it below. The Auth template is set by the operator.',
+    otpResent: 'Confirmation email resent.',
+    resendOtp: 'Resend confirmation email',
     alreadyAccepted: 'Invite already accepted — sign in to your cabinet.',
     errToken: 'Invite token is missing.',
     errPasswordShort: 'Password must be at least 8 characters.',
@@ -5251,6 +5312,17 @@ export const en: Messages = {
     errEmailMismatch: 'Sign in with the email from the invitation.',
     errOwnershipChanged: 'Ownership changed — request a new invitation.',
     errIncompleteBook: 'Owner Book data is incomplete — contact the administration.',
+  },
+  authCallback: {
+    title: 'Confirming sign-in',
+    working: 'Confirming the link from your email…',
+    errMissing: 'This link has no confirmation code. Request a new email.',
+    errGeneric: 'Could not confirm the email link.',
+  },
+  authUpdatePassword: {
+    title: 'New password',
+    lead: 'Set a new password for your cabinet.',
+    submit: 'Save password',
   },
   guard: {
     title: 'Security desk',
@@ -5583,6 +5655,11 @@ export const bg: Messages = {
   login: {
     title: 'Личен кабинет',
     hint: 'За жители и персонал. По имейла се отваря кабинетът и/или панелът на УК.',
+    forgotPassword: 'Забравена парола?',
+    resetSending: 'Изпращаме връзка…',
+    resetSent: 'Ако има акаунт, на имейла е изпратена връзка за нова парола.',
+    resetNeedEmail: 'Първо въведете имейл.',
+    resetFailed: 'Неуспешно изпращане на връзка за нова парола.',
   },
   home: {
     navAbout: 'Инфраструктура',
@@ -6711,7 +6788,9 @@ export const bg: Messages = {
     emailLoading: 'Зареждане на настройките за поща…',
     emailSystemStatus: 'Статус на пощенската система',
     emailPhaseANote:
-      'Phase B: worker/webhook са готови, но EMAIL_SENDING_ENABLED=false — писма не се изпращат.',
+      'Phase C: интеграцията е готова. Писма се изпращат само при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+    emailPhaseNote:
+      'Phase C: интеграцията е готова. Писма се изпращат само при host EMAIL_SENDING_ENABLED и DB email_enabled.',
     emailProvider: 'Доставчик',
     emailDomain: 'Домейн',
     emailDomainNone: 'не е зададен',
@@ -6724,9 +6803,21 @@ export const bg: Messages = {
       'Няма потвърдени изпращачи. Добавя ги операторът / ALSYD (не произволен домейн).',
     emailReplyTo: 'Reply-To',
     emailLocale: 'Език на шаблоните по подразбиране',
+    emailEnabledToggle: 'Разреши изпращане в тази база (email_enabled)',
+    emailEnabledHint:
+      'Изисква потвърден домейн/подател и отделния host флаг. Включвайте само за контролиран тест.',
     emailSave: 'Запази',
     emailSaving: 'Запазване…',
     emailSaved: 'Настройките за поща са запазени.',
+    emailTestTitle: 'Контролиран тест',
+    emailTestHint:
+      'Слага едно писмо в outbox към указания адрес. Изпращане става само след двата флага и worker.',
+    emailTestTo: 'Тестов получател',
+    emailTestQueue: 'В опашка',
+    emailTestQueuing: 'Добавяне…',
+    emailTestQueued: 'Тестовото писмо е в outbox (изпращането може още да е изключено).',
+    emailTestBlocked: 'Писмото не е поставено в опашка ({status}). Проверете готовността на Email Core.',
+    emailTestInvalid: 'Въведете валиден имейл на получателя.',
     emailStatusNotConfigured: 'Не е конфигурирано',
     emailStatusDomainPending: 'Очаква се проверка на домейна',
     emailStatusReady: 'Готово за изпращане',
@@ -7188,6 +7279,7 @@ export const bg: Messages = {
     bookInviteSend: 'Създай линк (24 ч)',
     bookInviteResend: 'Повторно (нов токен)',
     bookInviteCopied: 'Линкът е копиран. Имейл не е изпращан — предайте линка ръчно.',
+    bookInviteQueued: 'Линкът е копиран. Поканата е поставена в опашката на Email Core.',
     bookInviteLinkReady: 'Линкът е готов. Имейл не е изпращан.',
     bookInviteLink: 'Линк-покана',
     bookInvites: 'Покани',
@@ -8008,7 +8100,12 @@ export const bg: Messages = {
     submit: 'Създай достъп',
     otp: 'Код от имейла (OTP)',
     verifyOtp: 'Потвърди кода',
-    otpSent: 'Проверете пощата и въведете кода за потвърждение.',
+    otpSent:
+      'Проверете пощата: въведете 6-цифрения код или отворете връзката за потвърждение.',
+    confirmHint:
+      'Ако в писмото има само връзка — отворете я. Ако има код — въведете го по-долу. Шаблонът Auth се настройва от оператора.',
+    otpResent: 'Писмото за потвърждение е изпратено отново.',
+    resendOtp: 'Изпрати писмото отново',
     alreadyAccepted: 'Поканата вече е приета — влезте в кабинета.',
     errToken: 'Липсва токен на поканата.',
     errPasswordShort: 'Паролата трябва да е поне 8 символа.',
@@ -8017,6 +8114,17 @@ export const bg: Messages = {
     errEmailMismatch: 'Влезте с email от поканата.',
     errOwnershipChanged: 'Собствеността е променена — поискайте нова покана.',
     errIncompleteBook: 'Данните в Книгата са непълни — свържете се с администрацията.',
+  },
+  authCallback: {
+    title: 'Потвърждение на вход',
+    working: 'Потвърждаваме връзката от имейла…',
+    errMissing: 'Във връзката няма код за потвърждение. Поискайте писмо отново.',
+    errGeneric: 'Неуспешно потвърждение на връзката от имейла.',
+  },
+  authUpdatePassword: {
+    title: 'Нова парола',
+    lead: 'Задайте нова парола за входа в кабинета.',
+    submit: 'Запази паролата',
   },
   guard: {
     title: 'Кабинет охрана',

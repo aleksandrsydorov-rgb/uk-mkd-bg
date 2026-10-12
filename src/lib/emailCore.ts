@@ -8,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
 import { normalizeEmail } from '@/lib/email';
 
-export const EMAIL_CORE_PHASE = 'B' as const;
+export const EMAIL_CORE_PHASE = 'C' as const;
 
 type EnvProbe = Record<string, string | undefined>;
 
@@ -263,7 +263,7 @@ export type EmailCoreConsumer = {
 };
 
 export const EMAIL_CORE_CONSUMERS: Record<
-  'pb1' | 'userActivation' | 'pkgXfer' | 'meeting',
+  'pb1' | 'userActivation' | 'pkgXfer' | 'meeting' | 'emailTest',
   EmailCoreConsumer
 > = {
   pb1: {
@@ -290,6 +290,12 @@ export const EMAIL_CORE_CONSUMERS: Record<
       buildIdempotencyKey(['meeting', ctx.meetingId, ctx.kind, ctx.emailHash]),
     honestyWhenNotReady: 'in_app_only',
   },
+  emailTest: {
+    module: 'email_test',
+    buildIdempotencyKey: (ctx) =>
+      buildIdempotencyKey(['email_test', ctx.toEmail, ctx.nonce ?? 'v1']),
+    honestyWhenNotReady: 'PROVIDER_NOT_CONFIGURED',
+  },
 };
 
 type Sb = SupabaseClient<Database>;
@@ -307,6 +313,7 @@ export async function updateEmailSettings(
     sender_email?: string | null;
     reply_to_email?: string | null;
     template_locale?: EmailTemplateLocale;
+    /** Omit to leave DB value unchanged; pass true only under operator-controlled live test. */
     email_enabled?: boolean;
   }
 ): Promise<ComplexEmailSettings> {
@@ -315,8 +322,8 @@ export async function updateEmailSettings(
     p_sender_email: patch.sender_email ?? null,
     p_reply_to_email: patch.reply_to_email ?? null,
     p_template_locale: patch.template_locale ?? null,
-    // Client helper keeps enable off unless an explicit true is passed by a future controlled UI.
-    p_email_enabled: patch.email_enabled === true ? true : false,
+    p_email_enabled:
+      patch.email_enabled === undefined ? null : patch.email_enabled === true,
   });
   if (error) throw error;
   return parseEmailSettingsPayload(data);
@@ -396,6 +403,47 @@ export async function enqueueTransactionalEmail(
     fallback_status: fallback,
     queued,
     sent,
-    honesty: moduleFallbackStatus(consumer.module, queued || sent),
+    honesty: honestyFromEnqueue(consumer.module, { queued, sent, fallback }),
   };
+}
+
+function honestyFromEnqueue(
+  module: EmailModuleKey,
+  opts: { queued: boolean; sent: boolean; fallback: string }
+): ModuleHonestyStatus {
+  if (opts.sent) return 'SENT';
+  if (opts.queued) return 'QUEUED';
+  const known: ModuleHonestyStatus[] = [
+    'COPY_LINK',
+    'LOCAL_ONLY',
+    'PROVIDER_NOT_CONFIGURED',
+    'QUEUED',
+    'SENT',
+    'FAILED',
+    'in_app_only',
+  ];
+  if ((known as string[]).includes(opts.fallback)) {
+    return opts.fallback as ModuleHonestyStatus;
+  }
+  return moduleFallbackStatus(module, false);
+}
+
+/** Queue a single allowlisted test message (no send until host+DB gates allow). */
+export async function enqueueAllowlistedTestEmail(
+  supabase: Sb,
+  args: { toEmail: string; locale?: EmailTemplateLocale | null; note?: string | null }
+): Promise<EmailEnqueueResult & { honesty: ModuleHonestyStatus }> {
+  const to = normalizeEmail(args.toEmail);
+  const nonce = `${Date.now()}`;
+  return enqueueTransactionalEmail(supabase, {
+    consumer: 'emailTest',
+    toEmail: to,
+    templateKey: 'email_test',
+    locale: args.locale,
+    context: { toEmail: to, nonce },
+    payload: {
+      note: args.note ?? 'controlled_test',
+      queued_at: new Date().toISOString(),
+    },
+  });
 }

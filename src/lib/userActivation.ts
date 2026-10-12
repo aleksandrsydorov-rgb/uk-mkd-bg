@@ -220,27 +220,47 @@ export async function createUserActivationReminder(
   });
   if (error) throw error;
   const r = asRecord(data);
+  const inviteToken = asNullableString(r.invite_token);
   const result: UserActivationReminderResult = {
     id: asString(r.id),
     owner_email: asString(r.owner_email),
     property_id: r.property_id == null ? null : asNumber(r.property_id),
     reminder_type: asString(r.reminder_type),
     channel: asString(r.channel),
-    // Preserve UA honesty (LOCAL_ONLY / PROVIDER_NOT_CONFIGURED). Email Core Phase A does not send.
+    // Default UA honesty from RPC; Email Core may upgrade to QUEUED when outbox accepts.
     delivery_status: asString(r.delivery_status),
-    invite_token: asNullableString(r.invite_token),
+    invite_token: inviteToken,
     invite_expires_at: asNullableString(r.invite_expires_at),
   };
 
-  // Best-effort outbox intent via Email Core adapter (blocked / missing RPC → keep honesty status).
   try {
     const { emailCoreNotifyUserActivation } = await import('@/lib/emailCoreAdapters');
-    await emailCoreNotifyUserActivation(supabase, {
+    const origin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : '';
+    const inviteLink =
+      inviteToken && origin ? `${origin}/auth/invite?token=${inviteToken}` : null;
+    const notify = await emailCoreNotifyUserActivation(supabase, {
       ownerEmail: args.ownerEmail,
       reminderType: result.reminder_type || (args.reminderType ?? 'activation_nudge'),
       propertyId: result.property_id,
       reminderId: result.id,
+      inviteLink,
     });
+    if (notify.honesty === 'QUEUED' || notify.honesty === 'SENT') {
+      result.delivery_status = notify.honesty;
+    } else if (notify.result && !notify.result.ok) {
+      /* keep RPC honesty */
+    } else if (notify.honesty && result.delivery_status !== 'LOCAL_ONLY') {
+      // Prefer Email Core honesty when RPC said provider missing / not configured.
+      if (
+        result.delivery_status === 'PROVIDER_NOT_CONFIGURED' ||
+        !result.delivery_status
+      ) {
+        result.delivery_status = notify.honesty;
+      }
+    }
   } catch {
     /* keep existing delivery_status */
   }

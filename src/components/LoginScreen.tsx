@@ -1,9 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n } from '@/i18n/I18nProvider';
+import { createClient } from '@/lib/supabase/client';
+import { normalizeEmail } from '@/lib/email';
+import { buildAuthCallbackUrl } from '@/lib/auth/emailConfirmation';
 
 export function LoginScreen({
   email,
@@ -25,6 +29,36 @@ export function LoginScreen({
   embedded?: boolean;
 }) {
   const { t } = useI18n();
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetInfo, setResetInfo] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  async function handleForgotPassword() {
+    const nextEmail = normalizeEmail(email);
+    if (!nextEmail) {
+      setResetError(t('login.resetNeedEmail'));
+      return;
+    }
+    setResetBusy(true);
+    setResetError(null);
+    setResetInfo(null);
+    try {
+      const supabase = createClient();
+      const emailRedirectTo = buildAuthCallbackUrl({
+        origin: window.location.origin,
+        nextPath: '/auth/update-password',
+      });
+      const { error } = await supabase.auth.resetPasswordForEmail(nextEmail, {
+        redirectTo: emailRedirectTo,
+      });
+      if (error) throw error;
+      setResetInfo(t('login.resetSent'));
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : t('login.resetFailed'));
+    } finally {
+      setResetBusy(false);
+    }
+  }
 
   const fields = (
     <form onSubmit={onSubmit} className={embedded ? 'login-embed-form' : 'space-y-4'}>
@@ -68,6 +102,26 @@ export function LoginScreen({
       >
         {loginLoading ? '…' : t('common.login')}
       </button>
+      <button
+        type="button"
+        disabled={resetBusy || loginLoading}
+        onClick={() => void handleForgotPassword()}
+        className={
+          embedded
+            ? 'text-left text-xs text-secondary underline-offset-2 hover:underline disabled:opacity-50'
+            : 'w-full text-left text-sm text-secondary underline-offset-2 hover:underline disabled:opacity-50'
+        }
+      >
+        {resetBusy ? t('login.resetSending') : t('login.forgotPassword')}
+      </button>
+      {resetInfo ? (
+        <div className="rounded-lg border border-success/25 bg-success-bg p-3 text-sm">{resetInfo}</div>
+      ) : null}
+      {resetError ? (
+        <div className="rounded-lg border border-danger/25 bg-danger-bg p-3 text-sm text-danger">
+          {resetError}
+        </div>
+      ) : null}
       {loginError ? (
         <div className="rounded-lg border border-danger/25 bg-danger-bg p-3 text-sm text-danger">
           {loginError}

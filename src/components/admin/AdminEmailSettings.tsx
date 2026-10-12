@@ -11,6 +11,7 @@ import {
   adminFieldClass,
 } from '@/components/admin/AdminUi';
 import {
+  enqueueAllowlistedTestEmail,
   fetchEmailSettings,
   listEmailDiagnostics,
   updateEmailSettings,
@@ -43,6 +44,7 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [queuingTest, setQueuingTest] = useState(false);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -55,6 +57,8 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
   const [senderEmail, setSenderEmail] = useState('');
   const [replyTo, setReplyTo] = useState('');
   const [locale, setLocale] = useState<EmailTemplateLocale>('bg');
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [testTo, setTestTo] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +70,7 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
       setSenderEmail(s.sender_email ?? '');
       setReplyTo(s.reply_to_email ?? '');
       setLocale(s.template_locale);
+      setEmailEnabled(s.email_enabled);
       setMissing(false);
       try {
         setDiagnostics(await listEmailDiagnostics(supabase, 30));
@@ -100,14 +105,44 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
         sender_email: senderEmail || null,
         reply_to_email: replyTo,
         template_locale: locale,
-        email_enabled: false,
+        email_enabled: emailEnabled,
       });
       setSettings(next);
+      setEmailEnabled(next.email_enabled);
       setSuccess(t('admin.emailSaved'));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onQueueTest() {
+    if (!canManage) return;
+    const to = testTo.trim();
+    if (!to || !to.includes('@')) {
+      setError(t('admin.emailTestInvalid'));
+      return;
+    }
+    setQueuingTest(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await enqueueAllowlistedTestEmail(supabase, {
+        toEmail: to,
+        locale,
+        note: 'admin_ui_controlled_test',
+      });
+      await load();
+      if (result.queued || result.honesty === 'QUEUED') {
+        setSuccess(t('admin.emailTestQueued'));
+      } else {
+        setSuccess(t('admin.emailTestBlocked', { status: result.honesty || result.status }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueuingTest(false);
     }
   }
 
@@ -121,6 +156,10 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
   }
 
   const verifiedOptions = (settings?.verified_senders ?? []).filter((s) => s.status === 'verified');
+  const canEnable =
+    settings?.domain_status === 'verified' &&
+    Boolean(settings.sender_email) &&
+    verifiedOptions.some((s) => s.email === settings.sender_email);
 
   return (
     <section className="space-y-3">
@@ -145,7 +184,7 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
                 <p className="mt-1 text-sm font-semibold text-foreground">
                   {statusLabel(settings.delivery_status, t)}
                 </p>
-                <p className="mt-1 text-xs text-secondary">{t('admin.emailPhaseANote')}</p>
+                <p className="mt-1 text-xs text-secondary">{t('admin.emailPhaseNote')}</p>
                 <ul className="mt-2 space-y-1 text-xs text-muted">
                   <li>
                     {t('admin.emailProvider')}: {settings.mail_provider}
@@ -158,8 +197,8 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
                   </li>
                   <li>{t('admin.emailSecretsNote')}</li>
                   <li>
-                    {t('admin.emailSendingFlag')}: EMAIL_SENDING_ENABLED=false (host) ·
-                    email_enabled={String(settings.email_enabled)}
+                    {t('admin.emailSendingFlag')}: host EMAIL_SENDING_ENABLED · DB email_enabled=
+                    {String(settings.email_enabled)}
                   </li>
                 </ul>
               </div>
@@ -221,7 +260,20 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
                 </select>
               </label>
 
-              <div className="flex items-end">
+              <label className="flex items-end gap-2 pb-1 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={emailEnabled}
+                  disabled={!canManage || saving || (!canEnable && !emailEnabled)}
+                  onChange={(e) => setEmailEnabled(e.target.checked)}
+                />
+                <span>
+                  {t('admin.emailEnabledToggle')}
+                  <span className="mt-0.5 block text-xs text-muted">{t('admin.emailEnabledHint')}</span>
+                </span>
+              </label>
+
+              <div className="flex items-end sm:col-span-2">
                 <AdminPrimaryButton type="submit" disabled={!canManage || saving}>
                   {saving ? t('admin.emailSaving') : t('admin.emailSave')}
                 </AdminPrimaryButton>
@@ -229,6 +281,31 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
             </div>
           </form>
         )}
+      </AdminCard>
+
+      <AdminCard>
+        <h4 className="text-sm font-semibold text-foreground">{t('admin.emailTestTitle')}</h4>
+        <p className="mt-1 text-xs text-secondary">{t('admin.emailTestHint')}</p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="block flex-1 space-y-1">
+            <span className="text-xs text-muted">{t('admin.emailTestTo')}</span>
+            <input
+              className={adminFieldClass}
+              type="email"
+              value={testTo}
+              disabled={!canManage || queuingTest}
+              onChange={(e) => setTestTo(e.target.value)}
+              placeholder="you@example.com"
+            />
+          </label>
+          <AdminPrimaryButton
+            type="button"
+            disabled={!canManage || queuingTest || !testTo.trim()}
+            onClick={() => void onQueueTest()}
+          >
+            {queuingTest ? t('admin.emailTestQueuing') : t('admin.emailTestQueue')}
+          </AdminPrimaryButton>
+        </div>
       </AdminCard>
 
       <AdminCard>

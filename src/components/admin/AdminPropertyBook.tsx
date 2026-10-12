@@ -1091,18 +1091,39 @@ export function AdminPropertyBook({
                       );
                       if (rpcErr) throw rpcErr;
                       const payload = data as {
+                        id?: string;
                         token?: string;
+                        email?: string;
                         email_sent?: boolean;
                         delivery_status?: string;
                       };
                       const token = String(payload.token ?? '');
                       const link = `${window.location.origin}/auth/invite?token=${token}`;
                       setInviteLink(link);
+                      let honesty = String(payload.delivery_status ?? 'COPY_LINK');
+                      try {
+                        const { emailCoreNotifyPb1Invite } = await import(
+                          '@/lib/emailCoreAdapters'
+                        );
+                        const notify = await emailCoreNotifyPb1Invite(supabase, {
+                          inviteId: String(payload.id ?? token),
+                          toEmail: String(payload.email ?? ''),
+                          inviteLink: link,
+                          apartment: apartmentNumber || null,
+                        });
+                        honesty = notify.honesty;
+                      } catch {
+                        /* keep COPY_LINK */
+                      }
                       try {
                         await navigator.clipboard.writeText(link);
-                        setSuccess(t('admin.bookInviteCopied'));
                       } catch {
-                        setSuccess(t('admin.bookInviteLinkReady'));
+                        /* clipboard optional */
+                      }
+                      if (honesty === 'QUEUED' || honesty === 'SENT') {
+                        setSuccess(t('admin.bookInviteQueued'));
+                      } else {
+                        setSuccess(t('admin.bookInviteCopied'));
                       }
                       const { data: invData } = await supabase.rpc('admin_list_property_invites', {
                         p_property_id: selectedId,
@@ -1165,16 +1186,38 @@ export function AdminPropertyBook({
                                   { p_invite_id: inv.id },
                                 );
                                 if (rpcErr) throw rpcErr;
-                                const token = String(
-                                  (data as { token?: string })?.token ?? '',
-                                );
+                                const payload = data as {
+                                  id?: string;
+                                  token?: string;
+                                  email?: string;
+                                };
+                                const token = String(payload.token ?? '');
                                 const link = `${window.location.origin}/auth/invite?token=${token}`;
                                 setInviteLink(link);
+                                let honesty = 'COPY_LINK';
+                                try {
+                                  const { emailCoreNotifyPb1Invite } = await import(
+                                    '@/lib/emailCoreAdapters'
+                                  );
+                                  const notify = await emailCoreNotifyPb1Invite(supabase, {
+                                    inviteId: String(payload.id ?? inv.id),
+                                    toEmail: String(payload.email ?? inv.email),
+                                    inviteLink: link,
+                                    apartment: apartmentNumber || null,
+                                  });
+                                  honesty = notify.honesty;
+                                } catch {
+                                  /* keep COPY_LINK */
+                                }
                                 try {
                                   await navigator.clipboard.writeText(link);
-                                  setSuccess(t('admin.bookInviteCopied'));
                                 } catch {
-                                  setSuccess(t('admin.bookInviteLinkReady'));
+                                  /* clipboard optional */
+                                }
+                                if (honesty === 'QUEUED' || honesty === 'SENT') {
+                                  setSuccess(t('admin.bookInviteQueued'));
+                                } else {
+                                  setSuccess(t('admin.bookInviteCopied'));
                                 }
                                 const { data: invData } = await supabase.rpc(
                                   'admin_list_property_invites',

@@ -73,6 +73,27 @@ describe('Email Core Phase A · configuration & honesty', () => {
     expect(moduleFallbackStatus('pb1_invite', true)).toBe('QUEUED');
   });
 
+  it('maps PB1 blocked enqueue to COPY_LINK (not generic PROVIDER_NOT_CONFIGURED)', async () => {
+    const { honestyFromEnqueue } = await import('@/lib/emailCore');
+    expect(
+      honestyFromEnqueue('pb1_invite', {
+        queued: false,
+        sent: false,
+        fallback: 'PROVIDER_NOT_CONFIGURED',
+      })
+    ).toBe('COPY_LINK');
+    expect(
+      honestyFromEnqueue('user_activation', {
+        queued: false,
+        sent: false,
+        fallback: 'PROVIDER_NOT_CONFIGURED',
+      })
+    ).toBe('PROVIDER_NOT_CONFIGURED');
+    expect(
+      honestyFromEnqueue('pb1_invite', { queued: true, sent: false, fallback: 'QUEUED' })
+    ).toBe('QUEUED');
+  });
+
   it('builds stable idempotency keys for consumers', () => {
     const pb1 = EMAIL_CORE_CONSUMERS.pb1.buildIdempotencyKey({
       inviteId: '11111111-1111-1111-1111-111111111111',

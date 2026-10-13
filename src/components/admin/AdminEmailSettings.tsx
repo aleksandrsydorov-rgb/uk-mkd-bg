@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -12,10 +12,13 @@ import {
 } from '@/components/admin/AdminUi';
 import {
   enqueueAllowlistedTestEmail,
+  fetchEmailQueueSummary,
   fetchEmailSettings,
   listEmailDiagnostics,
   updateEmailSettings,
   type ComplexEmailSettings,
+  type EmailDiagnosticRow,
+  type EmailQueueSummary,
   type EmailTemplateLocale,
 } from '@/lib/emailCore';
 import { isMissingRpcError } from '@/lib/ownershipChange';
@@ -49,9 +52,10 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [settings, setSettings] = useState<ComplexEmailSettings | null>(null);
-  const [diagnostics, setDiagnostics] = useState<
-    Awaited<ReturnType<typeof listEmailDiagnostics>>
-  >([]);
+  const [diagnostics, setDiagnostics] = useState<EmailDiagnosticRow[]>([]);
+  const [summary, setSummary] = useState<EmailQueueSummary | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [moduleFilter, setModuleFilter] = useState<string>('all');
 
   const [senderName, setSenderName] = useState('');
   const [senderEmail, setSenderEmail] = useState('');
@@ -73,10 +77,11 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
       setEmailEnabled(s.email_enabled);
       setMissing(false);
       try {
-        setDiagnostics(await listEmailDiagnostics(supabase, 30));
+        setDiagnostics(await listEmailDiagnostics(supabase, 50));
       } catch {
         setDiagnostics([]);
       }
+      setSummary(await fetchEmailQueueSummary(supabase));
     } catch (err) {
       if (isMissingRpcError(err)) {
         setMissing(true);
@@ -92,6 +97,19 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const filteredDiagnostics = useMemo(() => {
+    return diagnostics.filter((row) => {
+      if (statusFilter !== 'all' && row.status !== statusFilter) return false;
+      if (moduleFilter !== 'all' && row.module_key !== moduleFilter) return false;
+      return true;
+    });
+  }, [diagnostics, statusFilter, moduleFilter]);
+
+  const moduleOptions = useMemo(() => {
+    const set = new Set(diagnostics.map((d) => d.module_key).filter(Boolean));
+    return Array.from(set).sort();
+  }, [diagnostics]);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
@@ -200,8 +218,20 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
                     {t('admin.emailSendingFlag')}: host EMAIL_SENDING_ENABLED · DB email_enabled=
                     {String(settings.email_enabled)}
                   </li>
+                  <li>{t('admin.emailCronNote')}</li>
                 </ul>
               </div>
+
+              {summary ? (
+                <div className="rounded-lg border border-border px-3 py-2.5 text-xs text-secondary sm:col-span-2">
+                  <p className="font-medium text-foreground">{t('admin.emailQueueSummary')}</p>
+                  <p className="mt-1">
+                    claimable={summary.claimable} · queued={summary.queued} · sent={summary.sent} ·
+                    failed={summary.failed} · blocked={summary.blocked_not_ready} · cancelled=
+                    {summary.cancelled}
+                  </p>
+                </div>
+              ) : null}
 
               <label className="block space-y-1 sm:col-span-2">
                 <span className="text-xs text-muted">{t('admin.emailSenderName')}</span>
@@ -311,7 +341,40 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
       <AdminCard>
         <h4 className="text-sm font-semibold text-foreground">{t('admin.emailDiagnostics')}</h4>
         <p className="mt-1 text-xs text-secondary">{t('admin.emailDiagnosticsHint')}</p>
-        {diagnostics.length === 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <label className="space-y-1 text-xs text-muted">
+            <span>{t('admin.emailDiagStatus')}</span>
+            <select
+              className={adminFieldClass}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">{t('admin.emailFilterAll')}</option>
+              <option value="queued">queued</option>
+              <option value="sent">sent</option>
+              <option value="failed">failed</option>
+              <option value="blocked_not_ready">blocked_not_ready</option>
+              <option value="cancelled">cancelled</option>
+              <option value="sending">sending</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-muted">
+            <span>{t('admin.emailDiagModule')}</span>
+            <select
+              className={adminFieldClass}
+              value={moduleFilter}
+              onChange={(e) => setModuleFilter(e.target.value)}
+            >
+              <option value="all">{t('admin.emailFilterAll')}</option>
+              {moduleOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {filteredDiagnostics.length === 0 ? (
           <p className="mt-3 text-sm text-muted">{t('admin.emailDiagnosticsEmpty')}</p>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -321,16 +384,32 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
                   <th className="py-2 pr-3">{t('admin.emailDiagModule')}</th>
                   <th className="py-2 pr-3">{t('admin.emailDiagTo')}</th>
                   <th className="py-2 pr-3">{t('admin.emailDiagStatus')}</th>
+                  <th className="py-2 pr-3">{t('admin.emailDiagEvent')}</th>
+                  <th className="py-2 pr-3">{t('admin.emailDiagRetry')}</th>
                   <th className="py-2 pr-3">{t('admin.emailDiagError')}</th>
                   <th className="py-2">{t('admin.emailDiagWhen')}</th>
                 </tr>
               </thead>
               <tbody>
-                {diagnostics.map((row) => (
+                {filteredDiagnostics.map((row) => (
                   <tr key={row.id} className="border-b border-border/70">
-                    <td className="py-2 pr-3">{row.module_key}</td>
+                    <td className="py-2 pr-3">
+                      {row.module_key}
+                      <span className="mt-0.5 block font-mono text-[10px] text-muted">
+                        {row.template_key} · {row.locale}
+                      </span>
+                    </td>
                     <td className="py-2 pr-3 font-mono text-xs">{row.to_masked ?? '—'}</td>
-                    <td className="py-2 pr-3">{row.status}</td>
+                    <td className="py-2 pr-3">
+                      {row.status}
+                      <span className="mt-0.5 block text-[10px] text-muted">
+                        attempts={row.attempts}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-muted">{row.latest_event_type ?? '—'}</td>
+                    <td className="py-2 pr-3 text-xs">
+                      {row.retry_eligible ? t('admin.emailRetryYes') : t('admin.emailRetryNo')}
+                    </td>
                     <td className="py-2 pr-3 text-xs text-muted">{row.last_error_code ?? '—'}</td>
                     <td className="py-2 text-xs text-muted">{row.created_at}</td>
                   </tr>

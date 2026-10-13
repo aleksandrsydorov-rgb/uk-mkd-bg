@@ -1182,9 +1182,17 @@ export const ru = {
     emailLoading: 'Загрузка настроек почты…',
     emailSystemStatus: 'Статус почтовой системы',
     emailPhaseANote:
-      'Phase C: интеграция готова. Письма уходят только при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+      'Phase D: автоматический worker по расписанию. Письма уходят только при host EMAIL_SENDING_ENABLED и DB email_enabled.',
     emailPhaseNote:
-      'Phase C: интеграция готова. Письма уходят только при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+      'Phase D: автоматический worker по расписанию. Письма уходят только при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+    emailCronNote:
+      'Очередь обрабатывается по расписанию Vercel Cron (/api/email/cron). Секреты не попадают в клиент.',
+    emailQueueSummary: 'Состояние очереди',
+    emailFilterAll: 'Все',
+    emailDiagEvent: 'Событие',
+    emailDiagRetry: 'Повтор',
+    emailRetryYes: 'да',
+    emailRetryNo: 'нет',
     emailProvider: 'Провайдер',
     emailDomain: 'Домен',
     emailDomainNone: 'не задан',
@@ -3997,9 +4005,17 @@ export const en: Messages = {
     emailLoading: 'Loading email settings…',
     emailSystemStatus: 'Mail system status',
     emailPhaseANote:
-      'Phase C: integration ready. Mail sends only when host EMAIL_SENDING_ENABLED and DB email_enabled are on.',
+      'Phase D: scheduled automatic worker. Mail sends only when host EMAIL_SENDING_ENABLED and DB email_enabled are on.',
     emailPhaseNote:
-      'Phase C: integration ready. Mail sends only when host EMAIL_SENDING_ENABLED and DB email_enabled are on.',
+      'Phase D: scheduled automatic worker. Mail sends only when host EMAIL_SENDING_ENABLED and DB email_enabled are on.',
+    emailCronNote:
+      'The outbox is drained by Vercel Cron (/api/email/cron). Secrets never appear in the client.',
+    emailQueueSummary: 'Queue summary',
+    emailFilterAll: 'All',
+    emailDiagEvent: 'Event',
+    emailDiagRetry: 'Retry',
+    emailRetryYes: 'yes',
+    emailRetryNo: 'no',
     emailProvider: 'Provider',
     emailDomain: 'Domain',
     emailDomainNone: 'not set',
@@ -6814,9 +6830,17 @@ export const bg: Messages = {
     emailLoading: 'Зареждане на настройките за поща…',
     emailSystemStatus: 'Статус на пощенската система',
     emailPhaseANote:
-      'Phase C: интеграцията е готова. Писма се изпращат само при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+      'Phase D: автоматичен worker по график. Писма се изпращат само при host EMAIL_SENDING_ENABLED и DB email_enabled.',
     emailPhaseNote:
-      'Phase C: интеграцията е готова. Писма се изпращат само при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+      'Phase D: автоматичен worker по график. Писма се изпращат само при host EMAIL_SENDING_ENABLED и DB email_enabled.',
+    emailCronNote:
+      'Опашката се обработва от Vercel Cron (/api/email/cron). Тайните не са в клиента.',
+    emailQueueSummary: 'Състояние на опашката',
+    emailFilterAll: 'Всички',
+    emailDiagEvent: 'Събитие',
+    emailDiagRetry: 'Повтор',
+    emailRetryYes: 'да',
+    emailRetryNo: 'не',
     emailProvider: 'Доставчик',
     emailDomain: 'Домейн',
     emailDomainNone: 'не е зададен',

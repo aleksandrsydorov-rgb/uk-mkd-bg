@@ -5009,6 +5009,18 @@ export interface Database {
         };
         Returns: Json;
       };
+      email_core_reclaim_stale_sending: {
+        Args: { p_older_than_minutes?: number };
+        Returns: Json;
+      };
+      email_core_cancel_pb1_invite_outbox: {
+        Args: { p_invite_id: string };
+        Returns: Json;
+      };
+      admin_email_queue_summary: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
       admin_set_ordinary_debt_gate: {
         Args: { p_enabled: boolean };
         Returns: Json;

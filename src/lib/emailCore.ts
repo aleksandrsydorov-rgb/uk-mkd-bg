@@ -8,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
 import { normalizeEmail } from '@/lib/email';
 
-export const EMAIL_CORE_PHASE = 'C' as const;
+export const EMAIL_CORE_PHASE = 'D' as const;
 
 type EnvProbe = Record<string, string | undefined>;
 
@@ -143,6 +143,78 @@ export function buildIdempotencyKey(parts: Array<string | number | null | undefi
     .map((p) => String(p ?? '').trim())
     .filter(Boolean)
     .join(':');
+}
+
+/** Prefer recipient language; fall back to installation default (bg). */
+export function resolveEmailLocale(
+  preferred?: string | null,
+  installationDefault?: string | null
+): EmailTemplateLocale {
+  const cand = String(preferred ?? '').trim().toLowerCase().slice(0, 2);
+  if (cand === 'bg' || cand === 'ru' || cand === 'en') return cand;
+  const def = String(installationDefault ?? '').trim().toLowerCase().slice(0, 2);
+  if (def === 'bg' || def === 'ru' || def === 'en') return def;
+  return 'bg';
+}
+
+/** Provider errors that must not be retried blindly. */
+export function isPermanentProviderFailure(
+  errorCode: string | null | undefined,
+  responseClass?: string | null
+): boolean {
+  const code = String(errorCode ?? '')
+    .trim()
+    .toLowerCase();
+  if (!code) return false;
+  if (code.startsWith('permanent:')) return true;
+  const permanentTokens = [
+    'invalid_recipient',
+    'invalid_invite_link',
+    'bounced',
+    'bounce',
+    'complained',
+    'complaint',
+    'unsubscribed',
+    'suppressed',
+    'validation_error',
+    'invalid_from_address',
+    'domain_not_verified',
+  ];
+  if (permanentTokens.some((t) => code.includes(t))) return true;
+  if (responseClass === 'rejected' && /invalid|forbidden|not allowed|blocked/.test(code)) {
+    return true;
+  }
+  return false;
+}
+
+/** Outbox row is eligible for another worker claim. */
+export function isOutboxRetryEligible(row: {
+  status: string;
+  attempts: number;
+  last_error_code?: string | null;
+}): boolean {
+  if (row.status !== 'queued' && row.status !== 'held') return false;
+  if (row.attempts >= 8) return false;
+  if (isPermanentProviderFailure(row.last_error_code)) return false;
+  return true;
+}
+
+/** Map outbox + optional webhook event to operator-facing honesty. */
+export function honestyFromDeliveryState(opts: {
+  status: string;
+  latestEventType?: string | null;
+}): ModuleHonestyStatus {
+  const ev = String(opts.latestEventType ?? '')
+    .trim()
+    .toLowerCase();
+  if (ev === 'delivered') return 'SENT';
+  if (ev === 'bounced' || ev === 'bounce' || ev === 'complained' || ev === 'complaint' || ev === 'failed') {
+    return 'FAILED';
+  }
+  if (opts.status === 'sent') return 'SENT';
+  if (opts.status === 'queued' || opts.status === 'sending' || opts.status === 'held') return 'QUEUED';
+  if (opts.status === 'failed' || opts.status === 'cancelled') return 'FAILED';
+  return 'PROVIDER_NOT_CONFIGURED';
 }
 
 export function maskEmail(email: string | null | undefined): string | null {
@@ -329,22 +401,38 @@ export async function updateEmailSettings(
   return parseEmailSettingsPayload(data);
 }
 
+export type EmailDiagnosticRow = {
+  id: number;
+  module_key: string;
+  template_key: string;
+  locale: string;
+  to_masked: string | null;
+  status: string;
+  attempts: number;
+  last_error_code: string | null;
+  next_attempt_at: string | null;
+  provider_message_id_present: boolean;
+  latest_event_type: string | null;
+  retry_eligible: boolean;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type EmailQueueSummary = {
+  queued: number;
+  held: number;
+  sending: number;
+  sent: number;
+  failed: number;
+  cancelled: number;
+  blocked_not_ready: number;
+  claimable: number;
+};
+
 export async function listEmailDiagnostics(
   supabase: Sb,
   limit = 50
-): Promise<
-  Array<{
-    id: number;
-    module_key: string;
-    template_key: string;
-    locale: string;
-    to_masked: string | null;
-    status: string;
-    attempts: number;
-    last_error_code: string | null;
-    created_at: string;
-  }>
-> {
+): Promise<EmailDiagnosticRow[]> {
   const { data, error } = await supabase.rpc('admin_list_email_diagnostics', {
     p_limit: limit,
   });
@@ -352,18 +440,52 @@ export async function listEmailDiagnostics(
   const rows = Array.isArray(data) ? data : [];
   return rows.map((r) => {
     const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : {};
+    const status = String(o.status ?? '');
+    const attempts = Number(o.attempts ?? 0);
+    const last_error_code = asString(o.last_error_code);
+    const retry_eligible =
+      typeof o.retry_eligible === 'boolean'
+        ? o.retry_eligible
+        : isOutboxRetryEligible({ status, attempts, last_error_code });
     return {
       id: Number(o.id ?? 0),
       module_key: String(o.module_key ?? ''),
       template_key: String(o.template_key ?? ''),
       locale: String(o.locale ?? ''),
       to_masked: asString(o.to_masked),
-      status: String(o.status ?? ''),
-      attempts: Number(o.attempts ?? 0),
-      last_error_code: asString(o.last_error_code),
+      status,
+      attempts,
+      last_error_code,
+      next_attempt_at: asString(o.next_attempt_at),
+      provider_message_id_present: asBool(o.provider_message_id_present, false),
+      latest_event_type: asString(o.latest_event_type),
+      retry_eligible,
       created_at: String(o.created_at ?? ''),
+      updated_at: asString(o.updated_at),
     };
   });
+}
+
+export async function fetchEmailQueueSummary(
+  supabase: Sb
+): Promise<EmailQueueSummary | null> {
+  try {
+    const { data, error } = await supabase.rpc('admin_email_queue_summary');
+    if (error) return null;
+    const o = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    return {
+      queued: Number(o.queued ?? 0),
+      held: Number(o.held ?? 0),
+      sending: Number(o.sending ?? 0),
+      sent: Number(o.sent ?? 0),
+      failed: Number(o.failed ?? 0),
+      cancelled: Number(o.cancelled ?? 0),
+      blocked_not_ready: Number(o.blocked_not_ready ?? 0),
+      claimable: Number(o.claimable ?? 0),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Shared enqueue for PB1 / UA / XFER / Meeting — worker may send later when gates allow. */
@@ -407,12 +529,18 @@ export async function enqueueTransactionalEmail(
   };
 }
 
-function honestyFromEnqueue(
+/**
+ * Prefer live queue/send state; otherwise use module honesty (PB1=COPY_LINK),
+ * not the generic SQL PROVIDER_NOT_CONFIGURED fallback for every module.
+ */
+export function honestyFromEnqueue(
   module: EmailModuleKey,
   opts: { queued: boolean; sent: boolean; fallback: string }
 ): ModuleHonestyStatus {
   if (opts.sent) return 'SENT';
   if (opts.queued) return 'QUEUED';
+  if (module === 'pb1_invite') return 'COPY_LINK';
+  if (module === 'meeting') return 'in_app_only';
   const known: ModuleHonestyStatus[] = [
     'COPY_LINK',
     'LOCAL_ONLY',

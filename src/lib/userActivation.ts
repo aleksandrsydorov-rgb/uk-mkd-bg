@@ -209,6 +209,8 @@ export async function createUserActivationReminder(
     propertyId?: number | null;
     note?: string | null;
     resendInvite?: boolean;
+    /** Preferred template locale (recipient unknown → installation/admin UI fallback). */
+    locale?: string | null;
   },
 ): Promise<UserActivationReminderResult> {
   const { data, error } = await supabase.rpc('admin_user_activation_create_reminder', {
@@ -243,9 +245,13 @@ export async function createUserActivationReminder(
       propertyId: result.property_id,
       reminderId: result.id,
       inviteLink,
+      locale: args.locale ?? null,
     });
     if (notify.honesty === 'QUEUED' || notify.honesty === 'SENT') {
+      // Honest: enqueue accepted ≠ provider delivered. Worker/webhook later upgrade status.
       result.delivery_status = notify.honesty;
+    } else if (notify.honesty === 'FAILED') {
+      result.delivery_status = 'FAILED';
     } else if (notify.result && !notify.result.ok) {
       /* keep RPC honesty */
     } else if (notify.honesty && result.delivery_status !== 'LOCAL_ONLY') {

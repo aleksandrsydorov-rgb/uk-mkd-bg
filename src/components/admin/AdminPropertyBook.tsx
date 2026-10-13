@@ -31,7 +31,10 @@ import {
 } from '@/components/admin/AdminUi';
 import { StatusBadge } from '@/components/account/ownerUi';
 import { buildInviteAbsoluteUrl } from '@/lib/publicAppUrl';
-import { emailCoreNotifyPb1Invite } from '@/lib/emailCoreAdapters';
+import {
+  emailCoreCancelPb1InviteOutbox,
+  emailCoreNotifyPb1Invite,
+} from '@/lib/emailCoreAdapters';
 
 type PropertyOption = {
   id: number;
@@ -77,7 +80,7 @@ export function AdminPropertyBook({
   properties: PropertyOption[];
   staffRole: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const canSee = canSeePropertyBookAdmin(staffRole);
   const [rows, setRows] = useState<PropertyBookListRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1109,6 +1112,7 @@ export function AdminPropertyBook({
                           toEmail: String(payload.email ?? ''),
                           inviteLink: link,
                           apartment: apartmentNumber || null,
+                          locale,
                         });
                         honesty = notify.honesty;
                       } catch {
@@ -1201,6 +1205,7 @@ export function AdminPropertyBook({
                                     toEmail: String(payload.email ?? inv.email),
                                     inviteLink: link,
                                     apartment: apartmentNumber || null,
+                                    locale,
                                   });
                                   honesty = notify.honesty;
                                 } catch {
@@ -1261,6 +1266,7 @@ export function AdminPropertyBook({
                                   { p_invite_id: inv.id },
                                 );
                                 if (rpcErr) throw rpcErr;
+                                await emailCoreCancelPb1InviteOutbox(supabase, inv.id);
                                 setInvites((prev) =>
                                   prev.map((x) =>
                                     x.id === inv.id ? { ...x, status: 'revoked' } : x,

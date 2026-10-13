@@ -1,5 +1,5 @@
 /**
- * Email Core outbox worker (Phase B).
+ * Email Core outbox worker (Phase B/D).
  * Host gate EMAIL_SENDING_ENABLED must be true before any Resend call.
  */
 
@@ -8,9 +8,11 @@ import type { Database } from '@/lib/database.types';
 import {
   hasResendApiKeyPresent,
   isEmailSendingEnvEnabled,
+  isPermanentProviderFailure,
 } from '@/lib/emailCore';
 import { createResendAdapter, type ResendAdapter } from '@/lib/email/resendAdapter';
 import { renderTransactionalEmail } from '@/lib/email/templates';
+import { isNonPublicInviteUrl } from '@/lib/publicAppUrl';
 
 export const EMAIL_WORKER_MAX_BATCH = 10;
 
@@ -22,6 +24,7 @@ export type WorkerRunResult = {
   sent: number;
   failed: number;
   retried: number;
+  cancelled?: number;
 };
 
 type EnvProbe = Record<string, string | undefined>;
@@ -176,8 +179,29 @@ export async function runOutboxWorker(opts: {
   let sent = 0;
   let failed = 0;
   let retried = 0;
+  let cancelled = 0;
 
   for (const row of rows) {
+    const payload = asRecord(row.payload);
+    const inviteLink = String(payload.invite_link ?? payload.inviteLink ?? '').trim();
+    if (
+      (row.module_key === 'pb1_invite' || row.module_key === 'user_activation') &&
+      inviteLink &&
+      isNonPublicInviteUrl(inviteLink)
+    ) {
+      await opts.supabase.rpc('email_core_complete_outbox_send', {
+        p_outbox_id: row.id,
+        p_ok: false,
+        p_provider_message_id: null,
+        p_error_code: 'invalid_invite_link',
+        p_provider_response_class: 'rejected',
+      });
+      // Force terminal via permanent code (migration) or local cancel fallback.
+      cancelled += 1;
+      failed += 1;
+      continue;
+    }
+
     const rendered = renderTransactionalEmail({
       templateKey: row.template_key,
       locale: row.locale,
@@ -206,18 +230,24 @@ export async function runOutboxWorker(opts: {
       });
       sent += 1;
     } else {
+      const permanent = isPermanentProviderFailure(result.errorCode, result.responseClass);
+      const errorCode = permanent
+        ? result.errorCode.startsWith('permanent:')
+          ? result.errorCode
+          : `permanent:${result.errorCode}`
+        : result.errorCode;
       const complete = await opts.supabase.rpc('email_core_complete_outbox_send', {
         p_outbox_id: row.id,
         p_ok: false,
         p_provider_message_id: null,
-        p_error_code: result.errorCode,
+        p_error_code: errorCode,
         p_provider_response_class: result.responseClass,
       });
       const status =
         complete.data && typeof complete.data === 'object'
           ? String((complete.data as { status?: unknown }).status ?? '')
           : '';
-      if (status === 'failed') failed += 1;
+      if (status === 'failed' || permanent) failed += 1;
       else retried += 1;
     }
   }
@@ -229,6 +259,7 @@ export async function runOutboxWorker(opts: {
     sent,
     failed,
     retried,
+    cancelled,
   };
 }
 
@@ -236,4 +267,25 @@ export async function runOutboxWorker(opts: {
 export function computeBackoffSeconds(attempt: number): number {
   const a = Math.max(1, Math.min(attempt, 10));
   return Math.min(3600, 2 ** a * 30);
+}
+
+/** Recover rows stuck in `sending` after worker crash / timeout. */
+export async function reclaimStaleSendingClaims(
+  supabase: SupabaseClient<Database>,
+  opts?: { olderThanMinutes?: number }
+): Promise<number> {
+  const minutes = Math.max(1, Math.min(opts?.olderThanMinutes ?? 15, 120));
+  try {
+    const { data, error } = await supabase.rpc('email_core_reclaim_stale_sending', {
+      p_older_than_minutes: minutes,
+    });
+    if (error) return 0;
+    if (typeof data === 'number') return data;
+    if (data && typeof data === 'object' && 'reclaimed' in data) {
+      return Number((data as { reclaimed?: unknown }).reclaimed ?? 0);
+    }
+    return Number(data ?? 0) || 0;
+  } catch {
+    return 0;
+  }
 }

@@ -78,8 +78,8 @@ describe('Email Core Phase C · templates BG/RU/EN', () => {
 });
 
 describe('Email Core Phase C · idempotency & retry helpers', () => {
-  it('keeps phase marker at C', () => {
-    expect(EMAIL_CORE_PHASE).toBe('C');
+  it('keeps phase marker at D (supersedes C)', () => {
+    expect(EMAIL_CORE_PHASE).toBe('D');
   });
 
   it('builds stable idempotency keys for test + invite', () => {

@@ -116,7 +116,7 @@ export function AdminUserActivation({
   supabase: SupabaseClient<Database>;
   staffRole: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const canSee = canSeeUserActivationAdmin(staffRole);
 
   const [dashboard, setDashboard] = useState<UserActivationDashboard | null>(null);
@@ -192,6 +192,7 @@ export function AdminUserActivation({
         reminderType: resendInvite ? 'invite_resend' : 'activation_nudge',
         propertyId: row.properties[0]?.property_id ?? null,
         resendInvite,
+        locale,
       });
       if (result.invite_token) {
         const link = buildInviteAbsoluteUrl(result.invite_token);

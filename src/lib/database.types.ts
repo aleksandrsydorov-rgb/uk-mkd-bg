@@ -3981,6 +3981,8 @@ export interface Database {
           p_assessment_id: string;
           p_reason: string;
           p_idempotency_key: string;
+          /** E2.3-D: required; must match assessment.property_id (migration 20261019120000). */
+          p_expected_property_id: number;
         };
         Returns: Json;
       };

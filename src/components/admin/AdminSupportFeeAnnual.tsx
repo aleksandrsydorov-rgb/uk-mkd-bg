@@ -5,7 +5,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { annualSupportFee } from '@/lib/finance';
-import { assessVoidSupportAssessmentEligibility } from '@/lib/supportFeeReversal';
+import {
+  assertSupportFeeVoidTargetMatch,
+  assessVoidSupportAssessmentEligibility,
+  buildSupportFeeVoidTarget,
+  type SupportFeeVoidTarget,
+} from '@/lib/supportFeeReversal';
 import {
   formatEurAmount,
   formatSofiaDate,
@@ -74,10 +79,19 @@ export function AdminSupportFeeAnnual({
   const [corrAmt, setCorrAmt] = useState('');
   const [corrReason, setCorrReason] = useState('');
   const [finalizePropertyId, setFinalizePropertyId] = useState('');
-  const [voidId, setVoidId] = useState('');
+  /** Frozen at row-click; never derived from DOM order or mutable select index. */
+  const [voidTarget, setVoidTarget] = useState<SupportFeeVoidTarget | null>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [voidAptConfirm, setVoidAptConfirm] = useState('');
   const [voidConfirm, setVoidConfirm] = useState(false);
   const [voidBusy, setVoidBusy] = useState(false);
+
+  function clearVoidPanel() {
+    setVoidTarget(null);
+    setVoidReason('');
+    setVoidAptConfirm('');
+    setVoidConfirm(false);
+  }
 
   const y = Number(year);
   const sampleBase = useMemo(
@@ -135,6 +149,7 @@ export function AdminSupportFeeAnnual({
   }
 
   useEffect(() => {
+    clearVoidPanel();
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
@@ -469,10 +484,19 @@ export function AdminSupportFeeAnnual({
                     {canPay && a && a.status !== 'void' && voidElig?.ok ? (
                       <button
                         type="button"
+                        data-void-assessment-id={a.id}
+                        data-void-property-id={String(p.id)}
+                        data-void-apartment={String(p.apartment_number)}
                         className="rounded-full border border-border px-2 py-0.5 text-xs text-secondary"
                         onClick={() => {
-                          setVoidId(a.id);
+                          setVoidTarget(
+                            buildSupportFeeVoidTarget({
+                              assessment: a,
+                              apartmentNumber: p.apartment_number,
+                            }),
+                          );
                           setVoidReason('');
+                          setVoidAptConfirm('');
                           setVoidConfirm(false);
                         }}
                       >
@@ -493,10 +517,42 @@ export function AdminSupportFeeAnnual({
         </table>
         </AdminTableShell>
         )}
-        {canPay && voidId ? (
-          <div className={`${adminCardClass} mt-4 p-4 text-sm`}>
+        {canPay && voidTarget ? (
+          <div className={`${adminCardClass} mt-4 p-4 text-sm`} data-void-panel="1">
             <p className="font-medium">{t('admin.feeVoidAssessment')}</p>
             <p className="mt-1 text-xs text-muted">{t('admin.feeVoidConfirm')}</p>
+            <dl className="mt-3 grid gap-1 rounded-lg border border-border bg-background px-3 py-2 text-xs">
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('form.colApt')}</dt>
+                <dd className="font-semibold tabular-nums">№ {voidTarget.apartmentNumber}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('admin.sfYear')}</dt>
+                <dd className="font-semibold tabular-nums">{voidTarget.billingYear}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('account.sfFinal')}</dt>
+                <dd className="font-semibold tabular-nums">{formatEurAmount(voidTarget.finalAmount, locale)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('account.sfRemainingDue')}</dt>
+                <dd className="font-semibold tabular-nums text-danger">{formatEurAmount(voidTarget.remainingDue, locale)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">ID</dt>
+                <dd className="font-mono text-[10px] text-secondary">{voidTarget.assessmentId}</dd>
+              </div>
+            </dl>
+            <label className="mt-3 block text-secondary">
+              {t('admin.feeVoidAptConfirm', { n: voidTarget.apartmentNumber })}
+              <input
+                value={voidAptConfirm}
+                onChange={(e) => setVoidAptConfirm(e.target.value)}
+                autoComplete="off"
+                className={`mt-1 ${adminFieldClass}`}
+                placeholder={String(voidTarget.apartmentNumber)}
+              />
+            </label>
             <label className="mt-2 block text-secondary">
               {t('admin.feeVoidReason')}
               <input
@@ -516,21 +572,39 @@ export function AdminSupportFeeAnnual({
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={voidBusy || !voidConfirm || !voidReason.trim()}
+                data-void-submit="1"
+                disabled={
+                  voidBusy
+                  || !voidConfirm
+                  || !voidReason.trim()
+                  || voidAptConfirm.trim() !== voidTarget.apartmentNumber
+                }
                 className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={async () => {
-                  if (!voidId || !voidReason.trim() || !voidConfirm) return;
+                  const frozen = voidTarget;
+                  if (!frozen || !voidReason.trim() || !voidConfirm) return;
+                  const live = assessments.find((x) => x.id === frozen.assessmentId) ?? null;
+                  const match = assertSupportFeeVoidTargetMatch({
+                    target: frozen,
+                    assessment: live,
+                    expectedPropertyId: frozen.propertyId,
+                    confirmedApartmentNumber: voidAptConfirm,
+                  });
+                  if (!match.ok) {
+                    onError(t('admin.feeVoidTargetMismatch'));
+                    clearVoidPanel();
+                    return;
+                  }
                   setVoidBusy(true);
                   try {
                     const { error } = await supabase.rpc('void_support_fee_assessment', {
-                      p_assessment_id: voidId,
+                      p_assessment_id: frozen.assessmentId,
                       p_reason: voidReason.trim(),
                       p_idempotency_key: crypto.randomUUID(),
+                      p_expected_property_id: frozen.propertyId,
                     });
                     if (error) throw error;
-                    setVoidId('');
-                    setVoidReason('');
-                    setVoidConfirm(false);
+                    clearVoidPanel();
                     await load();
                     await onReload();
                   } catch (err: unknown) {
@@ -544,17 +618,13 @@ export function AdminSupportFeeAnnual({
                   }
                 }}
               >
-                {voidBusy ? t('admin.feeVoidBusy') : t('admin.feeVoidAssessment')}
+                {voidBusy ? t('admin.feeVoidBusy') : t('admin.feeVoidSubmit')}
               </button>
               <button
                 type="button"
                 disabled={voidBusy}
                 className="rounded-full border border-border px-4 py-1.5 text-sm text-secondary"
-                onClick={() => {
-                  setVoidId('');
-                  setVoidReason('');
-                  setVoidConfirm(false);
-                }}
+                onClick={() => clearVoidPanel()}
               >
                 {t('admin.feeActionCancel')}
               </button>

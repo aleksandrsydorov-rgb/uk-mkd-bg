@@ -115,6 +115,85 @@ export function previewVoidUnpaidAssessment(input: {
   return { newDebt: 0, newOverpayment: over };
 }
 
+/** Immutable void target captured at row-click time (E2.3-D wrong-apt guard). */
+export type SupportFeeVoidTarget = {
+  assessmentId: string;
+  propertyId: number;
+  apartmentNumber: string;
+  billingYear: number;
+  remainingDue: number;
+  finalAmount: number;
+  baseAmount: number;
+};
+
+export type VoidTargetMatchResult =
+  | { ok: true }
+  | { ok: false; reason: 'missing_target' | 'missing_expected_property' | 'assessment_mismatch' | 'property_mismatch' | 'apartment_mismatch' | 'stale_assessment' };
+
+/**
+ * Reject void when the frozen UI target no longer matches the assessment row
+ * or the operator-confirmed apartment number.
+ */
+export function assertSupportFeeVoidTargetMatch(input: {
+  target: SupportFeeVoidTarget | null | undefined;
+  assessment?: {
+    id?: string | null;
+    property_id?: number | null;
+    billing_year?: number | null;
+    remaining_due?: number | null;
+    status?: string | null;
+  } | null;
+  expectedPropertyId?: number | null;
+  confirmedApartmentNumber?: string | null;
+}): VoidTargetMatchResult {
+  const target = input.target;
+  if (!target?.assessmentId) return { ok: false, reason: 'missing_target' };
+  if (input.expectedPropertyId == null || !Number.isFinite(Number(input.expectedPropertyId))) {
+    return { ok: false, reason: 'missing_expected_property' };
+  }
+  if (Number(target.propertyId) !== Number(input.expectedPropertyId)) {
+    return { ok: false, reason: 'property_mismatch' };
+  }
+  const confirmed = String(input.confirmedApartmentNumber ?? '').trim();
+  if (!confirmed || confirmed !== String(target.apartmentNumber).trim()) {
+    return { ok: false, reason: 'apartment_mismatch' };
+  }
+  const a = input.assessment;
+  if (!a?.id) return { ok: false, reason: 'stale_assessment' };
+  if (String(a.id) !== String(target.assessmentId)) {
+    return { ok: false, reason: 'assessment_mismatch' };
+  }
+  if (Number(a.property_id) !== Number(target.propertyId)) {
+    return { ok: false, reason: 'property_mismatch' };
+  }
+  if (a.status != null && String(a.status).toLowerCase() === 'void') {
+    return { ok: false, reason: 'stale_assessment' };
+  }
+  return { ok: true };
+}
+
+export function buildSupportFeeVoidTarget(input: {
+  assessment: {
+    id: string;
+    property_id: number;
+    billing_year: number;
+    remaining_due?: number | null;
+    final_amount?: number | null;
+    base_amount?: number | null;
+  };
+  apartmentNumber: string | number;
+}): SupportFeeVoidTarget {
+  return {
+    assessmentId: String(input.assessment.id),
+    propertyId: Number(input.assessment.property_id),
+    apartmentNumber: String(input.apartmentNumber ?? '').trim(),
+    billingYear: Number(input.assessment.billing_year),
+    remainingDue: roundMoney(Number(input.assessment.remaining_due ?? 0)),
+    finalAmount: roundMoney(Number(input.assessment.final_amount ?? 0)),
+    baseAmount: roundMoney(Number(input.assessment.base_amount ?? 0)),
+  };
+}
+
 export function supportLedgerKindLabelKey(kind: string | null | undefined): string {
   switch (kind) {
     case 'payment':

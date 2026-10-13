@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   assessVoidSupportAssessmentEligibility,
+  assertSupportFeeVoidTargetMatch,
+  buildSupportFeeVoidTarget,
   isSupportLedgerReversed,
   isSupportPaymentReversible,
   previewReverseSupportPayment,
@@ -175,6 +177,134 @@ describe('E2.3-B · payment reversal + assessment void policy', () => {
     expect(supportLedgerKindLabelKey('payment')).toBe('admin.kindPayment');
     expect(supportLedgerKindLabelKey('payment_reversal')).toBe('admin.kindPaymentReversal');
     expect(supportLedgerKindLabelKey('assessment_void')).toBe('admin.kindAssessmentVoid');
+  });
+
+  describe('E2.3-D · void target apartment binding', () => {
+    const target99408 = buildSupportFeeVoidTarget({
+      assessment: {
+        id: '20781d03-4fd8-4b39-91bb-d0223d563029',
+        property_id: 114,
+        billing_year: 2026,
+        remaining_due: 132,
+        final_amount: 132,
+        base_amount: 120,
+      },
+      apartmentNumber: '99408',
+    });
+    const live99408 = {
+      id: '20781d03-4fd8-4b39-91bb-d0223d563029',
+      property_id: 114,
+      billing_year: 2026,
+      remaining_due: 132,
+      status: 'open',
+    };
+    const wrongAptAssessment = {
+      id: 'e85d923f-77c1-494c-b752-52eb4f5e45ce',
+      property_id: 111,
+      billing_year: 2026,
+      remaining_due: 360,
+      status: 'open',
+    };
+
+    it('accepts frozen target matching live assessment + confirmed apartment', () => {
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: live99408,
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99408',
+        })
+      ).toEqual({ ok: true });
+    });
+
+    it('rejects wrong-apartment selection (stale assessment id from another row)', () => {
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: wrongAptAssessment,
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99408',
+        }).ok
+      ).toBe(false);
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: {
+            ...target99408,
+            assessmentId: wrongAptAssessment.id,
+            propertyId: 111,
+            apartmentNumber: '99405',
+          },
+          assessment: wrongAptAssessment,
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99405',
+        })
+      ).toEqual({ ok: false, reason: 'property_mismatch' });
+    });
+
+    it('rejects stale UI state when live assessment disappeared or already void', () => {
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: null,
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99408',
+        })
+      ).toEqual({ ok: false, reason: 'stale_assessment' });
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: { ...live99408, status: 'void' },
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99408',
+        })
+      ).toEqual({ ok: false, reason: 'stale_assessment' });
+    });
+
+    it('rejects mismatched assessment id / missing expected property / wrong apt confirm', () => {
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: { ...live99408, id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' },
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99408',
+        })
+      ).toEqual({ ok: false, reason: 'assessment_mismatch' });
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: live99408,
+          expectedPropertyId: null,
+          confirmedApartmentNumber: '99408',
+        })
+      ).toEqual({ ok: false, reason: 'missing_expected_property' });
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: target99408,
+          assessment: live99408,
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99405',
+        })
+      ).toEqual({ ok: false, reason: 'apartment_mismatch' });
+      expect(
+        assertSupportFeeVoidTargetMatch({
+          target: null,
+          assessment: live99408,
+          expectedPropertyId: 114,
+          confirmedApartmentNumber: '99408',
+        })
+      ).toEqual({ ok: false, reason: 'missing_target' });
+    });
+
+    it('buildSupportFeeVoidTarget freezes immutable identity fields', () => {
+      expect(target99408).toMatchObject({
+        assessmentId: '20781d03-4fd8-4b39-91bb-d0223d563029',
+        propertyId: 114,
+        apartmentNumber: '99408',
+        billingYear: 2026,
+        remainingDue: 132,
+        finalAmount: 132,
+      });
+    });
   });
 
   it('invalid reverse amounts are rejected (concurrency / negative guard mirror)', () => {

@@ -36,6 +36,10 @@ import { OwnerGuestMode } from '@/components/account/OwnerGuestMode';
 import { normalizeEmail } from '@/lib/email';
 import { annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import {
+  displaySupportOutstanding,
+  supportOverpayment,
+} from '@/lib/supportFeeBalance';
+import {
   CHAT_FILES_BUCKET,
   REQUEST_PHOTOS_BUCKET,
   chatFilePath,
@@ -1733,8 +1737,17 @@ export default function AccountPage() {
             chatEnabled={chatEnabled}
             documentsEnabled={buildingDocumentsEnabled}
             meetingsEnabled={generalMeetingEnabled}
-            supportDebt={Math.max(0, Number(property?.debt ?? 0))}
-            supportOver={Math.max(0, Number(property?.overpayment ?? 0))}
+            supportDebt={
+              property
+                ? displaySupportOutstanding({
+                    assessmentsLoaded: true,
+                    assessments: supportAssessments,
+                    propertyId: property.id,
+                    portalDebt: property.debt,
+                  })
+                : 0
+            }
+            supportOver={supportOverpayment(property?.overpayment)}
             supportAssessment={supportAssessments.find((a) => a.property_id === property?.id) ?? null}
             occupancyStatus={occupancyStatus}
             polls={polls}
@@ -1936,8 +1949,15 @@ export default function AccountPage() {
         );
 
       case 'финансы': {
-        const totalDebt = Number(property?.debt ?? 0);
-        const totalOver = Number(property?.overpayment ?? 0);
+        const totalDebt = property
+          ? displaySupportOutstanding({
+              assessmentsLoaded: true,
+              assessments: supportAssessments,
+              propertyId: property.id,
+              portalDebt: property.debt,
+            })
+          : 0;
+        const totalOver = supportOverpayment(property?.overpayment);
         const supportArea = Number(property?.area_sqm ?? 0);
         const monthlyFee = monthlySupportFee(supportArea, supportRate);
         const annualFee = annualSupportFee(supportArea, supportRate);
@@ -1955,7 +1975,15 @@ export default function AccountPage() {
 
             {properties.length > 1 && (
               <div className="grid gap-2 sm:grid-cols-2">
-                {properties.map((p) => (
+                {properties.map((p) => {
+                  const due = displaySupportOutstanding({
+                    assessmentsLoaded: true,
+                    assessments: supportAssessments,
+                    propertyId: p.id,
+                    portalDebt: p.debt,
+                  });
+                  const over = supportOverpayment(p.overpayment);
+                  return (
                   <button
                     key={p.id}
                     type="button"
@@ -1971,15 +1999,16 @@ export default function AccountPage() {
                       <span className="text-xs text-muted">{Number(p.area_sqm ?? 0)} {t('common.sqm')}</span>
                     </div>
                     <div className="mt-2 flex gap-4 text-sm">
-                      <span className={Number(p.debt ?? 0) > 0 ? 'text-warning' : 'text-secondary'}>
-                        {t('account.debtAmt', { n: Number(p.debt ?? 0).toFixed(2) })}
+                      <span className={due > 0 ? 'text-warning' : 'text-secondary'}>
+                        {t('account.debtAmt', { n: due.toFixed(2) })}
                       </span>
-                      <span className={Number(p.overpayment ?? 0) > 0 ? 'text-success' : 'text-muted'}>
-                        +{Number(p.overpayment ?? 0).toFixed(2)} €
+                      <span className={over > 0 ? 'text-success' : 'text-muted'}>
+                        +{over.toFixed(2)} €
                       </span>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
 

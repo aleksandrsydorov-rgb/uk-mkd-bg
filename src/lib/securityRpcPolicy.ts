@@ -3,6 +3,7 @@
  * Keep in sync with:
  * - supabase/migrations/20261015120000_phase_e1_security_hardening.sql
  * - supabase/migrations/20261016120000_phase_e2_1_finance_security_hardening.sql
+ * - supabase/migrations/20261017120000_phase_e2_3_a_finance_subject_and_balance.sql (subject/reprice policy)
  */
 
 export type RpcCallerRole = 'anon' | 'authenticated' | 'service_role';

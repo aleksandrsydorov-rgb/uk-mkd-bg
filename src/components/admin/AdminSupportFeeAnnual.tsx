@@ -404,8 +404,10 @@ export function AdminSupportFeeAnnual({
           <tbody>
             {properties.slice(0, 80).map((p) => {
               const a = assessments.find((x) => x.property_id === p.id);
-              const debt = Number(p.debt ?? 0);
+              // D1: remaining_due is canonical outstanding; portal debt/over are reconcile/credit only.
+              const outstanding = a ? Number(a.remaining_due ?? 0) : 0;
               const over = Number(p.overpayment ?? 0);
+              const portalDebt = Number(p.debt ?? 0);
               return (
                 <tr key={p.id} className={adminTableRowClass}>
                   <td className={adminTableCellClass}>№ {p.apartment_number}</td>
@@ -422,13 +424,18 @@ export function AdminSupportFeeAnnual({
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.applied_credit_amount, locale) : '—'}</td>
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.remaining_due, locale) : '—'}</td>
                   <td className={adminTableCellClass}>
-                    {debt > 0 ? (
-                      <StatusBadge label={`${t('admin.balDebt')} ${formatEurAmount(debt, locale)}`} tone="danger" />
+                    {outstanding > 0 ? (
+                      <StatusBadge label={`${t('admin.balDebt')} ${formatEurAmount(outstanding, locale)}`} tone="danger" />
                     ) : over > 0 ? (
                       <StatusBadge label={`${t('admin.balOver')} ${formatEurAmount(over, locale)}`} tone="success" />
                     ) : (
                       <StatusBadge label={t('admin.balSettled')} tone="neutral" />
                     )}
+                    {a && portalDebt !== outstanding ? (
+                      <div className="mt-1 text-[10px] text-muted">
+                        portal {formatEurAmount(portalDebt, locale)}
+                      </div>
+                    ) : null}
                     {a ? (
                       <div className="mt-1 text-xs text-muted">
                         {a.pricing_rule === 'early_full_payment'

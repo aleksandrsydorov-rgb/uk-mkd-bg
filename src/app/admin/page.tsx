@@ -5376,6 +5376,7 @@ function AdminPortal() {
       case 'отчётность':
         return (
           <AdminReports
+            supabase={supabase}
             properties={properties}
             requests={requests}
             ukExpenses={ukExpenses}
@@ -5616,13 +5617,13 @@ function AdminPortal() {
                   onClick={() => openSectionTab('такса', 'policy')}
                 />
                 <AdminMetricCard
-                  label={t('admin.debt')}
+                  label={t('admin.sfOutstandingLabel')}
                   value={money(totalDebt)}
                   alert={totalDebt > 0}
                   onClick={() => openSectionTab('такса', 'register')}
                 />
                 <AdminMetricCard
-                  label={t('admin.overpay')}
+                  label={t('admin.sfOverpaymentLabel')}
                   value={money(totalOverpayment)}
                   onClick={() => openSectionTab('такса', 'register')}
                 />

@@ -1,6 +1,12 @@
 export const DEFAULT_SUPPORT_RATE = 8; // legacy constant only — not an operational billing fallback
 
-export type SupportFeeKind = 'payment' | 'charge';
+export type SupportFeeKind =
+  | 'payment'
+  | 'charge'
+  | 'adjustment_debit'
+  | 'adjustment_credit'
+  | 'payment_reversal'
+  | 'assessment_void';
 
 export interface BuildingSettings {
   id: number;
@@ -20,6 +26,9 @@ export interface SupportFeeEntry {
   recorded_by: string | null;
   debt_after: number | null;
   overpayment_after: number | null;
+  idempotency_key?: string | null;
+  reverses_ledger_id?: number | null;
+  reversal_reason?: string | null;
 }
 
 function roundMoney(n: number) {
@@ -94,6 +103,11 @@ export function isUkAccountantRole(role?: string | null) {
 /** Exact active-role gating is resolved by the caller; only these roles may manage support fees. */
 export function canRecordSupportPayments(role?: string | null) {
   return isUkAdminRole(role) || isUkAccountantRole(role);
+}
+
+/** Same staff gate as can_manage_support_fees for reverse/void UI. */
+export function canReverseOrVoidSupportFees(role?: string | null) {
+  return canRecordSupportPayments(role);
 }
 
 /** Only the exact canonical administration role sets the €/m² rate. */

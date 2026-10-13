@@ -67,6 +67,7 @@ import {
   annualSupportFee,
   canApproveUkExpenses,
   canRecordSupportPayments,
+  canReverseOrVoidSupportFees,
   canSetSupportRate,
   isUkAccountantRole,
   isUkAdminRole,
@@ -81,6 +82,11 @@ import {
   supportOverpayment,
   type SupportAssessmentBalanceRow,
 } from '@/lib/supportFeeBalance';
+import {
+  isSupportLedgerReversed,
+  isSupportPaymentReversible,
+  supportLedgerKindLabelKey,
+} from '@/lib/supportFeeReversal';
 import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { AdminReports } from '@/components/AdminReports';
@@ -615,6 +621,11 @@ function AdminPortal() {
   const [payNote, setPayNote] = useState('');
   const [paySaving, setPaySaving] = useState(false);
   const supportPayKeyRef = useRef<{ key: string; sig: string } | null>(null);
+  const [reverseLedgerId, setReverseLedgerId] = useState<number | null>(null);
+  const [reverseReason, setReverseReason] = useState('');
+  const [reverseConfirm, setReverseConfirm] = useState(false);
+  const [reverseBusy, setReverseBusy] = useState(false);
+  const reverseKeyRef = useRef<{ key: string; ledgerId: number } | null>(null);
   const [chargeYear, setChargeYear] = useState(String(sofiaCalendarYear()));
   const [chargeSaving, setChargeSaving] = useState(false);
   const [feeChargeExisting, setFeeChargeExisting] = useState<number | null>(null);
@@ -2343,6 +2354,36 @@ function AdminPortal() {
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Ошибка удаления');
+    }
+  }
+
+  async function handleReverseSupportPayment() {
+    if (!canReverseOrVoidSupportFees(staffRole) || reverseLedgerId == null) return;
+    if (!reverseConfirm || !reverseReason.trim()) {
+      setError(t('admin.feeReverseReason'));
+      return;
+    }
+    if (!reverseKeyRef.current || reverseKeyRef.current.ledgerId !== reverseLedgerId) {
+      reverseKeyRef.current = { key: crypto.randomUUID(), ledgerId: reverseLedgerId };
+    }
+    setReverseBusy(true);
+    setError(null);
+    try {
+      const { error } = await supabase.rpc('reverse_support_payment', {
+        p_ledger_id: reverseLedgerId,
+        p_reason: reverseReason.trim(),
+        p_idempotency_key: reverseKeyRef.current.key,
+      });
+      if (error) throw error;
+      reverseKeyRef.current = null;
+      setReverseLedgerId(null);
+      setReverseReason('');
+      setReverseConfirm(false);
+      await loadAll();
+    } catch (err: unknown) {
+      setError(ownerVisibleError(err, t('admin.errGeneric')));
+    } finally {
+      setReverseBusy(false);
     }
   }
 
@@ -5770,6 +5811,51 @@ function AdminPortal() {
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feeLedger')}</p>
                 <p className="text-xs text-muted">{t('admin.kindPayment')}: {money(yearPayments)}</p>
               </div>
+              {reverseLedgerId != null && canReverseOrVoidSupportFees(staffRole) ? (
+                <div className="mt-3 rounded-lg border border-border bg-background p-3 text-sm">
+                  <p className="font-medium text-foreground">{t('admin.feeReversePayment')} #{reverseLedgerId}</p>
+                  <p className="mt-1 text-xs text-secondary">{t('admin.feeReverseConfirm')}</p>
+                  <label className="mt-2 block text-secondary">
+                    {t('admin.feeReverseReason')}
+                    <input
+                      required
+                      value={reverseReason}
+                      onChange={(e) => setReverseReason(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                    />
+                  </label>
+                  <label className="mt-2 flex items-center gap-2 text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={reverseConfirm}
+                      onChange={(e) => setReverseConfirm(e.target.checked)}
+                    />
+                    {t('admin.feeActionConfirm')}
+                  </label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={reverseBusy || !reverseConfirm || !reverseReason.trim()}
+                      onClick={() => void handleReverseSupportPayment()}
+                      className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {reverseBusy ? t('admin.feeReverseBusy') : t('admin.feeReversePayment')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reverseBusy}
+                      onClick={() => {
+                        setReverseLedgerId(null);
+                        setReverseReason('');
+                        setReverseConfirm(false);
+                      }}
+                      className="rounded-full border border-border px-4 py-1.5 text-sm text-secondary"
+                    >
+                      {t('admin.feeActionCancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {ledger.length === 0 ? (
                 <div className="mt-3"><AdminEmptyState title={t('admin.feeNoLedger')} /></div>
               ) : (
@@ -5784,6 +5870,7 @@ function AdminPortal() {
                         <th className={adminTableCellClass}>{t('admin.amount')}</th>
                         <th className={adminTableCellClass}>{t('admin.debt')}</th>
                         <th className={adminTableCellClass}>{t('admin.overpay')}</th>
+                        <th className={adminTableCellClass}>{t('admin.status')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5791,6 +5878,15 @@ function AdminPortal() {
                         const apt = properties.find((p) => p.id === row.property_id);
                         const debtAfter = Number(row.debt_after ?? 0);
                         const overAfter = Number(row.overpayment_after ?? 0);
+                        const reversed = isSupportLedgerReversed({
+                          originalLedgerId: row.id,
+                          ledger,
+                        });
+                        const kindKey = supportLedgerKindLabelKey(row.kind);
+                        const kindLabel =
+                          row.kind === 'charge'
+                            ? `${t(kindKey)}${row.period ? ` ${row.period}` : ''}`
+                            : t(kindKey);
                         return (
                           <tr key={row.id} className={adminTableRowClass}>
                             <td className={adminTableCellClass}>
@@ -5798,7 +5894,13 @@ function AdminPortal() {
                             </td>
                             <td className={adminTableCellClass}>{apt?.apartment_number ?? row.property_id}</td>
                             <td className={adminTableCellClass}>
-                              {row.kind === 'payment' ? t('admin.kindPayment') : `${t('admin.kindCharge')}${row.period ? ` ${row.period}` : ''}`}
+                              <div>{kindLabel}</div>
+                              {row.reverses_ledger_id ? (
+                                <div className="text-[10px] text-muted">→ #{row.reverses_ledger_id}</div>
+                              ) : null}
+                              {row.reversal_reason ? (
+                                <div className="text-[10px] text-muted">{row.reversal_reason}</div>
+                              ) : null}
                             </td>
                             <td className={`${adminTableCellClass} tabular-nums`}>{money(row.amount)}</td>
                             <td className={adminTableCellClass}>
@@ -5813,6 +5915,30 @@ function AdminPortal() {
                                 <StatusBadge label={money(overAfter)} tone="success" />
                               ) : (
                                 <span className="text-muted">{money(0)}</span>
+                              )}
+                            </td>
+                            <td className={adminTableCellClass}>
+                              {isSupportPaymentReversible(row.kind) && reversed ? (
+                                <StatusBadge label={t('admin.feeReversedBadge')} tone="warning" />
+                              ) : isSupportPaymentReversible(row.kind) &&
+                                canReverseOrVoidSupportFees(staffRole) ? (
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-border px-2 py-0.5 text-xs text-secondary hover:text-foreground"
+                                  onClick={() => {
+                                    setReverseLedgerId(row.id);
+                                    setReverseReason('');
+                                    setReverseConfirm(false);
+                                  }}
+                                >
+                                  {t('admin.feeReversePayment')}
+                                </button>
+                              ) : row.kind === 'payment_reversal' ? (
+                                <StatusBadge label={t('admin.kindPaymentReversal')} tone="neutral" />
+                              ) : row.kind === 'assessment_void' ? (
+                                <StatusBadge label={t('admin.feeVoidedBadge')} tone="neutral" />
+                              ) : (
+                                <span className="text-muted">—</span>
                               )}
                             </td>
                           </tr>

@@ -10,6 +10,7 @@ import {
   supportOverpayment,
   type SupportAssessmentBalanceRow,
 } from '@/lib/supportFeeBalance';
+import { supportLedgerKindLabelKey } from '@/lib/supportFeeReversal';
 import { downloadHtmlAsPdf } from '@/lib/pdfDownload';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
@@ -331,7 +332,7 @@ export function AdminReports({
               return [
                 escapeHtml(e.created_at.slice(0, 10)),
                 escapeHtml(apt?.apartment_number ?? e.property_id),
-                escapeHtml(e.kind === 'charge' ? t('admin.pdfKindCharge') : t('admin.pdfKindPay')),
+                escapeHtml(t(supportLedgerKindLabelKey(e.kind))),
                 escapeHtml(money(Number(e.amount ?? 0))),
                 escapeHtml(e.note),
               ];

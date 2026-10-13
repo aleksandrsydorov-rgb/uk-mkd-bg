@@ -3,7 +3,7 @@ import { formatEur } from '@/lib/utilities';
 export type SupportFeePricingRule = 'early_full_payment' | 'late' | 'standard';
 export type SupportFeeQualification = 'not_checked' | 'qualified' | 'not_qualified';
 export type SupportFeePolicyStatus = 'draft' | 'published' | 'closed';
-export type SupportFeeAllocationType = 'payment' | 'credit';
+export type SupportFeeAllocationType = 'payment' | 'credit' | 'payment_reversal';
 
 export interface SupportFeeAnnualPolicy {
   id: string;
@@ -44,7 +44,7 @@ export interface SupportFeeAssessment {
   remaining_due: number;
   balance_before: number | null;
   balance_after: number | null;
-  status: 'open' | 'paid' | string;
+  status: 'open' | 'paid' | 'void' | 'corrected' | string;
   created_at: string;
   created_by_email: string | null;
   finalized_at: string | null;
@@ -52,6 +52,9 @@ export interface SupportFeeAssessment {
   correction_reason: string | null;
   correction_at: string | null;
   correction_by_email: string | null;
+  void_reason?: string | null;
+  voided_at?: string | null;
+  voided_by_email?: string | null;
   tariff_version_id: string | null;
   area_sqm_snapshot: number | null;
   rate_eur_per_sqm_year_snapshot: number | null;

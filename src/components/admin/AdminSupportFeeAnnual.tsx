@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { annualSupportFee } from '@/lib/finance';
+import { assessVoidSupportAssessmentEligibility } from '@/lib/supportFeeReversal';
 import {
   formatEurAmount,
   formatSofiaDate,
@@ -73,6 +74,10 @@ export function AdminSupportFeeAnnual({
   const [corrAmt, setCorrAmt] = useState('');
   const [corrReason, setCorrReason] = useState('');
   const [finalizePropertyId, setFinalizePropertyId] = useState('');
+  const [voidId, setVoidId] = useState('');
+  const [voidReason, setVoidReason] = useState('');
+  const [voidConfirm, setVoidConfirm] = useState(false);
+  const [voidBusy, setVoidBusy] = useState(false);
 
   const y = Number(year);
   const sampleBase = useMemo(
@@ -399,6 +404,7 @@ export function AdminSupportFeeAnnual({
               <th className={adminTableCellClass}>{t('account.sfFromBalance')}</th>
               <th className={adminTableCellClass}>{t('account.sfRemainingDue')}</th>
               <th className={adminTableCellClass}>{t('admin.status')}</th>
+              <th className={adminTableCellClass}>{t('admin.feeVoidAssessment')}</th>
             </tr>
           </thead>
           <tbody>
@@ -408,6 +414,14 @@ export function AdminSupportFeeAnnual({
               const outstanding = a ? Number(a.remaining_due ?? 0) : 0;
               const over = Number(p.overpayment ?? 0);
               const portalDebt = Number(p.debt ?? 0);
+              const voidElig = a
+                ? assessVoidSupportAssessmentEligibility({
+                    status: a.status,
+                    remainingDue: a.remaining_due,
+                    appliedPaymentAmount: a.applied_payment_amount,
+                    appliedCreditAmount: a.applied_credit_amount,
+                  })
+                : null;
               return (
                 <tr key={p.id} className={adminTableRowClass}>
                   <td className={adminTableCellClass}>№ {p.apartment_number}</td>
@@ -424,19 +438,24 @@ export function AdminSupportFeeAnnual({
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.applied_credit_amount, locale) : '—'}</td>
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.remaining_due, locale) : '—'}</td>
                   <td className={adminTableCellClass}>
-                    {outstanding > 0 ? (
+                    {a?.status === 'void' ? (
+                      <StatusBadge label={t('admin.feeVoidedBadge')} tone="warning" />
+                    ) : outstanding > 0 ? (
                       <StatusBadge label={`${t('admin.balDebt')} ${formatEurAmount(outstanding, locale)}`} tone="danger" />
                     ) : over > 0 ? (
                       <StatusBadge label={`${t('admin.balOver')} ${formatEurAmount(over, locale)}`} tone="success" />
                     ) : (
                       <StatusBadge label={t('admin.balSettled')} tone="neutral" />
                     )}
-                    {a && portalDebt !== outstanding ? (
+                    {a && a.status !== 'void' && portalDebt !== outstanding ? (
                       <div className="mt-1 text-[10px] text-muted">
                         portal {formatEurAmount(portalDebt, locale)}
                       </div>
                     ) : null}
-                    {a ? (
+                    {a?.void_reason ? (
+                      <div className="mt-1 text-[10px] text-muted">{a.void_reason}</div>
+                    ) : null}
+                    {a && a.status !== 'void' ? (
                       <div className="mt-1 text-xs text-muted">
                         {a.pricing_rule === 'early_full_payment'
                           ? t('account.sfPaidEarly')
@@ -446,6 +465,27 @@ export function AdminSupportFeeAnnual({
                       </div>
                     ) : null}
                   </td>
+                  <td className={adminTableCellClass}>
+                    {canPay && a && a.status !== 'void' && voidElig?.ok ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-border px-2 py-0.5 text-xs text-secondary"
+                        onClick={() => {
+                          setVoidId(a.id);
+                          setVoidReason('');
+                          setVoidConfirm(false);
+                        }}
+                      >
+                        {t('admin.feeVoidAssessment')}
+                      </button>
+                    ) : a?.status === 'void' ? (
+                      <span className="text-xs text-muted">{t('admin.feeVoidedBadge')}</span>
+                    ) : a && voidElig && !voidElig.ok ? (
+                      <span className="text-[10px] text-muted">{t('admin.feeVoidBlockedPaid')}</span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -453,6 +493,74 @@ export function AdminSupportFeeAnnual({
         </table>
         </AdminTableShell>
         )}
+        {canPay && voidId ? (
+          <div className={`${adminCardClass} mt-4 p-4 text-sm`}>
+            <p className="font-medium">{t('admin.feeVoidAssessment')}</p>
+            <p className="mt-1 text-xs text-muted">{t('admin.feeVoidConfirm')}</p>
+            <label className="mt-2 block text-secondary">
+              {t('admin.feeVoidReason')}
+              <input
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                className={`mt-1 ${adminFieldClass}`}
+              />
+            </label>
+            <label className="mt-2 flex items-center gap-2 text-secondary">
+              <input
+                type="checkbox"
+                checked={voidConfirm}
+                onChange={(e) => setVoidConfirm(e.target.checked)}
+              />
+              {t('admin.feeActionConfirm')}
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={voidBusy || !voidConfirm || !voidReason.trim()}
+                className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={async () => {
+                  if (!voidId || !voidReason.trim() || !voidConfirm) return;
+                  setVoidBusy(true);
+                  try {
+                    const { error } = await supabase.rpc('void_support_fee_assessment', {
+                      p_assessment_id: voidId,
+                      p_reason: voidReason.trim(),
+                      p_idempotency_key: crypto.randomUUID(),
+                    });
+                    if (error) throw error;
+                    setVoidId('');
+                    setVoidReason('');
+                    setVoidConfirm(false);
+                    await load();
+                    await onReload();
+                  } catch (err: unknown) {
+                    onError(
+                      err && typeof err === 'object' && 'message' in err
+                        ? String((err as { message: unknown }).message)
+                        : t('admin.sfSaveFailed')
+                    );
+                  } finally {
+                    setVoidBusy(false);
+                  }
+                }}
+              >
+                {voidBusy ? t('admin.feeVoidBusy') : t('admin.feeVoidAssessment')}
+              </button>
+              <button
+                type="button"
+                disabled={voidBusy}
+                className="rounded-full border border-border px-4 py-1.5 text-sm text-secondary"
+                onClick={() => {
+                  setVoidId('');
+                  setVoidReason('');
+                  setVoidConfirm(false);
+                }}
+              >
+                {t('admin.feeActionCancel')}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {canPay ? (
           <form
             className="mt-4 grid gap-2 sm:grid-cols-3"

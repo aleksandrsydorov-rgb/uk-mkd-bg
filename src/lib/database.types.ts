@@ -1789,6 +1789,8 @@ export interface Database {
           debt_after: number | null;
           overpayment_after: number | null;
           idempotency_key: string | null;
+          reverses_ledger_id: number | null;
+          reversal_reason: string | null;
         };
         Insert: {
           id?: number;
@@ -1802,6 +1804,8 @@ export interface Database {
           debt_after?: number | null;
           overpayment_after?: number | null;
           idempotency_key?: string | null;
+          reverses_ledger_id?: number | null;
+          reversal_reason?: string | null;
         };
         Update: {
           id?: number;
@@ -1815,6 +1819,8 @@ export interface Database {
           debt_after?: number | null;
           overpayment_after?: number | null;
           idempotency_key?: string | null;
+          reverses_ledger_id?: number | null;
+          reversal_reason?: string | null;
         };
         Relationships: [];
       };
@@ -1894,6 +1900,9 @@ export interface Database {
           correction_reason: string | null;
           correction_at: string | null;
           correction_by_email: string | null;
+          void_reason: string | null;
+          voided_at: string | null;
+          voided_by_email: string | null;
           tariff_version_id: string | null;
           area_sqm_snapshot: number | null;
           rate_eur_per_sqm_year_snapshot: number | null;
@@ -1931,6 +1940,9 @@ export interface Database {
           correction_reason?: string | null;
           correction_at?: string | null;
           correction_by_email?: string | null;
+          void_reason?: string | null;
+          voided_at?: string | null;
+          voided_by_email?: string | null;
           tariff_version_id?: string | null;
           area_sqm_snapshot?: number | null;
           rate_eur_per_sqm_year_snapshot?: number | null;
@@ -1968,6 +1980,9 @@ export interface Database {
           correction_reason?: string | null;
           correction_at?: string | null;
           correction_by_email?: string | null;
+          void_reason?: string | null;
+          voided_at?: string | null;
+          voided_by_email?: string | null;
           tariff_version_id?: string | null;
           area_sqm_snapshot?: number | null;
           rate_eur_per_sqm_year_snapshot?: number | null;
@@ -3951,6 +3966,22 @@ export interface Database {
       };
       record_support_fee_assessment_correction: {
         Args: { p_assessment_id: string; p_amount: number; p_reason: string };
+        Returns: Json;
+      };
+      reverse_support_payment: {
+        Args: {
+          p_ledger_id: number;
+          p_reason: string;
+          p_idempotency_key: string;
+        };
+        Returns: Json;
+      };
+      void_support_fee_assessment: {
+        Args: {
+          p_assessment_id: string;
+          p_reason: string;
+          p_idempotency_key: string;
+        };
         Returns: Json;
       };
       record_support_payment_for_year: {

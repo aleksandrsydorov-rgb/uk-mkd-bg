@@ -4,6 +4,7 @@
  * - supabase/migrations/20261015120000_phase_e1_security_hardening.sql
  * - supabase/migrations/20261016120000_phase_e2_1_finance_security_hardening.sql
  * - supabase/migrations/20261017120000_phase_e2_3_a_finance_subject_and_balance.sql (subject/reprice policy)
+ * - supabase/migrations/20261018120000_phase_e2_3_b_reversal_and_void.sql (D4 reverse/void)
  */
 
 export type RpcCallerRole = 'anon' | 'authenticated' | 'service_role';
@@ -138,4 +139,26 @@ export function scrubGuestPropertyFinanceFields<
   T extends { debt?: number | null; overpayment?: number | null },
 >(row: T): T {
   return { ...row, debt: 0, overpayment: 0 };
+}
+
+export type SupportFeeMutationAuthzContext = {
+  role: RpcCallerRole;
+  isBookAdmin: boolean;
+  isAccountant: boolean;
+  isGuestOnly: boolean;
+  ownsProperty: boolean;
+};
+
+/**
+ * E2.3-B / can_manage_support_fees mirror:
+ * reverse_support_payment + void_support_fee_assessment (staff only).
+ */
+export function canMutateSupportFeeReversalOrVoid(
+  ctx: SupportFeeMutationAuthzContext
+): boolean {
+  if (ctx.role === 'service_role') return true;
+  if (ctx.role === 'anon') return false;
+  if (ctx.isGuestOnly) return false;
+  if (ctx.isBookAdmin || ctx.isAccountant) return true;
+  return false;
 }

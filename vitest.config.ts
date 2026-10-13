@@ -8,6 +8,7 @@ export default defineConfig({
       'tests/email-core/**/*.test.ts',
       'tests/pkg-xfer/unit/**/*.test.ts',
       'tests/security/unit/**/*.test.ts',
+      'tests/finance/unit/**/*.test.ts',
     ],
     exclude: ['node_modules', '.next'],
     reporters: ['default'],

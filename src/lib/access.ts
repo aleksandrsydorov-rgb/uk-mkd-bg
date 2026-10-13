@@ -86,7 +86,10 @@ async function loadGuestProperties(
 ): Promise<Property[]> {
   const guestRes = await supabase.rpc('list_my_guest_properties');
   if (!guestRes.error) {
-    return (guestRes.data as Property[] | null) ?? [];
+    const rows = (guestRes.data as Property[] | null) ?? [];
+    // Defense in depth: never surface finance balances to guest cabinet
+    // (RPC also zeros debt/overpayment after Phase E2.1 migration).
+    return rows.map((p) => ({ ...p, debt: 0, overpayment: 0 }));
   }
   // Guest list must never block staff/owner login.
   if (!isMissingRpc(guestRes.error, 'list_my_guest_properties')) {

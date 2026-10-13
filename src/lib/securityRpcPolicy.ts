@@ -1,6 +1,8 @@
 /**
- * Phase E1 — pure authorization mirrors for SECURITY DEFINER RPC policies.
- * Keep in sync with supabase/migrations/20261015120000_phase_e1_security_hardening.sql
+ * Pure authorization mirrors for SECURITY DEFINER RPC / RLS policies.
+ * Keep in sync with:
+ * - supabase/migrations/20261015120000_phase_e1_security_hardening.sql
+ * - supabase/migrations/20261016120000_phase_e2_1_finance_security_hardening.sql
  */
 
 export type RpcCallerRole = 'anon' | 'authenticated' | 'service_role';
@@ -88,4 +90,51 @@ export function canEnqueueEmail(ctx: EmailEnqueueAuthzContext): boolean {
   }
 
   return false;
+}
+
+export type OverdueDebtAuthzContext = {
+  role: RpcCallerRole;
+  isBookAdmin: boolean;
+  isAccountant: boolean;
+  ownsProperty: boolean;
+  isGuestOnly: boolean;
+  /** Former Book owner / deregistered → ownsProperty false. */
+  isFormerOwner: boolean;
+};
+
+/** FIN-P0-1 mirror: ownership_change_overdue_debt. */
+export function canCallOwnershipChangeOverdueDebt(
+  ctx: OverdueDebtAuthzContext
+): boolean {
+  if (ctx.role === 'service_role') return true;
+  if (ctx.role === 'anon') return false;
+  if (ctx.isBookAdmin || ctx.isAccountant) return true;
+  if (ctx.isGuestOnly || ctx.isFormerOwner) return false;
+  return ctx.ownsProperty === true;
+}
+
+export type SupportFeeLedgerSelectContext = {
+  role: RpcCallerRole;
+  isBookAdmin: boolean;
+  isAccountant: boolean;
+  ownsProperty: boolean;
+  isGuestOnly: boolean;
+};
+
+/** FIN-P1-2 mirror: support_fee_ledger SELECT policy. */
+export function canSelectSupportFeeLedger(
+  ctx: SupportFeeLedgerSelectContext
+): boolean {
+  if (ctx.role === 'anon') return false;
+  if (ctx.role === 'service_role') return true;
+  if (ctx.isBookAdmin || ctx.isAccountant) return true;
+  if (ctx.isGuestOnly) return false;
+  return ctx.ownsProperty === true;
+}
+
+/** FIN-P1-1: guests never receive real debt/overpayment from list_my_guest_properties. */
+export function scrubGuestPropertyFinanceFields<
+  T extends { debt?: number | null; overpayment?: number | null },
+>(row: T): T {
+  return { ...row, debt: 0, overpayment: 0 };
 }

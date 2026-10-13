@@ -510,12 +510,14 @@ export function AdminReports({
         const pays = rows.filter((e) => e.kind === 'payment').reduce((s, e) => s + Number(e.amount ?? 0), 0);
         const reversals = rows.filter((e) => e.kind === 'payment_reversal').reduce((s, e) => s + Number(e.amount ?? 0), 0);
         const voids = rows.filter((e) => e.kind === 'assessment_void').reduce((s, e) => s + Number(e.amount ?? 0), 0);
+        const restores = rows.filter((e) => e.kind === 'assessment_restore').reduce((s, e) => s + Number(e.amount ?? 0), 0);
         const body =
           kpiGrid([
             { label: t('admin.pdfKindCharge'), value: money(charges) },
             { label: t('admin.pdfKindPay'), value: money(pays) },
             { label: t('admin.kindPaymentReversal'), value: money(reversals) },
             { label: t('admin.kindAssessmentVoid'), value: money(voids) },
+            { label: t('admin.kindAssessmentRestore'), value: money(restores) },
           ]) +
           table(
             [t('admin.pdfDate'), t('form.colApt'), t('admin.pdfKind'), t('admin.pdfAmount'), t('admin.pdfNote')],

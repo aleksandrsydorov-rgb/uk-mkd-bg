@@ -6,9 +6,13 @@ import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { annualSupportFee } from '@/lib/finance';
 import {
+  assertSupportFeeRestoreTargetMatch,
   assertSupportFeeVoidTargetMatch,
+  assessRestoreSupportAssessmentEligibility,
   assessVoidSupportAssessmentEligibility,
+  buildSupportFeeRestoreTarget,
   buildSupportFeeVoidTarget,
+  type SupportFeeRestoreTarget,
   type SupportFeeVoidTarget,
 } from '@/lib/supportFeeReversal';
 import {
@@ -85,12 +89,29 @@ export function AdminSupportFeeAnnual({
   const [voidAptConfirm, setVoidAptConfirm] = useState('');
   const [voidConfirm, setVoidConfirm] = useState(false);
   const [voidBusy, setVoidBusy] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<SupportFeeRestoreTarget | null>(null);
+  const [restoreReason, setRestoreReason] = useState('');
+  const [restoreAptConfirm, setRestoreAptConfirm] = useState('');
+  const [restoreConfirm, setRestoreConfirm] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   function clearVoidPanel() {
     setVoidTarget(null);
     setVoidReason('');
     setVoidAptConfirm('');
     setVoidConfirm(false);
+  }
+
+  function clearRestorePanel() {
+    setRestoreTarget(null);
+    setRestoreReason('');
+    setRestoreAptConfirm('');
+    setRestoreConfirm(false);
+  }
+
+  function clearActionPanels() {
+    clearVoidPanel();
+    clearRestorePanel();
   }
 
   const y = Number(year);
@@ -149,7 +170,7 @@ export function AdminSupportFeeAnnual({
   }
 
   useEffect(() => {
-    clearVoidPanel();
+    clearActionPanels();
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
@@ -419,7 +440,7 @@ export function AdminSupportFeeAnnual({
               <th className={adminTableCellClass}>{t('account.sfFromBalance')}</th>
               <th className={adminTableCellClass}>{t('account.sfRemainingDue')}</th>
               <th className={adminTableCellClass}>{t('admin.status')}</th>
-              <th className={adminTableCellClass}>{t('admin.feeVoidAssessment')}</th>
+              <th className={adminTableCellClass}>{t('admin.feeActions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -435,6 +456,27 @@ export function AdminSupportFeeAnnual({
                     remainingDue: a.remaining_due,
                     appliedPaymentAmount: a.applied_payment_amount,
                     appliedCreditAmount: a.applied_credit_amount,
+                  })
+                : null;
+              const hasActiveSibling = a
+                ? assessments.some(
+                    (x) =>
+                      x.property_id === a.property_id
+                      && x.billing_year === a.billing_year
+                      && x.id !== a.id
+                      && x.status !== 'void'
+                      && x.status !== 'corrected',
+                  )
+                : false;
+              const restoreElig = a
+                ? assessRestoreSupportAssessmentEligibility({
+                    status: a.status,
+                    restoredAt: a.restored_at,
+                    restoreLedgerId: a.restore_ledger_id,
+                    appliedPaymentAmount: a.applied_payment_amount,
+                    appliedCreditAmount: a.applied_credit_amount,
+                    finalAmount: a.final_amount,
+                    hasActiveSiblingForYear: hasActiveSibling,
                   })
                 : null;
               return (
@@ -459,6 +501,8 @@ export function AdminSupportFeeAnnual({
                       <StatusBadge label={`${t('admin.balDebt')} ${formatEurAmount(outstanding, locale)}`} tone="danger" />
                     ) : over > 0 ? (
                       <StatusBadge label={`${t('admin.balOver')} ${formatEurAmount(over, locale)}`} tone="success" />
+                    ) : a?.restored_at ? (
+                      <StatusBadge label={t('admin.feeRestoredBadge')} tone="info" />
                     ) : (
                       <StatusBadge label={t('admin.balSettled')} tone="neutral" />
                     )}
@@ -469,6 +513,9 @@ export function AdminSupportFeeAnnual({
                     ) : null}
                     {a?.void_reason ? (
                       <div className="mt-1 text-[10px] text-muted">{a.void_reason}</div>
+                    ) : null}
+                    {a?.restore_reason ? (
+                      <div className="mt-1 text-[10px] text-muted">{a.restore_reason}</div>
                     ) : null}
                     {a && a.status !== 'void' ? (
                       <div className="mt-1 text-xs text-muted">
@@ -489,6 +536,7 @@ export function AdminSupportFeeAnnual({
                         data-void-apartment={String(p.apartment_number)}
                         className="rounded-full border border-border px-2 py-0.5 text-xs text-secondary"
                         onClick={() => {
+                          clearRestorePanel();
                           setVoidTarget(
                             buildSupportFeeVoidTarget({
                               assessment: a,
@@ -502,8 +550,35 @@ export function AdminSupportFeeAnnual({
                       >
                         {t('admin.feeVoidAssessment')}
                       </button>
+                    ) : canPay && a && a.status === 'void' && restoreElig?.ok ? (
+                      <button
+                        type="button"
+                        data-restore-assessment-id={a.id}
+                        data-restore-property-id={String(p.id)}
+                        data-restore-apartment={String(p.apartment_number)}
+                        className="rounded-full border border-border px-2 py-0.5 text-xs text-secondary"
+                        onClick={() => {
+                          clearVoidPanel();
+                          setRestoreTarget(
+                            buildSupportFeeRestoreTarget({
+                              assessment: a,
+                              apartmentNumber: p.apartment_number,
+                              restoreAmount: restoreElig.restoreAmount,
+                            }),
+                          );
+                          setRestoreReason('');
+                          setRestoreAptConfirm('');
+                          setRestoreConfirm(false);
+                        }}
+                      >
+                        {t('admin.feeRestoreAssessment')}
+                      </button>
                     ) : a?.status === 'void' ? (
-                      <span className="text-xs text-muted">{t('admin.feeVoidedBadge')}</span>
+                      <span className="text-[10px] text-muted">
+                        {restoreElig && !restoreElig.ok
+                          ? t('admin.feeRestoreBlocked')
+                          : t('admin.feeVoidedBadge')}
+                      </span>
                     ) : a && voidElig && !voidElig.ok ? (
                       <span className="text-[10px] text-muted">{t('admin.feeVoidBlockedPaid')}</span>
                     ) : (
@@ -625,6 +700,120 @@ export function AdminSupportFeeAnnual({
                 disabled={voidBusy}
                 className="rounded-full border border-border px-4 py-1.5 text-sm text-secondary"
                 onClick={() => clearVoidPanel()}
+              >
+                {t('admin.feeActionCancel')}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {canPay && restoreTarget ? (
+          <div className={`${adminCardClass} mt-4 p-4 text-sm`} data-restore-panel="1">
+            <p className="font-medium">{t('admin.feeRestoreAssessment')}</p>
+            <p className="mt-1 text-xs text-muted">{t('admin.feeRestoreConfirm')}</p>
+            <dl className="mt-3 grid gap-1 rounded-lg border border-border bg-background px-3 py-2 text-xs">
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('form.colApt')}</dt>
+                <dd className="font-semibold tabular-nums">№ {restoreTarget.apartmentNumber}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('admin.sfYear')}</dt>
+                <dd className="font-semibold tabular-nums">{restoreTarget.billingYear}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('account.sfFinal')}</dt>
+                <dd className="font-semibold tabular-nums">{formatEurAmount(restoreTarget.finalAmount, locale)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">{t('account.sfRemainingDue')}</dt>
+                <dd className="font-semibold tabular-nums text-danger">{formatEurAmount(restoreTarget.restoreAmount, locale)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">ID</dt>
+                <dd className="font-mono text-[10px] text-secondary">{restoreTarget.assessmentId}</dd>
+              </div>
+            </dl>
+            <label className="mt-3 block text-secondary">
+              {t('admin.feeRestoreAptConfirm', { n: restoreTarget.apartmentNumber })}
+              <input
+                value={restoreAptConfirm}
+                onChange={(e) => setRestoreAptConfirm(e.target.value)}
+                autoComplete="off"
+                className={`mt-1 ${adminFieldClass}`}
+                placeholder={String(restoreTarget.apartmentNumber)}
+              />
+            </label>
+            <label className="mt-2 block text-secondary">
+              {t('admin.feeRestoreReason')}
+              <input
+                value={restoreReason}
+                onChange={(e) => setRestoreReason(e.target.value)}
+                className={`mt-1 ${adminFieldClass}`}
+              />
+            </label>
+            <label className="mt-2 flex items-center gap-2 text-secondary">
+              <input
+                type="checkbox"
+                checked={restoreConfirm}
+                onChange={(e) => setRestoreConfirm(e.target.checked)}
+              />
+              {t('admin.feeActionConfirm')}
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-restore-submit="1"
+                disabled={
+                  restoreBusy
+                  || !restoreConfirm
+                  || !restoreReason.trim()
+                  || restoreAptConfirm.trim() !== restoreTarget.apartmentNumber
+                }
+                className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={async () => {
+                  const frozen = restoreTarget;
+                  if (!frozen || !restoreReason.trim() || !restoreConfirm) return;
+                  const live = assessments.find((x) => x.id === frozen.assessmentId) ?? null;
+                  const match = assertSupportFeeRestoreTargetMatch({
+                    target: frozen,
+                    assessment: live,
+                    expectedPropertyId: frozen.propertyId,
+                    confirmedApartmentNumber: restoreAptConfirm,
+                  });
+                  if (!match.ok) {
+                    onError(t('admin.feeRestoreTargetMismatch'));
+                    clearRestorePanel();
+                    return;
+                  }
+                  setRestoreBusy(true);
+                  try {
+                    const { error } = await supabase.rpc('restore_support_fee_assessment', {
+                      p_assessment_id: frozen.assessmentId,
+                      p_reason: restoreReason.trim(),
+                      p_idempotency_key: crypto.randomUUID(),
+                      p_expected_property_id: frozen.propertyId,
+                    });
+                    if (error) throw error;
+                    clearRestorePanel();
+                    await load();
+                    await onReload();
+                  } catch (err: unknown) {
+                    onError(
+                      err && typeof err === 'object' && 'message' in err
+                        ? String((err as { message: unknown }).message)
+                        : t('admin.sfSaveFailed')
+                    );
+                  } finally {
+                    setRestoreBusy(false);
+                  }
+                }}
+              >
+                {restoreBusy ? t('admin.feeRestoreBusy') : t('admin.feeRestoreSubmit')}
+              </button>
+              <button
+                type="button"
+                disabled={restoreBusy}
+                className="rounded-full border border-border px-4 py-1.5 text-sm text-secondary"
+                onClick={() => clearRestorePanel()}
               >
                 {t('admin.feeActionCancel')}
               </button>

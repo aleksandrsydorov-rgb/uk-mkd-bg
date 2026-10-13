@@ -70,6 +70,7 @@ export function supportLedgerNet(
     if (propertyId != null && row.property_id !== propertyId) continue;
     const amt = Math.max(0, Number(row.amount ?? 0));
     const kind = (row.kind ?? '').toLowerCase();
+    // Lifecycle kinds (void/restore/payment_reversal) are audit events — not double-counted here.
     if (kind === 'charge' || kind === 'adjustment_debit') net += amt;
     else if (kind === 'payment' || kind === 'adjustment_credit') net -= amt;
   }

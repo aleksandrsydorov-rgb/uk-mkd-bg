@@ -1903,6 +1903,10 @@ export interface Database {
           void_reason: string | null;
           voided_at: string | null;
           voided_by_email: string | null;
+          restore_reason: string | null;
+          restored_at: string | null;
+          restored_by_email: string | null;
+          restore_ledger_id: number | null;
           tariff_version_id: string | null;
           area_sqm_snapshot: number | null;
           rate_eur_per_sqm_year_snapshot: number | null;
@@ -1943,6 +1947,10 @@ export interface Database {
           void_reason?: string | null;
           voided_at?: string | null;
           voided_by_email?: string | null;
+          restore_reason?: string | null;
+          restored_at?: string | null;
+          restored_by_email?: string | null;
+          restore_ledger_id?: number | null;
           tariff_version_id?: string | null;
           area_sqm_snapshot?: number | null;
           rate_eur_per_sqm_year_snapshot?: number | null;
@@ -1983,6 +1991,10 @@ export interface Database {
           void_reason?: string | null;
           voided_at?: string | null;
           voided_by_email?: string | null;
+          restore_reason?: string | null;
+          restored_at?: string | null;
+          restored_by_email?: string | null;
+          restore_ledger_id?: number | null;
           tariff_version_id?: string | null;
           area_sqm_snapshot?: number | null;
           rate_eur_per_sqm_year_snapshot?: number | null;
@@ -3982,6 +3994,16 @@ export interface Database {
           p_reason: string;
           p_idempotency_key: string;
           /** E2.3-D: required; must match assessment.property_id (migration 20261019120000). */
+          p_expected_property_id: number;
+        };
+        Returns: Json;
+      };
+      restore_support_fee_assessment: {
+        Args: {
+          p_assessment_id: string;
+          p_reason: string;
+          p_idempotency_key: string;
+          /** E2.3-D: required; must match assessment.property_id. */
           p_expected_property_id: number;
         };
         Returns: Json;

@@ -150,8 +150,8 @@ export type SupportFeeMutationAuthzContext = {
 };
 
 /**
- * E2.3-B / can_manage_support_fees mirror:
- * reverse_support_payment + void_support_fee_assessment (staff only).
+ * E2.3-B/D / can_manage_support_fees mirror:
+ * reverse_support_payment + void_support_fee_assessment + restore_support_fee_assessment (staff only).
  */
 export function canMutateSupportFeeReversalOrVoid(
   ctx: SupportFeeMutationAuthzContext

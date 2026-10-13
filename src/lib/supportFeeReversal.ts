@@ -1,7 +1,9 @@
 /**
- * Phase E2.3-B — D4-A client mirrors for payment reversal / assessment void.
+ * Phase E2.3-B/D — client mirrors for payment reversal / assessment void / restore.
  * Keep in sync with:
  * supabase/migrations/20261018120000_phase_e2_3_b_reversal_and_void.sql
+ * supabase/migrations/20261019120000_phase_e2_3_d_void_target_guard.sql
+ * supabase/migrations/20261020120000_phase_e2_3_d_assessment_restore.sql
  */
 
 function roundMoney(n: number) {
@@ -14,7 +16,8 @@ export type SupportLedgerKind =
   | 'adjustment_debit'
   | 'adjustment_credit'
   | 'payment_reversal'
-  | 'assessment_void';
+  | 'assessment_void'
+  | 'assessment_restore';
 
 export function isSupportPaymentReversible(kind: string | null | undefined): boolean {
   return (kind ?? '') === 'payment';
@@ -194,6 +197,179 @@ export function buildSupportFeeVoidTarget(input: {
   };
 }
 
+/** Immutable restore target captured at row-click (wrong-apt guard parity). */
+export type SupportFeeRestoreTarget = {
+  assessmentId: string;
+  propertyId: number;
+  apartmentNumber: string;
+  billingYear: number;
+  /** Amount to restore to remaining_due (void ledger amount / unpaid final). */
+  restoreAmount: number;
+  finalAmount: number;
+  voidReason?: string | null;
+};
+
+export type RestoreAssessmentEligibility =
+  | { ok: true; restoreAmount: number }
+  | { ok: false; reason: string };
+
+/**
+ * Restore only unpaid voided assessments with no payment/credit applications,
+ * no prior restore audit, and no competing active assessment for the year.
+ */
+export function assessRestoreSupportAssessmentEligibility(input: {
+  status?: string | null;
+  restoredAt?: string | null;
+  restoreLedgerId?: number | null;
+  appliedPaymentAmount?: number | null;
+  appliedCreditAmount?: number | null;
+  paymentAllocationSum?: number | null;
+  creditAllocationSum?: number | null;
+  /** Void ledger amount when known; else unpaid final_amount. */
+  voidedAmount?: number | null;
+  finalAmount?: number | null;
+  hasActiveSiblingForYear?: boolean;
+}): RestoreAssessmentEligibility {
+  const status = (input.status ?? '').toLowerCase();
+  if (status !== 'void') {
+    return { ok: false, reason: 'not_void' };
+  }
+  if (input.restoredAt != null || input.restoreLedgerId != null) {
+    return { ok: false, reason: 'already_restored' };
+  }
+  if (Number(input.appliedPaymentAmount ?? 0) > 0 || Number(input.paymentAllocationSum ?? 0) > 0) {
+    return { ok: false, reason: 'has_payment_allocations' };
+  }
+  if (Number(input.appliedCreditAmount ?? 0) > 0 || Number(input.creditAllocationSum ?? 0) > 0) {
+    return { ok: false, reason: 'has_credit_allocations' };
+  }
+  if (input.hasActiveSiblingForYear) {
+    return { ok: false, reason: 'active_sibling_year' };
+  }
+  const amount = roundMoney(
+    Number(
+      input.voidedAmount != null && Number.isFinite(Number(input.voidedAmount))
+        ? input.voidedAmount
+        : input.finalAmount ?? 0
+    )
+  );
+  if (amount <= 0) {
+    return { ok: false, reason: 'nothing_to_restore' };
+  }
+  return { ok: true, restoreAmount: amount };
+}
+
+/** Inverse of unpaid void: put outstanding back onto portal debt. */
+export function previewRestoreVoidedAssessment(input: {
+  restoreAmount: number;
+  portalDebt: number;
+  portalOverpayment: number;
+}): { newDebt: number; newOverpayment: number; valid: boolean } {
+  const restore = Math.max(0, roundMoney(input.restoreAmount));
+  const debt = Math.max(0, roundMoney(input.portalDebt));
+  const over = Math.max(0, roundMoney(input.portalOverpayment));
+  if (restore <= 0) {
+    return { newDebt: debt, newOverpayment: over, valid: false };
+  }
+  const newDebt = roundMoney(debt + restore);
+  return {
+    newDebt,
+    newOverpayment: over,
+    valid: newDebt >= 0 && over >= 0,
+  };
+}
+
+export type RestoreTargetMatchResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | 'missing_target'
+        | 'missing_expected_property'
+        | 'assessment_mismatch'
+        | 'property_mismatch'
+        | 'apartment_mismatch'
+        | 'stale_assessment'
+        | 'amount_mismatch';
+    };
+
+export function assertSupportFeeRestoreTargetMatch(input: {
+  target: SupportFeeRestoreTarget | null | undefined;
+  assessment?: {
+    id?: string | null;
+    property_id?: number | null;
+    status?: string | null;
+    restored_at?: string | null;
+  } | null;
+  expectedPropertyId?: number | null;
+  confirmedApartmentNumber?: string | null;
+}): RestoreTargetMatchResult {
+  const target = input.target;
+  if (!target?.assessmentId) return { ok: false, reason: 'missing_target' };
+  if (input.expectedPropertyId == null || !Number.isFinite(Number(input.expectedPropertyId))) {
+    return { ok: false, reason: 'missing_expected_property' };
+  }
+  if (Number(target.propertyId) !== Number(input.expectedPropertyId)) {
+    return { ok: false, reason: 'property_mismatch' };
+  }
+  const confirmed = String(input.confirmedApartmentNumber ?? '').trim();
+  if (!confirmed || confirmed !== String(target.apartmentNumber).trim()) {
+    return { ok: false, reason: 'apartment_mismatch' };
+  }
+  const a = input.assessment;
+  if (!a?.id) return { ok: false, reason: 'stale_assessment' };
+  if (String(a.id) !== String(target.assessmentId)) {
+    return { ok: false, reason: 'assessment_mismatch' };
+  }
+  if (Number(a.property_id) !== Number(target.propertyId)) {
+    return { ok: false, reason: 'property_mismatch' };
+  }
+  if (String(a.status ?? '').toLowerCase() !== 'void' || a.restored_at != null) {
+    return { ok: false, reason: 'stale_assessment' };
+  }
+  if (!(Number(target.restoreAmount) > 0)) {
+    return { ok: false, reason: 'amount_mismatch' };
+  }
+  return { ok: true };
+}
+
+export function buildSupportFeeRestoreTarget(input: {
+  assessment: {
+    id: string;
+    property_id: number;
+    billing_year: number;
+    final_amount?: number | null;
+    void_reason?: string | null;
+  };
+  apartmentNumber: string | number;
+  restoreAmount: number;
+}): SupportFeeRestoreTarget {
+  return {
+    assessmentId: String(input.assessment.id),
+    propertyId: Number(input.assessment.property_id),
+    apartmentNumber: String(input.apartmentNumber ?? '').trim(),
+    billingYear: Number(input.assessment.billing_year),
+    restoreAmount: roundMoney(Number(input.restoreAmount)),
+    finalAmount: roundMoney(Number(input.assessment.final_amount ?? 0)),
+    voidReason: input.assessment.void_reason ?? null,
+  };
+}
+
+/** Ledger rows preserved through restore (charge + void remain; restore is additive). */
+export function restorePreservesVoidAndChargeHistory(input: {
+  ledger: Array<{ id: number; kind: string }>;
+  chargeLedgerId: number;
+  voidLedgerId: number;
+  restoreLedgerId: number;
+}): boolean {
+  const byId = new Map(input.ledger.map((r) => [Number(r.id), r.kind]));
+  return (
+    byId.get(Number(input.chargeLedgerId)) === 'charge'
+    && byId.get(Number(input.voidLedgerId)) === 'assessment_void'
+    && byId.get(Number(input.restoreLedgerId)) === 'assessment_restore'
+  );
+}
+
 export function supportLedgerKindLabelKey(kind: string | null | undefined): string {
   switch (kind) {
     case 'payment':
@@ -204,6 +380,8 @@ export function supportLedgerKindLabelKey(kind: string | null | undefined): stri
       return 'admin.kindPaymentReversal';
     case 'assessment_void':
       return 'admin.kindAssessmentVoid';
+    case 'assessment_restore':
+      return 'admin.kindAssessmentRestore';
     case 'adjustment_debit':
       return 'admin.kindAdjDebit';
     case 'adjustment_credit':

@@ -8,8 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "schema:pull": "node scripts/fetch-schema.mjs",
-    "test": "vitest run tests/email-core",
+    "test": "vitest run",
     "test:email-core": "vitest run tests/email-core",
+    "test:pkg-xfer": "vitest run tests/pkg-xfer/unit",
+    "test:security": "vitest run tests/security/unit",
     "test:email-core:phase-b": "vitest run tests/email-core/unit/phaseB.workerWebhook.test.ts"
   },
   "dependencies": {

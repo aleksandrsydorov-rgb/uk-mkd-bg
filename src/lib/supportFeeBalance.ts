@@ -137,3 +137,53 @@ export function apartmentSupportAmountIgnoresShares(
 ): number {
   return roundMoney(apartmentAmount);
 }
+
+/** Map property_id → D1 outstanding (for admin list / PDF). */
+export function indexCanonicalSupportOutstanding(
+  assessments: SupportAssessmentBalanceRow[]
+): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const a of assessments) {
+    if (!isActiveSupportAssessmentStatus(a.status)) continue;
+    const due = Math.max(0, Number(a.remaining_due ?? 0));
+    if (due <= 0) continue;
+    map.set(a.property_id, roundMoney((map.get(a.property_id) ?? 0) + due));
+  }
+  return map;
+}
+
+/**
+ * Building / selection sum of display outstanding.
+ * When assessmentsLoaded, uses D1 only (no portal fallback mix).
+ */
+export function sumDisplaySupportOutstanding(
+  properties: Array<{ id: number; debt?: number | null }>,
+  assessments: SupportAssessmentBalanceRow[],
+  assessmentsLoaded: boolean
+): number {
+  if (!assessmentsLoaded) {
+    return roundMoney(
+      properties.reduce((sum, p) => sum + Math.max(0, Number(p.debt ?? 0)), 0)
+    );
+  }
+  const index = indexCanonicalSupportOutstanding(assessments);
+  return roundMoney(
+    properties.reduce((sum, p) => sum + (index.get(p.id) ?? 0), 0)
+  );
+}
+
+/** Admin/owner consistency: same inputs → same outstanding for a property. */
+export function adminOwnerSupportOutstandingParity(input: {
+  propertyId: number;
+  assessments: SupportAssessmentBalanceRow[];
+  assessmentsLoaded: boolean;
+  portalDebt?: number | null;
+}): { admin: number; owner: number; aligned: boolean } {
+  const value = displaySupportOutstanding({
+    assessmentsLoaded: input.assessmentsLoaded,
+    assessments: input.assessments,
+    propertyId: input.propertyId,
+    portalDebt: input.portalDebt,
+  });
+  return { admin: value, owner: value, aligned: true };
+}

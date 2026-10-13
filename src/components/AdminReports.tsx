@@ -4,6 +4,12 @@ import { useMemo, useState } from 'react';
 import type { Database } from '@/lib/database.types';
 import { isExpensePublished } from '@/lib/expenses';
 import { annualSupportFee, type SupportFeeEntry } from '@/lib/finance';
+import {
+  displaySupportOutstanding,
+  sumDisplaySupportOutstanding,
+  supportOverpayment,
+  type SupportAssessmentBalanceRow,
+} from '@/lib/supportFeeBalance';
 import { downloadHtmlAsPdf } from '@/lib/pdfDownload';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
@@ -114,6 +120,8 @@ export function AdminReports({
   supportRate,
   years,
   showSalary = false,
+  supportAssessments = [],
+  supportAssessmentsLoaded = false,
 }: {
   properties: Property[];
   requests: Request[];
@@ -123,6 +131,9 @@ export function AdminReports({
   supportRate: number | null;
   years: number[];
   showSalary?: boolean;
+  /** D1 assessments for canonical Support Fee outstanding in PDFs. */
+  supportAssessments?: SupportAssessmentBalanceRow[];
+  supportAssessmentsLoaded?: boolean;
 }) {
   const { t, locale } = useI18n();
   const money = (n: number) => formatEur(n, locale);
@@ -169,6 +180,15 @@ export function AdminReports({
     return labelOccupancy(p.occupancy_status, t);
   }
 
+  function sfDebt(p: Property) {
+    return displaySupportOutstanding({
+      assessmentsLoaded: supportAssessmentsLoaded,
+      assessments: supportAssessments,
+      propertyId: p.id,
+      portalDebt: p.debt,
+    });
+  }
+
   const cards = [
     {
       id: 'summary',
@@ -176,8 +196,12 @@ export function AdminReports({
       hint: t('admin.reportSummaryHint'),
       build: () => {
         const area = apts.reduce((s, p) => s + Number(p.area_sqm ?? 0), 0);
-        const debt = apts.reduce((s, p) => s + Number(p.debt ?? 0), 0);
-        const over = apts.reduce((s, p) => s + Number(p.overpayment ?? 0), 0);
+        const debt = sumDisplaySupportOutstanding(
+          apts,
+          supportAssessments,
+          supportAssessmentsLoaded
+        );
+        const over = apts.reduce((s, p) => s + supportOverpayment(p.overpayment), 0);
         const exp = ukExpenses
           .filter((e) => isExpensePublished(e) && dateInPeriod(e.expense_date, yearNum, quarter))
           .reduce((s, e) => s + Number(e.amount ?? 0), 0);
@@ -227,15 +251,15 @@ export function AdminReports({
       title: t('admin.reportDebt'),
       hint: t('admin.reportDebtHint'),
       build: () => {
-        const rows = apts.filter((p) => Number(p.debt ?? 0) > 0);
-        const total = rows.reduce((s, p) => s + Number(p.debt ?? 0), 0);
+        const rows = apts.filter((p) => sfDebt(p) > 0);
+        const total = rows.reduce((s, p) => s + sfDebt(p), 0);
         const body = table(
           [t('form.colApt'), t('form.colOwner'), t('form.colFloor'), t('admin.debt')],
           rows.map((p) => [
             escapeHtml(p.apartment_number),
             escapeHtml(p.owner_name),
             escapeHtml(p.floor ?? '—'),
-            escapeHtml(money(Number(p.debt ?? 0))),
+            escapeHtml(money(sfDebt(p))),
           ]),
           rows.length ? [t('admin.pdfTotal'), '', '', escapeHtml(money(total))] : undefined,
         );
@@ -255,8 +279,8 @@ export function AdminReports({
             escapeHtml(p.area_sqm != null ? `${p.area_sqm}` : '—'),
             escapeHtml(labelListing(p.status, t)),
             escapeHtml(occupancy(p)),
-            escapeHtml(money(Number(p.debt ?? 0))),
-            escapeHtml(money(Number(p.overpayment ?? 0))),
+            escapeHtml(money(sfDebt(p))),
+            escapeHtml(money(supportOverpayment(p.overpayment))),
           ]),
         );
         return wrapReport(t, `${t('admin.reportApts')} · ${periodLabel}`, generatedLine(), body);

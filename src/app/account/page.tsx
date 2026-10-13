@@ -1588,13 +1588,23 @@ export default function AccountPage() {
   const myVoteWeight = useMemo(() => accountVoteWeight(properties), [properties]);
 
   const debtColor = useMemo(() => {
-    const d = properties.reduce((sum, p) => sum + Number(p.debt ?? 0), 0);
+    const d = properties.reduce(
+      (sum, p) =>
+        sum +
+        displaySupportOutstanding({
+          assessmentsLoaded: true,
+          assessments: supportAssessments,
+          propertyId: p.id,
+          portalDebt: p.debt,
+        }),
+      0
+    );
     if (d <= 0) return 'text-muted';
     return 'text-danger';
-  }, [properties]);
+  }, [properties, supportAssessments]);
 
   const overColor = useMemo(() => {
-    const o = properties.reduce((sum, p) => sum + Number(p.overpayment ?? 0), 0);
+    const o = properties.reduce((sum, p) => sum + supportOverpayment(p.overpayment), 0);
     if (o <= 0) return 'text-muted';
     return 'text-success';
   }, [properties]);

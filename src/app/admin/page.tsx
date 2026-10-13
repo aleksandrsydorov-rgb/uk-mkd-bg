@@ -74,6 +74,13 @@ import {
   supportPaymentIdempotencySignature,
   type SupportFeeEntry,
 } from '@/lib/finance';
+import {
+  displaySupportOutstanding,
+  indexCanonicalSupportOutstanding,
+  sumDisplaySupportOutstanding,
+  supportOverpayment,
+  type SupportAssessmentBalanceRow,
+} from '@/lib/supportFeeBalance';
 import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { AdminReports } from '@/components/AdminReports';
@@ -601,6 +608,8 @@ function AdminPortal() {
   const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
   const [supportFeeMissing, setSupportFeeMissing] = useState(false);
   const [ledger, setLedger] = useState<SupportFeeEntry[]>([]);
+  const [supportAssessments, setSupportAssessments] = useState<SupportAssessmentBalanceRow[]>([]);
+  const [supportAssessmentsLoaded, setSupportAssessmentsLoaded] = useState(false);
   const [payPropertyId, setPayPropertyId] = useState<number | ''>('');
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
@@ -932,6 +941,11 @@ function AdminPortal() {
           .order('created_at', { ascending: false })
           .limit(200)
         : { data: [] as SupportFeeEntry[], error: null };
+      const assessRes = canReadSupportFinance
+        ? await supabase
+          .from('support_fee_assessments')
+          .select('property_id, remaining_due, status, billing_year')
+        : { data: [] as SupportAssessmentBalanceRow[], error: null };
 
       const settingsRow = Array.isArray(settingsRes.data) ? settingsRes.data[0] : settingsRes.data;
       if (settingsRes.error && isMissingRelation(settingsRes.error, 'building_settings')) {
@@ -972,6 +986,14 @@ function AdminPortal() {
         setSupportFeeMissing(true);
       } else {
         setLedger((ledgerRes.data as SupportFeeEntry[]) ?? []);
+      }
+      if (assessRes.error) {
+        if (!isMissingRelation(assessRes.error, 'support_fee_assessments')) throw assessRes.error;
+        setSupportAssessments([]);
+        setSupportAssessmentsLoaded(false);
+      } else {
+        setSupportAssessments((assessRes.data as SupportAssessmentBalanceRow[]) ?? []);
+        setSupportAssessmentsLoaded(true);
       }
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
@@ -1455,12 +1477,30 @@ function AdminPortal() {
   }
 
   // ---------- РАСЧЁТЫ ДЛЯ ОБЗОРА ----------
+  // D1: Support Fee outstanding = sum(remaining_due); overpayment stays portal credit.
+  const sfDebtByProperty = useMemo(
+    () =>
+      supportAssessmentsLoaded
+        ? indexCanonicalSupportOutstanding(supportAssessments)
+        : null,
+    [supportAssessments, supportAssessmentsLoaded]
+  );
+  const sfDebtOf = useCallback(
+    (p: Property) =>
+      displaySupportOutstanding({
+        assessmentsLoaded: supportAssessmentsLoaded,
+        assessments: supportAssessments,
+        propertyId: p.id,
+        portalDebt: p.debt,
+      }),
+    [supportAssessments, supportAssessmentsLoaded]
+  );
   const totalDebt = useMemo(
-    () => properties.reduce((sum, p) => sum + Number(p.debt ?? 0), 0),
-    [properties]
+    () => sumDisplaySupportOutstanding(properties, supportAssessments, supportAssessmentsLoaded),
+    [properties, supportAssessments, supportAssessmentsLoaded]
   );
   const totalOverpayment = useMemo(
-    () => properties.reduce((sum, p) => sum + Number(p.overpayment ?? 0), 0),
+    () => properties.reduce((sum, p) => sum + supportOverpayment(p.overpayment), 0),
     [properties]
   );
   const totalArea = useMemo(
@@ -1670,20 +1710,24 @@ function AdminPortal() {
       result = result.filter((p) => p.owner_type === aptOwnerTypeFilter);
     }
 
-    // Долг
+    // Долг (D1 remaining_due when assessments loaded)
     if (aptDebtFilter !== '') {
+      const debtOf = (p: Property) =>
+        sfDebtByProperty
+          ? (sfDebtByProperty.get(p.id) ?? 0)
+          : Math.max(0, Number(p.debt ?? 0));
       switch (aptDebtFilter) {
         case 'has_debt':
-          result = result.filter((p) => Number(p.debt ?? 0) > 0);
+          result = result.filter((p) => debtOf(p) > 0);
           break;
         case 'no_debt':
-          result = result.filter((p) => Number(p.debt ?? 0) <= 0);
+          result = result.filter((p) => debtOf(p) <= 0);
           break;
         case 'debt_50':
-          result = result.filter((p) => Number(p.debt ?? 0) >= 50);
+          result = result.filter((p) => debtOf(p) >= 50);
           break;
         case 'debt_100':
-          result = result.filter((p) => Number(p.debt ?? 0) >= 100);
+          result = result.filter((p) => debtOf(p) >= 100);
           break;
       }
     }
@@ -1717,10 +1761,18 @@ function AdminPortal() {
         result.sort((a, b) => Number(b.apartment_number) - Number(a.apartment_number));
         break;
       case 'debt_desc':
-        result.sort((a, b) => Number(b.debt ?? 0) - Number(a.debt ?? 0));
+        result.sort((a, b) => {
+          const da = sfDebtByProperty ? (sfDebtByProperty.get(a.id) ?? 0) : Number(a.debt ?? 0);
+          const db = sfDebtByProperty ? (sfDebtByProperty.get(b.id) ?? 0) : Number(b.debt ?? 0);
+          return db - da;
+        });
         break;
       case 'debt_asc':
-        result.sort((a, b) => Number(a.debt ?? 0) - Number(b.debt ?? 0));
+        result.sort((a, b) => {
+          const da = sfDebtByProperty ? (sfDebtByProperty.get(a.id) ?? 0) : Number(a.debt ?? 0);
+          const db = sfDebtByProperty ? (sfDebtByProperty.get(b.id) ?? 0) : Number(b.debt ?? 0);
+          return da - db;
+        });
         break;
       case 'area_desc':
         result.sort((a, b) => Number(b.area_sqm ?? 0) - Number(a.area_sqm ?? 0));
@@ -1735,7 +1787,8 @@ function AdminPortal() {
 
     return result;
   }, [properties, aptSearch, aptFloorFilter, aptStatusFilter, aptOccupancyFilter,
-      aptOwnerTypeFilter, aptDebtFilter, aptGuestsFilter, aptPetsFilter, aptSort, allGuests, allPets]);
+      aptOwnerTypeFilter, aptDebtFilter, aptGuestsFilter, aptPetsFilter, aptSort, allGuests, allPets,
+      sfDebtByProperty]);
 
   // ---------- ФИЛЬТРАЦИЯ ЗАЯВОК ----------
   const filteredRequests = useMemo(() => {
@@ -2725,7 +2778,7 @@ function AdminPortal() {
         const rentedCount = properties.filter((p) => p.occupancy_status === 'rented').length;
         const standbyCount = properties.filter((p) => p.occupancy_status === 'standby').length;
         const ownerCount = properties.filter((p) => p.occupancy_status === 'owner' || !p.occupancy_status).length;
-        const debtCount = properties.filter((p) => Number(p.debt ?? 0) > 0).length;
+        const debtCount = properties.filter((p) => sfDebtOf(p) > 0).length;
         const showCard = (key: OverviewCardKey) => isOverviewCardEnabled(overviewCardPrefs, key);
         const attention: {
           key: AdminSection;
@@ -3112,7 +3165,8 @@ function AdminPortal() {
                 </div>
                 {editingProp ? (
                   <p className="text-xs text-secondary">
-                    {t('admin.debt')}: {money(editingProp.debt)} · {t('admin.overpay')}: {money(editingProp.overpayment)}
+                    {t('admin.debt')}: {money(sfDebtOf(editingProp))} · {t('admin.overpay')}:{' '}
+                    {money(supportOverpayment(editingProp.overpayment))}
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
@@ -3212,8 +3266,8 @@ function AdminPortal() {
             <div className="space-y-2 md:hidden">
               {filteredProperties.map((p) => {
                 const ownerPrimary = (p.owner_name ?? '').trim() || (p.owner_email ?? '').trim() || '—';
-                const debtN = Number(p.debt ?? 0);
-                const overN = Number(p.overpayment ?? 0);
+                const debtN = sfDebtOf(p);
+                const overN = supportOverpayment(p.overpayment);
                 return (
                 <button
                   key={p.id}
@@ -3237,7 +3291,7 @@ function AdminPortal() {
                     {p.area_sqm ?? '—'} {t('common.sqm')} · {p.floor ?? '—'} {t('common.floor')}
                   </div>
                   <div className={`mt-1 text-sm ${debtN > 0 ? 'font-medium text-danger' : 'text-secondary'}`}>
-                    {debtN > 0 ? money(p.debt) : overN > 0 ? money(p.overpayment) : t('admin.aptNoDebt')}
+                    {debtN > 0 ? money(debtN) : overN > 0 ? money(overN) : t('admin.aptNoDebt')}
                   </div>
                   <div className="mt-1 text-xs text-accent">{t('admin.aptDetails')} →</div>
                 </button>
@@ -3263,8 +3317,8 @@ function AdminPortal() {
                   {filteredProperties.map((p) => {
                     const ownerName = (p.owner_name ?? '').trim();
                     const ownerMail = (p.owner_email ?? '').trim();
-                    const debtN = Number(p.debt ?? 0);
-                    const overN = Number(p.overpayment ?? 0);
+                    const debtN = sfDebtOf(p);
+                    const overN = supportOverpayment(p.overpayment);
                     return (
                       <tr
                         key={p.id}
@@ -3290,7 +3344,7 @@ function AdminPortal() {
                           />
                         </td>
                         <td className={`${adminTableCellClass} ${debtN > 0 ? 'font-medium text-danger' : 'text-secondary'}`}>
-                          {debtN > 0 ? money(p.debt) : overN > 0 ? money(p.overpayment) : t('admin.aptNoDebt')}
+                          {debtN > 0 ? money(debtN) : overN > 0 ? money(overN) : t('admin.aptNoDebt')}
                         </td>
                         <td className={adminTableCellClass}>
                           <button
@@ -3330,6 +3384,8 @@ function AdminPortal() {
                 chatMessages={chatForProperty(detailProperty.id)}
                 chatSeenAt={ukChatSeen[String(detailProperty.id)]}
                 supportRate={supportRate}
+                supportOutstanding={sfDebtOf(detailProperty)}
+                supportOver={supportOverpayment(detailProperty.overpayment)}
                 onClose={() => setDetailProperty(null)}
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
                 onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); navigateAdminSection('чат'); }}
@@ -3342,7 +3398,7 @@ function AdminPortal() {
                 onOpenTransfer={() => { setDetailProperty(null); navigateAdminSection('смены'); }}
                 onTakePayment={() => {
                   setPayPropertyId(detailProperty.id);
-                  const debt = Number(detailProperty.debt ?? 0);
+                  const debt = sfDebtOf(detailProperty);
                   const monthly = monthlySupportFee(detailProperty.area_sqm, supportRate);
                   setPayAmount(
                     debt > 0
@@ -5287,6 +5343,8 @@ function AdminPortal() {
             supportRate={supportRate}
             years={expenseYears}
             showSalary={showStaffSalary}
+            supportAssessments={supportAssessments}
+            supportAssessmentsLoaded={supportAssessmentsLoaded}
           />
         );
 
@@ -5629,7 +5687,7 @@ function AdminPortal() {
                       setPayPropertyId(id);
                       const p = properties.find((x) => x.id === id);
                       if (!p) return;
-                      const debt = Number(p.debt ?? 0);
+                      const debt = sfDebtOf(p);
                       const monthly = monthlySupportFee(p.area_sqm, supportRate);
                       setPayAmount(
                         debt > 0 ? debt.toFixed(2) : monthly == null ? '' : String(monthly),
@@ -5663,7 +5721,10 @@ function AdminPortal() {
                 {selectedPay && (
                   <div className="sm:col-span-2 flex flex-wrap gap-2 text-xs">
                     <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
-                      onClick={() => setPayAmount(Number(selectedPay.debt ?? 0) > 0 ? Number(selectedPay.debt).toFixed(2) : '0.01')}>
+                      onClick={() => {
+                        const debt = sfDebtOf(selectedPay);
+                        setPayAmount(debt > 0 ? debt.toFixed(2) : '0.01');
+                      }}>
                       {t('admin.feeAllDebt')}
                     </button>
                     <button
@@ -6053,7 +6114,9 @@ export default function AdminPage() {
 // МОДАЛЬНОЕ ОКНО — ДЕТАЛЬНЫЙ ПРОСМОТР ВСЕХ ДАННЫХ КВАРТИРЫ
 // =====================================================================
 function ApartmentDetailModal({
-  property, requests, meterReadings, guests, pets, chatMessages, chatSeenAt, supportRate, onClose, onEdit, onOpenChat, onTakePayment, onChanged, onDelete, onOpenTransfer,
+  property, requests, meterReadings, guests, pets, chatMessages, chatSeenAt, supportRate,
+  supportOutstanding, supportOver,
+  onClose, onEdit, onOpenChat, onTakePayment, onChanged, onDelete, onOpenTransfer,
 }: {
   property: Property;
   requests: Request[];
@@ -6063,6 +6126,9 @@ function ApartmentDetailModal({
   chatMessages: ChatMessage[];
   chatSeenAt?: string;
   supportRate: number | null;
+  /** D1 canonical SF outstanding (remaining_due sum). */
+  supportOutstanding: number;
+  supportOver: number;
   onClose: () => void;
   onEdit: () => void;
   onOpenChat: () => void;
@@ -6307,17 +6373,17 @@ function ApartmentDetailModal({
                 <div className={`${adminCardClass} p-3`}>
                   <div className="text-secondary text-xs">{t('admin.kpiDebtTitle')}</div>
                   <div className={`mt-1 text-lg font-semibold ${
-                    Number(property.debt) > 0 ? 'text-danger' : 'text-foreground'
+                    supportOutstanding > 0 ? 'text-danger' : 'text-foreground'
                   }`}>
-                    {formatEur(Number(property.debt ?? 0), locale)}
+                    {formatEur(supportOutstanding, locale)}
                   </div>
                 </div>
                 <div className={`${adminCardClass} p-3`}>
                   <div className="text-secondary text-xs">{t('admin.overpay')}</div>
                   <div className={`mt-1 text-lg font-semibold ${
-                    Number(property.overpayment) > 0 ? 'text-foreground' : 'text-muted'
+                    supportOver > 0 ? 'text-foreground' : 'text-muted'
                   }`}>
-                    {formatEur(Number(property.overpayment ?? 0), locale)}
+                    {formatEur(supportOver, locale)}
                   </div>
                 </div>
                 <div className={`${adminCardClass} p-3`}>

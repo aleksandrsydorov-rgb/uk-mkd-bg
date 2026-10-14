@@ -114,6 +114,7 @@ import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisi
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
 import { AdminEmailSettings } from '@/components/admin/AdminEmailSettings';
+import { AdminInitialSetup } from '@/components/admin/AdminInitialSetup';
 import { sofiaCalendarYear } from '@/lib/supportFeeAnnual';
 import { AdminWorkOrders } from '@/components/admin/AdminWorkOrders';
 import { AdminMyTasks } from '@/components/admin/AdminMyTasks';
@@ -317,7 +318,8 @@ type AdminSection =
   | 'рабочие_задачи'
   | 'мои_задачи'
   | 'платформа'
-  | 'активация';
+  | 'активация'
+  | 'начальная_настройка';
 
 const ADMIN_SECTIONS: readonly AdminSection[] = [
   'обзор',
@@ -350,6 +352,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'мои_задачи',
   'платформа',
   'активация',
+  'начальная_настройка',
 ] as const;
 
 const DEFAULT_ADMIN_SECTION: AdminSection = 'обзор';
@@ -442,6 +445,7 @@ function AdminPortal() {
       { key: 'чат', label: t('admin.chat'), icon: '💬' },
       { key: 'платформа', label: t('admin.platformTitle'), icon: '🛰️' },
       { key: 'активация', label: t('admin.uaTitle'), icon: '👤' },
+      { key: 'начальная_настройка', label: t('admin.is1Title'), icon: '🧩' },
     ],
     [t],
   );
@@ -568,7 +572,11 @@ function AdminPortal() {
       {
         id: 'system',
         label: t('admin.menuSystem'),
-        items: ['персонал', 'настройки'] as AdminSection[],
+        items: [
+          'персонал',
+          'настройки',
+          ...(canManageCriticalAccess ? (['начальная_настройка'] as const) : []),
+        ] as AdminSection[],
       },
     ];
     return groups.filter((group) => group.items.length > 0);
@@ -4955,6 +4963,14 @@ function AdminPortal() {
           );
         }
         return <AdminUserActivation supabase={supabase} staffRole={staffRole} />;
+
+      case 'начальная_настройка':
+        if (!canManageCriticalAccess) {
+          return (
+            <AdminEmptyState title={t('admin.is1Title')} text={t('admin.is1AccessDenied')} />
+          );
+        }
+        return <AdminInitialSetup supabase={supabase} t={t} />;
 
       // =============================================================
       // ОПРОСЫ

@@ -3590,6 +3590,73 @@ export interface Database {
           enabled: boolean;
         }[];
       };
+      admin_list_module_lifecycle: {
+        Args: Record<string, never>;
+        Returns: {
+          installation_key: string;
+          module_key: string;
+          state: string;
+          setup_schema_version: string | null;
+          catalog_implemented: boolean;
+          building_enabled: boolean;
+          last_transition_at: string;
+          has_setup_draft: boolean;
+        }[];
+      };
+      admin_transition_module_lifecycle: {
+        Args: {
+          p_module_key: string;
+          p_to_state: string;
+          p_reason?: string | null;
+        };
+        Returns: {
+          module_key: string;
+          state: string;
+          last_transition_at: string;
+        }[];
+      };
+      admin_save_module_setup_progress: {
+        Args: {
+          p_module_key: string;
+          p_current_step: string | null;
+          p_draft: Json;
+          p_validation_errors?: Json;
+          p_setup_schema_version?: string;
+        };
+        Returns: Json;
+      };
+      admin_get_module_setup_progress: {
+        Args: { p_module_key: string };
+        Returns: Json;
+      };
+      admin_create_module_import_batch: {
+        Args: {
+          p_module_key: string;
+          p_schema_version: string;
+          p_source: string;
+          p_file_name: string | null;
+          p_preview: Json;
+          p_row_count: number;
+          p_create_count: number;
+          p_update_count: number;
+          p_skip_count: number;
+          p_error_count: number;
+          p_error_report?: Json;
+        };
+        Returns: Json;
+      };
+      admin_commit_module_import_batch: {
+        Args: { p_batch_id: string };
+        Returns: Json;
+      };
+      admin_list_module_import_batches: {
+        Args: { p_module_key?: string | null; p_limit?: number };
+        Returns: Json;
+      };
+      module_lifecycle_transition_allowed: {
+        Args: { p_from: string; p_to: string };
+        Returns: boolean;
+      };
       current_staff_id: {
         Args: Record<string, never>;
         Returns: number;

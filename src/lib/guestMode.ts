@@ -41,17 +41,55 @@ export function guestCabinetAllows(permission: GuestCabinetPermission): boolean 
   return GUEST_ALLOWED.has(permission);
 }
 
+/**
+ * Mirror of public.guest_access_matches_caller(access_id, property_id):
+ * access row must belong to the target property, match caller email, and be active.
+ */
+export function guestAccessMatchesCaller(args: {
+  accessId: string | null | undefined;
+  propertyId: number;
+  callerEmail: string | null | undefined;
+  access:
+    | {
+        id: string;
+        property_id: number;
+        email: string;
+        status: string;
+        validFrom: string | Date;
+        validUntil: string | Date | null;
+      }
+    | null
+    | undefined;
+  now?: Date;
+}): boolean {
+  if (!args.accessId || !args.callerEmail || !args.access) return false;
+  if (args.access.id !== args.accessId) return false;
+  if (args.access.property_id !== args.propertyId) return false;
+  if (args.access.email.trim().toLowerCase() !== args.callerEmail.trim().toLowerCase()) {
+    return false;
+  }
+  return isGuestAccessTemporallyValid({
+    status: args.access.status,
+    validFrom: args.access.validFrom,
+    validUntil: args.access.validUntil,
+    now: args.now,
+  });
+}
+
 export function canGuestInsertChat(args: {
   isGuestOnlyOnProperty: boolean;
   accessActive: boolean;
   sender: ChatSenderKind;
   guestAccessId: string | null | undefined;
+  /** When provided, also require guest_access_matches_caller mirror. */
+  accessMatchesCaller?: boolean;
 }): boolean {
   return (
     args.isGuestOnlyOnProperty &&
     args.accessActive &&
     args.sender === 'guest' &&
-    Boolean(args.guestAccessId)
+    Boolean(args.guestAccessId) &&
+    (args.accessMatchesCaller ?? true)
   );
 }
 

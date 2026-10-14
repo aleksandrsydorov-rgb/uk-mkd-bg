@@ -20,7 +20,7 @@
 
 | # | Item | Result |
 |---|------|--------|
-| 1 | Commit hash / push | **`187c67c`** pushed `main` → `origin/main` (`b4ef6a0..187c67c`) |
+| 1 | Commit hash / push | **`187c67c`** feat + **`011088f`** docs pushed `main` → `origin/main` (`b4ef6a0..011088f`) |
 | 2 | Vercel deployment | **`dpl_GTUEdGQgvr6MgJaQKnfWPnDhyb5y`** · **Ready** · alias **https://amadeus11.online** · URL `uk-mkd-bg-8soe-740c6o3zh` · duration ~40s |
 | 3 | Tests / build | **PASS** — `npm test` 238/238; `npx tsc --noEmit` PASS; `npm run build` PASS |
 | 4 | Support Fee adapter UI | **PASS** (agent browser, admin session) |

@@ -24,3 +24,51 @@ export {
   propertyBookOpeningAdapter,
   downloadPropertyBookOpeningTemplate,
 } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
+export {
+  WATER_MODULE_KEY,
+  ELECTRICITY_MODULE_KEY,
+  METERS_SETUP_SCHEMA_VERSION,
+  OPENING_READING_ROW_COMMIT,
+  DEFAULT_METER_OPENING_POLICY,
+  WATER_METER_HEADERS,
+  ELECTRICITY_METER_HEADERS,
+  validateWaterMeterRow,
+  validateElectricityMeterRow,
+  validateOpeningReadingPreviewFields,
+  parseInstalledAtDate,
+  classifyWaterMeterOpeningRows,
+  classifyElectricityMeterOpeningRows,
+  buildApartmentLookup,
+  activePropertyIdsFromMeters,
+  serialSetFromMeters,
+  waterAssignPayloadsFromPreview,
+  electricityAssignPayloadsFromPreview,
+  buildWaterMeterIs3TemplateBuffer,
+  buildElectricityMeterIs3TemplateBuffer,
+  downloadWaterMeterIs3Template,
+  downloadElectricityMeterIs3Template,
+  buildMeterErrorReportXlsx,
+  downloadMeterErrorReport,
+  isOpeningReadingRowCommitBlocked,
+} from '@/lib/moduleCore/adapters/metersOpening';
+export {
+  waterOpeningAdapter,
+  downloadWaterOpeningTemplate,
+} from '@/lib/moduleCore/adapters/waterOpeningAdapter';
+export {
+  electricityOpeningAdapter,
+  downloadElectricityOpeningTemplate,
+} from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
+export {
+  METER_COMMIT_OUTCOMES,
+  classifyAssignErrorMessage,
+  commitMeterInventoryBatch,
+  reconcileMeterCommitWithDb,
+  retryCandidatesFromBatch,
+  filterPreviewForRetry,
+  mergeMeterCommitBatches,
+  meterCommitAuditPayload,
+  type MeterCommitOutcome,
+  type MeterCommitRowResult,
+  type MeterCommitBatchResult,
+} from '@/lib/moduleCore/adapters/metersImportCommit';

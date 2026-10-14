@@ -1287,6 +1287,47 @@ export const ru = {
     is2PropertyBookImportCommitted: 'Импорт применён; batch отмечен committed.',
     is2PropertyBookNoOverwrite:
       'IS-2: allow_overwrite=false. Preview не пишет. Commit только после явного подтверждения.',
+    is3WaterName: 'Вода (водомеры)',
+    is3WaterDesc: 'Начальная инвентаризация водомеров через assign_water_meter (без начислений).',
+    is3ElectricityName: 'Электричество (счётчики)',
+    is3ElectricityDesc:
+      'Начальная инвентаризация электросчётчиков через assign_electricity_meter (без начислений).',
+    is3WaterStepVerify: 'Проверка водомеров',
+    is3ElectricityStepVerify: 'Проверка электросчётчиков',
+    is3WaterManualConfirm: 'Подтверждаю: водомеры заполнены через админку Вода',
+    is3ElectricityManualConfirm: 'Подтверждаю: счётчики заполнены через админку Счётчики',
+    is3MetersVerifiedExisting: 'Существующие приборы проверены (только чтение, без замены)',
+    is3WaterXlsxInstructions: 'Лист meters; инструкции BG/RU/EN в шаблоне',
+    is3ElectricityXlsxInstructions: 'Лист meters; инструкции BG/RU/EN в шаблоне',
+    is3ColApartment: 'apartment_number',
+    is3ColMeterNumber: 'meter_number',
+    is3ColInitialReading: 'initial_reading',
+    is3ColInitialDay: 'initial_day_reading',
+    is3ColInitialNight: 'initial_night_reading',
+    is3ColInstalledAt: 'installed_at',
+    is3MetersSsotNote:
+      'Приборы учёта — канонические water_meters / electricity_meters. Книга — источник квартир. Строки показаний (submit_*) в IS-3 не пишутся (начисления).',
+    is3MetersManualHint:
+      'Ручной ввод — через разделы Вода / Счётчики. Здесь только подтверждение setup.',
+    is3MetersXlsxHint:
+      'Шаблон: meters + инструкции BG/RU/EN. Preview без записи. Активный прибор → SKIP. Opening reading rows = BLOCKED.',
+    is3MetersEmptySheet: 'Лист meters пуст.',
+    is3OpeningReadingBlocked:
+      'Opening reading rows BLOCKED (submit_* создаёт charges). Инвентарь: initial_* → assign_*.',
+    is3MetersFixErrors: 'Исправьте ошибки перед импортом приборов.',
+    is3MetersConfirmButton: 'Подтвердить инвентарь (assign)',
+    is3MetersConfirmImport:
+      'Подтвердить назначение приборов? Существующие активные не будут заменены. Показания/charges не создаются.',
+    is3MetersImportCommitted: 'Инвентарь применён через assign_*; batch committed. Reading rows не писались.',
+    is3MetersNoOverwrite:
+      'IS-3: allow_replace=false. Preview не пишет. Commit только assign_* после подтверждения. Opening readings BLOCKED.',
+    is3MetersPartialCommit:
+      'Частичный commit: CREATED {c} · SKIPPED_EXISTING {s} · FAILED {f} · NOT_PROCESSED {n}',
+    is3MetersPartialNotFullySuccessful:
+      'Пакет не полностью успешен. Повторите только недостающие строки (без дублей).',
+    is3MetersRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
+    is3MetersRetryEmpty: 'Нет строк для повтора — все уже созданы или пропущены.',
+    is3Outcome: 'Итог',
     emailTitle: 'Электронная почта',
     emailLead:
       'Отправитель и статус почтовой системы этого комплекса. Секреты провайдера хранятся только на сервере.',
@@ -4252,6 +4293,47 @@ export const en: Messages = {
     is2PropertyBookImportCommitted: 'Import applied; batch marked committed.',
     is2PropertyBookNoOverwrite:
       'IS-2: allow_overwrite=false. Preview does not write. Commit only after explicit confirmation.',
+    is3WaterName: 'Water (meters)',
+    is3WaterDesc: 'Opening water-meter inventory via assign_water_meter (no charges).',
+    is3ElectricityName: 'Electricity (meters)',
+    is3ElectricityDesc:
+      'Opening electricity-meter inventory via assign_electricity_meter (no charges).',
+    is3WaterStepVerify: 'Water meters verification',
+    is3ElectricityStepVerify: 'Electricity meters verification',
+    is3WaterManualConfirm: 'I confirm: water meters are filled via Water admin',
+    is3ElectricityManualConfirm: 'I confirm: meters are filled via Meters admin',
+    is3MetersVerifiedExisting: 'Existing devices verified (read-only, no replace)',
+    is3WaterXlsxInstructions: 'Sheet meters; BG/RU/EN instructions in template',
+    is3ElectricityXlsxInstructions: 'Sheet meters; BG/RU/EN instructions in template',
+    is3ColApartment: 'apartment_number',
+    is3ColMeterNumber: 'meter_number',
+    is3ColInitialReading: 'initial_reading',
+    is3ColInitialDay: 'initial_day_reading',
+    is3ColInitialNight: 'initial_night_reading',
+    is3ColInstalledAt: 'installed_at',
+    is3MetersSsotNote:
+      'Devices use canonical water_meters / electricity_meters. Property Book is apartment SSOT. Reading rows (submit_*) are not written in IS-3 (charges).',
+    is3MetersManualHint:
+      'Manual entry is done in Water / Meters admin. Here you only confirm setup.',
+    is3MetersXlsxHint:
+      'Template: meters + BG/RU/EN instructions. Preview writes nothing. Active device → SKIP. Opening reading rows = BLOCKED.',
+    is3MetersEmptySheet: 'meters sheet is empty.',
+    is3OpeningReadingBlocked:
+      'Opening reading rows BLOCKED (submit_* creates charges). Inventory: initial_* → assign_*.',
+    is3MetersFixErrors: 'Fix errors before importing devices.',
+    is3MetersConfirmButton: 'Confirm inventory (assign)',
+    is3MetersConfirmImport:
+      'Confirm meter assignment? Existing active devices will not be replaced. No readings/charges are created.',
+    is3MetersImportCommitted: 'Inventory applied via assign_*; batch committed. Reading rows were not written.',
+    is3MetersNoOverwrite:
+      'IS-3: allow_replace=false. Preview does not write. Commit only assign_* after confirmation. Opening readings BLOCKED.',
+    is3MetersPartialCommit:
+      'Partial commit: CREATED {c} · SKIPPED_EXISTING {s} · FAILED {f} · NOT_PROCESSED {n}',
+    is3MetersPartialNotFullySuccessful:
+      'Batch is not fully successful. Retry only missing rows (no duplicates).',
+    is3MetersRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
+    is3MetersRetryEmpty: 'Nothing to retry — rows already created or skipped.',
+    is3Outcome: 'Outcome',
     emailTitle: 'Email',
     emailLead:
       'Sender and mail system status for this complex. Provider secrets stay on the server only.',
@@ -7219,6 +7301,47 @@ export const bg: Messages = {
     is2PropertyBookImportCommitted: 'Импортът е приложен; batch е committed.',
     is2PropertyBookNoOverwrite:
       'IS-2: allow_overwrite=false. Preview не пише. Commit само след изрично потвърждение.',
+    is3WaterName: 'Вода (водомери)',
+    is3WaterDesc: 'Начална инвентаризация на водомери чрез assign_water_meter (без таксуване).',
+    is3ElectricityName: 'Електроенергия (електромери)',
+    is3ElectricityDesc:
+      'Начална инвентаризация на електромери чрез assign_electricity_meter (без таксуване).',
+    is3WaterStepVerify: 'Проверка на водомери',
+    is3ElectricityStepVerify: 'Проверка на електромери',
+    is3WaterManualConfirm: 'Потвърждавам: водомерите са попълнени през админ Вода',
+    is3ElectricityManualConfirm: 'Потвърждавам: електромерите са попълнени през админ Счётчики',
+    is3MetersVerifiedExisting: 'Съществуващите уреди са проверени (само четене, без замяна)',
+    is3WaterXlsxInstructions: 'Лист meters; инструкции BG/RU/EN в шаблона',
+    is3ElectricityXlsxInstructions: 'Лист meters; инструкции BG/RU/EN в шаблона',
+    is3ColApartment: 'apartment_number',
+    is3ColMeterNumber: 'meter_number',
+    is3ColInitialReading: 'initial_reading',
+    is3ColInitialDay: 'initial_day_reading',
+    is3ColInitialNight: 'initial_night_reading',
+    is3ColInstalledAt: 'installed_at',
+    is3MetersSsotNote:
+      'Уредите са канонични water_meters / electricity_meters. Книгата е SSOT за апартаменти. Редове показания (submit_*) не се пишат в IS-3 (такси).',
+    is3MetersManualHint:
+      'Ръчният вход е през Вода / Счётчики. Тук само потвърждавате setup.',
+    is3MetersXlsxHint:
+      'Шаблон: meters + инструкции BG/RU/EN. Preview не записва. Активен уред → SKIP. Opening reading rows = BLOCKED.',
+    is3MetersEmptySheet: 'Листът meters е празен.',
+    is3OpeningReadingBlocked:
+      'Opening reading rows BLOCKED (submit_* създава charges). Инвентар: initial_* → assign_*.',
+    is3MetersFixErrors: 'Поправете грешките преди импорт на уреди.',
+    is3MetersConfirmButton: 'Потвърди инвентар (assign)',
+    is3MetersConfirmImport:
+      'Потвърдете назначаване на уреди? Съществуващите активни няма да бъдат заменени. Не се създават показания/такси.',
+    is3MetersImportCommitted: 'Инвентарът е приложен чрез assign_*; batch е committed. Reading rows не са писани.',
+    is3MetersNoOverwrite:
+      'IS-3: allow_replace=false. Preview не пише. Commit само assign_* след потвърждение. Opening readings BLOCKED.',
+    is3MetersPartialCommit:
+      'Частичен commit: CREATED {c} · SKIPPED_EXISTING {s} · FAILED {f} · NOT_PROCESSED {n}',
+    is3MetersPartialNotFullySuccessful:
+      'Пакетът не е напълно успешен. Повторете само липсващите редове (без дубли).',
+    is3MetersRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
+    is3MetersRetryEmpty: 'Няма редове за повтор — вече са създадени или пропуснати.',
+    is3Outcome: 'Резултат',
     emailTitle: 'Електронна поща',
     emailLead:
       'Изпращач и статус на пощата за този комплекс. Тайните на доставчика остават само на сървъра.',

@@ -12,22 +12,39 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import {
+  ELECTRICITY_MODULE_KEY,
   PROPERTY_BOOK_MODULE_KEY,
+  WATER_MODULE_KEY,
+  activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
+  buildApartmentLookup,
   buildImportPreview,
   canTransitionModuleLifecycle,
+  classifyElectricityMeterOpeningRows,
   classifyPropertyBookOpeningRows,
+  classifyWaterMeterOpeningRows,
+  downloadElectricityOpeningTemplate,
+  downloadMeterErrorReport,
   downloadModuleXlsxTemplate,
   downloadPropertyBookErrorReport,
   downloadPropertyBookOpeningTemplate,
+  downloadWaterOpeningTemplate,
+  commitMeterInventoryBatch,
+  filterPreviewForRetry,
   getModuleAdapter,
   listRegisteredModuleAdapters,
+  mergeMeterCommitBatches,
+  meterCommitAuditPayload,
   parseModuleXlsxBuffer,
   previewFromPropertyBookDryRun,
+  reconcileMeterCommitWithDb,
+  retryCandidatesFromBatch,
+  serialSetFromMeters,
   setupCompleteFromDraft,
   setupSupportsManual,
   setupSupportsXlsx,
   type ImportPreviewResult,
+  type MeterCommitBatchResult,
   type ModuleLifecycleState,
 } from '@/lib/moduleCore';
 import { moduleLabelMessageKey } from '@/lib/modules';
@@ -36,7 +53,7 @@ import {
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/database.types';
+import type { Database, Json } from '@/lib/database.types';
 
 type LifecycleRow = {
   installation_key: string;
@@ -80,6 +97,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [previewNote, setPreviewNote] = useState<string | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [pendingPayload, setPendingPayload] = useState<PropertyBookWorkbookPayload | null>(null);
+  const [pendingMeterPreview, setPendingMeterPreview] = useState<ImportPreviewResult | null>(null);
+  const [meterCommitResult, setMeterCommitResult] = useState<MeterCommitBatchResult | null>(null);
 
   useEffect(() => {
     bootstrapModuleSetupAdapters();
@@ -117,6 +136,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   );
   const adapter = selectedKey ? getModuleAdapter(selectedKey) : null;
   const isPropertyBook = selectedKey === PROPERTY_BOOK_MODULE_KEY;
+  const isWater = selectedKey === WATER_MODULE_KEY;
+  const isElectricity = selectedKey === ELECTRICITY_MODULE_KEY;
+  const isMeters = isWater || isElectricity;
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -135,6 +157,41 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setPreviewNote(null);
     setBatchId(null);
     setPendingPayload(null);
+    setPendingMeterPreview(null);
+    setMeterCommitResult(null);
+  }
+
+  async function loadMeterClassifyContext(utility: 'water' | 'electricity') {
+    const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+      p_limit: 5000,
+    });
+    if (listErr) throw listErr;
+    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+      .filter((r) => r.property_id != null)
+      .map((r) => ({
+        property_id: Number(r.property_id),
+        apartment_number: String(r.apartment_number ?? ''),
+      }));
+    const apartmentsByNumber = buildApartmentLookup(apartments);
+
+    const table = utility === 'water' ? 'water_meters' : 'electricity_meters';
+    const { data: meterRows, error: meterErr } = await supabase
+      .from(table)
+      .select('property_id, meter_number, retired_at');
+    if (meterErr) throw meterErr;
+    const meters = ((meterRows as { property_id: number; meter_number: string; retired_at: string | null }[]) ?? []).map(
+      (m) => ({
+        propertyId: Number(m.property_id),
+        meterNumber: String(m.meter_number ?? ''),
+        retiredAt: m.retired_at,
+      }),
+    );
+    return {
+      apartmentsByNumber,
+      activePropertyIds: activePropertyIdsFromMeters(meters),
+      existingSerials: serialSetFromMeters(meters),
+      policy: { allowReplace: false as const },
+    };
   }
 
   async function transition(to: ModuleLifecycleState, reason?: string) {
@@ -313,6 +370,71 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       return;
     }
 
+    if (isMeters) {
+      setBusy(true);
+      setError(null);
+      try {
+        const schema = adapter.registration.setup.xlsx;
+        const buf = await file.arrayBuffer();
+        const parsed = parseModuleXlsxBuffer(buf, schema);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.rows.length === 0) {
+          setError(t('admin.is3MetersEmptySheet'));
+          return;
+        }
+        const utility = isWater ? 'water' : 'electricity';
+        const ctx = await loadMeterClassifyContext(utility);
+        const result =
+          utility === 'water'
+            ? classifyWaterMeterOpeningRows(parsed.rows, ctx)
+            : classifyElectricityMeterOpeningRows(parsed.rows, ctx);
+        setPreview(result);
+        setPendingMeterPreview(result);
+
+        const { data: batch, error: batchErr } = await supabase.rpc(
+          'admin_create_module_import_batch',
+          {
+            p_module_key: selectedKey,
+            p_schema_version: schema.schemaVersion,
+            p_source: 'xlsx',
+            p_file_name: file.name,
+            p_preview: {
+              local: result,
+              policy: { allowReplace: false },
+              opening_reading_row_commit: 'BLOCKED',
+              note: 'inventory_assign_only_no_submit_reading',
+            },
+            p_row_count: result.rows.length,
+            p_create_count: result.createCount,
+            p_update_count: result.updateCount,
+            p_skip_count: result.skipCount,
+            p_error_count: result.errorCount,
+            p_error_report: result.rows
+              .filter((r) => r.errors.length)
+              .map((r) => ({
+                rowNumber: r.rowNumber,
+                errors: r.errors,
+              })),
+          },
+        );
+        if (batchErr) throw batchErr;
+        const id = String((batch as { id?: string })?.id ?? '');
+        setBatchId(id || null);
+        setPreviewNote(
+          t('admin.is1PreviewSaved').replace('{id}', id) +
+            ` · ${t('admin.is3OpeningReadingBlocked')}`,
+        );
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const schema = adapter.registration.setup.xlsx;
     const buf = await file.arrayBuffer();
     const parsed = parseModuleXlsxBuffer(buf, schema);
@@ -350,6 +472,148 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setPreviewNote(
       t('admin.is1PreviewSaved').replace('{id}', String((data as { id?: string })?.id ?? '')),
     );
+  }
+
+  async function confirmMeterImport(opts?: { retryOnly?: boolean }) {
+    if (!isMeters || !pendingMeterPreview || !batchId || !preview) return;
+    if (preview.errorCount > 0 && !opts?.retryOnly) {
+      setError(t('admin.is3MetersFixErrors'));
+      return;
+    }
+    if (!window.confirm(t('admin.is3MetersConfirmImport'))) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const utility = isWater ? 'water' : 'electricity';
+      let workPreview = pendingMeterPreview;
+      if (opts?.retryOnly && meterCommitResult) {
+        const ctx = await loadMeterClassifyContext(utility);
+        const meters = [...ctx.activePropertyIds].map((propertyId) => ({
+          propertyId,
+          meterNumber: '',
+          retiredAt: null as string | null,
+        }));
+        // Prefer live meter list for retry filtering.
+        const table = utility === 'water' ? 'water_meters' : 'electricity_meters';
+        const { data: meterRows, error: meterErr } = await supabase
+          .from(table)
+          .select('property_id, meter_number, retired_at');
+        if (meterErr) throw meterErr;
+        const live = ((meterRows as { property_id: number; meter_number: string; retired_at: string | null }[]) ?? []).map(
+          (m) => ({
+            propertyId: Number(m.property_id),
+            meterNumber: String(m.meter_number ?? ''),
+            retiredAt: m.retired_at,
+          }),
+        );
+        const candidates = retryCandidatesFromBatch(meterCommitResult, live.length ? live : meters);
+        const retryNums = new Set(candidates.map((c) => c.rowNumber));
+        workPreview = filterPreviewForRetry(pendingMeterPreview, retryNums);
+        if (workPreview.rows.length === 0) {
+          setPreviewNote(t('admin.is3MetersRetryEmpty'));
+          return;
+        }
+      }
+
+      const rawBatch = await commitMeterInventoryBatch({
+        utility,
+        preview: workPreview,
+        assignWater: async (p) => {
+          const { error: rpcErr } = await supabase.rpc('assign_water_meter', {
+            p_property_id: p.propertyId,
+            p_meter_number: p.meterNumber,
+            p_initial_reading: p.initialReading,
+            p_installed_at: p.installedAt,
+          });
+          if (rpcErr) return { ok: false, message: rpcErr.message };
+          return { ok: true };
+        },
+        assignElectricity: async (p) => {
+          const { error: rpcErr } = await supabase.rpc('assign_electricity_meter', {
+            p_property_id: p.propertyId,
+            p_meter_number: p.meterNumber,
+            p_initial_day_reading: p.initialDayReading,
+            p_initial_night_reading: p.initialNightReading,
+            p_installed_at: p.installedAt,
+          });
+          if (rpcErr) return { ok: false, message: rpcErr.message };
+          return { ok: true };
+        },
+      });
+
+      const table = utility === 'water' ? 'water_meters' : 'electricity_meters';
+      const { data: meterRows, error: meterErr } = await supabase
+        .from(table)
+        .select('property_id, meter_number, retired_at');
+      if (meterErr) throw meterErr;
+      const live = ((meterRows as { property_id: number; meter_number: string; retired_at: string | null }[]) ?? []).map(
+        (m) => ({
+          propertyId: Number(m.property_id),
+          meterNumber: String(m.meter_number ?? ''),
+          retiredAt: m.retired_at,
+        }),
+      );
+      let reconciled = reconcileMeterCommitWithDb(rawBatch, live);
+      if (opts?.retryOnly && meterCommitResult) {
+        reconciled = mergeMeterCommitBatches(meterCommitResult, reconciled);
+        reconciled = reconcileMeterCommitWithDb(reconciled, live);
+      }
+      setMeterCommitResult(reconciled);
+
+      // Audit trail batch with per-row outcomes (never claim full success when partial).
+      const auditPayload = meterCommitAuditPayload(reconciled) as Json;
+      const { error: auditErr } = await supabase.rpc('admin_create_module_import_batch', {
+        p_module_key: selectedKey,
+        p_schema_version: adapter?.registration.setup?.schemaVersion ?? '1.0',
+        p_source: 'api',
+        p_file_name: `commit_outcomes_${utility}`,
+        p_preview: auditPayload,
+        p_row_count: reconciled.rows.length,
+        p_create_count: reconciled.createdCount,
+        p_update_count: 0,
+        p_skip_count: reconciled.skippedExistingCount,
+        p_error_count: reconciled.failedCount + reconciled.notProcessedCount,
+        p_error_report: reconciled.rows
+          .filter((r) => r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED')
+          .map((r) => ({
+            rowNumber: r.rowNumber,
+            outcome: r.outcome,
+            detail: r.detail,
+          })) as Json,
+      });
+      if (auditErr) throw auditErr;
+
+      // Never call submit_* (charges). Commit preview batch only when fully successful.
+      if (reconciled.fullySuccessful) {
+        const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
+          p_batch_id: batchId,
+        });
+        if (commitErr) throw commitErr;
+        setPreviewNote(t('admin.is3MetersImportCommitted'));
+        if (
+          selected &&
+          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
+        ) {
+          await transition('SETUP_IN_PROGRESS', 'meters_inventory_committed');
+        } else {
+          await load();
+        }
+      } else {
+        setPreviewNote(
+          t('admin.is3MetersPartialCommit')
+            .replace('{c}', String(reconciled.createdCount))
+            .replace('{s}', String(reconciled.skippedExistingCount))
+            .replace('{f}', String(reconciled.failedCount))
+            .replace('{n}', String(reconciled.notProcessedCount)),
+        );
+        setError(t('admin.is3MetersPartialNotFullySuccessful'));
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirmPropertyBookImport() {
@@ -400,6 +664,14 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   function downloadTemplate() {
     if (isPropertyBook) {
       downloadPropertyBookOpeningTemplate();
+      return;
+    }
+    if (isWater) {
+      downloadWaterOpeningTemplate();
+      return;
+    }
+    if (isElectricity) {
+      downloadElectricityOpeningTemplate();
       return;
     }
     const schema = adapter?.registration.setup?.xlsx;
@@ -503,6 +775,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               {isPropertyBook ? (
                 <p className="text-xs text-secondary">{t('admin.is2PropertyBookSsotNote')}</p>
               ) : null}
+              {isMeters ? (
+                <p className="text-xs text-secondary">{t('admin.is3MetersSsotNote')}</p>
+              ) : null}
 
               <div className="flex flex-wrap gap-2">
                 {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_REQUIRED') ? (
@@ -559,6 +834,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   {isPropertyBook ? (
                     <p className="text-xs text-secondary">{t('admin.is2PropertyBookManualHint')}</p>
                   ) : null}
+                  {isMeters ? (
+                    <p className="text-xs text-secondary">{t('admin.is3MetersManualHint')}</p>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -567,16 +845,22 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                     />
                     {isPropertyBook
                       ? t('admin.is2PropertyBookManualConfirm')
-                      : t('admin.is1ManualConfirm')}
+                      : isWater
+                        ? t('admin.is3WaterManualConfirm')
+                        : isElectricity
+                          ? t('admin.is3ElectricityManualConfirm')
+                          : t('admin.is1ManualConfirm')}
                   </label>
-                  {isPropertyBook ? (
+                  {isPropertyBook || isMeters ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={verifiedExisting}
                         onChange={(e) => setVerifiedExisting(e.target.checked)}
                       />
-                      {t('admin.is2PropertyBookVerifiedExisting')}
+                      {isPropertyBook
+                        ? t('admin.is2PropertyBookVerifiedExisting')
+                        : t('admin.is3MetersVerifiedExisting')}
                     </label>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
@@ -595,6 +879,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   <div className="font-medium">{t('admin.is1XlsxImport')}</div>
                   {isPropertyBook ? (
                     <p className="text-xs text-secondary">{t('admin.is2PropertyBookXlsxHint')}</p>
+                  ) : null}
+                  {isMeters ? (
+                    <p className="text-xs text-secondary">{t('admin.is3MetersXlsxHint')}</p>
                   ) : null}
                   <button type="button" className={adminBtnSecondaryClass} onClick={downloadTemplate}>
                     {t('admin.is1DownloadTemplate')}
@@ -633,7 +920,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                         <button
                           type="button"
                           className={adminBtnSecondaryClass}
-                          onClick={() => downloadPropertyBookErrorReport(preview)}
+                          onClick={() =>
+                            isMeters
+                              ? downloadMeterErrorReport(preview)
+                              : downloadPropertyBookErrorReport(preview)
+                          }
                         >
                           {t('admin.is2PropertyBookDownloadErrors')}
                         </button>
@@ -648,10 +939,63 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           {t('admin.is2PropertyBookConfirmButton')}
                         </button>
                       ) : null}
+                      {isMeters && pendingMeterPreview && batchId ? (
+                        <button
+                          type="button"
+                          className={adminBtnPrimaryClass}
+                          disabled={busy || preview.errorCount > 0}
+                          onClick={() => void confirmMeterImport()}
+                        >
+                          {t('admin.is3MetersConfirmButton')}
+                        </button>
+                      ) : null}
+                      {isMeters &&
+                      meterCommitResult &&
+                      !meterCommitResult.fullySuccessful &&
+                      pendingMeterPreview ? (
+                        <button
+                          type="button"
+                          className={adminBtnSecondaryClass}
+                          disabled={busy}
+                          onClick={() => void confirmMeterImport({ retryOnly: true })}
+                        >
+                          {t('admin.is3MetersRetryMissing')}
+                        </button>
+                      ) : null}
+                      {meterCommitResult ? (
+                        <div className="max-h-48 overflow-auto rounded border border-border text-xs">
+                          <table className="w-full">
+                            <thead>
+                              <tr className={adminTableHeadRowClass}>
+                                <th className={adminTableCellClass}>#</th>
+                                <th className={adminTableCellClass}>{t('admin.is3ColApartment')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is3ColMeterNumber')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is3Outcome')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {meterCommitResult.rows.map((r) => (
+                                <tr key={`${r.rowNumber}-${r.meterNumber}`} className={adminTableRowClass}>
+                                  <td className={adminTableCellClass}>{r.rowNumber}</td>
+                                  <td className={adminTableCellClass}>{r.apartmentNumber}</td>
+                                  <td className={adminTableCellClass}>{r.meterNumber}</td>
+                                  <td className={adminTableCellClass}>
+                                    <code>{r.outcome}</code>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <p className="text-xs text-secondary">
-                    {isPropertyBook ? t('admin.is2PropertyBookNoOverwrite') : t('admin.is1NoAutoCommit')}
+                    {isPropertyBook
+                      ? t('admin.is2PropertyBookNoOverwrite')
+                      : isMeters
+                        ? t('admin.is3MetersNoOverwrite')
+                        : t('admin.is1NoAutoCommit')}
                   </p>
                 </div>
               ) : null}

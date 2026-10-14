@@ -32,6 +32,10 @@ import {
   staffHomePath,
   type AccessProfile,
 } from '@/lib/access';
+import {
+  pickGuestAccessForProperty,
+  type GuestAccessContext,
+} from '@/lib/guestMode';
 import { OwnerGuestMode } from '@/components/account/OwnerGuestMode';
 import { normalizeEmail } from '@/lib/email';
 import { annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
@@ -136,12 +140,14 @@ interface ChatMessage {
   id: number;
   created_at: string;
   property_id: number;
-  sender: 'owner' | 'uk';
+  sender: 'owner' | 'guest' | 'uk';
   message: string;
   read_by_uk: boolean;
   read_by_owner: boolean;
   photo_url?: string | null;
   file_name?: string | null;
+  guest_access_id?: string | null;
+  sender_email?: string | null;
 }
 
 interface ApartmentGuest {
@@ -220,10 +226,21 @@ export default function AccountPage() {
   const guestModeEnabled = isBuildingModuleEnabled(buildingModules, 'guest_mode');
   const managementNavEnabled = requestsEnabled || announcementsEnabled || chatEnabled;
   const [accessProfile, setAccessProfile] = useState<AccessProfile | null>(null);
+  const [guestAccessContexts, setGuestAccessContexts] = useState<GuestAccessContext[]>([]);
   const guestContext = useMemo(() => {
     if (!property || !accessProfile) return false;
     return isGuestOnlyProperty(accessProfile, property.id);
   }, [property, accessProfile]);
+  const activeGuestAccess = useMemo(() => {
+    if (!property || !guestContext) return null;
+    return pickGuestAccessForProperty(guestAccessContexts, property.id);
+  }, [property, guestContext, guestAccessContexts]);
+  const guestRelationLabel = useMemo(() => {
+    if (!activeGuestAccess) return null;
+    const key = `account.guestRelation_${activeGuestAccess.relation_type}` as const;
+    const v = t(key);
+    return v === key ? activeGuestAccess.relation_type : v;
+  }, [activeGuestAccess, t]);
   // Module Core disabled always wins; information modes apply only when module is on.
   const waterEnabled = waterModuleOn && isOwnerModuleEnabled(waterMode);
   const electricityEnabled = electricityModuleOn && isOwnerModuleEnabled(electricityMode);
@@ -371,6 +388,7 @@ export default function AccountPage() {
     setDevEmail('');
     setIsStaff(false);
     setAccessProfile(null);
+    setGuestAccessContexts([]);
     setProperties([]);
     setSelectedPropertyId(null);
     setBuildingModules(emptyBuildingModulesState());
@@ -488,6 +506,18 @@ export default function AccountPage() {
         }
 
         setAccessProfile(access);
+        if (access.isGuest) {
+          const { data: guestCtx, error: guestCtxErr } = await supabase.rpc(
+            'list_my_guest_access_contexts',
+          );
+          if (!guestCtxErr && guestCtx) {
+            setGuestAccessContexts(guestCtx as GuestAccessContext[]);
+          } else {
+            setGuestAccessContexts([]);
+          }
+        } else {
+          setGuestAccessContexts([]);
+        }
         const accountProperties = mergeAccountProperties(access);
         setProperties(accountProperties);
         const nextId =
@@ -1055,13 +1085,32 @@ export default function AccountPage() {
       }
       const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
         property_id: property.id,
-        sender: 'owner',
+        sender: guestContext ? 'guest' : 'owner',
         message: msg,
         read_by_owner: true,
       };
       if (photoUrl) {
         payload.photo_url = photoUrl;
         payload.file_name = chatFile?.name ?? null;
+      }
+      if (guestContext) {
+        let accessId = activeGuestAccess?.access_id ?? null;
+        let senderEmail = activeGuestAccess?.email ?? devEmail ?? null;
+        if (!accessId) {
+          const { data: accessRow, error: accessErr } = await supabase.rpc(
+            'get_my_active_guest_access',
+            { p_property_id: property.id },
+          );
+          if (accessErr) throw accessErr;
+          accessId = (accessRow as { id: string } | null)?.id ?? null;
+          senderEmail =
+            (accessRow as { email?: string } | null)?.email ?? senderEmail;
+        }
+        if (!accessId) {
+          throw new Error(t('account.guestModeNoActiveAccess'));
+        }
+        payload.guest_access_id = accessId;
+        payload.sender_email = senderEmail;
       }
       const { data: inserted, error: insertErr } = await supabase
         .from('chat_messages')
@@ -1431,18 +1480,50 @@ export default function AccountPage() {
       let photoUrl: string | null = null;
       if (photo) photoUrl = await uploadRequestPhoto(photo);
 
-      const { error: insertErr } = await supabase.from('requests').insert({
+      const requestPayload: Database['public']['Tables']['requests']['Insert'] = {
         property_id: property.id,
         subject: sub,
         description: desc,
         status: 'новая',
         priority,
         category,
-        owner_name: property.owner_name,
-        owner_phone: property.owner_phone,
+        owner_name: guestContext
+          ? (activeGuestAccess?.email ?? devEmail ?? property.owner_name)
+          : property.owner_name,
+        owner_phone: guestContext ? null : property.owner_phone,
         photo_url: photoUrl,
-      });
-      if (insertErr) throw insertErr;
+      };
+      if (guestContext) {
+        requestPayload.created_by_role = 'guest';
+        requestPayload.created_by_email = activeGuestAccess?.email ?? devEmail ?? null;
+      } else {
+        requestPayload.created_by_role = 'owner';
+        requestPayload.created_by_email = devEmail ?? null;
+      }
+      const { error: insertErr } = await supabase.from('requests').insert(requestPayload);
+      if (insertErr) {
+        // Pre-migration DBs lack created_by_* columns — retry owner-shaped insert only.
+        if (
+          !guestContext &&
+          (insertErr.message?.includes('created_by_role') ||
+            insertErr.message?.includes('created_by_email'))
+        ) {
+          const { error: retryErr } = await supabase.from('requests').insert({
+            property_id: property.id,
+            subject: sub,
+            description: desc,
+            status: 'новая',
+            priority,
+            category,
+            owner_name: property.owner_name,
+            owner_phone: property.owner_phone,
+            photo_url: photoUrl,
+          });
+          if (retryErr) throw retryErr;
+        } else {
+          throw insertErr;
+        }
+      }
 
       const { data: reqData, error: reqErr } = await supabase
         .from('requests')
@@ -1784,6 +1865,7 @@ export default function AccountPage() {
             onOpenMeetings={() => setActiveMenu('собрания')}
             onOpenDecisions={() => setActiveMenu('решения')}
             guestLimited={guestContext}
+            guestRelationLabel={guestRelationLabel}
           />
         );
       }
@@ -2269,6 +2351,8 @@ export default function AccountPage() {
             announcementsEnabled={guestContext ? false : announcementsEnabled}
             chatEnabled={chatEnabled}
             expensesEnabled={!guestContext}
+            guestContext={guestContext}
+            guestRelationLabel={guestRelationLabel}
             requestForm={
               <form onSubmit={handleCreateRequest} className="space-y-3 rounded-[14px] border border-border bg-surface px-4 py-3">
                 <h3 className="text-sm font-semibold">

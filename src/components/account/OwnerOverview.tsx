@@ -81,6 +81,7 @@ export function OwnerOverview({
   onOpenMeetings,
   onOpenDecisions,
   guestLimited = false,
+  guestRelationLabel = null,
 }: {
   supabase: SupabaseClient<Database>;
   property: {
@@ -123,6 +124,7 @@ export function OwnerOverview({
   onOpenMeetings?: () => void;
   onOpenDecisions?: () => void;
   guestLimited?: boolean;
+  guestRelationLabel?: string | null;
 }) {
   const { t, dateLocale, locale } = useI18n();
   const openMeetings = onOpenMeetings ?? onOpenDocuments;
@@ -437,6 +439,7 @@ export function OwnerOverview({
       {guestLimited ? (
         <p className="rounded-xl border border-accent/20 bg-accent-bg px-3 py-2 text-sm text-accent">
           {t('account.guestModeBanner')}
+          {guestRelationLabel ? ` · ${guestRelationLabel}` : ''}
         </p>
       ) : null}
 

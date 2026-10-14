@@ -229,7 +229,9 @@ interface ChatMessage {
   id: number;
   created_at: string;
   property_id: number;
-  sender: 'owner' | 'uk';
+  sender: 'owner' | 'guest' | 'uk';
+  guest_access_id?: string | null;
+  sender_email?: string | null;
   message: string;
   read_by_uk: boolean;
   read_by_owner: boolean;
@@ -5433,7 +5435,11 @@ function AdminPortal() {
                           <div className="text-xs text-muted truncate">{item.property.owner_name}</div>
                           {item.lastMessage && (
                             <div className="text-xs text-muted truncate mt-1">
-                              {item.lastMessage.sender === 'owner' ? '' : `${t('common.uk')}: `}{chatPreviewText(item.lastMessage.message, item.lastMessage.file_name, item.lastMessage.photo_url)}
+                              {item.lastMessage.sender === 'owner' || item.lastMessage.sender === 'guest'
+                                ? item.lastMessage.sender === 'guest'
+                                  ? `${t('account.guestChatSender')}: `
+                                  : ''
+                                : `${t('common.uk')}: `}{chatPreviewText(item.lastMessage.message, item.lastMessage.file_name, item.lastMessage.photo_url)}
                             </div>
                           )}
                         </div>
@@ -6834,14 +6840,23 @@ function ApartmentDetailModal({
                 <AdminEmptyState title={t('admin.noChatRows')} />
               ) : (
                 chatMessages.map((m) => {
-                  const isOwner = m.sender === 'owner';
+                  const isResident = m.sender === 'owner' || m.sender === 'guest';
+                  const isGuestMsg = m.sender === 'guest';
                   return (
-                    <div key={m.id} className={`flex ${isOwner ? 'justify-start' : 'justify-end'}`}>
+                    <div key={m.id} className={`flex ${isResident ? 'justify-start' : 'justify-end'}`}>
                       <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                        isOwner ? 'bg-hover text-foreground border border-border' : 'bg-accent-bg text-foreground'
+                        isGuestMsg
+                          ? 'bg-accent-bg/70 text-foreground border border-accent/30'
+                          : isResident
+                            ? 'bg-hover text-foreground border border-border'
+                            : 'bg-accent-bg text-foreground'
                       }`}>
                         <div className="text-xs text-secondary mb-1">
-                          {isOwner ? 'Жилец' : 'УК'}
+                          {isGuestMsg
+                            ? `${t('account.guestChatSender')}${m.sender_email ? ` · ${m.sender_email}` : ''}`
+                            : isResident
+                              ? t('account.ownerChatSender')
+                              : t('common.uk')}
                         </div>
                         {m.photo_url && (
                           <div className={m.message.trim() ? 'mb-2' : ''}>
@@ -6853,7 +6868,7 @@ function ApartmentDetailModal({
                         ) : null}
                         <div className="text-[10px] text-muted mt-1">
                           {formatOwnerDateTime(m.created_at, locale)}
-                          {isOwner && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (
+                          {isResident && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (
                             <span className="ml-2 text-danger">● не прочитано</span>
                           )}
                         </div>

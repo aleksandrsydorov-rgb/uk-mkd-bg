@@ -44,12 +44,14 @@ type ExpenseRow = {
 type ChatRow = {
   id: number;
   created_at: string;
-  sender: 'owner' | 'uk';
+  sender: 'owner' | 'guest' | 'uk';
   message: string;
   read_by_uk: boolean;
   read_by_owner: boolean;
   photo_url?: string | null;
   file_name?: string | null;
+  guest_access_id?: string | null;
+  sender_email?: string | null;
 };
 
 function isFinishedRequest(status: string | null | undefined) {
@@ -94,6 +96,8 @@ export function OwnerManagement({
   announcementsEnabled = true,
   chatEnabled = true,
   expensesEnabled = true,
+  guestContext = false,
+  guestRelationLabel = null,
 }: {
   tab: ManagementTab;
   onTab: (tab: ManagementTab) => void;
@@ -112,6 +116,8 @@ export function OwnerManagement({
   announcementsEnabled?: boolean;
   chatEnabled?: boolean;
   expensesEnabled?: boolean;
+  guestContext?: boolean;
+  guestRelationLabel?: string | null;
   chat: {
     messages: ChatRow[];
     input: string;
@@ -368,7 +374,11 @@ export function OwnerManagement({
             <p className="text-sm font-semibold">{t('account.tabChat')}</p>
             <p className="truncate text-xs text-muted">
               {t('common.uk')} · {t('common.apt')} {chat.apartmentNumber}
-              {chat.ownerName ? ` · ${chat.ownerName}` : ''}
+              {guestContext
+                ? ` · ${t('account.guestChatContext')}${guestRelationLabel ? ` · ${guestRelationLabel}` : ''}`
+                : chat.ownerName
+                  ? ` · ${chat.ownerName}`
+                  : ''}
             </p>
           </div>
           <div
@@ -385,7 +395,8 @@ export function OwnerManagement({
             ) : (
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-0">
                 {chat.messages.map((m, i) => {
-                  const isOwner = m.sender === 'owner';
+                  const isResident = m.sender === 'owner' || m.sender === 'guest';
+                  const isGuestMsg = m.sender === 'guest';
                   const prev = chat.messages[i - 1];
                   const newDay = !prev || prev.created_at.slice(0, 10) !== m.created_at.slice(0, 10);
                   const tight = Boolean(
@@ -397,6 +408,12 @@ export function OwnerManagement({
                   const dayLabel = newDay
                     ? chatDayLabel(m.created_at, dateLocale, t('common.today'), t('common.yesterday'))
                     : null;
+                  const senderLabel =
+                    m.sender === 'guest'
+                      ? `${t('account.guestChatSender')}${m.sender_email ? ` · ${m.sender_email}` : ''}`
+                      : m.sender === 'owner'
+                        ? t('account.ownerChatSender')
+                        : null;
                   return (
                     <div key={m.id}>
                       {dayLabel ? (
@@ -404,25 +421,30 @@ export function OwnerManagement({
                           <span className="rounded-full bg-hover px-2.5 py-0.5 text-[11px] text-muted">{dayLabel}</span>
                         </div>
                       ) : null}
-                      <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} ${tight ? 'mt-0.5' : 'mt-1.5'}`}>
+                      <div className={`flex ${isResident ? 'justify-end' : 'justify-start'} ${tight ? 'mt-0.5' : 'mt-1.5'}`}>
                         <div
                           className={`inline-flex max-w-[85%] flex-col px-3 py-2 text-sm leading-snug md:max-w-[70%] ${
-                            isOwner
-                              ? 'rounded-2xl rounded-br-md bg-accent-bg text-foreground'
-                              : 'rounded-2xl rounded-bl-md bg-surface-secondary text-foreground'
+                            isGuestMsg
+                              ? 'rounded-2xl rounded-br-md border border-accent/30 bg-accent-bg/70 text-foreground'
+                              : isResident
+                                ? 'rounded-2xl rounded-br-md bg-accent-bg text-foreground'
+                                : 'rounded-2xl rounded-bl-md bg-surface-secondary text-foreground'
                           }`}
                         >
+                          {senderLabel && (!tight || prev?.sender !== m.sender) ? (
+                            <p className="mb-0.5 text-[10px] font-medium text-secondary">{senderLabel}</p>
+                          ) : null}
                           {m.photo_url ? (
                             <div className={m.message.trim() ? 'mb-1.5' : ''}>
                               <ChatMedia url={m.photo_url} fileName={m.file_name} />
                             </div>
                           ) : null}
                           {m.message.trim() ? <div className="whitespace-pre-wrap break-words">{m.message}</div> : null}
-                          <div className={`mt-1 flex items-center gap-1 text-[10px] ${isOwner ? 'justify-end text-secondary' : 'text-muted'}`}>
+                          <div className={`mt-1 flex items-center gap-1 text-[10px] ${isResident ? 'justify-end text-secondary' : 'text-muted'}`}>
                             <span>
                               {new Date(m.created_at).toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}
                             </span>
-                            {isOwner ? <span className={m.read_by_uk ? 'text-accent' : 'text-muted'}>{m.read_by_uk ? '✓✓' : '✓'}</span> : null}
+                            {isResident ? <span className={m.read_by_uk ? 'text-accent' : 'text-muted'}>{m.read_by_uk ? '✓✓' : '✓'}</span> : null}
                           </div>
                         </div>
                       </div>

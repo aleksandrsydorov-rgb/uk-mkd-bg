@@ -15,15 +15,14 @@ import {
   StatusBadge,
   TextLinkButton,
 } from '@/components/account/ownerUi';
+import {
+  GUEST_RELATION_TYPES,
+  requiresValidUntil,
+  type GuestRelationType,
+} from '@/lib/guestMode';
 
-export const GUEST_RELATION_TYPES = [
-  'living_with_owner',
-  'co_owner',
-  'long_term_tenant',
-  'short_term_tenant',
-] as const;
-
-export type GuestRelationType = (typeof GUEST_RELATION_TYPES)[number];
+export { GUEST_RELATION_TYPES };
+export type { GuestRelationType };
 
 type GuestAccessRow = Database['public']['Tables']['property_guest_accesses']['Row'];
 
@@ -106,6 +105,10 @@ export function OwnerGuestMode({
     e.preventDefault();
     if (activeCount >= 2) {
       setError(t('account.guestModeActiveLimit'));
+      return;
+    }
+    if (requiresValidUntil(relationType) && !validUntil) {
+      setError(t('account.guestModeShortTermUntilRequired'));
       return;
     }
     setBusy(true);
@@ -200,13 +203,17 @@ export function OwnerGuestMode({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-secondary">{t('account.guestModeValidUntil')}</label>
+            <label className="mb-1 block text-sm text-secondary">
+              {t('account.guestModeValidUntil')}
+              {requiresValidUntil(relationType) ? ' *' : ''}
+            </label>
             <input
               type="date"
               className={fieldClass}
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
               disabled={busy || activeCount >= 2}
+              required={requiresValidUntil(relationType)}
             />
           </div>
         </div>

@@ -86,6 +86,8 @@ export interface Database {
           read_by_owner: boolean;
           photo_url: string | null;
           file_name: string | null;
+          guest_access_id: string | null;
+          sender_email: string | null;
         };
         Insert: {
           id?: number;
@@ -97,6 +99,8 @@ export interface Database {
           read_by_owner?: boolean;
           photo_url?: string | null;
           file_name?: string | null;
+          guest_access_id?: string | null;
+          sender_email?: string | null;
         };
         Update: {
           id?: number;
@@ -108,6 +112,8 @@ export interface Database {
           read_by_owner?: boolean;
           photo_url?: string | null;
           file_name?: string | null;
+          guest_access_id?: string | null;
+          sender_email?: string | null;
         };
         Relationships: [];
       };
@@ -901,6 +907,8 @@ export interface Database {
           owner_phone: string | null;
           category: string | null;
           photo_url: string | null;
+          created_by_role: string | null;
+          created_by_email: string | null;
         };
         Insert: {
           id?: number;
@@ -914,6 +922,8 @@ export interface Database {
           owner_phone?: string | null;
           category?: string | null;
           photo_url?: string | null;
+          created_by_role?: string | null;
+          created_by_email?: string | null;
         };
         Update: {
           id?: number;
@@ -927,6 +937,8 @@ export interface Database {
           owner_phone?: string | null;
           category?: string | null;
           photo_url?: string | null;
+          created_by_role?: string | null;
+          created_by_email?: string | null;
         };
         Relationships: [];
       };
@@ -5310,6 +5322,26 @@ export interface Database {
       owner_revoke_guest_access: {
         Args: { p_access_id: string };
         Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
+      };
+      get_my_active_guest_access: {
+        Args: { p_property_id: number };
+        Returns: Database['public']['Tables']['property_guest_accesses']['Row'];
+      };
+      list_my_guest_access_contexts: {
+        Args: Record<string, never>;
+        Returns: {
+          access_id: string;
+          property_id: number;
+          apartment_number: string | null;
+          relation_type: string;
+          valid_from: string;
+          valid_until: string | null;
+          email: string;
+        }[];
+      };
+      guest_mode_module_enabled: {
+        Args: Record<string, never>;
+        Returns: boolean;
       };
       gm_freeze_notice_snapshot: {
         Args: { p_meeting_id: string };

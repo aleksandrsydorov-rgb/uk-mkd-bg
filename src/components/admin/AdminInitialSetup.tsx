@@ -14,37 +14,51 @@ import {
 import {
   ELECTRICITY_MODULE_KEY,
   PROPERTY_BOOK_MODULE_KEY,
+  SUPPORT_FEE_MODULE_KEY,
+  SUPPORT_FEE_SETUP_SCHEMA_VERSION,
   WATER_MODULE_KEY,
   activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
+  buildExistingSfScopeMap,
   buildImportPreview,
   canTransitionModuleLifecycle,
   classifyElectricityMeterOpeningRows,
   classifyPropertyBookOpeningRows,
+  classifySupportFeeOpeningRows,
   classifyWaterMeterOpeningRows,
+  commitSupportFeeOpeningBatch,
   downloadElectricityOpeningTemplate,
   downloadMeterErrorReport,
   downloadModuleXlsxTemplate,
   downloadPropertyBookErrorReport,
   downloadPropertyBookOpeningTemplate,
+  downloadSupportFeeErrorReport,
+  downloadSupportFeeOpeningTemplate,
   downloadWaterOpeningTemplate,
   commitMeterInventoryBatch,
   filterPreviewForRetry,
+  filterPreviewForSfRetry,
   getModuleAdapter,
   listRegisteredModuleAdapters,
   mergeMeterCommitBatches,
+  mergeSfCommitBatches,
   meterCommitAuditPayload,
   parseModuleXlsxBuffer,
   previewFromPropertyBookDryRun,
   reconcileMeterCommitWithDb,
+  reconcileSfCommitWithDb,
   retryCandidatesFromBatch,
+  retryCandidatesFromSfBatch,
   serialSetFromMeters,
   setupCompleteFromDraft,
   setupSupportsManual,
   setupSupportsXlsx,
+  sfCommitAuditPayload,
+  classifySfOpeningErrorMessage,
   type ImportPreviewResult,
   type MeterCommitBatchResult,
+  type SfCommitBatchResult,
   type ModuleLifecycleState,
 } from '@/lib/moduleCore';
 import { moduleLabelMessageKey } from '@/lib/modules';
@@ -99,6 +113,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [pendingPayload, setPendingPayload] = useState<PropertyBookWorkbookPayload | null>(null);
   const [pendingMeterPreview, setPendingMeterPreview] = useState<ImportPreviewResult | null>(null);
   const [meterCommitResult, setMeterCommitResult] = useState<MeterCommitBatchResult | null>(null);
+  const [pendingSfPreview, setPendingSfPreview] = useState<ImportPreviewResult | null>(null);
+  const [sfCommitResult, setSfCommitResult] = useState<SfCommitBatchResult | null>(null);
 
   useEffect(() => {
     bootstrapModuleSetupAdapters();
@@ -139,6 +155,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isWater = selectedKey === WATER_MODULE_KEY;
   const isElectricity = selectedKey === ELECTRICITY_MODULE_KEY;
   const isMeters = isWater || isElectricity;
+  const isSupportFee = selectedKey === SUPPORT_FEE_MODULE_KEY;
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -159,6 +176,71 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setPendingPayload(null);
     setPendingMeterPreview(null);
     setMeterCommitResult(null);
+    setPendingSfPreview(null);
+    setSfCommitResult(null);
+  }
+
+  async function loadSupportFeeClassifyContext() {
+    const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+      p_limit: 5000,
+    });
+    if (listErr) throw listErr;
+    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+      .filter((r) => r.property_id != null)
+      .map((r) => ({
+        property_id: Number(r.property_id),
+        apartment_number: String(r.apartment_number ?? ''),
+      }));
+    const apartmentsByNumber = buildApartmentLookup(apartments);
+
+    const { data: assessmentRows, error: aErr } = await supabase
+      .from('support_fee_assessments')
+      .select(
+        'property_id, billing_year, remaining_due, base_amount, final_amount, status, opening_import, opening_historically_paid_amount',
+      );
+    if (aErr) throw aErr;
+    const existingByScope = buildExistingSfScopeMap(
+      (assessmentRows as {
+        property_id: number;
+        billing_year: number;
+        remaining_due?: number | null;
+        base_amount?: number | null;
+        final_amount?: number | null;
+        status?: string | null;
+        opening_import?: boolean | null;
+        opening_historically_paid_amount?: number | null;
+      }[]) ?? [],
+    );
+
+    const openingImportsByScope = new Map<
+      string,
+      { assessed: number; paid: number; remaining: number; over: number }
+    >();
+    const { data: importRows, error: iErr } = await supabase
+      .from('support_fee_opening_imports')
+      .select(
+        'property_id, billing_year, assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment',
+      );
+    // Table may not exist until migration applied — treat as empty for local preview.
+    if (!iErr && importRows) {
+      for (const r of importRows as {
+        property_id: number;
+        billing_year: number;
+        assessed_amount: number;
+        historically_paid_amount: number;
+        remaining_debt: number;
+        opening_overpayment: number;
+      }[]) {
+        openingImportsByScope.set(`${r.property_id}|${r.billing_year}`, {
+          assessed: Number(r.assessed_amount),
+          paid: Number(r.historically_paid_amount),
+          remaining: Number(r.remaining_debt),
+          over: Number(r.opening_overpayment),
+        });
+      }
+    }
+
+    return { apartmentsByNumber, existingByScope, openingImportsByScope };
   }
 
   async function loadMeterClassifyContext(utility: 'water' | 'electricity') {
@@ -435,6 +517,70 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       return;
     }
 
+    if (isSupportFee) {
+      setBusy(true);
+      setError(null);
+      try {
+        const schema = adapter.registration.setup.xlsx;
+        const buf = await file.arrayBuffer();
+        const parsed = parseModuleXlsxBuffer(buf, schema);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.rows.length === 0) {
+          setError(t('admin.is4SupportFeeEmptySheet'));
+          return;
+        }
+        const ctx = await loadSupportFeeClassifyContext();
+        const result = classifySupportFeeOpeningRows(parsed.rows, ctx);
+        setPreview(result);
+        setPendingSfPreview(result);
+
+        const { data: batch, error: batchErr } = await supabase.rpc(
+          'admin_create_module_import_batch',
+          {
+            p_module_key: selectedKey,
+            p_schema_version: schema.schemaVersion,
+            p_source: 'xlsx',
+            p_file_name: file.name,
+            p_preview: {
+              local: result,
+              policy: {
+                no_synthetic_payments: true,
+                no_early_late_recalc: true,
+                conflict_no_overwrite: true,
+              },
+            },
+            p_row_count: result.rows.length,
+            p_create_count: result.createCount,
+            p_update_count: result.updateCount,
+            p_skip_count: result.skipCount,
+            p_error_count: result.errorCount,
+            p_error_report: result.rows
+              .filter((r) => r.errors.length)
+              .map((r) => ({
+                rowNumber: r.rowNumber,
+                preview_class: r.data.preview_class,
+                errors: r.errors,
+              })),
+          },
+        );
+        if (batchErr) throw batchErr;
+        const id = String((batch as { id?: string })?.id ?? '');
+        setBatchId(id || null);
+        setPreviewNote(
+          t('admin.is1PreviewSaved').replace('{id}', id) +
+            ` · ${t('admin.is4SupportFeeNoSyntheticPayments')}`,
+        );
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const schema = adapter.registration.setup.xlsx;
     const buf = await file.arrayBuffer();
     const parsed = parseModuleXlsxBuffer(buf, schema);
@@ -661,6 +807,150 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
   }
 
+  async function confirmSupportFeeImport(opts?: { retryOnly?: boolean }) {
+    if (!isSupportFee || !pendingSfPreview || !batchId || !preview) return;
+    if (preview.errorCount > 0 && !opts?.retryOnly) {
+      setError(t('admin.is4SupportFeeFixErrors'));
+      return;
+    }
+    if (!window.confirm(t('admin.is4SupportFeeConfirmImport'))) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      let workPreview = pendingSfPreview;
+      if (opts?.retryOnly && sfCommitResult) {
+        const retryNums = new Set(retryCandidatesFromSfBatch(sfCommitResult));
+        workPreview = filterPreviewForSfRetry(pendingSfPreview, [...retryNums]);
+        if (workPreview.rows.length === 0) {
+          setPreviewNote(t('admin.is4SupportFeeRetryEmpty'));
+          return;
+        }
+      }
+
+      const rawBatch = await commitSupportFeeOpeningBatch({
+        preview: workPreview,
+        batchId,
+        idempotencyKeyForRow: (rowNumber) => {
+          // Deterministic UUID v5-like from batch+row via crypto random fallback:
+          // use stable string hashed into UUID format for RPC requirement.
+          const seed = `${batchId}:${rowNumber}:is4-sf-opening`;
+          let h = 0;
+          for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+          const hex = (n: number) => n.toString(16).padStart(8, '0');
+          return `${hex(h)}-${hex(rowNumber & 0xffff)}-4${hex(h).slice(1, 4)}-a${hex(h).slice(4, 7)}-${hex(h)}${hex(rowNumber)}`.slice(
+            0,
+            36,
+          );
+        },
+        importRow: async (p) => {
+          const { data, error: rpcErr } = await supabase.rpc('import_support_fee_opening_state', {
+            p_property_id: p.propertyId,
+            p_billing_year: p.billingYear,
+            p_obligation_type: p.obligationType,
+            p_assessed_amount: p.assessedAmount,
+            p_historically_paid_amount: p.historicallyPaidAmount,
+            p_remaining_debt: p.remainingDebt,
+            p_opening_overpayment: p.openingOverpayment,
+            p_transition_date: p.transitionDate,
+            p_source_reference: p.sourceReference || null,
+            p_notes: p.notes || null,
+            p_idempotency_key: p.idempotencyKey,
+            p_batch_id: p.batchId,
+          });
+          if (rpcErr) {
+            const outcome = classifySfOpeningErrorMessage(rpcErr.message);
+            return { ok: false, outcome, message: rpcErr.message };
+          }
+          const body = data as {
+            applied?: boolean;
+            idempotent?: boolean;
+            outcome?: string;
+            remaining_due?: number;
+            synthetic_payments?: boolean;
+          };
+          if (body.synthetic_payments === true) {
+            return { ok: false, outcome: 'FAILED', message: 'synthetic_payments_forbidden' };
+          }
+          if (body.idempotent || body.outcome === 'SKIPPED_EXISTING') {
+            return {
+              ok: true,
+              outcome: 'SKIPPED_EXISTING',
+              remainingDue: Number(body.remaining_due ?? p.remainingDebt),
+            };
+          }
+          return {
+            ok: true,
+            outcome: 'CREATED',
+            remainingDue: Number(body.remaining_due ?? p.remainingDebt),
+          };
+        },
+      });
+
+      const ctx = await loadSupportFeeClassifyContext();
+      const reconciled = reconcileSfCommitWithDb(
+        rawBatch,
+        [...ctx.existingByScope.values()],
+      );
+      const merged = mergeSfCommitBatches(
+        opts?.retryOnly ? sfCommitResult : null,
+        reconciled,
+      );
+      setSfCommitResult(merged);
+
+      const { error: auditErr } = await supabase.rpc('admin_create_module_import_batch', {
+        p_module_key: selectedKey!,
+        p_schema_version: SUPPORT_FEE_SETUP_SCHEMA_VERSION,
+        p_source: 'api',
+        p_file_name: `opening-commit-${batchId}`,
+        p_preview: sfCommitAuditPayload(merged) as Json,
+        p_row_count: merged.rows.length,
+        p_create_count: merged.createdCount,
+        p_update_count: 0,
+        p_skip_count: merged.skippedExistingCount,
+        p_error_count: merged.failedCount + merged.notProcessedCount + merged.conflictCount,
+        p_error_report: merged.rows
+          .filter((r) => r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED' || r.outcome === 'CONFLICT')
+          .map((r) => ({
+            rowNumber: r.rowNumber,
+            outcome: r.outcome,
+            detail: r.detail,
+          })) as Json,
+      });
+      if (auditErr) throw auditErr;
+
+      if (merged.fullySuccessful) {
+        const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
+          p_batch_id: batchId,
+        });
+        if (commitErr) throw commitErr;
+        setPreviewNote(t('admin.is4SupportFeeImportCommitted'));
+        if (
+          selected &&
+          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
+        ) {
+          await transition('SETUP_IN_PROGRESS', 'support_fee_opening_committed');
+        } else {
+          await load();
+        }
+      } else {
+        setPreviewNote(
+          t('admin.is4SupportFeePartialCommit')
+            .replace('{c}', String(merged.createdCount))
+            .replace('{s}', String(merged.skippedExistingCount))
+            .replace('{x}', String(merged.conflictCount))
+            .replace('{f}', String(merged.failedCount))
+            .replace('{n}', String(merged.notProcessedCount)),
+        );
+        setError(t('admin.is4SupportFeePartialNotFullySuccessful'));
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function downloadTemplate() {
     if (isPropertyBook) {
       downloadPropertyBookOpeningTemplate();
@@ -672,6 +962,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
     if (isElectricity) {
       downloadElectricityOpeningTemplate();
+      return;
+    }
+    if (isSupportFee) {
+      downloadSupportFeeOpeningTemplate();
       return;
     }
     const schema = adapter?.registration.setup?.xlsx;
@@ -778,6 +1072,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               {isMeters ? (
                 <p className="text-xs text-secondary">{t('admin.is3MetersSsotNote')}</p>
               ) : null}
+              {isSupportFee ? (
+                <p className="text-xs text-secondary">{t('admin.is4SupportFeeSsotNote')}</p>
+              ) : null}
 
               <div className="flex flex-wrap gap-2">
                 {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_REQUIRED') ? (
@@ -837,6 +1134,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   {isMeters ? (
                     <p className="text-xs text-secondary">{t('admin.is3MetersManualHint')}</p>
                   ) : null}
+                  {isSupportFee ? (
+                    <p className="text-xs text-secondary">{t('admin.is4SupportFeeManualHint')}</p>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -849,9 +1149,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                         ? t('admin.is3WaterManualConfirm')
                         : isElectricity
                           ? t('admin.is3ElectricityManualConfirm')
-                          : t('admin.is1ManualConfirm')}
+                          : isSupportFee
+                            ? t('admin.is4SupportFeeManualConfirm')
+                            : t('admin.is1ManualConfirm')}
                   </label>
-                  {isPropertyBook || isMeters ? (
+                  {isPropertyBook || isMeters || isSupportFee ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -860,7 +1162,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                       />
                       {isPropertyBook
                         ? t('admin.is2PropertyBookVerifiedExisting')
-                        : t('admin.is3MetersVerifiedExisting')}
+                        : isSupportFee
+                          ? t('admin.is4SupportFeeVerifiedExisting')
+                          : t('admin.is3MetersVerifiedExisting')}
                     </label>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
@@ -882,6 +1186,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   ) : null}
                   {isMeters ? (
                     <p className="text-xs text-secondary">{t('admin.is3MetersXlsxHint')}</p>
+                  ) : null}
+                  {isSupportFee ? (
+                    <p className="text-xs text-secondary">{t('admin.is4SupportFeeXlsxHint')}</p>
                   ) : null}
                   <button type="button" className={adminBtnSecondaryClass} onClick={downloadTemplate}>
                     {t('admin.is1DownloadTemplate')}
@@ -923,7 +1230,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() =>
                             isMeters
                               ? downloadMeterErrorReport(preview)
-                              : downloadPropertyBookErrorReport(preview)
+                              : isSupportFee
+                                ? downloadSupportFeeErrorReport(preview)
+                                : downloadPropertyBookErrorReport(preview)
                           }
                         >
                           {t('admin.is2PropertyBookDownloadErrors')}
@@ -949,6 +1258,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           {t('admin.is3MetersConfirmButton')}
                         </button>
                       ) : null}
+                      {isSupportFee && pendingSfPreview && batchId ? (
+                        <button
+                          type="button"
+                          className={adminBtnPrimaryClass}
+                          disabled={busy || preview.errorCount > 0}
+                          onClick={() => void confirmSupportFeeImport()}
+                        >
+                          {t('admin.is4SupportFeeConfirmButton')}
+                        </button>
+                      ) : null}
                       {isMeters &&
                       meterCommitResult &&
                       !meterCommitResult.fullySuccessful &&
@@ -960,6 +1279,19 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() => void confirmMeterImport({ retryOnly: true })}
                         >
                           {t('admin.is3MetersRetryMissing')}
+                        </button>
+                      ) : null}
+                      {isSupportFee &&
+                      sfCommitResult &&
+                      !sfCommitResult.fullySuccessful &&
+                      pendingSfPreview ? (
+                        <button
+                          type="button"
+                          className={adminBtnSecondaryClass}
+                          disabled={busy}
+                          onClick={() => void confirmSupportFeeImport({ retryOnly: true })}
+                        >
+                          {t('admin.is4SupportFeeRetryMissing')}
                         </button>
                       ) : null}
                       {meterCommitResult ? (
@@ -988,6 +1320,32 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           </table>
                         </div>
                       ) : null}
+                      {sfCommitResult ? (
+                        <div className="max-h-48 overflow-auto rounded border border-border text-xs">
+                          <table className="w-full">
+                            <thead>
+                              <tr className={adminTableHeadRowClass}>
+                                <th className={adminTableCellClass}>#</th>
+                                <th className={adminTableCellClass}>{t('admin.is4ColApartment')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is4ColBillingYear')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is4Outcome')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sfCommitResult.rows.map((r) => (
+                                <tr key={`${r.rowNumber}-${r.billingYear}`} className={adminTableRowClass}>
+                                  <td className={adminTableCellClass}>{r.rowNumber}</td>
+                                  <td className={adminTableCellClass}>{r.apartmentNumber}</td>
+                                  <td className={adminTableCellClass}>{r.billingYear}</td>
+                                  <td className={adminTableCellClass}>
+                                    <code>{r.outcome}</code>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <p className="text-xs text-secondary">
@@ -995,7 +1353,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                       ? t('admin.is2PropertyBookNoOverwrite')
                       : isMeters
                         ? t('admin.is3MetersNoOverwrite')
-                        : t('admin.is1NoAutoCommit')}
+                        : isSupportFee
+                          ? t('admin.is4SupportFeeNoOverwrite')
+                          : t('admin.is1NoAutoCommit')}
                   </p>
                 </div>
               ) : null}

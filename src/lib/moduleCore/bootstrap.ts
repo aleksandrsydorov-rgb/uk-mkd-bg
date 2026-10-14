@@ -1,6 +1,7 @@
 import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
 import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningAdapter';
 import { propertyBookOpeningAdapter } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
+import { supportFeeOpeningAdapter } from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
 import { clearModuleAdapterRegistry, registerModuleAdapter } from '@/lib/moduleCore/registry';
 import type { ModuleSetupAdapter } from '@/lib/moduleCore/types';
@@ -59,6 +60,8 @@ export function bootstrapModuleSetupAdapters(): void {
   // IS-3: water / electricity inventory adapters (assign_*; reading-row commit BLOCKED).
   registerModuleAdapter(waterOpeningAdapter);
   registerModuleAdapter(electricityOpeningAdapter);
+  // IS-4: Support Fee opening inventarisation (import_support_fee_opening_state).
+  registerModuleAdapter(supportFeeOpeningAdapter);
   // No initial data required — may go DISABLED → READY.
   registerModuleAdapter(metadataAdapter('guest_mode', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('chat', { requiresInitialSetup: false }));

@@ -71,8 +71,18 @@ export function supportLedgerNet(
     const amt = Math.max(0, Number(row.amount ?? 0));
     const kind = (row.kind ?? '').toLowerCase();
     // Lifecycle kinds (void/restore/payment_reversal) are audit events — not double-counted here.
-    if (kind === 'charge' || kind === 'adjustment_debit') net += amt;
-    else if (kind === 'payment' || kind === 'adjustment_credit') net -= amt;
+    // IS-4 opening_obligation / opening_historical_settlement / opening_credit are inventarisation
+    // (not operational payment) but still contribute to ledger net for reconciliation.
+    if (kind === 'charge' || kind === 'adjustment_debit' || kind === 'opening_obligation') {
+      net += amt;
+    } else if (
+      kind === 'payment' ||
+      kind === 'adjustment_credit' ||
+      kind === 'opening_historical_settlement' ||
+      kind === 'opening_credit'
+    ) {
+      net -= amt;
+    }
   }
   return roundMoney(net);
 }

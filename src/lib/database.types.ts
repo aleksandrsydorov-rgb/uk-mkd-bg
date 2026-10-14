@@ -1922,6 +1922,13 @@ export interface Database {
           tariff_version_id: string | null;
           area_sqm_snapshot: number | null;
           rate_eur_per_sqm_year_snapshot: number | null;
+          /** IS-4 opening inventarisation marker */
+          opening_import: boolean;
+          opening_historically_paid_amount: number | null;
+          opening_transition_date: string | null;
+          opening_source_reference: string | null;
+          opening_obligation_type: string | null;
+          opening_notes: string | null;
         };
         Insert: {
           id?: string;
@@ -1966,6 +1973,12 @@ export interface Database {
           tariff_version_id?: string | null;
           area_sqm_snapshot?: number | null;
           rate_eur_per_sqm_year_snapshot?: number | null;
+          opening_import?: boolean;
+          opening_historically_paid_amount?: number | null;
+          opening_transition_date?: string | null;
+          opening_source_reference?: string | null;
+          opening_obligation_type?: string | null;
+          opening_notes?: string | null;
         };
         Update: {
           id?: string;
@@ -2010,6 +2023,55 @@ export interface Database {
           tariff_version_id?: string | null;
           area_sqm_snapshot?: number | null;
           rate_eur_per_sqm_year_snapshot?: number | null;
+          opening_import?: boolean;
+          opening_historically_paid_amount?: number | null;
+          opening_transition_date?: string | null;
+          opening_source_reference?: string | null;
+          opening_obligation_type?: string | null;
+          opening_notes?: string | null;
+        };
+        Relationships: [];
+      };
+      support_fee_opening_imports: {
+        Row: {
+          id: string;
+          property_id: number;
+          billing_year: number;
+          obligation_type: string;
+          assessment_id: string;
+          assessed_amount: number;
+          historically_paid_amount: number;
+          remaining_debt: number;
+          opening_overpayment: number;
+          transition_date: string;
+          source_reference: string | null;
+          notes: string | null;
+          idempotency_key: string;
+          batch_id: string | null;
+          created_at: string;
+          created_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          billing_year: number;
+          obligation_type?: string;
+          assessment_id: string;
+          assessed_amount: number;
+          historically_paid_amount: number;
+          remaining_debt: number;
+          opening_overpayment?: number;
+          transition_date: string;
+          source_reference?: string | null;
+          notes?: string | null;
+          idempotency_key: string;
+          batch_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          notes?: string | null;
         };
         Relationships: [];
       };
@@ -4084,6 +4146,24 @@ export interface Database {
           p_idempotency_key: string;
           /** E2.3-D: required; must match assessment.property_id. */
           p_expected_property_id: number;
+        };
+        Returns: Json;
+      };
+      /** IS-4: inventarise opening SF state (no synthetic payments). Admin only. */
+      import_support_fee_opening_state: {
+        Args: {
+          p_property_id: number;
+          p_billing_year: number;
+          p_obligation_type: string;
+          p_assessed_amount: number;
+          p_historically_paid_amount: number;
+          p_remaining_debt: number;
+          p_opening_overpayment: number;
+          p_transition_date: string;
+          p_source_reference: string | null;
+          p_notes: string | null;
+          p_idempotency_key: string;
+          p_batch_id?: string | null;
         };
         Returns: Json;
       };

@@ -72,3 +72,42 @@ export {
   type MeterCommitRowResult,
   type MeterCommitBatchResult,
 } from '@/lib/moduleCore/adapters/metersImportCommit';
+export {
+  SUPPORT_FEE_MODULE_KEY,
+  SUPPORT_FEE_SETUP_SCHEMA_VERSION,
+  SUPPORT_FEE_OBLIGATION_TYPE,
+  SUPPORT_FEE_OPENING_HEADERS,
+  validateSupportFeeOpeningRow,
+  classifySupportFeeOpeningRows,
+  buildExistingSfScopeMap,
+  supportFeeOpeningPayloadsFromPreview,
+  buildSupportFeeIs4TemplateBuffer,
+  downloadSupportFeeIs4Template,
+  buildSupportFeeErrorReportXlsx,
+  downloadSupportFeeErrorReport,
+  openingAmountsConsistent,
+  parseNonNegMoney,
+  parseBillingYear,
+  parseTransitionDate,
+  scopeKey,
+  type ExistingSfObligationRef,
+  type SupportFeeOpeningRpcPayload,
+} from '@/lib/moduleCore/adapters/supportFeeOpening';
+export {
+  supportFeeOpeningAdapter,
+  downloadSupportFeeOpeningTemplate,
+} from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
+export {
+  SF_COMMIT_OUTCOMES,
+  classifySfOpeningErrorMessage,
+  commitSupportFeeOpeningBatch,
+  reconcileSfCommitWithDb,
+  retryCandidatesFromSfBatch,
+  filterPreviewForSfRetry,
+  mergeSfCommitBatches,
+  sfCommitAuditPayload,
+  d1OutstandingFromSfCommit,
+  type SfCommitOutcome,
+  type SfCommitRowResult,
+  type SfCommitBatchResult,
+} from '@/lib/moduleCore/adapters/supportFeeImportCommit';

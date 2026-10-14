@@ -1328,6 +1328,45 @@ export const ru = {
     is3MetersRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
     is3MetersRetryEmpty: 'Нет строк для повтора — все уже созданы или пропущены.',
     is3Outcome: 'Итог',
+    is4SupportFeeName: 'Плата за содержание (opening)',
+    is4SupportFeeDesc:
+      'Начальная инвентаризация обязательств Support Fee без фиктивных платежей (IS-4 / D1).',
+    is4SupportFeeStepVerify: 'Проверка opening Support Fee',
+    is4SupportFeeManualConfirm: 'Подтверждаю: начальные обязательства Support Fee сверены',
+    is4SupportFeeVerifiedExisting: 'Существующие обязательства проверены (без перезаписи)',
+    is4SupportFeeManualHint:
+      'Операционные начисления/оплаты — в разделе Такса. Здесь только начальное состояние на дату перехода.',
+    is4SupportFeeSsotNote:
+      'Канон: support_fee_assessments.remaining_due (D1) + ledger. historically_paid ≠ payment. Книга — SSOT квартир.',
+    is4SupportFeeXlsxHint:
+      'Шаблон opening_balances + BG/RU/EN. Preview не пишет. Конфликт → ERROR. Без early/late и без synthetic payments.',
+    is4SupportFeeXlsxInstructions: 'См. листы instructions_* в шаблоне.',
+    is4ColApartment: 'apartment_number',
+    is4ColBillingYear: 'billing_year',
+    is4ColObligationType: 'obligation_type',
+    is4ColAssessed: 'assessed_amount',
+    is4ColHistoricallyPaid: 'historically_paid_amount',
+    is4ColRemainingDebt: 'remaining_debt',
+    is4ColOpeningOverpayment: 'opening_overpayment',
+    is4ColTransitionDate: 'transition_date',
+    is4ColSourceRef: 'source_reference',
+    is4ColNotes: 'notes',
+    is4SupportFeeEmptySheet: 'Лист opening_balances пуст.',
+    is4SupportFeeNoSyntheticPayments: 'Synthetic payments запрещены. historically_paid — декларация opening.',
+    is4SupportFeeFixErrors: 'Исправьте CONFLICT/ERROR перед commit opening.',
+    is4SupportFeeConfirmButton: 'Подтвердить opening (RPC)',
+    is4SupportFeeConfirmImport:
+      'Подтвердить импорт начального состояния Support Fee? Существующие обязательства не перезаписываются. Платежи не создаются.',
+    is4SupportFeeImportCommitted: 'Opening Support Fee применён; batch committed. Synthetic payments = false.',
+    is4SupportFeeNoOverwrite:
+      'IS-4 Q5: conflict → ERROR, без overwrite. Preview не пишет. Commit только import_support_fee_opening_state.',
+    is4SupportFeePartialCommit:
+      'Частичный commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is4SupportFeePartialNotFullySuccessful:
+      'Пакет не полностью успешен. Повторите только FAILED/NOT_PROCESSED.',
+    is4SupportFeeRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
+    is4SupportFeeRetryEmpty: 'Нет строк для повтора.',
+    is4Outcome: 'Итог',
     emailTitle: 'Электронная почта',
     emailLead:
       'Отправитель и статус почтовой системы этого комплекса. Секреты провайдера хранятся только на сервере.',
@@ -4334,6 +4373,45 @@ export const en: Messages = {
     is3MetersRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
     is3MetersRetryEmpty: 'Nothing to retry — rows already created or skipped.',
     is3Outcome: 'Outcome',
+    is4SupportFeeName: 'Support Fee (opening)',
+    is4SupportFeeDesc:
+      'Support Fee opening inventarisation without synthetic payments (IS-4 / D1).',
+    is4SupportFeeStepVerify: 'Verify Support Fee opening',
+    is4SupportFeeManualConfirm: 'I confirm Support Fee opening obligations were reviewed',
+    is4SupportFeeVerifiedExisting: 'Existing obligations verified (no overwrite)',
+    is4SupportFeeManualHint:
+      'Operational charge/payment is done in Support Fee admin. Here only opening state as of transition date.',
+    is4SupportFeeSsotNote:
+      'Canonical: support_fee_assessments.remaining_due (D1) + ledger. historically_paid ≠ payment. Book is apartment SSOT.',
+    is4SupportFeeXlsxHint:
+      'Template opening_balances + BG/RU/EN. Preview writes nothing. Conflict → ERROR. No early/late, no synthetic payments.',
+    is4SupportFeeXlsxInstructions: 'See instructions_* sheets in the template.',
+    is4ColApartment: 'apartment_number',
+    is4ColBillingYear: 'billing_year',
+    is4ColObligationType: 'obligation_type',
+    is4ColAssessed: 'assessed_amount',
+    is4ColHistoricallyPaid: 'historically_paid_amount',
+    is4ColRemainingDebt: 'remaining_debt',
+    is4ColOpeningOverpayment: 'opening_overpayment',
+    is4ColTransitionDate: 'transition_date',
+    is4ColSourceRef: 'source_reference',
+    is4ColNotes: 'notes',
+    is4SupportFeeEmptySheet: 'opening_balances sheet is empty.',
+    is4SupportFeeNoSyntheticPayments: 'Synthetic payments forbidden. historically_paid is an opening declaration.',
+    is4SupportFeeFixErrors: 'Resolve CONFLICT/ERROR before committing opening rows.',
+    is4SupportFeeConfirmButton: 'Confirm opening (RPC)',
+    is4SupportFeeConfirmImport:
+      'Confirm Support Fee opening import? Existing obligations are not overwritten. No payments are created.',
+    is4SupportFeeImportCommitted: 'Support Fee opening applied; batch committed. Synthetic payments = false.',
+    is4SupportFeeNoOverwrite:
+      'IS-4 Q5: conflict → ERROR, no overwrite. Preview does not write. Commit only via import_support_fee_opening_state.',
+    is4SupportFeePartialCommit:
+      'Partial commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is4SupportFeePartialNotFullySuccessful:
+      'Batch is not fully successful. Retry only FAILED/NOT_PROCESSED.',
+    is4SupportFeeRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
+    is4SupportFeeRetryEmpty: 'Nothing to retry.',
+    is4Outcome: 'Outcome',
     emailTitle: 'Email',
     emailLead:
       'Sender and mail system status for this complex. Provider secrets stay on the server only.',
@@ -7342,6 +7420,45 @@ export const bg: Messages = {
     is3MetersRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
     is3MetersRetryEmpty: 'Няма редове за повтор — вече са създадени или пропуснати.',
     is3Outcome: 'Резултат',
+    is4SupportFeeName: 'Такса поддръжка (opening)',
+    is4SupportFeeDesc:
+      'Начална инвентаризация на задължения Support Fee без фиктивни плащания (IS-4 / D1).',
+    is4SupportFeeStepVerify: 'Проверка opening Support Fee',
+    is4SupportFeeManualConfirm: 'Потвърждавам: началните задължения Support Fee са сверени',
+    is4SupportFeeVerifiedExisting: 'Съществуващите задължения са проверени (без презапис)',
+    is4SupportFeeManualHint:
+      'Оперативни начисления/плащания са в Такса. Тук само начално състояние към датата на преход.',
+    is4SupportFeeSsotNote:
+      'Канон: support_fee_assessments.remaining_due (D1) + ledger. historically_paid ≠ payment. Книгата е SSOT за апартаменти.',
+    is4SupportFeeXlsxHint:
+      'Шаблон opening_balances + BG/RU/EN. Preview не пише. Конфликт → ERROR. Без early/late и без synthetic payments.',
+    is4SupportFeeXlsxInstructions: 'Вижте листовете instructions_* в шаблона.',
+    is4ColApartment: 'apartment_number',
+    is4ColBillingYear: 'billing_year',
+    is4ColObligationType: 'obligation_type',
+    is4ColAssessed: 'assessed_amount',
+    is4ColHistoricallyPaid: 'historically_paid_amount',
+    is4ColRemainingDebt: 'remaining_debt',
+    is4ColOpeningOverpayment: 'opening_overpayment',
+    is4ColTransitionDate: 'transition_date',
+    is4ColSourceRef: 'source_reference',
+    is4ColNotes: 'notes',
+    is4SupportFeeEmptySheet: 'Листът opening_balances е празен.',
+    is4SupportFeeNoSyntheticPayments: 'Synthetic payments са забранени. historically_paid е декларация opening.',
+    is4SupportFeeFixErrors: 'Поправете CONFLICT/ERROR преди commit на opening.',
+    is4SupportFeeConfirmButton: 'Потвърди opening (RPC)',
+    is4SupportFeeConfirmImport:
+      'Потвърдете импорт на начално състояние Support Fee? Съществуващите задължения не се презаписват. Не се създават плащания.',
+    is4SupportFeeImportCommitted: 'Opening Support Fee е приложен; batch е committed. Synthetic payments = false.',
+    is4SupportFeeNoOverwrite:
+      'IS-4 Q5: conflict → ERROR, без overwrite. Preview не пише. Commit само чрез import_support_fee_opening_state.',
+    is4SupportFeePartialCommit:
+      'Частичен commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is4SupportFeePartialNotFullySuccessful:
+      'Пакетът не е напълно успешен. Повторете само FAILED/NOT_PROCESSED.',
+    is4SupportFeeRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
+    is4SupportFeeRetryEmpty: 'Няма редове за повтор.',
+    is4Outcome: 'Резултат',
     emailTitle: 'Електронна поща',
     emailLead:
       'Изпращач и статус на пощата за този комплекс. Тайните на доставчика остават само на сървъра.',

@@ -1257,6 +1257,36 @@ export const ru = {
     is1ColApartment: 'apartment_number',
     is1ColLabel: 'label',
     is1ConfirmSetupStep: 'Подтверждение',
+    is2PropertyBookName: 'Книга этажной собственности',
+    is2PropertyBookDesc:
+      'Начальная загрузка книги через канонические объекты/собственников (без дублирующих таблиц).',
+    is2PropertyBookStepVerify: 'Проверка книги',
+    is2PropertyBookManualConfirm: 'Подтверждаю: книга заполнена через админку Книги',
+    is2PropertyBookVerifiedExisting: 'Существующие записи проверены (только чтение, без перезаписи)',
+    is2PropertyBookXlsxInstructions: 'Листы objects + owners; инструкции BG/RU/EN в шаблоне',
+    is2ColApartment: 'apartment_number',
+    is2ColPurpose: 'purpose',
+    is2ColOwnershipType: 'ownership_type',
+    is2PropertyBookSsotNote:
+      'Книга — единственный источник истины для собраний и передач собственности. Импорт не заменяет законные переводы.',
+    is2PropertyBookManualHint:
+      'Ручной ввод — через раздел «Книга этажной собственности». Здесь только подтверждение setup.',
+    is2PropertyBookXlsxHint:
+      'Шаблон: objects + owners + инструкции BG/RU/EN. Preview без записи. Существующие квартиры → SKIP.',
+    is2PropertyBookAllowCreate:
+      'Разрешить CREATE для отсутствующих квартир (пустая/новая установка)',
+    is2PropertyBookEmptyObjects: 'Лист objects пуст.',
+    is2PropertyBookEmptyOwners: 'Лист owners пуст.',
+    is2PropertyBookRpcErrors: 'RPC dry-run ошибок: {n}',
+    is2PropertyBookDownloadErrors: 'Скачать отчёт об ошибках',
+    is2PropertyBookConfirmButton: 'Подтвердить импорт (запись)',
+    is2PropertyBookConfirmImport:
+      'Подтвердить импорт в Книгу? Существующие ownership/доли/идеални части не будут перезаписаны.',
+    is2PropertyBookFixErrors: 'Исправьте ошибки перед импортом.',
+    is2PropertyBookImportFailed: 'Импорт отклонён сервером.',
+    is2PropertyBookImportCommitted: 'Импорт применён; batch отмечен committed.',
+    is2PropertyBookNoOverwrite:
+      'IS-2: allow_overwrite=false. Preview не пишет. Commit только после явного подтверждения.',
     emailTitle: 'Электронная почта',
     emailLead:
       'Отправитель и статус почтовой системы этого комплекса. Секреты провайдера хранятся только на сервере.',
@@ -4192,6 +4222,36 @@ export const en: Messages = {
     is1ColApartment: 'apartment_number',
     is1ColLabel: 'label',
     is1ConfirmSetupStep: 'Confirmation',
+    is2PropertyBookName: 'Property Book',
+    is2PropertyBookDesc:
+      'Opening load of the Property Book via canonical objects/owners (no duplicate tables).',
+    is2PropertyBookStepVerify: 'Book verification',
+    is2PropertyBookManualConfirm: 'I confirm: the book is filled via Property Book admin',
+    is2PropertyBookVerifiedExisting: 'Existing records verified (read-only, no overwrite)',
+    is2PropertyBookXlsxInstructions: 'Sheets objects + owners; BG/RU/EN instructions in template',
+    is2ColApartment: 'apartment_number',
+    is2ColPurpose: 'purpose',
+    is2ColOwnershipType: 'ownership_type',
+    is2PropertyBookSsotNote:
+      'The Property Book is the single source of truth for meetings and ownership transfers. Import does not replace lawful transfers.',
+    is2PropertyBookManualHint:
+      'Manual entry is done in the Property Book admin section. Here you only confirm setup.',
+    is2PropertyBookXlsxHint:
+      'Template: objects + owners + BG/RU/EN instructions. Preview writes nothing. Existing apartments → SKIP.',
+    is2PropertyBookAllowCreate:
+      'Allow CREATE for missing apartments (empty/new installation)',
+    is2PropertyBookEmptyObjects: 'objects sheet is empty.',
+    is2PropertyBookEmptyOwners: 'owners sheet is empty.',
+    is2PropertyBookRpcErrors: 'RPC dry-run errors: {n}',
+    is2PropertyBookDownloadErrors: 'Download error report',
+    is2PropertyBookConfirmButton: 'Confirm import (write)',
+    is2PropertyBookConfirmImport:
+      'Confirm import into the Property Book? Existing ownership/shares/ideal parts will not be overwritten.',
+    is2PropertyBookFixErrors: 'Fix errors before importing.',
+    is2PropertyBookImportFailed: 'Import rejected by the server.',
+    is2PropertyBookImportCommitted: 'Import applied; batch marked committed.',
+    is2PropertyBookNoOverwrite:
+      'IS-2: allow_overwrite=false. Preview does not write. Commit only after explicit confirmation.',
     emailTitle: 'Email',
     emailLead:
       'Sender and mail system status for this complex. Provider secrets stay on the server only.',
@@ -7129,6 +7189,36 @@ export const bg: Messages = {
     is1ColApartment: 'apartment_number',
     is1ColLabel: 'label',
     is1ConfirmSetupStep: 'Потвърждение',
+    is2PropertyBookName: 'Книга на етажната собственост',
+    is2PropertyBookDesc:
+      'Начална зареждане на книгата чрез канонични обекти/собственици (без дублиращи таблици).',
+    is2PropertyBookStepVerify: 'Проверка на книгата',
+    is2PropertyBookManualConfirm: 'Потвърждавам: книгата е попълнена през админ Книгата',
+    is2PropertyBookVerifiedExisting: 'Съществуващите записи са проверени (само четене, без презапис)',
+    is2PropertyBookXlsxInstructions: 'Листове objects + owners; инструкции BG/RU/EN в шаблона',
+    is2ColApartment: 'apartment_number',
+    is2ColPurpose: 'purpose',
+    is2ColOwnershipType: 'ownership_type',
+    is2PropertyBookSsotNote:
+      'Книгата е единственият източник на истина за събрания и прехвърляния. Импортът не замества законовите прехвърляния.',
+    is2PropertyBookManualHint:
+      'Ръчният вход е през раздел «Книга на етажната собственост». Тук само потвърждавате setup.',
+    is2PropertyBookXlsxHint:
+      'Шаблон: objects + owners + инструкции BG/RU/EN. Preview не записва. Съществуващи апартаменти → SKIP.',
+    is2PropertyBookAllowCreate:
+      'Разреши CREATE за липсващи апартаменти (празна/нова инсталация)',
+    is2PropertyBookEmptyObjects: 'Листът objects е празен.',
+    is2PropertyBookEmptyOwners: 'Листът owners е празен.',
+    is2PropertyBookRpcErrors: 'RPC dry-run грешки: {n}',
+    is2PropertyBookDownloadErrors: 'Изтегли доклад за грешки',
+    is2PropertyBookConfirmButton: 'Потвърди импорт (запис)',
+    is2PropertyBookConfirmImport:
+      'Потвърдете импорт в Книгата? Съществуващите ownership/дялове/идеални части няма да бъдат презаписани.',
+    is2PropertyBookFixErrors: 'Поправете грешките преди импорт.',
+    is2PropertyBookImportFailed: 'Импортът е отхвърлен от сървъра.',
+    is2PropertyBookImportCommitted: 'Импортът е приложен; batch е committed.',
+    is2PropertyBookNoOverwrite:
+      'IS-2: allow_overwrite=false. Preview не пише. Commit само след изрично потвърждение.',
     emailTitle: 'Електронна поща',
     emailLead:
       'Изпращач и статус на пощата за този комплекс. Тайните на доставчика остават само на сървъра.',

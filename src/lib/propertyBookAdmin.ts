@@ -123,9 +123,8 @@ export type PropertyBookWorkbookPayload = {
   owners: Record<string, string>[];
 };
 
-/** Parse one Excel workbook with sheets `objects` and `owners`. */
-export async function parsePropertyBookWorkbook(file: File): Promise<PropertyBookWorkbookPayload> {
-  const buf = await file.arrayBuffer();
+/** Parse workbook buffer with sheets `objects` and `owners`. */
+export function parsePropertyBookWorkbookBuffer(buf: ArrayBuffer): PropertyBookWorkbookPayload {
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
 
   const objectsName =
@@ -143,6 +142,12 @@ export async function parsePropertyBookWorkbook(file: File): Promise<PropertyBoo
     objects: sheetToRecords(wb.Sheets[objectsName], BOOK_OBJECTS_CSV_HEADERS),
     owners: sheetToRecords(wb.Sheets[ownersName], BOOK_OWNERS_CSV_HEADERS),
   };
+}
+
+/** Parse one Excel workbook with sheets `objects` and `owners`. */
+export async function parsePropertyBookWorkbook(file: File): Promise<PropertyBookWorkbookPayload> {
+  const buf = await file.arrayBuffer();
+  return parsePropertyBookWorkbookBuffer(buf);
 }
 
 function objectsTemplateRows(): Record<string, string>[] {

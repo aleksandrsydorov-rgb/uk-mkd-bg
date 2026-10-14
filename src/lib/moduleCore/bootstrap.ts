@@ -1,4 +1,5 @@
 import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningAdapter';
+import { propertyBookOpeningAdapter } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
 import { clearModuleAdapterRegistry, registerModuleAdapter } from '@/lib/moduleCore/registry';
 import type { ModuleSetupAdapter } from '@/lib/moduleCore/types';
 
@@ -51,12 +52,13 @@ function metadataAdapter(
 export function bootstrapModuleSetupAdapters(): void {
   if (bootstrapped) return;
   registerModuleAdapter(exampleOpeningAdapter);
+  // IS-2: Property Book opening adapter (canonical Book RPCs; no duplicate tables).
+  registerModuleAdapter(propertyBookOpeningAdapter);
   // No initial data required — may go DISABLED → READY.
   registerModuleAdapter(metadataAdapter('guest_mode', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('chat', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('requests', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('announcements', { requiresInitialSetup: false }));
-  // Property Book remains canonical; future book adapter will own XLSX — not IS-1.
   registerModuleAdapter(
     metadataAdapter('building_documents', {
       requiresInitialSetup: true,

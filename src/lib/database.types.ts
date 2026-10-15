@@ -2743,6 +2743,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      /** IS-8: audited Capital Repair opening inventarisation rows. */
+      capital_repair_opening_imports: {
+        Row: {
+          id: string;
+          property_id: number;
+          billing_year: number;
+          assessment_id: string;
+          assessed_amount: number;
+          historically_paid_amount: number;
+          remaining_debt: number;
+          opening_overpayment: number;
+          transition_date: string;
+          source_reference: string | null;
+          notes: string | null;
+          imported_by_email: string;
+          idempotency_key: string;
+          batch_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          billing_year: number;
+          assessment_id: string;
+          assessed_amount: number;
+          historically_paid_amount: number;
+          remaining_debt: number;
+          opening_overpayment?: number;
+          transition_date: string;
+          source_reference?: string | null;
+          notes?: string | null;
+          imported_by_email: string;
+          idempotency_key: string;
+          batch_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
       internet_subscriptions: {
         Row: {
           id: string;
@@ -4322,6 +4364,25 @@ export interface Database {
           p_source_reference: string | null;
           p_notes: string | null;
           p_idempotency_key: string;
+          p_batch_id?: string | null;
+        };
+        Returns: Json;
+      };
+      /** IS-8: inventarise Capital Repair opening state (no synthetic payments/charges). Admin only. */
+      import_capital_repair_opening_state: {
+        Args: {
+          p_property_id: number;
+          p_billing_year: number;
+          p_obligation_type: string;
+          p_assessed_amount: number;
+          p_historically_paid_amount: number;
+          p_remaining_debt: number;
+          p_opening_overpayment: number;
+          p_transition_date: string;
+          p_source_reference: string | null;
+          p_notes: string | null;
+          p_idempotency_key: string;
+          p_assessment_title?: string | null;
           p_batch_id?: string | null;
         };
         Returns: Json;

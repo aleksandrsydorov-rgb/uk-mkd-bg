@@ -12,6 +12,8 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import {
+  CAPITAL_REPAIR_MODULE_KEY,
+  CAPITAL_REPAIR_SETUP_SCHEMA_VERSION,
   ELECTRICITY_MODULE_KEY,
   INTERNET_MODULE_KEY,
   INTERNET_SETUP_SCHEMA_VERSION,
@@ -24,12 +26,16 @@ import {
   activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
+  buildCapitalAssessmentsMaps,
+  buildCapitalLedgerConflictSets,
   buildCategoryCodeMap,
   buildExistingInternetSubMap,
   buildExistingSfScopeMap,
   buildExistingUkExpenseOpeningMap,
   buildImportPreview,
   canTransitionModuleLifecycle,
+  classifyCapitalRepairOpeningRows,
+  classifyCrOpeningErrorMessage,
   classifyElectricityMeterOpeningRows,
   classifyInternetOpeningErrorMessage,
   classifyInternetOpeningRows,
@@ -38,9 +44,13 @@ import {
   classifyUkExpenseOpeningErrorMessage,
   classifyUkExpenseOpeningRows,
   classifyWaterMeterOpeningRows,
+  commitCapitalRepairOpeningBatch,
   commitInternetOpeningBatch,
   commitSupportFeeOpeningBatch,
   commitUkExpenseOpeningBatch,
+  crCommitAuditPayload,
+  downloadCapitalRepairErrorReport,
+  downloadCapitalRepairOpeningTemplate,
   downloadElectricityOpeningTemplate,
   downloadInternetErrorReport,
   downloadInternetOpeningTemplate,
@@ -54,6 +64,7 @@ import {
   downloadUkExpensesOpeningTemplate,
   downloadWaterOpeningTemplate,
   commitMeterInventoryBatch,
+  filterPreviewForCrRetry,
   filterPreviewForInternetRetry,
   filterPreviewForRetry,
   filterPreviewForSfRetry,
@@ -61,6 +72,7 @@ import {
   getModuleAdapter,
   internetCommitAuditPayload,
   listRegisteredModuleAdapters,
+  mergeCrCommitBatches,
   mergeInternetCommitBatches,
   mergeMeterCommitBatches,
   mergeSfCommitBatches,
@@ -68,11 +80,13 @@ import {
   meterCommitAuditPayload,
   parseModuleXlsxBuffer,
   previewFromPropertyBookDryRun,
+  reconcileCrCommitWithDb,
   reconcileInternetCommitWithDb,
   reconcileMeterCommitWithDb,
   reconcileSfCommitWithDb,
   reconcileUkExpenseCommitWithDb,
   retryCandidatesFromBatch,
+  retryCandidatesFromCrBatch,
   retryCandidatesFromInternetBatch,
   retryCandidatesFromSfBatch,
   retryCandidatesFromUkExpenseBatch,
@@ -86,6 +100,7 @@ import {
   evaluateAllTariffSetupGates,
   evaluateTariffSetupGate,
   propertyBookBlocksDependentSetup,
+  type CrCommitBatchResult,
   type ImportPreviewResult,
   type InternetCommitBatchResult,
   type MeterCommitBatchResult,
@@ -157,6 +172,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [ukExpenseCommitResult, setUkExpenseCommitResult] = useState<UkExpenseCommitBatchResult | null>(
     null,
   );
+  const [pendingCrPreview, setPendingCrPreview] = useState<ImportPreviewResult | null>(null);
+  const [crCommitResult, setCrCommitResult] = useState<CrCommitBatchResult | null>(null);
   const [tariffSnapshots, setTariffSnapshots] = useState<TariffListSnapshot[]>([]);
 
   useEffect(() => {
@@ -228,6 +245,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isSupportFee = selectedKey === SUPPORT_FEE_MODULE_KEY;
   const isInternet = selectedKey === INTERNET_MODULE_KEY;
   const isUkExpenses = selectedKey === UK_EXPENSES_SETUP_KEY;
+  const isCapitalRepair = selectedKey === CAPITAL_REPAIR_MODULE_KEY;
 
   const tariffReadiness = useMemo(
     () => evaluateAllTariffSetupGates(tariffSnapshots),
@@ -268,6 +286,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setInternetCommitResult(null);
     setPendingUkExpensePreview(null);
     setUkExpenseCommitResult(null);
+    setPendingCrPreview(null);
+    setCrCommitResult(null);
   }
 
   async function loadSupportFeeClassifyContext() {
@@ -351,6 +371,85 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       existingByScope,
       openingImportsByScope,
       supportFeeTariffConfigured,
+    };
+  }
+
+  async function loadCapitalRepairClassifyContext() {
+    const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+      p_limit: 5000,
+    });
+    if (listErr) throw listErr;
+    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+      .filter((r) => r.property_id != null)
+      .map((r) => ({
+        property_id: Number(r.property_id),
+        apartment_number: String(r.apartment_number ?? ''),
+      }));
+    const apartmentsByNumber = buildApartmentLookup(apartments);
+
+    const { data: assessmentRows, error: aErr } = await supabase
+      .from('capital_repair_assessments')
+      .select('id, title, status');
+    if (aErr) throw aErr;
+    const { assessmentsByTitle, assessmentsByYear } = buildCapitalAssessmentsMaps(
+      (assessmentRows as { id: string; title: string | null; status?: string | null }[]) ?? [],
+    );
+
+    const operationalChargeScopes = new Set<string>();
+    const openingObligationScopes = new Set<string>();
+    const { data: ledgerRows, error: lErr } = await supabase
+      .from('capital_repair_ledger')
+      .select('property_id, assessment_id, kind')
+      .in('kind', ['charge', 'opening_obligation']);
+    if (!lErr && ledgerRows) {
+      const sets = buildCapitalLedgerConflictSets(
+        (ledgerRows as {
+          property_id: number;
+          assessment_id: string | null;
+          kind: string;
+        }[]) ?? [],
+      );
+      for (const k of sets.operationalChargeScopes) operationalChargeScopes.add(k);
+      for (const k of sets.openingObligationScopes) openingObligationScopes.add(k);
+    }
+
+    const openingImportsByScope = new Map<
+      string,
+      { assessed: number; paid: number; remaining: number; over: number; assessmentId: string }
+    >();
+    const { data: importRows, error: iErr } = await supabase
+      .from('capital_repair_opening_imports')
+      .select(
+        'property_id, billing_year, assessment_id, assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment',
+      );
+    // Table may not exist until migration applied — treat as empty for local preview.
+    if (!iErr && importRows) {
+      for (const r of importRows as {
+        property_id: number;
+        billing_year: number;
+        assessment_id: string;
+        assessed_amount: number;
+        historically_paid_amount: number;
+        remaining_debt: number;
+        opening_overpayment: number;
+      }[]) {
+        openingImportsByScope.set(`${r.property_id}|${r.billing_year}`, {
+          assessed: Number(r.assessed_amount),
+          paid: Number(r.historically_paid_amount),
+          remaining: Number(r.remaining_debt),
+          over: Number(r.opening_overpayment),
+          assessmentId: String(r.assessment_id),
+        });
+      }
+    }
+
+    return {
+      apartmentsByNumber,
+      openingImportsByScope,
+      assessmentsByTitle,
+      assessmentsByYear,
+      operationalChargeScopes,
+      openingObligationScopes,
     };
   }
 
@@ -602,7 +701,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       verified_existing_readonly: verifiedExisting,
       skip_historical_import: skipHistoricalExpenses,
     };
-    if (isUkExpenses) {
+    if (isUkExpenses || isCapitalRepair) {
       const validation = adapter.validateManual?.(draft);
       if (!validation || !validation.ok) {
         setError(t('admin.is1SetupIncomplete'));
@@ -848,6 +947,72 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setPreviewNote(
           t('admin.is1PreviewSaved').replace('{id}', id) +
             ` · ${t('admin.is4SupportFeeNoSyntheticPayments')}`,
+        );
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (isCapitalRepair) {
+      setBusy(true);
+      setError(null);
+      try {
+        const schema = adapter.registration.setup.xlsx;
+        const buf = await file.arrayBuffer();
+        const parsed = parseModuleXlsxBuffer(buf, schema);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.rows.length === 0) {
+          setError(t('admin.is8CapitalRepairEmptySheet'));
+          return;
+        }
+        const ctx = await loadCapitalRepairClassifyContext();
+        const result = classifyCapitalRepairOpeningRows(parsed.rows, ctx);
+        setPreview(result);
+        setPendingCrPreview(result);
+
+        const { data: batch, error: batchErr } = await supabase.rpc(
+          'admin_create_module_import_batch',
+          {
+            p_module_key: selectedKey,
+            p_schema_version: schema.schemaVersion,
+            p_source: 'xlsx',
+            p_file_name: file.name,
+            p_preview: {
+              local: result,
+              policy: {
+                no_synthetic_payments: true,
+                no_operational_charges: true,
+                mandatory_assessment_id: true,
+                conflict_no_overwrite: true,
+                fund_vs_cash: 'apartment_obligation_not_bank_cash',
+              },
+            },
+            p_row_count: result.rows.length,
+            p_create_count: result.createCount,
+            p_update_count: result.updateCount,
+            p_skip_count: result.skipCount,
+            p_error_count: result.errorCount,
+            p_error_report: result.rows
+              .filter((r) => r.errors.length)
+              .map((r) => ({
+                rowNumber: r.rowNumber,
+                preview_class: r.data.preview_class,
+                errors: r.errors,
+              })),
+          },
+        );
+        if (batchErr) throw batchErr;
+        const id = String((batch as { id?: string })?.id ?? '');
+        setBatchId(id || null);
+        setPreviewNote(
+          t('admin.is1PreviewSaved').replace('{id}', id) +
+            ` · ${t('admin.is8CapitalRepairNoSynthetic')}`,
         );
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : t('admin.errGeneric'));
@@ -1357,6 +1522,156 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
   }
 
+  async function confirmCapitalRepairImport(opts?: { retryOnly?: boolean }) {
+    if (!isCapitalRepair || !pendingCrPreview || !batchId || !preview) return;
+    if (preview.errorCount > 0 && !opts?.retryOnly) {
+      setError(t('admin.is8CapitalRepairFixErrors'));
+      return;
+    }
+    if (!window.confirm(t('admin.is8CapitalRepairConfirmImport'))) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      let workPreview = pendingCrPreview;
+      if (opts?.retryOnly && crCommitResult) {
+        const retryNums = new Set(retryCandidatesFromCrBatch(crCommitResult));
+        workPreview = filterPreviewForCrRetry(pendingCrPreview, [...retryNums]);
+        if (workPreview.rows.length === 0) {
+          setPreviewNote(t('admin.is8CapitalRepairRetryEmpty'));
+          return;
+        }
+      }
+
+      const rawBatch = await commitCapitalRepairOpeningBatch({
+        preview: workPreview,
+        batchId,
+        idempotencyKeyForRow: (rowNumber) => {
+          const seed = `${batchId}:${rowNumber}:is8-cr-opening`;
+          let h = 0;
+          for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+          const hex = (n: number) => n.toString(16).padStart(8, '0');
+          return `${hex(h)}-${hex(rowNumber & 0xffff)}-4${hex(h).slice(1, 4)}-a${hex(h).slice(4, 7)}-${hex(h)}${hex(rowNumber)}`.slice(
+            0,
+            36,
+          );
+        },
+        importRow: async (p) => {
+          const { data, error: rpcErr } = await supabase.rpc('import_capital_repair_opening_state', {
+            p_property_id: p.propertyId,
+            p_billing_year: p.billingYear,
+            p_obligation_type: p.obligationType,
+            p_assessed_amount: p.assessedAmount,
+            p_historically_paid_amount: p.historicallyPaidAmount,
+            p_remaining_debt: p.remainingDebt,
+            p_opening_overpayment: p.openingOverpayment,
+            p_transition_date: p.transitionDate,
+            p_source_reference: p.sourceReference || null,
+            p_notes: p.notes || null,
+            p_idempotency_key: p.idempotencyKey,
+            p_assessment_title: p.assessmentTitle || null,
+            p_batch_id: p.batchId,
+          });
+          if (rpcErr) {
+            const outcome = classifyCrOpeningErrorMessage(rpcErr.message);
+            return { ok: false, outcome, message: rpcErr.message };
+          }
+          const body = data as {
+            applied?: boolean;
+            idempotent?: boolean;
+            outcome?: string;
+            remaining_debt?: number;
+            assessment_id?: string;
+            synthetic_payments?: boolean;
+            operational_charges?: boolean;
+          };
+          if (body.synthetic_payments === true || body.operational_charges === true) {
+            return { ok: false, outcome: 'FAILED', message: 'synthetic_payment_or_charge_forbidden' };
+          }
+          if (body.idempotent || body.outcome === 'SKIPPED_EXISTING') {
+            return {
+              ok: true,
+              outcome: 'SKIPPED_EXISTING',
+              remainingDebt: Number(body.remaining_debt ?? p.remainingDebt),
+              assessmentId: body.assessment_id,
+            };
+          }
+          return {
+            ok: true,
+            outcome: 'CREATED',
+            remainingDebt: Number(body.remaining_debt ?? p.remainingDebt),
+            assessmentId: body.assessment_id,
+          };
+        },
+      });
+
+      const ctx = await loadCapitalRepairClassifyContext();
+      const imports = [...ctx.openingImportsByScope.entries()].map(([sk, v]) => {
+        const [propertyId, billingYear] = sk.split('|');
+        return {
+          propertyId: Number(propertyId),
+          billingYear: Number(billingYear),
+          remainingDebt: v.remaining,
+          assessmentId: v.assessmentId,
+        };
+      });
+      const reconciled = reconcileCrCommitWithDb(rawBatch, imports);
+      const merged = mergeCrCommitBatches(opts?.retryOnly ? crCommitResult : null, reconciled);
+      setCrCommitResult(merged);
+
+      const { error: auditErr } = await supabase.rpc('admin_create_module_import_batch', {
+        p_module_key: selectedKey!,
+        p_schema_version: CAPITAL_REPAIR_SETUP_SCHEMA_VERSION,
+        p_source: 'api',
+        p_file_name: `opening-commit-${batchId}`,
+        p_preview: crCommitAuditPayload(merged) as Json,
+        p_row_count: merged.rows.length,
+        p_create_count: merged.createdCount,
+        p_update_count: 0,
+        p_skip_count: merged.skippedExistingCount,
+        p_error_count: merged.failedCount + merged.notProcessedCount + merged.conflictCount,
+        p_error_report: merged.rows
+          .filter((r) => r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED' || r.outcome === 'CONFLICT')
+          .map((r) => ({
+            rowNumber: r.rowNumber,
+            outcome: r.outcome,
+            detail: r.detail,
+          })) as Json,
+      });
+      if (auditErr) throw auditErr;
+
+      if (merged.fullySuccessful) {
+        const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
+          p_batch_id: batchId,
+        });
+        if (commitErr) throw commitErr;
+        setPreviewNote(t('admin.is8CapitalRepairImportCommitted'));
+        if (
+          selected &&
+          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
+        ) {
+          await transition('SETUP_IN_PROGRESS', 'capital_repair_opening_committed');
+        } else {
+          await load();
+        }
+      } else {
+        setPreviewNote(
+          t('admin.is8CapitalRepairPartialCommit')
+            .replace('{c}', String(merged.createdCount))
+            .replace('{s}', String(merged.skippedExistingCount))
+            .replace('{x}', String(merged.conflictCount))
+            .replace('{f}', String(merged.failedCount))
+            .replace('{n}', String(merged.notProcessedCount)),
+        );
+        setError(t('admin.is8CapitalRepairPartialNotFullySuccessful'));
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmInternetImport(opts?: { retryOnly?: boolean }) {
     if (!isInternet || !pendingInternetPreview || !batchId || !preview) return;
     if (preview.errorCount > 0 && !opts?.retryOnly) {
@@ -1684,6 +1999,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       downloadUkExpensesOpeningTemplate();
       return;
     }
+    if (isCapitalRepair) {
+      downloadCapitalRepairOpeningTemplate();
+      return;
+    }
     const schema = adapter?.registration.setup?.xlsx;
     if (!schema) return;
     const labels: Record<string, string> = {};
@@ -1830,6 +2149,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               {isUkExpenses ? (
                 <p className="text-xs text-secondary">{t('admin.is6aExpensesSsotNote')}</p>
               ) : null}
+              {isCapitalRepair ? (
+                <p className="text-xs text-secondary">{t('admin.is8CapitalRepairSsotNote')}</p>
+              ) : null}
 
               {selectedKey &&
               propertyBookBlocksDependentSetup({
@@ -1843,6 +2165,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               ) : null}
               {isInternet && selectedTariffReady?.importBlockedByMissingTariff ? (
                 <p className="text-xs text-danger">{t('admin.is7aTariffMissingInternet')}</p>
+              ) : null}
+              {isCapitalRepair && selectedTariffReady?.billingBlockedByMissingTariff ? (
+                <p className="text-xs text-secondary">{t('admin.is7aTariffMissingCapitalBilling')}</p>
               ) : null}
               {isWater ? (
                 <p className="text-xs text-secondary">{t('admin.is7aMeterInventoryIndependentWater')}</p>
@@ -1930,6 +2255,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   {isUkExpenses ? (
                     <p className="text-xs text-secondary">{t('admin.is6aExpensesManualHint')}</p>
                   ) : null}
+                  {isCapitalRepair ? (
+                    <p className="text-xs text-secondary">{t('admin.is8CapitalRepairManualHint')}</p>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -1948,19 +2276,28 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                               ? t('admin.is5InternetManualConfirm')
                               : isUkExpenses
                                 ? t('admin.is6aExpensesManualConfirm')
-                                : t('admin.is1ManualConfirm')}
+                                : isCapitalRepair
+                                  ? t('admin.is8CapitalRepairManualConfirm')
+                                  : t('admin.is1ManualConfirm')}
                   </label>
-                  {isUkExpenses ? (
+                  {isUkExpenses || isCapitalRepair ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={skipHistoricalExpenses}
                         onChange={(e) => setSkipHistoricalExpenses(e.target.checked)}
                       />
-                      {t('admin.is6aExpensesSkipImport')}
+                      {isCapitalRepair
+                        ? t('admin.is8CapitalRepairSkipImport')
+                        : t('admin.is6aExpensesSkipImport')}
                     </label>
                   ) : null}
-                  {isPropertyBook || isMeters || isSupportFee || isInternet || isUkExpenses ? (
+                  {isPropertyBook ||
+                  isMeters ||
+                  isSupportFee ||
+                  isInternet ||
+                  isUkExpenses ||
+                  isCapitalRepair ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -1975,7 +2312,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                             ? t('admin.is5InternetVerifiedExisting')
                             : isUkExpenses
                               ? t('admin.is6aExpensesVerifiedExisting')
-                              : t('admin.is3MetersVerifiedExisting')}
+                              : isCapitalRepair
+                                ? t('admin.is8CapitalRepairVerifiedExisting')
+                                : t('admin.is3MetersVerifiedExisting')}
                     </label>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
@@ -2006,6 +2345,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   ) : null}
                   {isUkExpenses ? (
                     <p className="text-xs text-secondary">{t('admin.is6aExpensesXlsxHint')}</p>
+                  ) : null}
+                  {isCapitalRepair ? (
+                    <p className="text-xs text-secondary">{t('admin.is8CapitalRepairXlsxHint')}</p>
                   ) : null}
                   <button type="button" className={adminBtnSecondaryClass} onClick={downloadTemplate}>
                     {t('admin.is1DownloadTemplate')}
@@ -2053,7 +2395,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   ? downloadInternetErrorReport(preview)
                                   : isUkExpenses
                                     ? downloadUkExpensesErrorReport(preview)
-                                    : downloadPropertyBookErrorReport(preview)
+                                    : isCapitalRepair
+                                      ? downloadCapitalRepairErrorReport(preview)
+                                      : downloadPropertyBookErrorReport(preview)
                           }
                         >
                           {t('admin.is2PropertyBookDownloadErrors')}
@@ -2109,6 +2453,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           {t('admin.is6aExpensesConfirmButton')}
                         </button>
                       ) : null}
+                      {isCapitalRepair && pendingCrPreview && batchId ? (
+                        <button
+                          type="button"
+                          className={adminBtnPrimaryClass}
+                          disabled={busy || preview.errorCount > 0}
+                          onClick={() => void confirmCapitalRepairImport()}
+                        >
+                          {t('admin.is8CapitalRepairConfirmButton')}
+                        </button>
+                      ) : null}
                       {isMeters &&
                       meterCommitResult &&
                       !meterCommitResult.fullySuccessful &&
@@ -2159,6 +2513,19 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() => void confirmUkExpenseImport({ retryOnly: true })}
                         >
                           {t('admin.is6aExpensesRetryMissing')}
+                        </button>
+                      ) : null}
+                      {isCapitalRepair &&
+                      crCommitResult &&
+                      !crCommitResult.fullySuccessful &&
+                      pendingCrPreview ? (
+                        <button
+                          type="button"
+                          className={adminBtnSecondaryClass}
+                          disabled={busy}
+                          onClick={() => void confirmCapitalRepairImport({ retryOnly: true })}
+                        >
+                          {t('admin.is8CapitalRepairRetryMissing')}
                         </button>
                       ) : null}
                       {meterCommitResult ? (
@@ -2265,6 +2632,32 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           </table>
                         </div>
                       ) : null}
+                      {crCommitResult ? (
+                        <div className="max-h-48 overflow-auto rounded border border-border text-xs">
+                          <table className="w-full">
+                            <thead>
+                              <tr className={adminTableHeadRowClass}>
+                                <th className={adminTableCellClass}>#</th>
+                                <th className={adminTableCellClass}>{t('admin.is8ColApartment')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is8ColBillingYear')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is8Outcome')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {crCommitResult.rows.map((r) => (
+                                <tr key={`${r.rowNumber}-${r.billingYear}`} className={adminTableRowClass}>
+                                  <td className={adminTableCellClass}>{r.rowNumber}</td>
+                                  <td className={adminTableCellClass}>{r.apartmentNumber}</td>
+                                  <td className={adminTableCellClass}>{r.billingYear}</td>
+                                  <td className={adminTableCellClass}>
+                                    <code>{r.outcome}</code>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <p className="text-xs text-secondary">
@@ -2278,7 +2671,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                             ? t('admin.is5InternetNoOverwrite')
                             : isUkExpenses
                               ? t('admin.is6aExpensesNoOverwrite')
-                              : t('admin.is1NoAutoCommit')}
+                              : isCapitalRepair
+                                ? t('admin.is8CapitalRepairNoOverwrite')
+                                : t('admin.is1NoAutoCommit')}
                   </p>
                 </div>
               ) : null}

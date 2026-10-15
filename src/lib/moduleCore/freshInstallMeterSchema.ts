@@ -31,6 +31,10 @@ export const REMAINING_GREENFIELD_MIGRATION_GAPS = [
   'full_property_book_rpc_baseline',
   'auth_helpers_owns_property_has_staff_role',
   'tariff_catalog_publish_seed',
+  // IS-8: Capital Repair live DDL/RPC still live only via legacy DO_NOT_RUN + incremental migrations.
+  'capital_repair_assessments_ledger_baseline',
+  'capital_repair_operational_rpcs_charge_payment_balance',
+  'capital_repair_tariff_year_charge_helpers',
 ] as const;
 
 export type FreshInstallManifest = {

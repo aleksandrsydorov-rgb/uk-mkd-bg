@@ -188,6 +188,47 @@ export {
   type UkExpenseCommitBatchResult,
 } from '@/lib/moduleCore/adapters/ukExpensesImportCommit';
 export {
+  CAPITAL_REPAIR_MODULE_KEY,
+  CAPITAL_REPAIR_SETUP_SCHEMA_VERSION,
+  CAPITAL_REPAIR_OBLIGATION_TYPE,
+  CAPITAL_REPAIR_OPENING_HEADERS,
+  validateCapitalRepairOpeningRow,
+  classifyCapitalRepairOpeningRows,
+  buildCapitalAssessmentsMaps,
+  buildCapitalLedgerConflictSets,
+  capitalRepairOpeningPayloadsFromPreview,
+  buildCapitalRepairIs8TemplateBuffer,
+  downloadCapitalRepairIs8Template,
+  buildCapitalRepairErrorReportXlsx,
+  downloadCapitalRepairErrorReport,
+  defaultCapitalAssessmentTitle,
+  parseYearFromCapitalAssessmentTitle,
+  capitalOpeningBalanceEffect,
+  ledgerScopeKey,
+  type CapitalAssessmentRef,
+  type CapitalOpeningClassifyContext,
+  type CapitalRepairOpeningRpcPayload,
+} from '@/lib/moduleCore/adapters/capitalRepairOpening';
+export {
+  capitalRepairOpeningAdapter,
+  downloadCapitalRepairOpeningTemplate,
+} from '@/lib/moduleCore/adapters/capitalRepairOpeningAdapter';
+export {
+  CR_COMMIT_OUTCOMES,
+  classifyCrOpeningErrorMessage,
+  commitCapitalRepairOpeningBatch,
+  reconcileCrCommitWithDb,
+  retryCandidatesFromCrBatch,
+  filterPreviewForCrRetry,
+  mergeCrCommitBatches,
+  crCommitAuditPayload,
+  capitalOutstandingFromCrCommit,
+  type CrCommitOutcome,
+  type CrCommitRowResult,
+  type CrCommitBatchResult,
+  type CrOpeningImportRef,
+} from '@/lib/moduleCore/adapters/capitalRepairImportCommit';
+export {
   FRESH_INSTALL_PACKAGE_DIR,
   FRESH_INSTALL_COMPANION_MIGRATION,
   FRESH_INSTALL_ORDERED_FILES,

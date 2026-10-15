@@ -41,10 +41,10 @@ export type FinanceTab = 'support' | 'water' | 'electricity' | 'capital' | 'inte
 export type MeterTab = 'water' | 'electricity';
 
 function ledgerKindLabel(kind: string, t: (key: 'account.utilCharge' | 'account.utilPayment' | 'account.utilAdjDebit' | 'account.utilAdjCredit') => string) {
-  if (kind === 'charge') return t('account.utilCharge');
-  if (kind === 'payment') return t('account.utilPayment');
+  if (kind === 'charge' || kind === 'opening_obligation') return t('account.utilCharge');
+  if (kind === 'payment' || kind === 'opening_historical_settlement') return t('account.utilPayment');
   if (kind === 'adjustment_debit') return t('account.utilAdjDebit');
-  if (kind === 'adjustment_credit') return t('account.utilAdjCredit');
+  if (kind === 'adjustment_credit' || kind === 'opening_credit') return t('account.utilAdjCredit');
   return kind;
 }
 
@@ -94,7 +94,7 @@ function LedgerList({
               {title ? ` · ${title}` : ''}
               {row.note ? ` · ${row.note}` : ''}
             </span>
-            <span className={row.kind === 'payment' || row.kind === 'adjustment_credit' ? 'text-accent' : 'text-warning'}>
+            <span className={row.kind === 'payment' || row.kind === 'opening_historical_settlement' || row.kind === 'adjustment_credit' || row.kind === 'opening_credit' ? 'text-accent' : 'text-warning'}>
               {formatEur(Number(row.amount_eur))}
             </span>
           </div>

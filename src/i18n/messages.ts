@@ -1367,6 +1367,50 @@ export const ru = {
     is4SupportFeeRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
     is4SupportFeeRetryEmpty: 'Нет строк для повтора.',
     is4Outcome: 'Итог',
+    is8CapitalRepairName: 'Капитальный ремонт (opening)',
+    is8CapitalRepairDesc:
+      'Начальная инвентаризация обязательств Капитального ремонта без фиктивных платежей и operational charge (IS-8).',
+    is8CapitalRepairStepVerify: 'Проверка opening Capital Repair',
+    is8CapitalRepairManualConfirm: 'Подтверждаю: начальные обязательства Capital Repair сверены',
+    is8CapitalRepairVerifiedExisting: 'Существующие обязательства проверены (без перезаписи)',
+    is8CapitalRepairSkipImport:
+      'Исторический импорт не требуется (пустой комплекс / нет прошлых обязательств)',
+    is8CapitalRepairManualHint:
+      'Операционные начисления/оплаты — в разделе Капитальный ремонт. Здесь только начальное состояние на дату перехода.',
+    is8CapitalRepairSsotNote:
+      'Канон: capital_repair_ledger (balance RPC). historically_paid ≠ payment. Обязательная связь assessment_id. Фонд ≠ банковский остаток.',
+    is8CapitalRepairXlsxHint:
+      'Шаблон opening_balances + BG/RU/EN. Preview не пишет. Конфликт → ERROR. Без synthetic payments/charges.',
+    is8CapitalRepairXlsxInstructions: 'См. листы instructions_* в шаблоне.',
+    is8ColApartment: 'apartment_number',
+    is8ColBillingYear: 'billing_year',
+    is8ColObligationType: 'obligation_type',
+    is8ColAssessmentTitle: 'assessment_title',
+    is8ColAssessed: 'assessed_amount',
+    is8ColHistoricallyPaid: 'historically_paid_amount',
+    is8ColRemainingDebt: 'remaining_debt',
+    is8ColOpeningOverpayment: 'opening_overpayment',
+    is8ColTransitionDate: 'transition_date',
+    is8ColSourceRef: 'source_reference',
+    is8ColNotes: 'notes',
+    is8CapitalRepairEmptySheet: 'Лист opening_balances пуст.',
+    is8CapitalRepairNoSynthetic:
+      'Synthetic payments/charges запрещены. historically_paid — декларация opening; assessment_id обязателен.',
+    is8CapitalRepairFixErrors: 'Исправьте CONFLICT/ERROR перед commit opening.',
+    is8CapitalRepairConfirmButton: 'Подтвердить opening Capital Repair (RPC)',
+    is8CapitalRepairConfirmImport:
+      'Подтвердить импорт начального состояния Capital Repair? Существующие charge/opening не перезаписываются. Платежи и operational charges не создаются.',
+    is8CapitalRepairImportCommitted:
+      'Opening Capital Repair применён; batch committed. Synthetic payments/charges = false.',
+    is8CapitalRepairNoOverwrite:
+      'IS-8 Q-CR-3: conflict → ERROR, без overwrite. Preview не пишет. Commit только import_capital_repair_opening_state.',
+    is8CapitalRepairPartialCommit:
+      'Частичный commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is8CapitalRepairPartialNotFullySuccessful:
+      'Пакет не полностью успешен. Повторите только FAILED/NOT_PROCESSED.',
+    is8CapitalRepairRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
+    is8CapitalRepairRetryEmpty: 'Нет строк для повтора.',
+    is8Outcome: 'Итог',
     is5InternetName: 'Интернет (opening)',
     is5InternetDesc:
       'Начальная инвентаризация абонементов Internet без connect WO и без фиктивных платежей (IS-5).',
@@ -4519,6 +4563,50 @@ export const en: Messages = {
     is4SupportFeeRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
     is4SupportFeeRetryEmpty: 'Nothing to retry.',
     is4Outcome: 'Outcome',
+    is8CapitalRepairName: 'Capital Repair (opening)',
+    is8CapitalRepairDesc:
+      'Capital Repair opening inventarisation without synthetic payments or operational charges (IS-8).',
+    is8CapitalRepairStepVerify: 'Verify Capital Repair opening',
+    is8CapitalRepairManualConfirm: 'I confirm Capital Repair opening obligations were reviewed',
+    is8CapitalRepairVerifiedExisting: 'Existing obligations verified (no overwrite)',
+    is8CapitalRepairSkipImport:
+      'Historical import not required (empty complex / no past Capital Repair obligations)',
+    is8CapitalRepairManualHint:
+      'Operational charge/payment is done in Capital Repair admin. Here only opening state as of transition date.',
+    is8CapitalRepairSsotNote:
+      'Canonical: capital_repair_ledger (balance RPC). historically_paid ≠ payment. assessment_id mandatory. Fund obligations ≠ bank cash.',
+    is8CapitalRepairXlsxHint:
+      'Template opening_balances + BG/RU/EN. Preview writes nothing. Conflict → ERROR. No synthetic payments/charges.',
+    is8CapitalRepairXlsxInstructions: 'See instructions_* sheets in the template.',
+    is8ColApartment: 'apartment_number',
+    is8ColBillingYear: 'billing_year',
+    is8ColObligationType: 'obligation_type',
+    is8ColAssessmentTitle: 'assessment_title',
+    is8ColAssessed: 'assessed_amount',
+    is8ColHistoricallyPaid: 'historically_paid_amount',
+    is8ColRemainingDebt: 'remaining_debt',
+    is8ColOpeningOverpayment: 'opening_overpayment',
+    is8ColTransitionDate: 'transition_date',
+    is8ColSourceRef: 'source_reference',
+    is8ColNotes: 'notes',
+    is8CapitalRepairEmptySheet: 'opening_balances sheet is empty.',
+    is8CapitalRepairNoSynthetic:
+      'Synthetic payments/charges forbidden. historically_paid is an opening declaration; assessment_id required.',
+    is8CapitalRepairFixErrors: 'Resolve CONFLICT/ERROR before committing opening rows.',
+    is8CapitalRepairConfirmButton: 'Confirm Capital Repair opening (RPC)',
+    is8CapitalRepairConfirmImport:
+      'Confirm Capital Repair opening import? Existing charge/opening rows are not overwritten. No payments or operational charges are created.',
+    is8CapitalRepairImportCommitted:
+      'Capital Repair opening applied; batch committed. Synthetic payments/charges = false.',
+    is8CapitalRepairNoOverwrite:
+      'IS-8 Q-CR-3: conflict → ERROR, no overwrite. Preview does not write. Commit only via import_capital_repair_opening_state.',
+    is8CapitalRepairPartialCommit:
+      'Partial commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is8CapitalRepairPartialNotFullySuccessful:
+      'Batch is not fully successful. Retry only FAILED/NOT_PROCESSED.',
+    is8CapitalRepairRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
+    is8CapitalRepairRetryEmpty: 'Nothing to retry.',
+    is8Outcome: 'Outcome',
     is5InternetName: 'Internet (opening)',
     is5InternetDesc:
       'Internet opening inventarisation without connect work orders or synthetic payments (IS-5).',
@@ -7673,6 +7761,50 @@ export const bg: Messages = {
     is4SupportFeeRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
     is4SupportFeeRetryEmpty: 'Няма редове за повтор.',
     is4Outcome: 'Резултат',
+    is8CapitalRepairName: 'Капитален ремонт (opening)',
+    is8CapitalRepairDesc:
+      'Начална инвентаризация на задължения за капитален ремонт без фиктивни плащания и operational charge (IS-8).',
+    is8CapitalRepairStepVerify: 'Проверка opening Capital Repair',
+    is8CapitalRepairManualConfirm: 'Потвърждавам: началните задължения Capital Repair са сверени',
+    is8CapitalRepairVerifiedExisting: 'Съществуващите задължения са проверени (без презапис)',
+    is8CapitalRepairSkipImport:
+      'Историческият импорт не е нужен (празен комплекс / няма минали задължения)',
+    is8CapitalRepairManualHint:
+      'Оперативни начисления/плащания са в Капитален ремонт. Тук само начално състояние към датата на преход.',
+    is8CapitalRepairSsotNote:
+      'Канон: capital_repair_ledger (balance RPC). historically_paid ≠ payment. assessment_id е задължителен. Фонд ≠ банков остатък.',
+    is8CapitalRepairXlsxHint:
+      'Шаблон opening_balances + BG/RU/EN. Preview не пише. Конфликт → ERROR. Без synthetic payments/charges.',
+    is8CapitalRepairXlsxInstructions: 'Вижте листовете instructions_* в шаблона.',
+    is8ColApartment: 'apartment_number',
+    is8ColBillingYear: 'billing_year',
+    is8ColObligationType: 'obligation_type',
+    is8ColAssessmentTitle: 'assessment_title',
+    is8ColAssessed: 'assessed_amount',
+    is8ColHistoricallyPaid: 'historically_paid_amount',
+    is8ColRemainingDebt: 'remaining_debt',
+    is8ColOpeningOverpayment: 'opening_overpayment',
+    is8ColTransitionDate: 'transition_date',
+    is8ColSourceRef: 'source_reference',
+    is8ColNotes: 'notes',
+    is8CapitalRepairEmptySheet: 'Листът opening_balances е празен.',
+    is8CapitalRepairNoSynthetic:
+      'Synthetic payments/charges са забранени. historically_paid е декларация opening; assessment_id е задължителен.',
+    is8CapitalRepairFixErrors: 'Поправете CONFLICT/ERROR преди commit на opening.',
+    is8CapitalRepairConfirmButton: 'Потвърди opening Capital Repair (RPC)',
+    is8CapitalRepairConfirmImport:
+      'Потвърдете импорт на начално състояние Capital Repair? Съществуващите charge/opening не се презаписват. Не се създават плащания или operational charges.',
+    is8CapitalRepairImportCommitted:
+      'Opening Capital Repair е приложен; batch е committed. Synthetic payments/charges = false.',
+    is8CapitalRepairNoOverwrite:
+      'IS-8 Q-CR-3: conflict → ERROR, без overwrite. Preview не пише. Commit само чрез import_capital_repair_opening_state.',
+    is8CapitalRepairPartialCommit:
+      'Частичен commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is8CapitalRepairPartialNotFullySuccessful:
+      'Пакетът не е напълно успешен. Повторете само FAILED/NOT_PROCESSED.',
+    is8CapitalRepairRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
+    is8CapitalRepairRetryEmpty: 'Няма редове за повтор.',
+    is8Outcome: 'Резултат',
     is5InternetName: 'Интернет (opening)',
     is5InternetDesc:
       'Начална инвентаризация на абонаменти Internet без connect WO и без фиктивни плащания (IS-5).',

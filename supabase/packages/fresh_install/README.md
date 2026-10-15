@@ -24,7 +24,8 @@ This package does **not** claim full greenfield readiness. Still missing from a 
 - `meter_readings` / `water_readings` / water & electricity ledgers
 - Auth helpers (`owns_property`, `has_staff_role`, `is_owner`, staff) — expected from early migrations / platform baseline
 - Tariff Core catalog seed / publish workflow (admin Tariffs UI — no auto-publish)
-- Support Fee / Internet / Capital operational ledger baselines beyond what migrations already create
+- Support Fee / Internet operational ledger baselines beyond what migrations already create
+- **Capital Repair (IS-8 documented):** `capital_repair_assessments` / `capital_repair_ledger` baseline DDL, operational charge/payment/balance RPCs, and tariff year charge helpers — still live via legacy `DO_NOT_RUN` + incremental migrations on existing installs; **not** packaged for empty greenfield here
 - Module catalog / building_modules seed data for a new complex
 
 ## Safety

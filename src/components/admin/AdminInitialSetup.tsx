@@ -83,12 +83,17 @@ import {
   sfCommitAuditPayload,
   ukExpenseCommitAuditPayload,
   classifySfOpeningErrorMessage,
+  evaluateAllTariffSetupGates,
+  evaluateTariffSetupGate,
+  propertyBookBlocksDependentSetup,
   type ImportPreviewResult,
   type InternetCommitBatchResult,
   type MeterCommitBatchResult,
   type SfCommitBatchResult,
   type UkExpenseCommitBatchResult,
   type ModuleLifecycleState,
+  type TariffListSnapshot,
+  type ModuleTariffReadiness,
 } from '@/lib/moduleCore';
 import { moduleLabelMessageKey } from '@/lib/modules';
 import {
@@ -152,6 +157,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [ukExpenseCommitResult, setUkExpenseCommitResult] = useState<UkExpenseCommitBatchResult | null>(
     null,
   );
+  const [tariffSnapshots, setTariffSnapshots] = useState<TariffListSnapshot[]>([]);
 
   useEffect(() => {
     bootstrapModuleSetupAdapters();
@@ -167,6 +173,33 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     } else {
       setRows((data as LifecycleRow[]) ?? []);
     }
+
+    // IS-7a: read-only Tariff Core snapshot for setup gates (no publish / no module activation).
+    const { data: tariffRows, error: tariffErr } = await supabase.rpc('list_tariffs', {
+      p_module_key: null,
+      p_active_only: true,
+      p_limit: 50,
+    });
+    if (!tariffErr && tariffRows) {
+      setTariffSnapshots(
+        (tariffRows as {
+          tariff_key?: string;
+          module_key?: string | null;
+          active?: boolean | null;
+          current_version_id?: string | null;
+          current_published_at?: string | null;
+        }[]).map((r) => ({
+          tariff_key: String(r.tariff_key ?? ''),
+          module_key: r.module_key ?? null,
+          active: r.active ?? null,
+          current_version_id: r.current_version_id ?? null,
+          current_published_at: r.current_published_at ?? null,
+        })),
+      );
+    } else {
+      setTariffSnapshots([]);
+    }
+
     setLoading(false);
   }, [supabase]);
 
@@ -195,6 +228,20 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isSupportFee = selectedKey === SUPPORT_FEE_MODULE_KEY;
   const isInternet = selectedKey === INTERNET_MODULE_KEY;
   const isUkExpenses = selectedKey === UK_EXPENSES_SETUP_KEY;
+
+  const tariffReadiness = useMemo(
+    () => evaluateAllTariffSetupGates(tariffSnapshots),
+    [tariffSnapshots],
+  );
+  const selectedTariffReady = useMemo(
+    () => (selectedKey ? evaluateTariffSetupGate(selectedKey, tariffSnapshots) : null),
+    [selectedKey, tariffSnapshots],
+  );
+  const propertyBookReadyOrVerified = useMemo(() => {
+    const pb = displayRows.find((r) => r.module_key === PROPERTY_BOOK_MODULE_KEY);
+    if (!pb) return false;
+    return pb.state === 'READY' || pb.state === 'ACTIVE' || pb.state === 'SETUP_IN_PROGRESS';
+  }, [displayRows]);
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -283,7 +330,28 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       }
     }
 
-    return { apartmentsByNumber, existingByScope, openingImportsByScope };
+    let supportFeeTariffConfigured = false;
+    const { data: tariffRows, error: tErr } = await supabase.rpc('list_tariffs', {
+      p_module_key: 'support_fee',
+      p_active_only: true,
+      p_limit: 20,
+    });
+    if (!tErr && tariffRows) {
+      supportFeeTariffConfigured = (
+        tariffRows as { tariff_key?: string; current_version_id?: string | null }[]
+      ).some(
+        (r) =>
+          String(r.tariff_key ?? '').toLowerCase() === 'support_fee' &&
+          r.current_version_id != null,
+      );
+    }
+
+    return {
+      apartmentsByNumber,
+      existingByScope,
+      openingImportsByScope,
+      supportFeeTariffConfigured,
+    };
   }
 
   async function loadInternetClassifyContext() {
@@ -1643,6 +1711,38 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
       <p className="text-sm text-secondary">{t('admin.is1CompatibilityNote')}</p>
 
+      <AdminCard>
+        <h3 className="mb-2 text-sm font-semibold text-foreground">{t('admin.is7aTariffPanelTitle')}</h3>
+        <p className="mb-3 text-xs text-secondary">{t('admin.is7aTariffPanelLead')}</p>
+        <ul className="space-y-2 text-xs">
+          {tariffReadiness.map((r: ModuleTariffReadiness) => (
+            <li key={r.moduleKey} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <code className="text-foreground">{r.moduleKey}</code>
+              <span className="text-muted">
+                {t('admin.is7aImportReady')}:{' '}
+                {r.importReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
+              </span>
+              <span className="text-muted">
+                {t('admin.is7aBillingReady')}:{' '}
+                {r.billingReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
+              </span>
+              {r.importBlockedByMissingTariff && r.missingMessageKey ? (
+                <span className="text-danger">{t(`admin.${r.missingMessageKey}`)}</span>
+              ) : null}
+              {!r.importBlockedByMissingTariff &&
+              r.billingBlockedByMissingTariff &&
+              r.billingMissingMessageKey ? (
+                <span className="text-secondary">{t(`admin.${r.billingMissingMessageKey}`)}</span>
+              ) : null}
+              {!r.billingBlockedByMissingTariff && r.hasPublishedApplicable ? (
+                <span className="text-secondary">{t('admin.is7aTariffPublishedOk')}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-muted">{t('admin.is7aTariffNoAutoPublish')}</p>
+      </AdminCard>
+
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <AdminCard>
           <h3 className="mb-3 text-sm font-semibold text-foreground">{t('admin.is1ModuleList')}</h3>
@@ -1729,6 +1829,38 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               ) : null}
               {isUkExpenses ? (
                 <p className="text-xs text-secondary">{t('admin.is6aExpensesSsotNote')}</p>
+              ) : null}
+
+              {selectedKey &&
+              propertyBookBlocksDependentSetup({
+                moduleKey: selectedKey,
+                propertyBookReadyOrVerified,
+              }) ? (
+                <p className="text-xs text-danger">{t('admin.is7aPropertyBookRequired')}</p>
+              ) : null}
+              {isSupportFee && selectedTariffReady?.importBlockedByMissingTariff ? (
+                <p className="text-xs text-danger">{t('admin.is7aTariffMissingSupportFee')}</p>
+              ) : null}
+              {isInternet && selectedTariffReady?.importBlockedByMissingTariff ? (
+                <p className="text-xs text-danger">{t('admin.is7aTariffMissingInternet')}</p>
+              ) : null}
+              {isWater ? (
+                <p className="text-xs text-secondary">{t('admin.is7aMeterInventoryIndependentWater')}</p>
+              ) : null}
+              {isElectricity ? (
+                <p className="text-xs text-secondary">
+                  {t('admin.is7aMeterInventoryIndependentElectricity')}
+                </p>
+              ) : null}
+              {(isWater || isElectricity) && selectedTariffReady?.billingBlockedByMissingTariff ? (
+                <p className="text-xs text-secondary">
+                  {t(
+                    `admin.${
+                      selectedTariffReady.billingMissingMessageKey ??
+                      'is7aTariffMissingWaterBilling'
+                    }`,
+                  )}
+                </p>
               ) : null}
 
               <div className="flex flex-wrap gap-2">

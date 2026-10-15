@@ -1,0 +1,30 @@
+{
+  "packageId": "is7a_fresh_install_property_meter_baseline",
+  "phase": "IS-7a",
+  "applyBeforeMigrations": true,
+  "orderedFiles": [
+    "00_properties_baseline.sql",
+    "10_water_meters.sql",
+    "20_electricity_meters.sql",
+    "30_meter_rls_enable.sql"
+  ],
+  "companionMigration": "supabase/migrations/20261026120000_is7a_fresh_install_meter_baseline_ddl.sql",
+  "requiredRelationsAfterPackage": [
+    "public.properties",
+    "public.water_meters",
+    "public.electricity_meters"
+  ],
+  "explicitRemainingGaps": [
+    "property_registry_people",
+    "meter_readings",
+    "water_readings",
+    "water_ledger",
+    "electricity_ledger",
+    "full_property_book_rpc_baseline",
+    "auth_helpers_owns_property_has_staff_role",
+    "tariff_catalog_publish_seed"
+  ],
+  "forbidden": [
+    "supabase/legacy/DO_NOT_RUN"
+  ]
+}

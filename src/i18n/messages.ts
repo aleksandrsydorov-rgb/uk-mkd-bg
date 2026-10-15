@@ -1448,6 +1448,32 @@ export const ru = {
     is6aExpensesRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
     is6aExpensesRetryEmpty: 'Нет строк для повтора.',
     is6aOutcome: 'Итог',
+    is7aTariffPanelTitle: 'Готовность тарифов (Tariff Core)',
+    is7aTariffPanelLead:
+      'Проверка опубликованных применимых тарифов для Initial Setup. Импорт и биллинг разделены. Автопубликация не выполняется.',
+    is7aImportReady: 'Импорт / инвентаризация',
+    is7aBillingReady: 'Биллинг / активация',
+    is7aReadyYes: 'готово',
+    is7aReadyNo: 'не готово',
+    is7aTariffPublishedOk: 'опубликованный применимый тариф найден',
+    is7aTariffNoAutoPublish:
+      'Тарифы не публикуются и не изменяются из Initial Setup. Используйте раздел Тарифы.',
+    is7aPropertyBookRequired:
+      'Сначала установите Книгу собственности (Property Book): квартиры должны быть созданы или сверены до модулей, зависящих от объектов.',
+    is7aTariffMissingSupportFee:
+      'Для Support Fee нужен опубликованный применимый тариф support_fee в Tariff Core (и соответствующая политика).',
+    is7aTariffMissingInternet:
+      'Для Internet нужен опубликованный применимый тариф internet в Tariff Core.',
+    is7aTariffMissingWaterBilling:
+      'Для биллинга воды нужен опубликованный тариф water. Инвентаризация счётчиков не блокируется.',
+    is7aTariffMissingElectricityBilling:
+      'Для биллинга электричества нужен опубликованный тариф electricity. Инвентаризация счётчиков не блокируется.',
+    is7aTariffMissingCapitalBilling:
+      'Для биллинга капремонта нужен опубликованный тариф capital_repair.',
+    is7aMeterInventoryIndependentWater:
+      'Инвентаризация водомеров не требует тарифа биллинга. Начисления по показаниям — отдельно.',
+    is7aMeterInventoryIndependentElectricity:
+      'Инвентаризация электросчётчиков не требует тарифа биллинга. Начисления по показаниям — отдельно.',
     emailTitle: 'Электронная почта',
     emailLead:
       'Отправитель и статус почтовой системы этого комплекса. Секреты провайдера хранятся только на сервере.',
@@ -4574,6 +4600,32 @@ export const en: Messages = {
     is6aExpensesRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
     is6aExpensesRetryEmpty: 'Nothing to retry.',
     is6aOutcome: 'Outcome',
+    is7aTariffPanelTitle: 'Tariff readiness (Tariff Core)',
+    is7aTariffPanelLead:
+      'Published applicable tariff checks for Initial Setup. Import and billing are separate. No auto-publish.',
+    is7aImportReady: 'Import / inventarisation',
+    is7aBillingReady: 'Billing / activation',
+    is7aReadyYes: 'ready',
+    is7aReadyNo: 'not ready',
+    is7aTariffPublishedOk: 'published applicable tariff found',
+    is7aTariffNoAutoPublish:
+      'Tariffs are not published or modified from Initial Setup. Use the Tariffs admin section.',
+    is7aPropertyBookRequired:
+      'Establish Property Book first: apartments must be created or verified before property-dependent modules.',
+    is7aTariffMissingSupportFee:
+      'Support Fee requires a published applicable support_fee tariff in Tariff Core (and relevant policy).',
+    is7aTariffMissingInternet:
+      'Internet requires a published applicable internet tariff in Tariff Core.',
+    is7aTariffMissingWaterBilling:
+      'Water billing needs a published water tariff. Meter inventory is not blocked.',
+    is7aTariffMissingElectricityBilling:
+      'Electricity billing needs a published electricity tariff. Meter inventory is not blocked.',
+    is7aTariffMissingCapitalBilling:
+      'Capital repair billing needs a published capital_repair tariff.',
+    is7aMeterInventoryIndependentWater:
+      'Water meter inventarisation does not require a billing tariff. Reading charges are separate.',
+    is7aMeterInventoryIndependentElectricity:
+      'Electricity meter inventarisation does not require a billing tariff. Reading charges are separate.',
     emailTitle: 'Email',
     emailLead:
       'Sender and mail system status for this complex. Provider secrets stay on the server only.',
@@ -7702,6 +7754,32 @@ export const bg: Messages = {
     is6aExpensesRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
     is6aExpensesRetryEmpty: 'Няма редове за повтор.',
     is6aOutcome: 'Резултат',
+    is7aTariffPanelTitle: 'Готовност на тарифите (Tariff Core)',
+    is7aTariffPanelLead:
+      'Проверка на публикувани приложими тарифи за Initial Setup. Импортът и билингът са разделени. Без автопубликация.',
+    is7aImportReady: 'Импорт / инвентаризация',
+    is7aBillingReady: 'Билинг / активация',
+    is7aReadyYes: 'готово',
+    is7aReadyNo: 'не е готово',
+    is7aTariffPublishedOk: 'намерен публикуван приложим тариф',
+    is7aTariffNoAutoPublish:
+      'Тарифите не се публикуват и не се променят от Initial Setup. Използвайте раздела Тарифи.',
+    is7aPropertyBookRequired:
+      'Първо установете Книгата на собствеността (Property Book): апартаментите трябва да са създадени или сверени преди модули, зависещи от имоти.',
+    is7aTariffMissingSupportFee:
+      'За Support Fee е нужен публикуван приложим тариф support_fee в Tariff Core (и съответната политика).',
+    is7aTariffMissingInternet:
+      'За Internet е нужен публикуван приложим тариф internet в Tariff Core.',
+    is7aTariffMissingWaterBilling:
+      'За билинг на вода е нужен публикуван тариф water. Инвентаризацията на водомери не се блокира.',
+    is7aTariffMissingElectricityBilling:
+      'За билинг на електроенергия е нужен публикуван тариф electricity. Инвентаризацията на електромери не се блокира.',
+    is7aTariffMissingCapitalBilling:
+      'За билинг на капремонт е нужен публикуван тариф capital_repair.',
+    is7aMeterInventoryIndependentWater:
+      'Инвентаризацията на водомери не изисква тарифа за билинг. Начисленията по показания са отделно.',
+    is7aMeterInventoryIndependentElectricity:
+      'Инвентаризацията на електромери не изисква тарифа за билинг. Начисленията по показания са отделно.',
     emailTitle: 'Електронна поща',
     emailLead:
       'Изпращач и статус на пощата за този комплекс. Тайните на доставчика остават само на сървъра.',

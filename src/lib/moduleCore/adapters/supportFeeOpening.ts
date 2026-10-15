@@ -40,6 +40,11 @@ export type SfOpeningClassifyContext = {
   existingByScope: Map<string, ExistingSfObligationRef>;
   /** Prior IS-4 opening imports by property|year */
   openingImportsByScope: Map<string, { assessed: number; paid: number; remaining: number; over: number }>;
+  /**
+   * IS-7a: published applicable support_fee tariff (Tariff Core).
+   * Omit/undefined = treat as configured (legacy callers); explicit false blocks import.
+   */
+  supportFeeTariffConfigured?: boolean;
 };
 
 function normApt(value: string | undefined | null): string {
@@ -172,6 +177,7 @@ export function classifySupportFeeOpeningRows(
     const over = parseNonNegMoney(String(raw.opening_overpayment ?? '').trim() || '0') ?? 0;
 
     if (apt && propertyId == null) errors.push('unknown_apartment');
+    if (ctx.supportFeeTariffConfigured === false) errors.push('tariff_not_configured');
 
     if (propertyId != null && year != null) {
       const sk = scopeKey(propertyId, year);

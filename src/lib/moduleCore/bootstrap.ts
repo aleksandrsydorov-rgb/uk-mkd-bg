@@ -3,6 +3,7 @@ import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningA
 import { internetOpeningAdapter } from '@/lib/moduleCore/adapters/internetOpeningAdapter';
 import { propertyBookOpeningAdapter } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
 import { supportFeeOpeningAdapter } from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
+import { ukExpensesOpeningAdapter } from '@/lib/moduleCore/adapters/ukExpensesOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
 import { clearModuleAdapterRegistry, registerModuleAdapter } from '@/lib/moduleCore/registry';
 import type { ModuleSetupAdapter } from '@/lib/moduleCore/types';
@@ -65,6 +66,8 @@ export function bootstrapModuleSetupAdapters(): void {
   registerModuleAdapter(supportFeeOpeningAdapter);
   // IS-5: Internet opening inventarisation (import_internet_opening_state).
   registerModuleAdapter(internetOpeningAdapter);
+  // IS-6a: Historical UK expenses inventarisation (import_uk_expense_opening_row; optional).
+  registerModuleAdapter(ukExpensesOpeningAdapter);
   // No initial data required — may go DISABLED → READY.
   registerModuleAdapter(metadataAdapter('guest_mode', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('chat', { requiresInitialSetup: false }));

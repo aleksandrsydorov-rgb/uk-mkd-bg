@@ -18,12 +18,16 @@ import {
   PROPERTY_BOOK_MODULE_KEY,
   SUPPORT_FEE_MODULE_KEY,
   SUPPORT_FEE_SETUP_SCHEMA_VERSION,
+  UK_EXPENSES_SETUP_KEY,
+  UK_EXPENSES_SETUP_SCHEMA_VERSION,
   WATER_MODULE_KEY,
   activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
+  buildCategoryCodeMap,
   buildExistingInternetSubMap,
   buildExistingSfScopeMap,
+  buildExistingUkExpenseOpeningMap,
   buildImportPreview,
   canTransitionModuleLifecycle,
   classifyElectricityMeterOpeningRows,
@@ -31,9 +35,12 @@ import {
   classifyInternetOpeningRows,
   classifyPropertyBookOpeningRows,
   classifySupportFeeOpeningRows,
+  classifyUkExpenseOpeningErrorMessage,
+  classifyUkExpenseOpeningRows,
   classifyWaterMeterOpeningRows,
   commitInternetOpeningBatch,
   commitSupportFeeOpeningBatch,
+  commitUkExpenseOpeningBatch,
   downloadElectricityOpeningTemplate,
   downloadInternetErrorReport,
   downloadInternetOpeningTemplate,
@@ -43,36 +50,44 @@ import {
   downloadPropertyBookOpeningTemplate,
   downloadSupportFeeErrorReport,
   downloadSupportFeeOpeningTemplate,
+  downloadUkExpensesErrorReport,
+  downloadUkExpensesOpeningTemplate,
   downloadWaterOpeningTemplate,
   commitMeterInventoryBatch,
   filterPreviewForInternetRetry,
   filterPreviewForRetry,
   filterPreviewForSfRetry,
+  filterPreviewForUkExpenseRetry,
   getModuleAdapter,
   internetCommitAuditPayload,
   listRegisteredModuleAdapters,
   mergeInternetCommitBatches,
   mergeMeterCommitBatches,
   mergeSfCommitBatches,
+  mergeUkExpenseCommitBatches,
   meterCommitAuditPayload,
   parseModuleXlsxBuffer,
   previewFromPropertyBookDryRun,
   reconcileInternetCommitWithDb,
   reconcileMeterCommitWithDb,
   reconcileSfCommitWithDb,
+  reconcileUkExpenseCommitWithDb,
   retryCandidatesFromBatch,
   retryCandidatesFromInternetBatch,
   retryCandidatesFromSfBatch,
+  retryCandidatesFromUkExpenseBatch,
   serialSetFromMeters,
   setupCompleteFromDraft,
   setupSupportsManual,
   setupSupportsXlsx,
   sfCommitAuditPayload,
+  ukExpenseCommitAuditPayload,
   classifySfOpeningErrorMessage,
   type ImportPreviewResult,
   type InternetCommitBatchResult,
   type MeterCommitBatchResult,
   type SfCommitBatchResult,
+  type UkExpenseCommitBatchResult,
   type ModuleLifecycleState,
 } from '@/lib/moduleCore';
 import { moduleLabelMessageKey } from '@/lib/modules';
@@ -121,6 +136,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [busy, setBusy] = useState(false);
   const [draftConfirmed, setDraftConfirmed] = useState(false);
   const [verifiedExisting, setVerifiedExisting] = useState(false);
+  const [skipHistoricalExpenses, setSkipHistoricalExpenses] = useState(false);
   const [allowCreateMissing, setAllowCreateMissing] = useState(false);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [previewNote, setPreviewNote] = useState<string | null>(null);
@@ -132,6 +148,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [sfCommitResult, setSfCommitResult] = useState<SfCommitBatchResult | null>(null);
   const [pendingInternetPreview, setPendingInternetPreview] = useState<ImportPreviewResult | null>(null);
   const [internetCommitResult, setInternetCommitResult] = useState<InternetCommitBatchResult | null>(null);
+  const [pendingUkExpensePreview, setPendingUkExpensePreview] = useState<ImportPreviewResult | null>(null);
+  const [ukExpenseCommitResult, setUkExpenseCommitResult] = useState<UkExpenseCommitBatchResult | null>(
+    null,
+  );
 
   useEffect(() => {
     bootstrapModuleSetupAdapters();
@@ -174,6 +194,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isMeters = isWater || isElectricity;
   const isSupportFee = selectedKey === SUPPORT_FEE_MODULE_KEY;
   const isInternet = selectedKey === INTERNET_MODULE_KEY;
+  const isUkExpenses = selectedKey === UK_EXPENSES_SETUP_KEY;
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -198,6 +219,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setSfCommitResult(null);
     setPendingInternetPreview(null);
     setInternetCommitResult(null);
+    setPendingUkExpensePreview(null);
+    setUkExpenseCommitResult(null);
   }
 
   async function loadSupportFeeClassifyContext() {
@@ -428,12 +451,53 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     await load();
   }
 
+  async function loadUkExpenseClassifyContext() {
+    const { data: expenseRows, error: eErr } = await supabase
+      .from('uk_expenses')
+      .select(
+        'id, source_ref, title, expense_date, amount, opening_transition_date, budget_category_id, status, opening_import',
+      )
+      .eq('opening_import', true);
+    // Table columns may be missing until migration applied — treat as empty.
+    const existingBySourceRef = eErr
+      ? new Map()
+      : buildExistingUkExpenseOpeningMap(
+          (expenseRows as {
+            id: number;
+            source_ref?: string | null;
+            title?: string | null;
+            expense_date: string;
+            amount: number;
+            opening_transition_date?: string | null;
+            budget_category_id?: string | null;
+            status?: string | null;
+            opening_import?: boolean | null;
+          }[]) ?? [],
+        );
+
+    const { data: cats, error: cErr } = await supabase
+      .from('budget_categories')
+      .select('id, code, active');
+    const categoriesByCode = cErr
+      ? new Map()
+      : buildCategoryCodeMap(
+          (cats as { id: string; code: string; active?: boolean | null }[]) ?? [],
+        );
+
+    return {
+      existingBySourceRef,
+      categoriesByCode,
+      sofiaTodayIso: sofiaTodayIsoDate(),
+    };
+  }
+
   async function saveDraft() {
     if (!selectedKey || !adapter) return;
     setBusy(true);
     const draft = {
-      confirmed: draftConfirmed || verifiedExisting,
+      confirmed: draftConfirmed || verifiedExisting || skipHistoricalExpenses,
       verified_existing_readonly: verifiedExisting,
+      skip_historical_import: skipHistoricalExpenses,
     };
     const validation = adapter.validateManual?.(draft);
     if (validation && !validation.ok) {
@@ -466,13 +530,22 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   async function markReady() {
     if (!selectedKey || !adapter) return;
     const draft = {
-      confirmed: draftConfirmed || verifiedExisting,
+      confirmed: draftConfirmed || verifiedExisting || skipHistoricalExpenses,
       verified_existing_readonly: verifiedExisting,
+      skip_historical_import: skipHistoricalExpenses,
     };
-    const complete = setupCompleteFromDraft(adapter.registration, draft);
-    if (adapter.registration.requiresInitialSetup && !complete) {
-      setError(t('admin.is1SetupIncomplete'));
-      return;
+    if (isUkExpenses) {
+      const validation = adapter.validateManual?.(draft);
+      if (!validation || !validation.ok) {
+        setError(t('admin.is1SetupIncomplete'));
+        return;
+      }
+    } else {
+      const complete = setupCompleteFromDraft(adapter.registration, draft);
+      if (adapter.registration.requiresInitialSetup && !complete) {
+        setError(t('admin.is1SetupIncomplete'));
+        return;
+      }
     }
     if (selected?.state === 'SETUP_IN_PROGRESS' || selected?.state === 'SETUP_REQUIRED') {
       await transition('READY', 'setup_complete');
@@ -772,6 +845,71 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setPreviewNote(
           t('admin.is1PreviewSaved').replace('{id}', id) +
             ` · ${t('admin.is5InternetNoSyntheticPayments')}`,
+        );
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (isUkExpenses) {
+      setBusy(true);
+      setError(null);
+      try {
+        const schema = adapter.registration.setup.xlsx;
+        const buf = await file.arrayBuffer();
+        const parsed = parseModuleXlsxBuffer(buf, schema);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.rows.length === 0) {
+          setError(t('admin.is6aExpensesEmptySheet'));
+          return;
+        }
+        const ctx = await loadUkExpenseClassifyContext();
+        const result = classifyUkExpenseOpeningRows(parsed.rows, ctx);
+        setPreview(result);
+        setPendingUkExpensePreview(result);
+
+        const { data: batch, error: batchErr } = await supabase.rpc(
+          'admin_create_module_import_batch',
+          {
+            p_module_key: selectedKey,
+            p_schema_version: schema.schemaVersion,
+            p_source: 'xlsx',
+            p_file_name: file.name,
+            p_preview: {
+              local: result,
+              policy: {
+                no_auto_publish: true,
+                no_ap: true,
+                no_payment: true,
+                opening_excluded_from_budget_execution: true,
+                conflict_no_overwrite: true,
+              },
+            },
+            p_row_count: result.rows.length,
+            p_create_count: result.createCount,
+            p_update_count: result.updateCount,
+            p_skip_count: result.skipCount,
+            p_error_count: result.errorCount,
+            p_error_report: result.rows
+              .filter((r) => r.errors.length)
+              .map((r) => ({
+                rowNumber: r.rowNumber,
+                preview_class: r.data.preview_class,
+                errors: r.errors,
+              })),
+          },
+        );
+        if (batchErr) throw batchErr;
+        const id = String((batch as { id?: string })?.id ?? '');
+        setBatchId(id || null);
+        setPreviewNote(
+          t('admin.is1PreviewSaved').replace('{id}', id) + ` · ${t('admin.is6aExpensesNoAp')}`,
         );
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : t('admin.errGeneric'));
@@ -1301,6 +1439,158 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
   }
 
+  async function confirmUkExpenseImport(opts?: { retryOnly?: boolean }) {
+    if (!isUkExpenses || !pendingUkExpensePreview || !batchId || !preview) return;
+    if (preview.errorCount > 0 && !opts?.retryOnly) {
+      setError(t('admin.is6aExpensesFixErrors'));
+      return;
+    }
+    if (!window.confirm(t('admin.is6aExpensesConfirmImport'))) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      let workPreview = pendingUkExpensePreview;
+      if (opts?.retryOnly && ukExpenseCommitResult) {
+        const retryNums = new Set(retryCandidatesFromUkExpenseBatch(ukExpenseCommitResult));
+        workPreview = filterPreviewForUkExpenseRetry(pendingUkExpensePreview, [...retryNums]);
+        if (workPreview.rows.length === 0) {
+          setPreviewNote(t('admin.is6aExpensesRetryEmpty'));
+          return;
+        }
+      }
+
+      const rawBatch = await commitUkExpenseOpeningBatch({
+        preview: workPreview,
+        batchId,
+        idempotencyKeyForRow: (rowNumber) => {
+          const seed = `${batchId}:${rowNumber}:is6a-uk-expense-opening`;
+          let h = 0;
+          for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+          const hex = (n: number) => n.toString(16).padStart(8, '0');
+          return `${hex(h)}-${hex(rowNumber & 0xffff)}-4${hex(h).slice(1, 4)}-a${hex(h).slice(4, 7)}-${hex(h)}${hex(rowNumber)}`.slice(
+            0,
+            36,
+          );
+        },
+        importRow: async (p) => {
+          const { data, error: rpcErr } = await supabase.rpc('import_uk_expense_opening_row', {
+            p_source_ref: p.sourceRef,
+            p_title: p.title,
+            p_expense_date: p.expenseDate,
+            p_amount: p.amount,
+            p_transition_date: p.transitionDate,
+            p_category_code: p.categoryCode || null,
+            p_source_document: p.sourceDocument || null,
+            p_notes: p.notes || null,
+            p_idempotency_key: p.idempotencyKey,
+            p_batch_id: p.batchId,
+          });
+          if (rpcErr) {
+            const outcome = classifyUkExpenseOpeningErrorMessage(rpcErr.message);
+            return { ok: false, outcome, message: rpcErr.message };
+          }
+          const body = data as {
+            applied?: boolean;
+            idempotent?: boolean;
+            outcome?: string;
+            expense_id?: number;
+            published?: boolean;
+            ap_created?: boolean;
+            payment_created?: boolean;
+            synthetic_payments?: boolean;
+          };
+          if (
+            body.published === true ||
+            body.ap_created === true ||
+            body.payment_created === true ||
+            body.synthetic_payments === true
+          ) {
+            return {
+              ok: false,
+              outcome: 'FAILED',
+              message: 'publish_or_ap_or_payment_forbidden',
+            };
+          }
+          if (body.idempotent || body.outcome === 'SKIPPED_EXISTING') {
+            return {
+              ok: true,
+              outcome: 'SKIPPED_EXISTING',
+              expenseId: body.expense_id ?? null,
+            };
+          }
+          return {
+            ok: true,
+            outcome: 'CREATED',
+            expenseId: body.expense_id ?? null,
+          };
+        },
+      });
+
+      const ctx = await loadUkExpenseClassifyContext();
+      const reconciled = reconcileUkExpenseCommitWithDb(
+        rawBatch,
+        [...ctx.existingBySourceRef.values()],
+      );
+      const merged = mergeUkExpenseCommitBatches(
+        opts?.retryOnly ? ukExpenseCommitResult : null,
+        reconciled,
+      );
+      setUkExpenseCommitResult(merged);
+
+      const { error: auditErr } = await supabase.rpc('admin_create_module_import_batch', {
+        p_module_key: selectedKey!,
+        p_schema_version: UK_EXPENSES_SETUP_SCHEMA_VERSION,
+        p_source: 'api',
+        p_file_name: `opening-commit-${batchId}`,
+        p_preview: ukExpenseCommitAuditPayload(merged) as Json,
+        p_row_count: merged.rows.length,
+        p_create_count: merged.createdCount,
+        p_update_count: 0,
+        p_skip_count: merged.skippedExistingCount,
+        p_error_count: merged.failedCount + merged.notProcessedCount + merged.conflictCount,
+        p_error_report: merged.rows
+          .filter((r) => r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED' || r.outcome === 'CONFLICT')
+          .map((r) => ({
+            rowNumber: r.rowNumber,
+            outcome: r.outcome,
+            detail: r.detail,
+          })) as Json,
+      });
+      if (auditErr) throw auditErr;
+
+      if (merged.fullySuccessful) {
+        const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
+          p_batch_id: batchId,
+        });
+        if (commitErr) throw commitErr;
+        setPreviewNote(t('admin.is6aExpensesImportCommitted'));
+        if (
+          selected &&
+          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
+        ) {
+          await transition('SETUP_IN_PROGRESS', 'uk_expenses_opening_committed');
+        } else {
+          await load();
+        }
+      } else {
+        setPreviewNote(
+          t('admin.is6aExpensesPartialCommit')
+            .replace('{c}', String(merged.createdCount))
+            .replace('{s}', String(merged.skippedExistingCount))
+            .replace('{x}', String(merged.conflictCount))
+            .replace('{f}', String(merged.failedCount))
+            .replace('{n}', String(merged.notProcessedCount)),
+        );
+        setError(t('admin.is6aExpensesPartialNotFullySuccessful'));
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function downloadTemplate() {
     if (isPropertyBook) {
       downloadPropertyBookOpeningTemplate();
@@ -1320,6 +1610,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
     if (isInternet) {
       downloadInternetOpeningTemplate();
+      return;
+    }
+    if (isUkExpenses) {
+      downloadUkExpensesOpeningTemplate();
       return;
     }
     const schema = adapter?.registration.setup?.xlsx;
@@ -1377,6 +1671,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                         resetImportUi();
                         setDraftConfirmed(false);
                         setVerifiedExisting(false);
+                        setSkipHistoricalExpenses(false);
                         setAllowCreateMissing(false);
                         setError(null);
                       }}
@@ -1431,6 +1726,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               ) : null}
               {isInternet ? (
                 <p className="text-xs text-secondary">{t('admin.is5InternetSsotNote')}</p>
+              ) : null}
+              {isUkExpenses ? (
+                <p className="text-xs text-secondary">{t('admin.is6aExpensesSsotNote')}</p>
               ) : null}
 
               <div className="flex flex-wrap gap-2">
@@ -1497,6 +1795,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   {isInternet ? (
                     <p className="text-xs text-secondary">{t('admin.is5InternetManualHint')}</p>
                   ) : null}
+                  {isUkExpenses ? (
+                    <p className="text-xs text-secondary">{t('admin.is6aExpensesManualHint')}</p>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -1513,9 +1814,21 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                             ? t('admin.is4SupportFeeManualConfirm')
                             : isInternet
                               ? t('admin.is5InternetManualConfirm')
-                              : t('admin.is1ManualConfirm')}
+                              : isUkExpenses
+                                ? t('admin.is6aExpensesManualConfirm')
+                                : t('admin.is1ManualConfirm')}
                   </label>
-                  {isPropertyBook || isMeters || isSupportFee || isInternet ? (
+                  {isUkExpenses ? (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={skipHistoricalExpenses}
+                        onChange={(e) => setSkipHistoricalExpenses(e.target.checked)}
+                      />
+                      {t('admin.is6aExpensesSkipImport')}
+                    </label>
+                  ) : null}
+                  {isPropertyBook || isMeters || isSupportFee || isInternet || isUkExpenses ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -1528,7 +1841,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           ? t('admin.is4SupportFeeVerifiedExisting')
                           : isInternet
                             ? t('admin.is5InternetVerifiedExisting')
-                            : t('admin.is3MetersVerifiedExisting')}
+                            : isUkExpenses
+                              ? t('admin.is6aExpensesVerifiedExisting')
+                              : t('admin.is3MetersVerifiedExisting')}
                     </label>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
@@ -1556,6 +1871,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   ) : null}
                   {isInternet ? (
                     <p className="text-xs text-secondary">{t('admin.is5InternetXlsxHint')}</p>
+                  ) : null}
+                  {isUkExpenses ? (
+                    <p className="text-xs text-secondary">{t('admin.is6aExpensesXlsxHint')}</p>
                   ) : null}
                   <button type="button" className={adminBtnSecondaryClass} onClick={downloadTemplate}>
                     {t('admin.is1DownloadTemplate')}
@@ -1601,7 +1919,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                 ? downloadSupportFeeErrorReport(preview)
                                 : isInternet
                                   ? downloadInternetErrorReport(preview)
-                                  : downloadPropertyBookErrorReport(preview)
+                                  : isUkExpenses
+                                    ? downloadUkExpensesErrorReport(preview)
+                                    : downloadPropertyBookErrorReport(preview)
                           }
                         >
                           {t('admin.is2PropertyBookDownloadErrors')}
@@ -1647,6 +1967,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           {t('admin.is5InternetConfirmButton')}
                         </button>
                       ) : null}
+                      {isUkExpenses && pendingUkExpensePreview && batchId ? (
+                        <button
+                          type="button"
+                          className={adminBtnPrimaryClass}
+                          disabled={busy || preview.errorCount > 0}
+                          onClick={() => void confirmUkExpenseImport()}
+                        >
+                          {t('admin.is6aExpensesConfirmButton')}
+                        </button>
+                      ) : null}
                       {isMeters &&
                       meterCommitResult &&
                       !meterCommitResult.fullySuccessful &&
@@ -1684,6 +2014,19 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() => void confirmInternetImport({ retryOnly: true })}
                         >
                           {t('admin.is5InternetRetryMissing')}
+                        </button>
+                      ) : null}
+                      {isUkExpenses &&
+                      ukExpenseCommitResult &&
+                      !ukExpenseCommitResult.fullySuccessful &&
+                      pendingUkExpensePreview ? (
+                        <button
+                          type="button"
+                          className={adminBtnSecondaryClass}
+                          disabled={busy}
+                          onClick={() => void confirmUkExpenseImport({ retryOnly: true })}
+                        >
+                          {t('admin.is6aExpensesRetryMissing')}
                         </button>
                       ) : null}
                       {meterCommitResult ? (
@@ -1766,6 +2109,30 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           </table>
                         </div>
                       ) : null}
+                      {ukExpenseCommitResult ? (
+                        <div className="max-h-48 overflow-auto rounded border border-border text-xs">
+                          <table className="w-full">
+                            <thead>
+                              <tr className={adminTableHeadRowClass}>
+                                <th className={adminTableCellClass}>#</th>
+                                <th className={adminTableCellClass}>{t('admin.is6aColSourceRef')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is6aOutcome')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ukExpenseCommitResult.rows.map((r) => (
+                                <tr key={`${r.rowNumber}-${r.sourceRef}`} className={adminTableRowClass}>
+                                  <td className={adminTableCellClass}>{r.rowNumber}</td>
+                                  <td className={adminTableCellClass}>{r.sourceRef}</td>
+                                  <td className={adminTableCellClass}>
+                                    <code>{r.outcome}</code>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <p className="text-xs text-secondary">
@@ -1777,7 +2144,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           ? t('admin.is4SupportFeeNoOverwrite')
                           : isInternet
                             ? t('admin.is5InternetNoOverwrite')
-                            : t('admin.is1NoAutoCommit')}
+                            : isUkExpenses
+                              ? t('admin.is6aExpensesNoOverwrite')
+                              : t('admin.is1NoAutoCommit')}
                   </p>
                 </div>
               ) : null}

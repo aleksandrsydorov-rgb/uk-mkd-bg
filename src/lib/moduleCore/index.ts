@@ -151,3 +151,39 @@ export {
   type InternetCommitRowResult,
   type InternetCommitBatchResult,
 } from '@/lib/moduleCore/adapters/internetImportCommit';
+export {
+  UK_EXPENSES_SETUP_KEY,
+  UK_EXPENSES_SETUP_SCHEMA_VERSION,
+  UK_EXPENSE_OPENING_HEADERS,
+  validateUkExpenseOpeningRow,
+  classifyUkExpenseOpeningRows,
+  buildExistingUkExpenseOpeningMap,
+  buildCategoryCodeMap,
+  ukExpenseOpeningPayloadsFromPreview,
+  buildUkExpensesIs6aTemplateBuffer,
+  downloadUkExpensesIs6aTemplate,
+  buildUkExpensesErrorReportXlsx,
+  downloadUkExpensesErrorReport,
+  expenseCountsInOperationalBudgetExecution,
+  openingExpenseIdentical,
+  parsePositiveMoney,
+  type ExistingUkExpenseOpeningRef,
+  type UkExpenseOpeningRpcPayload,
+} from '@/lib/moduleCore/adapters/ukExpensesOpening';
+export {
+  ukExpensesOpeningAdapter,
+  downloadUkExpensesOpeningTemplate,
+} from '@/lib/moduleCore/adapters/ukExpensesOpeningAdapter';
+export {
+  UK_EXPENSE_COMMIT_OUTCOMES,
+  classifyUkExpenseOpeningErrorMessage,
+  commitUkExpenseOpeningBatch,
+  reconcileUkExpenseCommitWithDb,
+  retryCandidatesFromUkExpenseBatch,
+  filterPreviewForUkExpenseRetry,
+  mergeUkExpenseCommitBatches,
+  ukExpenseCommitAuditPayload,
+  type UkExpenseCommitOutcome,
+  type UkExpenseCommitRowResult,
+  type UkExpenseCommitBatchResult,
+} from '@/lib/moduleCore/adapters/ukExpensesImportCommit';

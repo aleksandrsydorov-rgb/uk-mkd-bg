@@ -1408,6 +1408,46 @@ export const ru = {
     is5InternetRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
     is5InternetRetryEmpty: 'Нет строк для повтора.',
     is5Outcome: 'Итог',
+    is6aExpensesName: 'Расходы УК (исторические)',
+    is6aExpensesDesc:
+      'Необязательный импорт исторических расходов УК для прозрачности. Без AP, без платежей, без автопубликации (IS-6a).',
+    is6aExpensesStepVerify: 'Исторические расходы УК',
+    is6aExpensesManualConfirm: 'Подтверждаю: исторические расходы сверены / импортированы',
+    is6aExpensesSkipImport: 'Пропустить исторический импорт (использовать Admin UI после запуска)',
+    is6aExpensesVerifiedExisting: 'Существующие расходы проверены (без перезаписи)',
+    is6aExpensesManualHint:
+      'Операционные расходы после запуска — в разделе Расходы. Здесь только архивная инвентаризация на дату перехода.',
+    is6aExpensesSsotNote:
+      'Канон: uk_expenses. Импорт → «на проверке». Публикация — отдельным админ-одобрением. opening_import не входит в исполнение бюджета. Без SF/Internet opening.',
+    is6aExpensesXlsxHint:
+      'Шаблон expenses + BG/RU/EN. Preview не пишет. source_ref обязателен. Конфликт → ERROR. Без AP и без автопубликации.',
+    is6aExpensesXlsxInstructions: 'См. листы instructions_* в шаблоне.',
+    is6aColSourceRef: 'source_ref',
+    is6aColTitle: 'title',
+    is6aColExpenseDate: 'expense_date',
+    is6aColAmount: 'amount_eur',
+    is6aColCategory: 'category_code',
+    is6aColTransitionDate: 'transition_date',
+    is6aColSourceDocument: 'source_document',
+    is6aColNotes: 'notes',
+    is6aExpensesEmptySheet: 'Лист expenses пуст.',
+    is6aExpensesNoAp:
+      'AP / счета поставщикам / платежи запрещены. Строки только как исторические расходы УК.',
+    is6aExpensesFixErrors: 'Исправьте CONFLICT/ERROR перед commit opening expenses.',
+    is6aExpensesConfirmButton: 'Подтвердить импорт расходов (RPC)',
+    is6aExpensesConfirmImport:
+      'Подтвердить импорт исторических расходов? Строки создаются только «на проверке». Публикация и AP не выполняются.',
+    is6aExpensesImportCommitted:
+      'Исторические расходы импортированы (pending). Batch committed. published=false · AP=false.',
+    is6aExpensesNoOverwrite:
+      'IS-6a Q11: conflict → ERROR, без overwrite. Preview не пишет. Commit только import_uk_expense_opening_row.',
+    is6aExpensesPartialCommit:
+      'Частичный commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is6aExpensesPartialNotFullySuccessful:
+      'Пакет не полностью успешен. Повторите только FAILED/NOT_PROCESSED.',
+    is6aExpensesRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
+    is6aExpensesRetryEmpty: 'Нет строк для повтора.',
+    is6aOutcome: 'Итог',
     emailTitle: 'Электронная почта',
     emailLead:
       'Отправитель и статус почтовой системы этого комплекса. Секреты провайдера хранятся только на сервере.',
@@ -4494,6 +4534,46 @@ export const en: Messages = {
     is5InternetRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
     is5InternetRetryEmpty: 'Nothing to retry.',
     is5Outcome: 'Outcome',
+    is6aExpensesName: 'UK expenses (historical)',
+    is6aExpensesDesc:
+      'Optional historical UK expense inventarisation for transparency. No AP, no payments, no auto-publish (IS-6a).',
+    is6aExpensesStepVerify: 'Historical UK expenses',
+    is6aExpensesManualConfirm: 'I confirm historical expenses were reviewed / imported',
+    is6aExpensesSkipImport: 'Skip historical import (use Admin expense UI after launch)',
+    is6aExpensesVerifiedExisting: 'Existing expenses verified (no overwrite)',
+    is6aExpensesManualHint:
+      'Operational expenses after launch are entered under Expenses. Here only archival inventarisation as of transition date.',
+    is6aExpensesSsotNote:
+      'Canonical: uk_expenses. Import → pending review. Publish via separate admin approval. opening_import excluded from budget execution. No SF/Internet opening.',
+    is6aExpensesXlsxHint:
+      'Template expenses + BG/RU/EN. Preview writes nothing. source_ref required. Conflict → ERROR. No AP, no auto-publish.',
+    is6aExpensesXlsxInstructions: 'See instructions_* sheets in the template.',
+    is6aColSourceRef: 'source_ref',
+    is6aColTitle: 'title',
+    is6aColExpenseDate: 'expense_date',
+    is6aColAmount: 'amount_eur',
+    is6aColCategory: 'category_code',
+    is6aColTransitionDate: 'transition_date',
+    is6aColSourceDocument: 'source_document',
+    is6aColNotes: 'notes',
+    is6aExpensesEmptySheet: 'expenses sheet is empty.',
+    is6aExpensesNoAp:
+      'AP / supplier invoices / payments forbidden. Rows are historical UK expenses only.',
+    is6aExpensesFixErrors: 'Resolve CONFLICT/ERROR before committing opening expenses.',
+    is6aExpensesConfirmButton: 'Confirm expense import (RPC)',
+    is6aExpensesConfirmImport:
+      'Confirm historical expense import? Rows are created as pending review only. No publish and no AP.',
+    is6aExpensesImportCommitted:
+      'Historical expenses imported (pending). Batch committed. published=false · AP=false.',
+    is6aExpensesNoOverwrite:
+      'IS-6a Q11: conflict → ERROR, no overwrite. Preview does not write. Commit only via import_uk_expense_opening_row.',
+    is6aExpensesPartialCommit:
+      'Partial commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is6aExpensesPartialNotFullySuccessful:
+      'Batch is not fully successful. Retry only FAILED/NOT_PROCESSED.',
+    is6aExpensesRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
+    is6aExpensesRetryEmpty: 'Nothing to retry.',
+    is6aOutcome: 'Outcome',
     emailTitle: 'Email',
     emailLead:
       'Sender and mail system status for this complex. Provider secrets stay on the server only.',
@@ -7582,6 +7662,46 @@ export const bg: Messages = {
     is5InternetRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
     is5InternetRetryEmpty: 'Няма редове за повтор.',
     is5Outcome: 'Резултат',
+    is6aExpensesName: 'Разходи на УС (исторически)',
+    is6aExpensesDesc:
+      'Незадължителен импорт на исторически разходи на УС за прозрачност. Без AP, без плащания, без автопубликация (IS-6a).',
+    is6aExpensesStepVerify: 'Исторически разходи на УС',
+    is6aExpensesManualConfirm: 'Потвърждавам: историческите разходи са сверени / импортирани',
+    is6aExpensesSkipImport: 'Пропусни историческия импорт (Admin UI след старт)',
+    is6aExpensesVerifiedExisting: 'Съществуващите разходи са проверени (без презапис)',
+    is6aExpensesManualHint:
+      'Оперативните разходи след старт са в Разходи. Тук само архивна инвентаризация към датата на преход.',
+    is6aExpensesSsotNote:
+      'Канон: uk_expenses. Импорт → „на проверке“. Публикация — отделно админ одобрение. opening_import не влиза в изпълнението на бюджета. Без SF/Internet opening.',
+    is6aExpensesXlsxHint:
+      'Шаблон expenses + BG/RU/EN. Preview не пише. source_ref е задължителен. Конфликт → ERROR. Без AP и без автопубликация.',
+    is6aExpensesXlsxInstructions: 'Вижте листовете instructions_* в шаблона.',
+    is6aColSourceRef: 'source_ref',
+    is6aColTitle: 'title',
+    is6aColExpenseDate: 'expense_date',
+    is6aColAmount: 'amount_eur',
+    is6aColCategory: 'category_code',
+    is6aColTransitionDate: 'transition_date',
+    is6aColSourceDocument: 'source_document',
+    is6aColNotes: 'notes',
+    is6aExpensesEmptySheet: 'Листът expenses е празен.',
+    is6aExpensesNoAp:
+      'AP / фактури към доставчици / плащания са забранени. Редовете са само исторически разходи на УС.',
+    is6aExpensesFixErrors: 'Поправете CONFLICT/ERROR преди commit на opening expenses.',
+    is6aExpensesConfirmButton: 'Потвърди импорт на разходи (RPC)',
+    is6aExpensesConfirmImport:
+      'Потвърдете импорт на исторически разходи? Редовете се създават само „на проверке“. Без публикация и без AP.',
+    is6aExpensesImportCommitted:
+      'Историческите разходи са импортирани (pending). Batch committed. published=false · AP=false.',
+    is6aExpensesNoOverwrite:
+      'IS-6a Q11: conflict → ERROR, без overwrite. Preview не пише. Commit само чрез import_uk_expense_opening_row.',
+    is6aExpensesPartialCommit:
+      'Частичен commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is6aExpensesPartialNotFullySuccessful:
+      'Пакетът не е напълно успешен. Повторете само FAILED/NOT_PROCESSED.',
+    is6aExpensesRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
+    is6aExpensesRetryEmpty: 'Няма редове за повтор.',
+    is6aOutcome: 'Резултат',
     emailTitle: 'Електронна поща',
     emailLead:
       'Изпращач и статус на пощата за този комплекс. Тайните на доставчика остават само на сървъра.',

@@ -1156,6 +1156,14 @@ export interface Database {
           approved_by: string | null;
           approved_at: string | null;
           budget_category_id: string | null;
+          opening_import: boolean;
+          opening_transition_date: string | null;
+          source_ref: string | null;
+          opening_source_document: string | null;
+          opening_notes: string | null;
+          opening_import_batch_id: string | null;
+          opening_imported_at: string | null;
+          opening_imported_by: string | null;
         };
         Insert: {
           id?: number;
@@ -1169,6 +1177,14 @@ export interface Database {
           approved_by?: string | null;
           approved_at?: string | null;
           budget_category_id?: string | null;
+          opening_import?: boolean;
+          opening_transition_date?: string | null;
+          source_ref?: string | null;
+          opening_source_document?: string | null;
+          opening_notes?: string | null;
+          opening_import_batch_id?: string | null;
+          opening_imported_at?: string | null;
+          opening_imported_by?: string | null;
         };
         Update: {
           id?: number;
@@ -1182,6 +1198,68 @@ export interface Database {
           approved_by?: string | null;
           approved_at?: string | null;
           budget_category_id?: string | null;
+          opening_import?: boolean;
+          opening_transition_date?: string | null;
+          source_ref?: string | null;
+          opening_source_document?: string | null;
+          opening_notes?: string | null;
+          opening_import_batch_id?: string | null;
+          opening_imported_at?: string | null;
+          opening_imported_by?: string | null;
+        };
+        Relationships: [];
+      };
+      uk_expense_opening_imports: {
+        Row: {
+          id: string;
+          expense_id: number;
+          source_ref: string;
+          title: string;
+          expense_date: string;
+          amount: number;
+          transition_date: string;
+          budget_category_id: string | null;
+          category_code: string | null;
+          source_document: string | null;
+          notes: string | null;
+          idempotency_key: string;
+          batch_id: string | null;
+          created_at: string;
+          created_by_email: string | null;
+        };
+        Insert: {
+          id?: string;
+          expense_id: number;
+          source_ref: string;
+          title: string;
+          expense_date: string;
+          amount: number;
+          transition_date: string;
+          budget_category_id?: string | null;
+          category_code?: string | null;
+          source_document?: string | null;
+          notes?: string | null;
+          idempotency_key: string;
+          batch_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+        };
+        Update: {
+          id?: string;
+          expense_id?: number;
+          source_ref?: string;
+          title?: string;
+          expense_date?: string;
+          amount?: number;
+          transition_date?: string;
+          budget_category_id?: string | null;
+          category_code?: string | null;
+          source_document?: string | null;
+          notes?: string | null;
+          idempotency_key?: string;
+          batch_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
         };
         Relationships: [];
       };
@@ -4260,6 +4338,21 @@ export interface Database {
           p_opening_credit: number;
           p_source_reference: string | null;
           p_notes: string | null;
+          p_idempotency_key: string;
+          p_batch_id?: string | null;
+        };
+        Returns: Json;
+      };
+      import_uk_expense_opening_row: {
+        Args: {
+          p_source_ref: string;
+          p_title: string;
+          p_expense_date: string;
+          p_amount: number;
+          p_transition_date: string;
+          p_category_code?: string | null;
+          p_source_document?: string | null;
+          p_notes?: string | null;
           p_idempotency_key: string;
           p_batch_id?: string | null;
         };

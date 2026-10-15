@@ -13,6 +13,8 @@ import {
 } from '@/components/admin/AdminUi';
 import {
   ELECTRICITY_MODULE_KEY,
+  INTERNET_MODULE_KEY,
+  INTERNET_SETUP_SCHEMA_VERSION,
   PROPERTY_BOOK_MODULE_KEY,
   SUPPORT_FEE_MODULE_KEY,
   SUPPORT_FEE_SETUP_SCHEMA_VERSION,
@@ -20,15 +22,21 @@ import {
   activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
+  buildExistingInternetSubMap,
   buildExistingSfScopeMap,
   buildImportPreview,
   canTransitionModuleLifecycle,
   classifyElectricityMeterOpeningRows,
+  classifyInternetOpeningErrorMessage,
+  classifyInternetOpeningRows,
   classifyPropertyBookOpeningRows,
   classifySupportFeeOpeningRows,
   classifyWaterMeterOpeningRows,
+  commitInternetOpeningBatch,
   commitSupportFeeOpeningBatch,
   downloadElectricityOpeningTemplate,
+  downloadInternetErrorReport,
+  downloadInternetOpeningTemplate,
   downloadMeterErrorReport,
   downloadModuleXlsxTemplate,
   downloadPropertyBookErrorReport,
@@ -37,18 +45,23 @@ import {
   downloadSupportFeeOpeningTemplate,
   downloadWaterOpeningTemplate,
   commitMeterInventoryBatch,
+  filterPreviewForInternetRetry,
   filterPreviewForRetry,
   filterPreviewForSfRetry,
   getModuleAdapter,
+  internetCommitAuditPayload,
   listRegisteredModuleAdapters,
+  mergeInternetCommitBatches,
   mergeMeterCommitBatches,
   mergeSfCommitBatches,
   meterCommitAuditPayload,
   parseModuleXlsxBuffer,
   previewFromPropertyBookDryRun,
+  reconcileInternetCommitWithDb,
   reconcileMeterCommitWithDb,
   reconcileSfCommitWithDb,
   retryCandidatesFromBatch,
+  retryCandidatesFromInternetBatch,
   retryCandidatesFromSfBatch,
   serialSetFromMeters,
   setupCompleteFromDraft,
@@ -57,6 +70,7 @@ import {
   sfCommitAuditPayload,
   classifySfOpeningErrorMessage,
   type ImportPreviewResult,
+  type InternetCommitBatchResult,
   type MeterCommitBatchResult,
   type SfCommitBatchResult,
   type ModuleLifecycleState,
@@ -66,6 +80,7 @@ import {
   parsePropertyBookWorkbook,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
+import { sofiaTodayIsoDate } from '@/lib/tariffs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
 
@@ -115,6 +130,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [meterCommitResult, setMeterCommitResult] = useState<MeterCommitBatchResult | null>(null);
   const [pendingSfPreview, setPendingSfPreview] = useState<ImportPreviewResult | null>(null);
   const [sfCommitResult, setSfCommitResult] = useState<SfCommitBatchResult | null>(null);
+  const [pendingInternetPreview, setPendingInternetPreview] = useState<ImportPreviewResult | null>(null);
+  const [internetCommitResult, setInternetCommitResult] = useState<InternetCommitBatchResult | null>(null);
 
   useEffect(() => {
     bootstrapModuleSetupAdapters();
@@ -156,6 +173,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isElectricity = selectedKey === ELECTRICITY_MODULE_KEY;
   const isMeters = isWater || isElectricity;
   const isSupportFee = selectedKey === SUPPORT_FEE_MODULE_KEY;
+  const isInternet = selectedKey === INTERNET_MODULE_KEY;
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -178,6 +196,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setMeterCommitResult(null);
     setPendingSfPreview(null);
     setSfCommitResult(null);
+    setPendingInternetPreview(null);
+    setInternetCommitResult(null);
   }
 
   async function loadSupportFeeClassifyContext() {
@@ -241,6 +261,121 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
 
     return { apartmentsByNumber, existingByScope, openingImportsByScope };
+  }
+
+  async function loadInternetClassifyContext() {
+    const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+      p_limit: 5000,
+    });
+    if (listErr) throw listErr;
+    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+      .filter((r) => r.property_id != null)
+      .map((r) => ({
+        property_id: Number(r.property_id),
+        apartment_number: String(r.apartment_number ?? ''),
+      }));
+    const apartmentsByNumber = buildApartmentLookup(apartments);
+
+    const openingImportsByProperty = new Map<
+      number,
+      {
+        status: string;
+        paidThrough: string | null;
+        nextChargeOn: string | null;
+        debt: number;
+        credit: number;
+      }
+    >();
+    const { data: importRows, error: iErr } = await supabase
+      .from('internet_opening_imports')
+      .select('property_id, status, paid_through, next_charge_on, opening_debt, opening_credit');
+    // Table may not exist until migration applied — treat as empty for local preview.
+    if (!iErr && importRows) {
+      for (const r of importRows as {
+        property_id: number;
+        status: string;
+        paid_through: string | null;
+        next_charge_on: string | null;
+        opening_debt: number;
+        opening_credit: number;
+      }[]) {
+        openingImportsByProperty.set(Number(r.property_id), {
+          status: String(r.status ?? '').toLowerCase(),
+          paidThrough: r.paid_through,
+          nextChargeOn: r.next_charge_on,
+          debt: Number(r.opening_debt ?? 0),
+          credit: Number(r.opening_credit ?? 0),
+        });
+      }
+    }
+
+    const { data: subRows, error: sErr } = await supabase
+      .from('internet_subscriptions')
+      .select(
+        'property_id, status, billing_day, next_charge_on, period_start, opening_import, opening_paid_through',
+      );
+    if (sErr) throw sErr;
+    const existingByProperty = buildExistingInternetSubMap(
+      ((subRows as {
+        property_id: number;
+        status: string;
+        billing_day?: number | null;
+        next_charge_on?: string | null;
+        period_start?: string | null;
+        opening_import?: boolean | null;
+        opening_paid_through?: string | null;
+      }[]) ?? []).map((s) => {
+        const oi = openingImportsByProperty.get(Number(s.property_id));
+        return {
+          ...s,
+          opening_debt: oi?.debt ?? 0,
+          opening_credit: oi?.credit ?? 0,
+        };
+      }),
+    );
+
+    const pendingWoPropertyIds = new Set<number>();
+    const { data: woRows, error: woErr } = await supabase
+      .from('work_orders')
+      .select('target_property_id, internet_action, status')
+      .not('internet_action', 'is', null)
+      .in('status', ['open', 'in_progress']);
+    if (!woErr && woRows) {
+      for (const w of woRows as {
+        target_property_id: number | null;
+        internet_action: string | null;
+        status: string;
+      }[]) {
+        if (w.target_property_id != null && w.internet_action) {
+          pendingWoPropertyIds.add(Number(w.target_property_id));
+        }
+      }
+    }
+
+    let internetTariffConfigured = false;
+    const { data: tariffRows, error: tErr } = await supabase.rpc('list_tariffs', {
+      p_module_key: 'internet',
+      p_active_only: true,
+      p_limit: 20,
+    });
+    if (!tErr && tariffRows) {
+      internetTariffConfigured = (
+        tariffRows as { tariff_key?: string; current_version_id?: string | null }[]
+      ).some(
+        (r) =>
+          String(r.tariff_key ?? '').toLowerCase() === 'internet' &&
+          r.current_version_id != null,
+      );
+    }
+
+    return {
+      apartmentsByNumber,
+      existingByProperty,
+      openingImportsByProperty,
+      pendingWoPropertyIds,
+      internetTariffConfigured,
+      sofiaTodayIso: sofiaTodayIsoDate(),
+    };
   }
 
   async function loadMeterClassifyContext(utility: 'water' | 'electricity') {
@@ -572,6 +707,71 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setPreviewNote(
           t('admin.is1PreviewSaved').replace('{id}', id) +
             ` · ${t('admin.is4SupportFeeNoSyntheticPayments')}`,
+        );
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (isInternet) {
+      setBusy(true);
+      setError(null);
+      try {
+        const schema = adapter.registration.setup.xlsx;
+        const buf = await file.arrayBuffer();
+        const parsed = parseModuleXlsxBuffer(buf, schema);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.rows.length === 0) {
+          setError(t('admin.is5InternetEmptySheet'));
+          return;
+        }
+        const ctx = await loadInternetClassifyContext();
+        const result = classifyInternetOpeningRows(parsed.rows, ctx);
+        setPreview(result);
+        setPendingInternetPreview(result);
+
+        const { data: batch, error: batchErr } = await supabase.rpc(
+          'admin_create_module_import_batch',
+          {
+            p_module_key: selectedKey,
+            p_schema_version: schema.schemaVersion,
+            p_source: 'xlsx',
+            p_file_name: file.name,
+            p_preview: {
+              local: result,
+              policy: {
+                no_synthetic_payments: true,
+                no_request_internet_connect: true,
+                no_system_work_orders: true,
+                conflict_no_overwrite: true,
+              },
+            },
+            p_row_count: result.rows.length,
+            p_create_count: result.createCount,
+            p_update_count: result.updateCount,
+            p_skip_count: result.skipCount,
+            p_error_count: result.errorCount,
+            p_error_report: result.rows
+              .filter((r) => r.errors.length)
+              .map((r) => ({
+                rowNumber: r.rowNumber,
+                preview_class: r.data.preview_class,
+                errors: r.errors,
+              })),
+          },
+        );
+        if (batchErr) throw batchErr;
+        const id = String((batch as { id?: string })?.id ?? '');
+        setBatchId(id || null);
+        setPreviewNote(
+          t('admin.is1PreviewSaved').replace('{id}', id) +
+            ` · ${t('admin.is5InternetNoSyntheticPayments')}`,
         );
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : t('admin.errGeneric'));
@@ -951,6 +1151,156 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
   }
 
+  async function confirmInternetImport(opts?: { retryOnly?: boolean }) {
+    if (!isInternet || !pendingInternetPreview || !batchId || !preview) return;
+    if (preview.errorCount > 0 && !opts?.retryOnly) {
+      setError(t('admin.is5InternetFixErrors'));
+      return;
+    }
+    if (!window.confirm(t('admin.is5InternetConfirmImport'))) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      let workPreview = pendingInternetPreview;
+      if (opts?.retryOnly && internetCommitResult) {
+        const retryNums = new Set(retryCandidatesFromInternetBatch(internetCommitResult));
+        workPreview = filterPreviewForInternetRetry(pendingInternetPreview, [...retryNums]);
+        if (workPreview.rows.length === 0) {
+          setPreviewNote(t('admin.is5InternetRetryEmpty'));
+          return;
+        }
+      }
+
+      const rawBatch = await commitInternetOpeningBatch({
+        preview: workPreview,
+        batchId,
+        idempotencyKeyForRow: (rowNumber) => {
+          const seed = `${batchId}:${rowNumber}:is5-internet-opening`;
+          let h = 0;
+          for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+          const hex = (n: number) => n.toString(16).padStart(8, '0');
+          return `${hex(h)}-${hex(rowNumber & 0xffff)}-4${hex(h).slice(1, 4)}-a${hex(h).slice(4, 7)}-${hex(h)}${hex(rowNumber)}`.slice(
+            0,
+            36,
+          );
+        },
+        importRow: async (p) => {
+          const { data, error: rpcErr } = await supabase.rpc('import_internet_opening_state', {
+            p_property_id: p.propertyId,
+            p_status: p.status,
+            p_tariff_key: p.tariffKey,
+            p_connection_date: p.connectionDate,
+            p_transition_date: p.transitionDate,
+            p_paid_through: p.paidThrough,
+            p_opening_debt: p.openingDebt,
+            p_opening_credit: p.openingCredit,
+            p_source_reference: p.sourceReference || null,
+            p_notes: p.notes || null,
+            p_idempotency_key: p.idempotencyKey,
+            p_batch_id: p.batchId,
+          });
+          if (rpcErr) {
+            const outcome = classifyInternetOpeningErrorMessage(rpcErr.message);
+            return { ok: false, outcome, message: rpcErr.message };
+          }
+          const body = data as {
+            applied?: boolean;
+            idempotent?: boolean;
+            outcome?: string;
+            next_charge_on?: string | null;
+            balance_eur?: number;
+            synthetic_payments?: boolean;
+            work_orders_created?: boolean;
+          };
+          if (body.synthetic_payments === true || body.work_orders_created === true) {
+            return {
+              ok: false,
+              outcome: 'FAILED',
+              message: 'synthetic_payments_or_work_orders_forbidden',
+            };
+          }
+          if (body.idempotent || body.outcome === 'SKIPPED_EXISTING') {
+            return {
+              ok: true,
+              outcome: 'SKIPPED_EXISTING',
+              nextChargeOn: body.next_charge_on ?? p.nextChargeOn,
+              balanceEur: Number(body.balance_eur ?? 0),
+            };
+          }
+          return {
+            ok: true,
+            outcome: 'CREATED',
+            nextChargeOn: body.next_charge_on ?? p.nextChargeOn,
+            balanceEur: Number(body.balance_eur ?? 0),
+          };
+        },
+      });
+
+      const ctx = await loadInternetClassifyContext();
+      const reconciled = reconcileInternetCommitWithDb(
+        rawBatch,
+        [...ctx.existingByProperty.values()],
+      );
+      const merged = mergeInternetCommitBatches(
+        opts?.retryOnly ? internetCommitResult : null,
+        reconciled,
+      );
+      setInternetCommitResult(merged);
+
+      const { error: auditErr } = await supabase.rpc('admin_create_module_import_batch', {
+        p_module_key: selectedKey!,
+        p_schema_version: INTERNET_SETUP_SCHEMA_VERSION,
+        p_source: 'api',
+        p_file_name: `opening-commit-${batchId}`,
+        p_preview: internetCommitAuditPayload(merged) as Json,
+        p_row_count: merged.rows.length,
+        p_create_count: merged.createdCount,
+        p_update_count: 0,
+        p_skip_count: merged.skippedExistingCount,
+        p_error_count: merged.failedCount + merged.notProcessedCount + merged.conflictCount,
+        p_error_report: merged.rows
+          .filter((r) => r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED' || r.outcome === 'CONFLICT')
+          .map((r) => ({
+            rowNumber: r.rowNumber,
+            outcome: r.outcome,
+            detail: r.detail,
+          })) as Json,
+      });
+      if (auditErr) throw auditErr;
+
+      if (merged.fullySuccessful) {
+        const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
+          p_batch_id: batchId,
+        });
+        if (commitErr) throw commitErr;
+        setPreviewNote(t('admin.is5InternetImportCommitted'));
+        if (
+          selected &&
+          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
+        ) {
+          await transition('SETUP_IN_PROGRESS', 'internet_opening_committed');
+        } else {
+          await load();
+        }
+      } else {
+        setPreviewNote(
+          t('admin.is5InternetPartialCommit')
+            .replace('{c}', String(merged.createdCount))
+            .replace('{s}', String(merged.skippedExistingCount))
+            .replace('{x}', String(merged.conflictCount))
+            .replace('{f}', String(merged.failedCount))
+            .replace('{n}', String(merged.notProcessedCount)),
+        );
+        setError(t('admin.is5InternetPartialNotFullySuccessful'));
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function downloadTemplate() {
     if (isPropertyBook) {
       downloadPropertyBookOpeningTemplate();
@@ -966,6 +1316,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
     if (isSupportFee) {
       downloadSupportFeeOpeningTemplate();
+      return;
+    }
+    if (isInternet) {
+      downloadInternetOpeningTemplate();
       return;
     }
     const schema = adapter?.registration.setup?.xlsx;
@@ -1075,6 +1429,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               {isSupportFee ? (
                 <p className="text-xs text-secondary">{t('admin.is4SupportFeeSsotNote')}</p>
               ) : null}
+              {isInternet ? (
+                <p className="text-xs text-secondary">{t('admin.is5InternetSsotNote')}</p>
+              ) : null}
 
               <div className="flex flex-wrap gap-2">
                 {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_REQUIRED') ? (
@@ -1137,6 +1494,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   {isSupportFee ? (
                     <p className="text-xs text-secondary">{t('admin.is4SupportFeeManualHint')}</p>
                   ) : null}
+                  {isInternet ? (
+                    <p className="text-xs text-secondary">{t('admin.is5InternetManualHint')}</p>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -1151,9 +1511,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           ? t('admin.is3ElectricityManualConfirm')
                           : isSupportFee
                             ? t('admin.is4SupportFeeManualConfirm')
-                            : t('admin.is1ManualConfirm')}
+                            : isInternet
+                              ? t('admin.is5InternetManualConfirm')
+                              : t('admin.is1ManualConfirm')}
                   </label>
-                  {isPropertyBook || isMeters || isSupportFee ? (
+                  {isPropertyBook || isMeters || isSupportFee || isInternet ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -1164,7 +1526,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                         ? t('admin.is2PropertyBookVerifiedExisting')
                         : isSupportFee
                           ? t('admin.is4SupportFeeVerifiedExisting')
-                          : t('admin.is3MetersVerifiedExisting')}
+                          : isInternet
+                            ? t('admin.is5InternetVerifiedExisting')
+                            : t('admin.is3MetersVerifiedExisting')}
                     </label>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
@@ -1189,6 +1553,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   ) : null}
                   {isSupportFee ? (
                     <p className="text-xs text-secondary">{t('admin.is4SupportFeeXlsxHint')}</p>
+                  ) : null}
+                  {isInternet ? (
+                    <p className="text-xs text-secondary">{t('admin.is5InternetXlsxHint')}</p>
                   ) : null}
                   <button type="button" className={adminBtnSecondaryClass} onClick={downloadTemplate}>
                     {t('admin.is1DownloadTemplate')}
@@ -1232,7 +1599,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                               ? downloadMeterErrorReport(preview)
                               : isSupportFee
                                 ? downloadSupportFeeErrorReport(preview)
-                                : downloadPropertyBookErrorReport(preview)
+                                : isInternet
+                                  ? downloadInternetErrorReport(preview)
+                                  : downloadPropertyBookErrorReport(preview)
                           }
                         >
                           {t('admin.is2PropertyBookDownloadErrors')}
@@ -1268,6 +1637,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           {t('admin.is4SupportFeeConfirmButton')}
                         </button>
                       ) : null}
+                      {isInternet && pendingInternetPreview && batchId ? (
+                        <button
+                          type="button"
+                          className={adminBtnPrimaryClass}
+                          disabled={busy || preview.errorCount > 0}
+                          onClick={() => void confirmInternetImport()}
+                        >
+                          {t('admin.is5InternetConfirmButton')}
+                        </button>
+                      ) : null}
                       {isMeters &&
                       meterCommitResult &&
                       !meterCommitResult.fullySuccessful &&
@@ -1292,6 +1671,19 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() => void confirmSupportFeeImport({ retryOnly: true })}
                         >
                           {t('admin.is4SupportFeeRetryMissing')}
+                        </button>
+                      ) : null}
+                      {isInternet &&
+                      internetCommitResult &&
+                      !internetCommitResult.fullySuccessful &&
+                      pendingInternetPreview ? (
+                        <button
+                          type="button"
+                          className={adminBtnSecondaryClass}
+                          disabled={busy}
+                          onClick={() => void confirmInternetImport({ retryOnly: true })}
+                        >
+                          {t('admin.is5InternetRetryMissing')}
                         </button>
                       ) : null}
                       {meterCommitResult ? (
@@ -1346,6 +1738,34 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           </table>
                         </div>
                       ) : null}
+                      {internetCommitResult ? (
+                        <div className="max-h-48 overflow-auto rounded border border-border text-xs">
+                          <table className="w-full">
+                            <thead>
+                              <tr className={adminTableHeadRowClass}>
+                                <th className={adminTableCellClass}>#</th>
+                                <th className={adminTableCellClass}>{t('admin.is5ColApartment')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is5ColStatus')}</th>
+                                <th className={adminTableCellClass}>{t('admin.is5Outcome')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {internetCommitResult.rows.map((r) => (
+                                <tr key={`${r.rowNumber}-${r.propertyId}`} className={adminTableRowClass}>
+                                  <td className={adminTableCellClass}>{r.rowNumber}</td>
+                                  <td className={adminTableCellClass}>{r.apartmentNumber}</td>
+                                  <td className={adminTableCellClass}>
+                                    <code>{r.nextChargeOn ?? '—'}</code>
+                                  </td>
+                                  <td className={adminTableCellClass}>
+                                    <code>{r.outcome}</code>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <p className="text-xs text-secondary">
@@ -1355,7 +1775,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                         ? t('admin.is3MetersNoOverwrite')
                         : isSupportFee
                           ? t('admin.is4SupportFeeNoOverwrite')
-                          : t('admin.is1NoAutoCommit')}
+                          : isInternet
+                            ? t('admin.is5InternetNoOverwrite')
+                            : t('admin.is1NoAutoCommit')}
                   </p>
                 </div>
               ) : null}

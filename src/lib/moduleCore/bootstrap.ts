@@ -1,5 +1,6 @@
 import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
 import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningAdapter';
+import { internetOpeningAdapter } from '@/lib/moduleCore/adapters/internetOpeningAdapter';
 import { propertyBookOpeningAdapter } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
 import { supportFeeOpeningAdapter } from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
@@ -62,6 +63,8 @@ export function bootstrapModuleSetupAdapters(): void {
   registerModuleAdapter(electricityOpeningAdapter);
   // IS-4: Support Fee opening inventarisation (import_support_fee_opening_state).
   registerModuleAdapter(supportFeeOpeningAdapter);
+  // IS-5: Internet opening inventarisation (import_internet_opening_state).
+  registerModuleAdapter(internetOpeningAdapter);
   // No initial data required — may go DISABLED → READY.
   registerModuleAdapter(metadataAdapter('guest_mode', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('chat', { requiresInitialSetup: false }));

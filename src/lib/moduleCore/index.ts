@@ -111,3 +111,43 @@ export {
   type SfCommitRowResult,
   type SfCommitBatchResult,
 } from '@/lib/moduleCore/adapters/supportFeeImportCommit';
+export {
+  INTERNET_MODULE_KEY,
+  INTERNET_SETUP_SCHEMA_VERSION,
+  INTERNET_TARIFF_KEY,
+  INTERNET_OPENING_STATUSES,
+  INTERNET_OPENING_HEADERS,
+  validateInternetOpeningRow,
+  classifyInternetOpeningRows,
+  buildExistingInternetSubMap,
+  internetOpeningPayloadsFromPreview,
+  buildInternetIs5TemplateBuffer,
+  downloadInternetIs5Template,
+  buildInternetErrorReportXlsx,
+  downloadInternetErrorReport,
+  internetBillingDayFromDate,
+  internetAddOneMonth,
+  internetNextChargeOn,
+  nextChargeAfterPaidThrough,
+  internetOpeningBalanceEffect,
+  parseOptionalIsoDate,
+  type ExistingInternetSubRef,
+  type InternetOpeningRpcPayload,
+} from '@/lib/moduleCore/adapters/internetOpening';
+export {
+  internetOpeningAdapter,
+  downloadInternetOpeningTemplate,
+} from '@/lib/moduleCore/adapters/internetOpeningAdapter';
+export {
+  INTERNET_COMMIT_OUTCOMES,
+  classifyInternetOpeningErrorMessage,
+  commitInternetOpeningBatch,
+  reconcileInternetCommitWithDb,
+  retryCandidatesFromInternetBatch,
+  filterPreviewForInternetRetry,
+  mergeInternetCommitBatches,
+  internetCommitAuditPayload,
+  type InternetCommitOutcome,
+  type InternetCommitRowResult,
+  type InternetCommitBatchResult,
+} from '@/lib/moduleCore/adapters/internetImportCommit';

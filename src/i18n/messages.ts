@@ -1367,6 +1367,47 @@ export const ru = {
     is4SupportFeeRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
     is4SupportFeeRetryEmpty: 'Нет строк для повтора.',
     is4Outcome: 'Итог',
+    is5InternetName: 'Интернет (opening)',
+    is5InternetDesc:
+      'Начальная инвентаризация абонементов Internet без connect WO и без фиктивных платежей (IS-5).',
+    is5InternetStepVerify: 'Проверка opening Internet',
+    is5InternetManualConfirm: 'Подтверждаю: начальные абонементы Internet сверены',
+    is5InternetVerifiedExisting: 'Существующие абонементы проверены (без перезаписи)',
+    is5InternetManualHint:
+      'Операционные connect/disconnect — в разделе Интернет. Здесь только начальное состояние на дату перехода.',
+    is5InternetSsotNote:
+      'Канон: internet_subscriptions + internet_ledger. paid_through ≠ payment. request_internet_connect запрещён. Книга — SSOT квартир.',
+    is5InternetXlsxHint:
+      'Шаблон subscriptions + BG/RU/EN. Preview не пишет. Конфликт → ERROR. Без WO и без synthetic payments.',
+    is5InternetXlsxInstructions: 'См. листы instructions_* в шаблоне.',
+    is5ColApartment: 'apartment_number',
+    is5ColTariffCode: 'tariff_code',
+    is5ColStatus: 'status',
+    is5ColConnectionDate: 'connection_date',
+    is5ColTransitionDate: 'transition_date',
+    is5ColPaidThrough: 'paid_through',
+    is5ColOpeningDebt: 'opening_debt',
+    is5ColOpeningCredit: 'opening_credit',
+    is5ColSourceRef: 'source_reference',
+    is5ColNotes: 'notes',
+    is5InternetEmptySheet: 'Лист subscriptions пуст.',
+    is5InternetNoSyntheticPayments:
+      'Synthetic payments запрещены. paid_through задаёт next_charge_on без payment-строк.',
+    is5InternetFixErrors: 'Исправьте CONFLICT/ERROR перед commit opening.',
+    is5InternetConfirmButton: 'Подтвердить opening (RPC)',
+    is5InternetConfirmImport:
+      'Подтвердить импорт начального состояния Internet? Существующие абонементы не перезаписываются. Connect WO и платежи не создаются.',
+    is5InternetImportCommitted:
+      'Opening Internet применён; batch committed. Synthetic payments = false · work orders = false.',
+    is5InternetNoOverwrite:
+      'IS-5 Q4/Q5: conflict → ERROR, без overwrite. Preview не пишет. Commit только import_internet_opening_state.',
+    is5InternetPartialCommit:
+      'Частичный commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is5InternetPartialNotFullySuccessful:
+      'Пакет не полностью успешен. Повторите только FAILED/NOT_PROCESSED.',
+    is5InternetRetryMissing: 'Повторить недостающие (FAILED/NOT_PROCESSED)',
+    is5InternetRetryEmpty: 'Нет строк для повтора.',
+    is5Outcome: 'Итог',
     emailTitle: 'Электронная почта',
     emailLead:
       'Отправитель и статус почтовой системы этого комплекса. Секреты провайдера хранятся только на сервере.',
@@ -4412,6 +4453,47 @@ export const en: Messages = {
     is4SupportFeeRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
     is4SupportFeeRetryEmpty: 'Nothing to retry.',
     is4Outcome: 'Outcome',
+    is5InternetName: 'Internet (opening)',
+    is5InternetDesc:
+      'Internet opening inventarisation without connect work orders or synthetic payments (IS-5).',
+    is5InternetStepVerify: 'Verify Internet opening',
+    is5InternetManualConfirm: 'I confirm Internet opening subscriptions were reviewed',
+    is5InternetVerifiedExisting: 'Existing subscriptions verified (no overwrite)',
+    is5InternetManualHint:
+      'Operational connect/disconnect is done in Internet admin. Here only opening state as of transition date.',
+    is5InternetSsotNote:
+      'Canonical: internet_subscriptions + internet_ledger. paid_through ≠ payment. request_internet_connect forbidden. Book is apartment SSOT.',
+    is5InternetXlsxHint:
+      'Template subscriptions + BG/RU/EN. Preview writes nothing. Conflict → ERROR. No WO, no synthetic payments.',
+    is5InternetXlsxInstructions: 'See instructions_* sheets in the template.',
+    is5ColApartment: 'apartment_number',
+    is5ColTariffCode: 'tariff_code',
+    is5ColStatus: 'status',
+    is5ColConnectionDate: 'connection_date',
+    is5ColTransitionDate: 'transition_date',
+    is5ColPaidThrough: 'paid_through',
+    is5ColOpeningDebt: 'opening_debt',
+    is5ColOpeningCredit: 'opening_credit',
+    is5ColSourceRef: 'source_reference',
+    is5ColNotes: 'notes',
+    is5InternetEmptySheet: 'subscriptions sheet is empty.',
+    is5InternetNoSyntheticPayments:
+      'Synthetic payments forbidden. paid_through sets next_charge_on without payment rows.',
+    is5InternetFixErrors: 'Resolve CONFLICT/ERROR before committing opening rows.',
+    is5InternetConfirmButton: 'Confirm opening (RPC)',
+    is5InternetConfirmImport:
+      'Confirm Internet opening import? Existing subscriptions are not overwritten. No connect WO or payments are created.',
+    is5InternetImportCommitted:
+      'Internet opening applied; batch committed. Synthetic payments = false · work orders = false.',
+    is5InternetNoOverwrite:
+      'IS-5 Q4/Q5: conflict → ERROR, no overwrite. Preview does not write. Commit only via import_internet_opening_state.',
+    is5InternetPartialCommit:
+      'Partial commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is5InternetPartialNotFullySuccessful:
+      'Batch is not fully successful. Retry only FAILED/NOT_PROCESSED.',
+    is5InternetRetryMissing: 'Retry missing (FAILED/NOT_PROCESSED)',
+    is5InternetRetryEmpty: 'Nothing to retry.',
+    is5Outcome: 'Outcome',
     emailTitle: 'Email',
     emailLead:
       'Sender and mail system status for this complex. Provider secrets stay on the server only.',
@@ -7459,6 +7541,47 @@ export const bg: Messages = {
     is4SupportFeeRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
     is4SupportFeeRetryEmpty: 'Няма редове за повтор.',
     is4Outcome: 'Резултат',
+    is5InternetName: 'Интернет (opening)',
+    is5InternetDesc:
+      'Начална инвентаризация на абонаменти Internet без connect WO и без фиктивни плащания (IS-5).',
+    is5InternetStepVerify: 'Проверка opening Internet',
+    is5InternetManualConfirm: 'Потвърждавам: началните абонаменти Internet са сверени',
+    is5InternetVerifiedExisting: 'Съществуващите абонаменти са проверени (без презапис)',
+    is5InternetManualHint:
+      'Оперативни connect/disconnect са в Интернет. Тук само начално състояние към датата на преход.',
+    is5InternetSsotNote:
+      'Канон: internet_subscriptions + internet_ledger. paid_through ≠ payment. request_internet_connect е забранен. Книгата е SSOT за апартаменти.',
+    is5InternetXlsxHint:
+      'Шаблон subscriptions + BG/RU/EN. Preview не пише. Конфликт → ERROR. Без WO и без synthetic payments.',
+    is5InternetXlsxInstructions: 'Вижте листовете instructions_* в шаблона.',
+    is5ColApartment: 'apartment_number',
+    is5ColTariffCode: 'tariff_code',
+    is5ColStatus: 'status',
+    is5ColConnectionDate: 'connection_date',
+    is5ColTransitionDate: 'transition_date',
+    is5ColPaidThrough: 'paid_through',
+    is5ColOpeningDebt: 'opening_debt',
+    is5ColOpeningCredit: 'opening_credit',
+    is5ColSourceRef: 'source_reference',
+    is5ColNotes: 'notes',
+    is5InternetEmptySheet: 'Листът subscriptions е празен.',
+    is5InternetNoSyntheticPayments:
+      'Synthetic payments са забранени. paid_through задава next_charge_on без payment редове.',
+    is5InternetFixErrors: 'Поправете CONFLICT/ERROR преди commit на opening.',
+    is5InternetConfirmButton: 'Потвърди opening (RPC)',
+    is5InternetConfirmImport:
+      'Потвърдете импорт на начално състояние Internet? Съществуващите абонаменти не се презаписват. Не се създават connect WO или плащания.',
+    is5InternetImportCommitted:
+      'Opening Internet е приложен; batch е committed. Synthetic payments = false · work orders = false.',
+    is5InternetNoOverwrite:
+      'IS-5 Q4/Q5: conflict → ERROR, без overwrite. Preview не пише. Commit само чрез import_internet_opening_state.',
+    is5InternetPartialCommit:
+      'Частичен commit: CREATED {c} · SKIPPED {s} · CONFLICT {x} · FAILED {f} · NOT_PROCESSED {n}',
+    is5InternetPartialNotFullySuccessful:
+      'Пакетът не е напълно успешен. Повторете само FAILED/NOT_PROCESSED.',
+    is5InternetRetryMissing: 'Повтори липсващите (FAILED/NOT_PROCESSED)',
+    is5InternetRetryEmpty: 'Няма редове за повтор.',
+    is5Outcome: 'Резултат',
     emailTitle: 'Електронна поща',
     emailLead:
       'Изпращач и статус на пощата за този комплекс. Тайните на доставчика остават само на сървъра.',

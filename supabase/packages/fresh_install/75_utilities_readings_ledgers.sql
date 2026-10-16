@@ -34,7 +34,8 @@ create table if not exists public.water_readings (
   reading_date date not null,
   previous_value numeric(12, 3) not null,
   current_value numeric(12, 3) not null,
-  tariff_id uuid not null,
+  -- nullable tariff_id: opening inventarisation rows (MTR-3) use tariff_eur_per_m3 = 0
+  tariff_id uuid null,
   tariff_eur_per_m3 numeric(12, 4) not null,
   consumption_m3 numeric(12, 3)
     generated always as (current_value - previous_value) stored,
@@ -46,6 +47,9 @@ create table if not exists public.water_readings (
   submitted_via text not null,
   idempotency_key uuid not null,
   status text not null default 'active',
+  reading_kind text not null default 'operational',
+  source_reference text null,
+  corrects_reading_id uuid null,
   reversed_at timestamptz null,
   reversed_by_email text null,
   reversal_reason text null,
@@ -65,6 +69,8 @@ create table if not exists public.water_readings (
       )
     ),
   constraint water_readings_status_check check (status in ('active', 'reversed')),
+  constraint water_readings_reading_kind_check
+    check (reading_kind in ('opening', 'operational', 'correction')),
   constraint water_readings_reversal_metadata_check
     check (
       (
@@ -99,6 +105,9 @@ create index if not exists water_readings_meter_date_created_idx
   on public.water_readings (meter_id, reading_date desc, created_at desc);
 create index if not exists water_readings_status_idx
   on public.water_readings (status);
+create unique index if not exists water_readings_one_active_opening_per_meter_idx
+  on public.water_readings (meter_id)
+  where reading_kind = 'opening' and status = 'active';
 
 create table if not exists public.water_ledger (
   id uuid primary key default gen_random_uuid(),
@@ -144,8 +153,19 @@ create table if not exists public.meter_readings (
   submitted_source text null,
   idempotency_key uuid null,
   electricity_meter_id uuid null,
+  status text not null default 'active',
+  reading_kind text not null default 'operational',
+  source_reference text null,
+  corrects_reading_id bigint null,
+  reversed_at timestamptz null,
+  reversed_by_email text null,
+  reversal_reason text null,
   constraint meter_readings_submitted_source_chk
-    check (submitted_source is null or submitted_source in ('owner', 'staff'))
+    check (submitted_source is null or submitted_source in ('owner', 'staff', 'system')),
+  constraint meter_readings_status_check
+    check (status in ('active', 'reversed')),
+  constraint meter_readings_reading_kind_check
+    check (reading_kind in ('opening', 'operational', 'correction'))
 );
 
 create unique index if not exists meter_readings_electricity_idempotency_idx

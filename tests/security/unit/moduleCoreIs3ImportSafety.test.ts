@@ -55,7 +55,7 @@ describe('IS-3 import safety · atomic feasibility', () => {
     });
     expect(audit.atomic_transaction).toBe(false);
     expect(audit.chargesGenerated).toBe(false);
-    expect(audit.opening_reading_row_commit).toBe('BLOCKED');
+    expect(audit.opening_reading_row_commit).toBe('ENABLED');
   });
 });
 

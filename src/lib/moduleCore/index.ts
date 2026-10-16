@@ -50,6 +50,7 @@ export {
   buildMeterErrorReportXlsx,
   downloadMeterErrorReport,
   isOpeningReadingRowCommitBlocked,
+  isOpeningReadingRowCommitEnabled,
 } from '@/lib/moduleCore/adapters/metersOpening';
 export {
   waterOpeningAdapter,

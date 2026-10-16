@@ -8,8 +8,8 @@ import {
 import { PROPERTY_BOOK_MODULE_KEY } from '@/lib/moduleCore/adapters/propertyBookOpening';
 
 /**
- * IS-3 Electricity meters opening adapter.
- * Inventory via assign_electricity_meter. Reading-row commit BLOCKED (charges).
+ * IS-3 / MTR-3 Electricity meters opening adapter.
+ * Inventory via assign_electricity_meter + register_electricity_opening_reading (charge-free).
  */
 export const electricityOpeningAdapter: ModuleSetupAdapter = {
   registration: {

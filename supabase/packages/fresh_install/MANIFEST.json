@@ -20,8 +20,13 @@
     "70_tariff_catalog_shell.sql",
     "75_utilities_readings_ledgers.sql",
     "80_capital_repair_operational_rpcs.sql",
+    "82_electricity_meter_assign_replace_rpcs.sql",
+    "83_opening_readings_and_safe_corrections.sql",
+    "83f_charged_paid_reading_corrections.sql",
+    "84_utility_balance_payment_rpcs.sql",
     "85_tariff_versions_schema.sql",
     "86_distributive_block_amadeus11_sf_cutover.sql",
+    "87_utility_submit_resolve_packaging.sql",
     "90_first_admin_bootstrap.sql"
   ],
   "companionMigrations": [
@@ -29,6 +34,14 @@
     "supabase/migrations/20261028120000_is9a_fresh_install_book_auth_capital_tariff_ddl.sql",
     "supabase/migrations/20261029120000_is9b_fresh_install_complete_dependencies_ddl.sql",
     "supabase/migrations/20261030120000_is10d_distributive_neutralize_amadeus11_sf_cutover.sql"
+  ],
+  "chronologicalMigrationsPackaged": [
+    "supabase/migrations/20261109120000_mtr2_electricity_meter_assign_replace.sql",
+    "supabase/migrations/20261109130000_mtr3_opening_readings_and_safe_corrections.sql",
+    "supabase/migrations/20261109130100_mtr3_submit_electricity_active_filter.sql",
+    "supabase/migrations/20261109140000_mtr3f_charged_paid_reading_corrections.sql",
+    "supabase/migrations/20261109150000_mtr4_utility_balance_payment_rpcs.sql",
+    "supabase/migrations/20261109151000_mtr4_utility_submit_resolve_packaging.sql"
   ],
   "companionMigration": "supabase/migrations/20261030120000_is10d_distributive_neutralize_amadeus11_sf_cutover.sql",
   "requiredExtensions": ["pgcrypto"],
@@ -84,6 +97,17 @@
     "public.get_capital_repair_balance(bigint)",
     "public.charge_capital_repair(bigint,uuid,integer,text,uuid)",
     "public.resolve_capital_tariff_for_year(integer)",
+    "public.assign_electricity_meter(bigint,text,numeric,numeric,date)",
+    "public.replace_electricity_meter(bigint,text,numeric,numeric,date,text)",
+    "public.register_water_opening_reading(bigint,numeric,date,text,uuid)",
+    "public.register_electricity_opening_reading(bigint,numeric,numeric,date,text,uuid)",
+    "public.correct_water_reading(uuid,numeric,text,uuid)",
+    "public.correct_electricity_reading(bigint,bigint,numeric,numeric,text,uuid)",
+    "public.get_water_balance(bigint)",
+    "public.get_electricity_balance(bigint)",
+    "public.record_electricity_payment(bigint,numeric,text,uuid)",
+    "public.submit_water_reading(bigint,numeric,date,uuid)",
+    "public.submit_electricity_reading(bigint,numeric,numeric,date,uuid)",
     "public.install_bootstrap_claim_first_admin(text,text)",
     "public.install_bootstrap_set_approval(text,text)"
   ],
@@ -96,7 +120,10 @@
     "57_general_meetings before 85_tariff_versions FK attach",
     "60_module_catalog before 70_tariff_catalog",
     "70_tariff_catalog before 85_tariff_versions",
-    "50_capital tables before 80/85 capital RPCs"
+    "50_capital tables before 80/85 capital RPCs",
+    "20_electricity_meters + 05_auth before 82 assign/replace RPCs",
+    "75 utilities ledgers before 84 balance/payment RPCs",
+    "85 tariff_versions before 87 submit/resolve packaging"
   ],
   "safeFailureConditions": [
     "Preflight refuses populated properties/staff/ledgers",
@@ -110,7 +137,6 @@
   "explicitRemainingGaps": [
     "publish_tariff_version_full_rpc_from_migrations",
     "charge_capital_repair_bulk_and_year_bulk",
-    "water_electricity_submit_operational_rpcs",
     "full_property_book_import_transfer_rpc_surface",
     "rental_management_not_implemented"
   ],

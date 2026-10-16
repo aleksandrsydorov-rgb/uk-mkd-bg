@@ -114,6 +114,7 @@ import { AdminBudget } from '@/components/admin/AdminBudget';
 import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
+import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
 import { AdminEmailSettings } from '@/components/admin/AdminEmailSettings';
 import { AdminInitialSetup } from '@/components/admin/AdminInitialSetup';
@@ -191,8 +192,12 @@ import {
   formatElectricityTariff,
   canSubmitElectricityStaff,
   canManageElectricityMeter,
+  canCorrectElectricityReading,
   activeElectricityMeter,
   electricityActiveMeterReadings,
+  electricityPairIsActive,
+  estimateElectricityCorrectionDeltaEur,
+  latestCorrectableElectricityPair,
   pairElectricityReadings,
   displayElectricityMeterNumber,
   parseElectricityMode,
@@ -200,6 +205,8 @@ import {
   mapSubmitElectricityError,
   type ElectricityMode,
   type ElectricityMeter,
+  type ElectricityPair,
+  type ElectricityChargeCorrectionRef,
   type CurrentElectricityTariffView,
 } from '@/lib/electricity';
 import { parseRatesJson } from '@/lib/tariffs';
@@ -812,6 +819,14 @@ function AdminPortal() {
   const [elReplaceNight, setElReplaceNight] = useState('');
   const [elReplaceDate, setElReplaceDate] = useState(todayIsoDate());
   const [elReplaceReason, setElReplaceReason] = useState('');
+  const [elCorrectPairKey, setElCorrectPairKey] = useState<string | null>(null);
+  const [elCorrectDay, setElCorrectDay] = useState('');
+  const [elCorrectNight, setElCorrectNight] = useState('');
+  const [elCorrectReason, setElCorrectReason] = useState('');
+  const [elCorrectConfirm, setElCorrectConfirm] = useState(false);
+  const [elCorrectBusy, setElCorrectBusy] = useState(false);
+  const [elCorrectCharge, setElCorrectCharge] = useState<ElectricityChargeCorrectionRef | null>(null);
+  const elCorrectKeyRef = useRef(crypto.randomUUID());
 
   const [showAnnForm, setShowAnnForm] = useState(false);
   const [annForm, setAnnForm] = useState({ title: '', body: '', created_by: 'УК' });
@@ -2056,6 +2071,99 @@ function AdminPortal() {
       }
     } catch (e: any) {
       setError(e?.message ?? t('admin.aptRetireFailed'));
+    }
+  }
+
+  function closeElectricityCorrection() {
+    setElCorrectPairKey(null);
+    setElCorrectDay('');
+    setElCorrectNight('');
+    setElCorrectReason('');
+    setElCorrectConfirm(false);
+    setElCorrectBusy(false);
+    setElCorrectCharge(null);
+  }
+
+  async function openElectricityCorrection(pair: ElectricityPair) {
+    if (pair.day_reading_id == null || pair.night_reading_id == null) return;
+    setError(null);
+    setElCorrectPairKey(pair.key);
+    setElCorrectDay(pair.day != null ? String(pair.day) : '');
+    setElCorrectNight(pair.night != null ? String(pair.night) : '');
+    setElCorrectReason('');
+    setElCorrectConfirm(false);
+    setElCorrectCharge(null);
+    elCorrectKeyRef.current = crypto.randomUUID();
+    const { data, error: qErr } = await supabase
+      .from('electricity_charges')
+      .select(
+        'id, day_reading_id, night_reading_id, previous_day, previous_night, day_tariff_eur_per_kwh, night_tariff_eur_per_kwh, total_amount_eur',
+      )
+      .eq('day_reading_id', pair.day_reading_id)
+      .eq('night_reading_id', pair.night_reading_id)
+      .maybeSingle();
+    if (qErr && !isMissingRelation(qErr, 'electricity_charges')) {
+      setError(qErr.message);
+      return;
+    }
+    const charge = (data as ElectricityChargeCorrectionRef | null) ?? null;
+    if (!canCorrectElectricityReading(staffRole, staffActive, !!charge)) {
+      closeElectricityCorrection();
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    setElCorrectCharge(charge);
+  }
+
+  async function handleCorrectElectricityReading() {
+    if (!elCorrectPairKey) return;
+    const day = Number(String(elCorrectDay).replace(',', '.'));
+    const night = Number(String(elCorrectNight).replace(',', '.'));
+    if (!Number.isFinite(day) || !Number.isFinite(night) || day < 0 || night < 0) {
+      setError(t('account.utilNeedNumber'));
+      return;
+    }
+    if (!elCorrectConfirm || !elCorrectReason.trim()) {
+      setError(t('admin.errCorrectionReason'));
+      return;
+    }
+    const hasCharge = !!elCorrectCharge;
+    if (!canCorrectElectricityReading(staffRole, staffActive, hasCharge)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    const selectedId = elMeterPropertyId || (properties[0] ? String(properties[0].id) : '');
+    const pairs = pairElectricityReadings(
+      meterReadings.filter((m) => String(m.property_id) === selectedId),
+      electricityMeters,
+    );
+    const pair = pairs.find((p) => p.key === elCorrectPairKey) ?? null;
+    if (!pair?.day_reading_id || !pair.night_reading_id) {
+      setError(t('admin.errCorrectionNotActive'));
+      return;
+    }
+    setElCorrectBusy(true);
+    setError(null);
+    try {
+      const { error: rpcErr } = await supabase.rpc('correct_electricity_reading', {
+        p_day_reading_id: pair.day_reading_id,
+        p_night_reading_id: pair.night_reading_id,
+        p_corrected_day: Number(day.toFixed(3)),
+        p_corrected_night: Number(night.toFixed(3)),
+        p_reason: elCorrectReason.trim(),
+        p_idempotency_key: elCorrectKeyRef.current,
+      });
+      if (rpcErr) {
+        setError(t(mapAdminRpcError(rpcErr.message)));
+        return;
+      }
+      elCorrectKeyRef.current = crypto.randomUUID();
+      closeElectricityCorrection();
+      await loadAll();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setElCorrectBusy(false);
     }
   }
 
@@ -4074,6 +4182,27 @@ function AdminPortal() {
         );
         const elSnapshot = electricityActiveMeterReadings(elPairs, activeEl);
         const retiredEl = selectedElMeters.filter((m) => m.retired_at);
+        const elCorrectable = latestCorrectableElectricityPair(elPairs, activeEl);
+        const elCorrectTarget =
+          elCorrectPairKey != null
+            ? elPairs.find((p) => p.key === elCorrectPairKey) ?? null
+            : null;
+        const elCorrectDayNum = Number(String(elCorrectDay).replace(',', '.'));
+        const elCorrectNightNum = Number(String(elCorrectNight).replace(',', '.'));
+        const elCorrectHasCharge = !!elCorrectCharge;
+        const elCorrectDelta =
+          elCorrectCharge &&
+          Number.isFinite(elCorrectDayNum) &&
+          Number.isFinite(elCorrectNightNum)
+            ? estimateElectricityCorrectionDeltaEur(
+                elCorrectCharge,
+                elCorrectDayNum,
+                elCorrectNightNum,
+              )
+            : null;
+        const canShowElCorrectPanel =
+          !!elCorrectTarget &&
+          canCorrectElectricityReading(staffRole, staffActive, elCorrectHasCharge);
         return (
           <div className="space-y-4">
             <AdminPageHeader
@@ -4120,6 +4249,7 @@ function AdminPortal() {
                   setElMeterPropertyId(id === '' ? '' : String(id));
                   setShowElAssign(false);
                   setShowElReplace(false);
+                  closeElectricityCorrection();
                 }}
               />
             </AdminCard>
@@ -4322,44 +4452,144 @@ function AdminPortal() {
             )}
 
             {elTab === 'readings' && (
-              elPairs.length === 0 ? (
-                <AdminEmptyState title={t('admin.noReadings')} />
-              ) : (
-                <AdminTableShell>
-                  <table className="w-full min-w-[40rem] text-sm">
-                    <thead>
-                      <tr className={adminTableHeadRowClass}>
-                        <th className={adminTableCellClass}>{t('admin.date')}</th>
-                        <th className={adminTableCellClass}>{t('account.elMeter')}</th>
-                        <th className={adminTableCellClass}>{t('account.elDay')}</th>
-                        <th className={adminTableCellClass}>{t('account.elNight')}</th>
-                        <th className={adminTableCellClass}>{t('account.elConsDay')}</th>
-                        <th className={adminTableCellClass}>{t('account.elConsNight')}</th>
-                        <th className={adminTableCellClass}>{t('account.elSubmittedBy')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {elPairs.slice(0, 100).map((row) => (
-                        <tr key={row.key} className={adminTableRowClass}>
-                          <td className={adminTableCellClass}>{formatOwnerDate(row.reading_date)}</td>
-                          <td className={adminTableCellClass}>{displayElectricityMeterNumber(row.meter_number) || '—'}</td>
-                          <td className={adminTableCellClass}>{row.day != null ? `${formatKwh(row.day, locale)} ${t('account.kwh')}` : '—'}</td>
-                          <td className={adminTableCellClass}>{row.night != null ? `${formatKwh(row.night, locale)} ${t('account.kwh')}` : '—'}</td>
-                          <td className={adminTableCellClass}>{row.consumptionDay != null ? `${formatKwh(row.consumptionDay, locale)} ${t('account.kwh')}` : '—'}</td>
-                          <td className={adminTableCellClass}>{row.consumptionNight != null ? `${formatKwh(row.consumptionNight, locale)} ${t('account.kwh')}` : '—'}</td>
-                          <td className={adminTableCellClass}>
-                            {row.source === 'owner'
-                              ? t('account.elByOwner')
-                              : row.source === 'staff'
-                                ? t('account.elByStaff')
-                                : (row.submitted_by ?? '—')}
-                          </td>
+              <div className="space-y-3">
+                {canShowElCorrectPanel && elCorrectTarget ? (
+                  <AdminMeterCorrectionPanel
+                    originalSummary={
+                      <p>
+                        {t('admin.meterCorrectionOriginalEl', {
+                          day: `${formatKwh(Number(elCorrectTarget.day), locale)} ${t('account.kwh')}`,
+                          night: `${formatKwh(Number(elCorrectTarget.night), locale)} ${t('account.kwh')}`,
+                          consDay:
+                            elCorrectTarget.consumptionDay != null
+                              ? `${formatKwh(elCorrectTarget.consumptionDay, locale)} ${t('account.kwh')}`
+                              : '—',
+                          consNight:
+                            elCorrectTarget.consumptionNight != null
+                              ? `${formatKwh(elCorrectTarget.consumptionNight, locale)} ${t('account.kwh')}`
+                              : '—',
+                        })}
+                      </p>
+                    }
+                    valueFields={
+                      <>
+                        <label className="block text-secondary">
+                          {t('admin.meterCorrectionNewDay')}
+                          <input
+                            className={`mt-1 block w-full ${adminFieldClass}`}
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={elCorrectDay}
+                            onChange={(e) => setElCorrectDay(e.target.value)}
+                            disabled={elCorrectBusy}
+                            required
+                          />
+                        </label>
+                        <label className="block text-secondary">
+                          {t('admin.meterCorrectionNewNight')}
+                          <input
+                            className={`mt-1 block w-full ${adminFieldClass}`}
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={elCorrectNight}
+                            onChange={(e) => setElCorrectNight(e.target.value)}
+                            disabled={elCorrectBusy}
+                            required
+                          />
+                        </label>
+                      </>
+                    }
+                    reason={elCorrectReason}
+                    onReasonChange={setElCorrectReason}
+                    confirmed={elCorrectConfirm}
+                    onConfirmedChange={setElCorrectConfirm}
+                    hasCharge={elCorrectHasCharge}
+                    estimatedDeltaEur={elCorrectDelta}
+                    busy={elCorrectBusy}
+                    onSubmit={() => void handleCorrectElectricityReading()}
+                    onCancel={closeElectricityCorrection}
+                  />
+                ) : null}
+                {elPairs.length === 0 ? (
+                  <AdminEmptyState title={t('admin.noReadings')} />
+                ) : (
+                  <AdminTableShell>
+                    <table className="w-full min-w-[40rem] text-sm">
+                      <thead>
+                        <tr className={adminTableHeadRowClass}>
+                          <th className={adminTableCellClass}>{t('admin.date')}</th>
+                          <th className={adminTableCellClass}>{t('account.elMeter')}</th>
+                          <th className={adminTableCellClass}>{t('account.elDay')}</th>
+                          <th className={adminTableCellClass}>{t('account.elNight')}</th>
+                          <th className={adminTableCellClass}>{t('account.elConsDay')}</th>
+                          <th className={adminTableCellClass}>{t('account.elConsNight')}</th>
+                          <th className={adminTableCellClass}>{t('account.elSubmittedBy')}</th>
+                          <th className={adminTableCellClass} />
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </AdminTableShell>
-              )
+                      </thead>
+                      <tbody>
+                        {elPairs.slice(0, 100).map((row) => {
+                          const reversed = row.status === 'reversed';
+                          // Uncharged gate for button visibility; charged/paid re-checked after charge fetch.
+                          const showCorrect =
+                            elCorrectable?.key === row.key &&
+                            electricityPairIsActive(row) &&
+                            canCorrectElectricityReading(staffRole, staffActive, false);
+                          return (
+                            <tr
+                              key={row.key}
+                              className={`${adminTableRowClass}${reversed ? ' text-muted line-through' : ''}`}
+                            >
+                              <td className={adminTableCellClass}>{formatOwnerDate(row.reading_date)}</td>
+                              <td className={adminTableCellClass}>
+                                {displayElectricityMeterNumber(row.meter_number) || '—'}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                {row.day != null ? `${formatKwh(row.day, locale)} ${t('account.kwh')}` : '—'}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                {row.night != null
+                                  ? `${formatKwh(row.night, locale)} ${t('account.kwh')}`
+                                  : '—'}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                {row.consumptionDay != null
+                                  ? `${formatKwh(row.consumptionDay, locale)} ${t('account.kwh')}`
+                                  : '—'}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                {row.consumptionNight != null
+                                  ? `${formatKwh(row.consumptionNight, locale)} ${t('account.kwh')}`
+                                  : '—'}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                {row.source === 'owner'
+                                  ? t('account.elByOwner')
+                                  : row.source === 'staff'
+                                    ? t('account.elByStaff')
+                                    : (row.submitted_by ?? '—')}
+                              </td>
+                              <td className={adminTableCellClass}>
+                                {showCorrect ? (
+                                  <button
+                                    type="button"
+                                    className="text-sm text-accent hover:underline"
+                                    onClick={() => void openElectricityCorrection(row)}
+                                  >
+                                    {t('admin.meterCorrectionAction')}
+                                  </button>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </AdminTableShell>
+                )}
+              </div>
             )}
 
             {showElectricityFinance && (

@@ -81,12 +81,12 @@ describe('IS-3 · adapter registration', () => {
     expect(setupCompleteFromDraft(adapter.registration, { confirmed: true })).toBe(true);
   });
 
-  it('marks opening reading row commit BLOCKED', () => {
-    expect(OPENING_READING_ROW_COMMIT).toBe('BLOCKED');
-    expect(isOpeningReadingRowCommitBlocked()).toBe(true);
+  it('marks opening reading row commit ENABLED (MTR-3 charge-free)', () => {
+    expect(OPENING_READING_ROW_COMMIT).toBe('ENABLED');
+    expect(isOpeningReadingRowCommitBlocked()).toBe(false);
     expect(
       getModuleAdapter(WATER_MODULE_KEY)?.registration.legalOrOperationalGates,
-    ).toContain('opening_reading_row_commit_BLOCKED');
+    ).toContain('opening_reading_row_commit_ENABLED');
   });
 });
 
@@ -168,7 +168,7 @@ describe('IS-3 · water validation and classify', () => {
     const payloads = waterAssignPayloadsFromPreview(preview);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]?.propertyId).toBe(1);
-    expect(preview.rows.every((r) => r.data.opening_reading_row_commit === 'BLOCKED')).toBe(true);
+    expect(preview.rows.every((r) => r.data.opening_reading_row_commit === 'ENABLED')).toBe(true);
   });
 });
 

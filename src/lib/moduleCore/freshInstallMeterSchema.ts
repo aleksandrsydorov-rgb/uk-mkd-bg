@@ -43,8 +43,13 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '70_tariff_catalog_shell.sql',
   '75_utilities_readings_ledgers.sql',
   '80_capital_repair_operational_rpcs.sql',
+  '82_electricity_meter_assign_replace_rpcs.sql',
+  '83_opening_readings_and_safe_corrections.sql',
+  '83f_charged_paid_reading_corrections.sql',
+  '84_utility_balance_payment_rpcs.sql',
   '85_tariff_versions_schema.sql',
   '86_distributive_block_amadeus11_sf_cutover.sql',
+  '87_utility_submit_resolve_packaging.sql',
   '90_first_admin_bootstrap.sql',
 ] as const;
 
@@ -81,11 +86,10 @@ export const CANONICAL_IS9B_SCHEMA_PREREQUISITES = [
   'public.install_bootstrap_state',
 ] as const;
 
-/** Explicit greenfield gaps after IS-9b — isolated empty-env proof still required. */
+/** Explicit greenfield gaps after IS-9b / MTR-2 — isolated empty-env proof still required. */
 export const REMAINING_GREENFIELD_MIGRATION_GAPS = [
   'publish_tariff_version_full_rpc_from_migrations',
   'charge_capital_repair_bulk_and_year_bulk',
-  'water_electricity_submit_operational_rpcs',
   'full_property_book_import_transfer_rpc_surface',
   'rental_management_not_implemented',
 ] as const;
@@ -564,6 +568,21 @@ export function assertFreshInstallDependencyOrder(orderedFiles: readonly string[
   const meetingsBeforeTariffVersions =
     idx('57_general_meetings_baseline.sql') >= 0 &&
     idx('85_tariff_versions_schema.sql') > idx('57_general_meetings_baseline.sql');
+  const electricityMetersBeforeAssign =
+    idx('20_electricity_meters.sql') >= 0 &&
+    idx('82_electricity_meter_assign_replace_rpcs.sql') > idx('20_electricity_meters.sql') &&
+    idx('05_auth_staff_helpers.sql') >= 0 &&
+    idx('82_electricity_meter_assign_replace_rpcs.sql') > idx('05_auth_staff_helpers.sql');
+  const utilitiesBeforeOpeningRpcs =
+    idx('75_utilities_readings_ledgers.sql') >= 0 &&
+    idx('83_opening_readings_and_safe_corrections.sql') > idx('75_utilities_readings_ledgers.sql') &&
+    idx('83_opening_readings_and_safe_corrections.sql') > idx('82_electricity_meter_assign_replace_rpcs.sql') &&
+    idx('83f_charged_paid_reading_corrections.sql') > idx('83_opening_readings_and_safe_corrections.sql');
+  const balanceBeforeTariffVersions =
+    idx('84_utility_balance_payment_rpcs.sql') > idx('75_utilities_readings_ledgers.sql') &&
+    idx('85_tariff_versions_schema.sql') > idx('84_utility_balance_payment_rpcs.sql');
+  const submitAfterTariffVersions =
+    idx('87_utility_submit_resolve_packaging.sql') > idx('85_tariff_versions_schema.sql');
   return {
     ok:
       preflightFirst &&
@@ -571,7 +590,11 @@ export function assertFreshInstallDependencyOrder(orderedFiles: readonly string[
       bookAuthBeforeMeterRls &&
       catalogBeforeTariffVersions &&
       capitalTablesBeforeOps &&
-      meetingsBeforeTariffVersions,
+      meetingsBeforeTariffVersions &&
+      electricityMetersBeforeAssign &&
+      utilitiesBeforeOpeningRpcs &&
+      balanceBeforeTariffVersions &&
+      submitAfterTariffVersions,
     preflightFirst,
     registryBeforeBookAuth,
     bookAuthBeforeMeterRls,

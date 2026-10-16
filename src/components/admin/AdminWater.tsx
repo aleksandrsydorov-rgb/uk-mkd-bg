@@ -10,12 +10,14 @@ import { isMissingRelation } from '@/lib/polls';
 import {
   balanceTone,
   canAssignWaterMeter,
+  canCorrectWaterReading,
   canManageWaterFinance,
   canManageWaterTariff,
   canSeeWaterAdmin,
   canSubmitWaterStaff,
   currentWaterTariffViewFromCore,
   emptyBalance,
+  estimateWaterCorrectionDeltaEur,
   formatEur,
   formatM3,
   lastActiveReading,
@@ -23,6 +25,7 @@ import {
   todayIsoDate,
   parseWaterVolume,
   normalizeWaterVolume,
+  waterReadingHasCharge,
   DEFAULT_WATER_MODE,
   type UtilityBalance,
   type WaterLedger,
@@ -45,6 +48,7 @@ import {
   type AdminUtilityTab,
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
+import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 
 type PropertyOption = {
   id: number;
@@ -138,6 +142,11 @@ export function AdminWater({
   const [submitValue, setSubmitValue] = useState('');
   const [submitDate, setSubmitDate] = useState(todayIsoDate());
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [correctReadingId, setCorrectReadingId] = useState<string | null>(null);
+  const [correctValue, setCorrectValue] = useState('');
+  const [correctReason, setCorrectReason] = useState('');
+  const [correctConfirm, setCorrectConfirm] = useState(false);
+  const [correctBusy, setCorrectBusy] = useState(false);
   const [localTab, setLocalTab] = useState<AdminUtilityTab>('overview');
   const activeTab = onTabChange
     ? parseAdminUtilityTab(tab, allowedWaterTabs)
@@ -145,6 +154,7 @@ export function AdminWater({
 
   const payKeyRef = useRef(crypto.randomUUID());
   const submitKeyRef = useRef(crypto.randomUUID());
+  const correctKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (propertyId === '' && sorted[0]) setPropertyId(sorted[0].id);
@@ -169,6 +179,14 @@ export function AdminWater({
   const lastReading = lastActiveReading(
     activeMeter ? readings.filter((r) => r.meter_id === activeMeter.id) : readings,
   );
+  const correctTarget =
+    correctReadingId != null ? readings.find((r) => r.id === correctReadingId) ?? null : null;
+  const correctParsed = parseWaterVolume(String(correctValue));
+  const correctHasCharge = waterReadingHasCharge(correctTarget);
+  const correctDelta =
+    correctTarget && Number.isFinite(correctParsed)
+      ? estimateWaterCorrectionDeltaEur(correctTarget, normalizeWaterVolume(correctParsed))
+      : null;
 
   const loadTariffs = useCallback(async () => {
     if (!canSee) return;
@@ -417,6 +435,63 @@ export function AdminWater({
     await loadPropertyWater();
   }
 
+  function openWaterCorrection(row: WaterReading) {
+    const hasCharge = waterReadingHasCharge(row);
+    if (!canCorrectWaterReading(staffRole, staffActive, hasCharge)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    setCorrectReadingId(row.id);
+    setCorrectValue(String(row.current_value));
+    setCorrectReason('');
+    setCorrectConfirm(false);
+    correctKeyRef.current = crypto.randomUUID();
+    setError(null);
+    setSuccess(null);
+  }
+
+  function closeWaterCorrection() {
+    setCorrectReadingId(null);
+    setCorrectValue('');
+    setCorrectReason('');
+    setCorrectConfirm(false);
+    setCorrectBusy(false);
+  }
+
+  async function handleCorrectReading() {
+    if (!correctTarget) return;
+    const hasCharge = waterReadingHasCharge(correctTarget);
+    if (!canCorrectWaterReading(staffRole, staffActive, hasCharge)) {
+      setError(t('admin.errNoAccess'));
+      return;
+    }
+    if (!correctConfirm || !correctReason.trim()) {
+      setError(t('admin.errCorrectionReason'));
+      return;
+    }
+    const parsed = parseWaterVolume(String(correctValue));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError(t('account.utilNeedNumber'));
+      return;
+    }
+    setCorrectBusy(true);
+    const { error: rpcErr } = await supabase.rpc('correct_water_reading', {
+      p_reading_id: correctTarget.id,
+      p_corrected_value: normalizeWaterVolume(parsed),
+      p_reason: correctReason.trim(),
+      p_idempotency_key: correctKeyRef.current,
+    });
+    setCorrectBusy(false);
+    if (rpcErr) {
+      rpcFail(rpcErr.message);
+      return;
+    }
+    correctKeyRef.current = crypto.randomUUID();
+    closeWaterCorrection();
+    flash(t('admin.meterCorrectionOk'));
+    await loadPropertyWater();
+  }
+
   if (!canSee) {
     return (
       <AdminCard>
@@ -468,6 +543,7 @@ export function AdminWater({
             setPropertyId(id);
             setSuccess(null);
             setError(null);
+            closeWaterCorrection();
           }}
         />
       </AdminCard>
@@ -756,6 +832,43 @@ export function AdminWater({
       {activeTab === 'readings' && (
       <div className={adminCardClass + ' p-4 md:p-5'}>
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.readingHistory')}</p>
+        {correctTarget &&
+          canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
+            <AdminMeterCorrectionPanel
+              originalSummary={
+                <p>
+                  {t('admin.meterCorrectionOriginal', {
+                    current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
+                    consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
+                  })}
+                </p>
+              }
+              valueFields={
+                <label className="block text-secondary">
+                  {t('admin.meterCorrectionNewValue')}
+                  <input
+                    className={`mt-1 block w-full ${fieldClass}`}
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={correctValue}
+                    onChange={(e) => setCorrectValue(e.target.value)}
+                    disabled={correctBusy}
+                    required
+                  />
+                </label>
+              }
+              reason={correctReason}
+              onReasonChange={setCorrectReason}
+              confirmed={correctConfirm}
+              onConfirmedChange={setCorrectConfirm}
+              hasCharge={correctHasCharge}
+              estimatedDeltaEur={correctDelta}
+              busy={correctBusy}
+              onSubmit={() => void handleCorrectReading()}
+              onCancel={closeWaterCorrection}
+            />
+          )}
         {readings.length === 0 ? (
           <div className="mt-3">
             <AdminEmptyState title={t('admin.noReadings')} />
@@ -774,11 +887,18 @@ export function AdminWater({
                   <th className="py-2 pr-3">{t('admin.charge')}</th>
                   <th className="py-2 pr-3">{t('admin.status')}</th>
                   <th className="py-2 pr-3">{t('account.elSubmittedBy')}</th>
+                  <th className="py-2 pr-3" />
                 </tr>
               </thead>
               <tbody>
                 {readings.map((row) => {
                   const reversed = row.status === 'reversed';
+                  const isLatestCorrectable =
+                    lastReading?.id === row.id && row.status === 'active';
+                  const rowHasCharge = waterReadingHasCharge(row);
+                  const showCorrect =
+                    isLatestCorrectable &&
+                    canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
                   return (
                     <tr key={row.id} className={`border-t border-border ${reversed ? 'text-muted line-through' : ''}`}>
                       <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.reading_date)}</td>
@@ -795,6 +915,17 @@ export function AdminWater({
                           : row.submitted_via === 'owner'
                             ? t('account.elByOwner')
                             : '—'}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {showCorrect ? (
+                          <button
+                            type="button"
+                            className="text-sm text-accent hover:underline"
+                            onClick={() => openWaterCorrection(row)}
+                          >
+                            {t('admin.meterCorrectionAction')}
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   );

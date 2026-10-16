@@ -10,7 +10,9 @@ import {
   type ElectricityAssignPayload,
   type ExistingMeterRef,
   type WaterAssignPayload,
+  OPENING_READING_ROW_COMMIT,
   electricityAssignPayloadsFromPreview,
+  isOpeningReadingRowCommitEnabled,
   waterAssignPayloadsFromPreview,
 } from '@/lib/moduleCore/adapters/metersOpening';
 
@@ -53,6 +55,15 @@ export type AssignWaterFn = (
 ) => Promise<{ ok: true } | { ok: false; message: string }>;
 
 export type AssignElectricityFn = (
+  payload: ElectricityAssignPayload,
+) => Promise<{ ok: true } | { ok: false; message: string }>;
+
+/** Charge-free opening reading row after assign (MTR-3). Never call submit_*. */
+export type RegisterWaterOpeningFn = (
+  payload: WaterAssignPayload,
+) => Promise<{ ok: true } | { ok: false; message: string }>;
+
+export type RegisterElectricityOpeningFn = (
   payload: ElectricityAssignPayload,
 ) => Promise<{ ok: true } | { ok: false; message: string }>;
 
@@ -177,10 +188,13 @@ export async function commitMeterInventoryBatch(args: {
   preview: ImportPreviewResult;
   assignWater: AssignWaterFn;
   assignElectricity: AssignElectricityFn;
+  registerWaterOpening?: RegisterWaterOpeningFn;
+  registerElectricityOpening?: RegisterElectricityOpeningFn;
 }): Promise<MeterCommitBatchResult> {
   const planned = planRowsFromPreview(args.utility, args.preview);
   const results: MeterCommitRowResult[] = [];
   let stopAssign = false;
+  const openingEnabled = isOpeningReadingRowCommitEnabled();
 
   for (const item of planned) {
     if (item.kind === 'skip_preview') {
@@ -215,13 +229,36 @@ export async function commitMeterInventoryBatch(args: {
         : await args.assignElectricity(item.electricity!);
 
     if (assignResult.ok) {
+      let detail = 'assign_ok';
+      const registerOpening =
+        args.utility === 'water' ? args.registerWaterOpening : args.registerElectricityOpening;
+      if (openingEnabled && registerOpening) {
+        const openRes =
+          args.utility === 'water'
+            ? await args.registerWaterOpening!(item.water!)
+            : await args.registerElectricityOpening!(item.electricity!);
+        if (!openRes.ok) {
+          results.push({
+            rowNumber: item.rowNumber,
+            apartmentNumber: item.apartmentNumber,
+            meterNumber: item.meterNumber,
+            propertyId: item.propertyId,
+            outcome: 'FAILED',
+            detail: `assign_ok|opening_failed:${openRes.message}`,
+            attempted: true,
+          });
+          stopAssign = true;
+          continue;
+        }
+        detail = 'assign_ok|opening_reading_ok';
+      }
       results.push({
         rowNumber: item.rowNumber,
         apartmentNumber: item.apartmentNumber,
         meterNumber: item.meterNumber,
         propertyId: item.propertyId,
         outcome: 'CREATED',
-        detail: 'assign_ok',
+        detail,
         attempted: true,
       });
       continue;
@@ -346,7 +383,7 @@ export function meterCommitAuditPayload(batch: MeterCommitBatchResult): Record<s
       detail: r.detail,
       attempted: r.attempted,
     })),
-    opening_reading_row_commit: 'BLOCKED',
+    opening_reading_row_commit: OPENING_READING_ROW_COMMIT,
     atomic_transaction: false,
   };
 }

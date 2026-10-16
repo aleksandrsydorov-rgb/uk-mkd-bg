@@ -114,6 +114,41 @@ export function lastActiveReading(readings: WaterReading[]): WaterReading | null
   return readings.find((r) => r.status === 'active') ?? null;
 }
 
+/** True when the reading already posted an operational charge (MTR-3F charged path). */
+export function waterReadingHasCharge(reading: Pick<WaterReading, 'charge_amount_eur'> | null | undefined) {
+  return Number(reading?.charge_amount_eur ?? 0) > 0;
+}
+
+/** Uncharged corrections: admin or engineer (active). Charged/paid: admin only. Matches MTR-3/3F RPCs. */
+export function canCorrectWaterReading(
+  role?: string | null,
+  active?: boolean | null,
+  hasCharge = false,
+) {
+  if (active !== true) return false;
+  if (hasCharge) return exactStaffRole(role) === STAFF_ROLE_ADMIN;
+  return canAssignWaterMeter(role);
+}
+
+/**
+ * Client-side estimate matching correct_water_reading charged delta.
+ * Returns null when uncharged (no ledger adjustment) or inputs are incomplete.
+ */
+export function estimateWaterCorrectionDeltaEur(
+  reading: Pick<WaterReading, 'previous_value' | 'tariff_eur_per_m3' | 'charge_amount_eur'>,
+  correctedValue: number,
+): number | null {
+  if (!waterReadingHasCharge(reading)) return null;
+  if (!Number.isFinite(correctedValue) || correctedValue < 0) return null;
+  const prev = Number(reading.previous_value);
+  const tariff = Number(reading.tariff_eur_per_m3);
+  if (!Number.isFinite(prev) || !Number.isFinite(tariff)) return null;
+  const newCharge = Math.round((correctedValue - prev) * tariff * 100) / 100;
+  const oldCharge = Number(reading.charge_amount_eur);
+  if (!Number.isFinite(oldCharge)) return null;
+  return Math.round((newCharge - oldCharge) * 100) / 100;
+}
+
 export function mapSubmitWaterError(message: string): 'noMeter' | 'lower' | 'datePrev' | 'future' | 'conflict' | 'disabled' | 'staffOnly' | 'generic' {
   const msg = message.toLowerCase();
   if (msg.includes('water readings are disabled')) return 'disabled';
@@ -207,6 +242,10 @@ export type AdminRpcErrorKey =
   | 'admin.errIdempotency'
   | 'admin.errNoAccess'
   | 'admin.errReadingsDisabled'
+  | 'admin.errCorrectionReason'
+  | 'admin.errCorrectionLatest'
+  | 'admin.errCorrectionNotActive'
+  | 'admin.errCorrectionAdjPosted'
   | 'admin.errGeneric';
 
 export function mapAdminRpcError(message: string): AdminRpcErrorKey {
@@ -215,6 +254,10 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
   if (msg.includes('no active water meter') || msg.includes('no active electricity meter') || msg.includes('electricity meter is not assigned')) return 'admin.errNoMeter';
   if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
+  if (msg.includes('correction reason is required')) return 'admin.errCorrectionReason';
+  if (msg.includes('only the latest active reading may be corrected')) return 'admin.errCorrectionLatest';
+  if (msg.includes('reading is not active')) return 'admin.errCorrectionNotActive';
+  if (msg.includes('financial adjustment already posted')) return 'admin.errCorrectionAdjPosted';
   if (msg.includes('no capital repair tariff')) return 'admin.errCapitalTariff';
   if (msg.includes('no internet tariff')) return 'admin.errInternetTariff';
   if (msg.includes('already connected or pending')) return 'admin.errInternetBusy';

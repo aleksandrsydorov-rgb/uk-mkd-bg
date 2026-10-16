@@ -14,6 +14,8 @@ export type MeterReadingRow = {
   submitted_source?: string | null;
   idempotency_key?: string | null;
   electricity_meter_id?: string | null;
+  status?: string | null;
+  reading_kind?: string | null;
 };
 
 export type ElectricityMeter = {
@@ -43,6 +45,10 @@ export type ElectricityPair = {
   submitted_by: string | null;
   electricity_meter_id: string | null;
   meter_number: string | null;
+  day_reading_id: number | null;
+  night_reading_id: number | null;
+  status: string | null;
+  reading_kind: string | null;
 };
 
 export type ElectricitySubmitResult = {
@@ -99,6 +105,21 @@ export type ElectricityCharge = {
   night_amount_eur: number;
   total_amount_eur: number;
   created_at: string;
+  day_reading_id?: number;
+  night_reading_id?: number;
+};
+
+export type ElectricityChargeCorrectionRef = Pick<
+  ElectricityCharge,
+  | 'id'
+  | 'previous_day'
+  | 'previous_night'
+  | 'day_tariff_eur_per_kwh'
+  | 'night_tariff_eur_per_kwh'
+  | 'total_amount_eur'
+> & {
+  day_reading_id: number;
+  night_reading_id: number;
 };
 
 export type ElectricityLedger = {
@@ -165,6 +186,65 @@ export function canSubmitElectricityStaff(role?: string | null, active?: boolean
 
 export function canManageElectricityMeter(role?: string | null, active?: boolean | null) {
   return canSubmitElectricityStaff(role, active);
+}
+
+/** Uncharged: admin/engineer active. Charged/paid: admin only. Matches MTR-3/3F RPCs. */
+export function canCorrectElectricityReading(
+  role?: string | null,
+  active?: boolean | null,
+  hasCharge = false,
+) {
+  if (active !== true) return false;
+  const r = (role ?? '').trim().toLowerCase();
+  if (hasCharge) return r === 'администрация';
+  return r === 'администрация' || r === 'инженер';
+}
+
+export function electricityPairIsActive(pair: Pick<ElectricityPair, 'status'>) {
+  return !pair.status || pair.status === 'active';
+}
+
+/** Newest-first pairs: first active complete pair for the active meter (MTR-3 latest rule). */
+export function latestCorrectableElectricityPair(
+  pairsNewestFirst: ElectricityPair[],
+  meter: ElectricityMeter | null,
+): ElectricityPair | null {
+  const scoped = meter
+    ? pairsNewestFirst.filter((p) => p.electricity_meter_id === meter.id)
+    : pairsNewestFirst;
+  return (
+    scoped.find(
+      (p) =>
+        electricityPairIsActive(p) &&
+        p.day_reading_id != null &&
+        p.night_reading_id != null &&
+        p.day != null &&
+        p.night != null,
+    ) ?? null
+  );
+}
+
+/**
+ * Client estimate matching charged correct_electricity_reading delta.
+ * Returns null when no charge ref or inputs incomplete — UI must not invent amounts.
+ */
+export function estimateElectricityCorrectionDeltaEur(
+  charge: ElectricityChargeCorrectionRef | null | undefined,
+  correctedDay: number,
+  correctedNight: number,
+): number | null {
+  if (!charge) return null;
+  if (!Number.isFinite(correctedDay) || !Number.isFinite(correctedNight)) return null;
+  if (correctedDay < 0 || correctedNight < 0) return null;
+  const dayAmt =
+    (correctedDay - Number(charge.previous_day)) * Number(charge.day_tariff_eur_per_kwh);
+  const nightAmt =
+    (correctedNight - Number(charge.previous_night)) * Number(charge.night_tariff_eur_per_kwh);
+  if (!Number.isFinite(dayAmt) || !Number.isFinite(nightAmt)) return null;
+  const newTotal = Math.round((dayAmt + nightAmt) * 100) / 100;
+  const oldTotal = Number(charge.total_amount_eur);
+  if (!Number.isFinite(oldTotal)) return null;
+  return Math.round((newTotal - oldTotal) * 100) / 100;
 }
 
 export function activeElectricityMeter(meters: ElectricityMeter[]) {
@@ -242,6 +322,12 @@ export function pairElectricityReadings(
           ? 'staff'
           : null;
     const meterId = dayRow?.electricity_meter_id ?? nightRow?.electricity_meter_id ?? null;
+    const dayStatus = dayRow?.status ?? null;
+    const nightStatus = nightRow?.status ?? null;
+    const status =
+      dayStatus === 'reversed' || nightStatus === 'reversed'
+        ? 'reversed'
+        : dayStatus ?? nightStatus ?? 'active';
     return {
       key,
       reading_date: sample.reading_date ?? '',
@@ -256,6 +342,10 @@ export function pairElectricityReadings(
       submitted_by: sample.submitted_by,
       electricity_meter_id: meterId,
       meter_number: meterId ? meterById.get(meterId)?.meter_number ?? null : null,
+      day_reading_id: dayRow?.id ?? null,
+      night_reading_id: nightRow?.id ?? null,
+      status,
+      reading_kind: dayRow?.reading_kind ?? nightRow?.reading_kind ?? null,
     };
   });
 

@@ -5257,6 +5257,62 @@ export interface Database {
         };
         Returns: Database['public']['Tables']['electricity_meters']['Row'][];
       };
+      register_water_opening_reading: {
+        Args: {
+          p_property_id: number;
+          p_current_value: number;
+          p_reading_date: string;
+          p_source_reference: string;
+          p_idempotency_key: string;
+        };
+        Returns: Database['public']['Tables']['water_readings']['Row'][];
+      };
+      register_electricity_opening_reading: {
+        Args: {
+          p_property_id: number;
+          p_day_reading: number;
+          p_night_reading: number;
+          p_reading_date: string;
+          p_source_reference: string;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          day_reading_id: number;
+          night_reading_id: number;
+          property_id: number;
+          meter_id: string;
+          reading_date: string;
+          day_value: number;
+          night_value: number;
+        }[];
+      };
+      correct_water_reading: {
+        Args: {
+          p_reading_id: string;
+          p_corrected_value: number;
+          p_reason: string;
+          p_idempotency_key: string;
+        };
+        Returns: Database['public']['Tables']['water_readings']['Row'][];
+      };
+      correct_electricity_reading: {
+        Args: {
+          p_day_reading_id: number;
+          p_night_reading_id: number;
+          p_corrected_day: number;
+          p_corrected_night: number;
+          p_reason: string;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          day_reading_id: number;
+          night_reading_id: number;
+          property_id: number;
+          reading_date: string;
+          day_value: number;
+          night_value: number;
+        }[];
+      };
       replace_water_meter: {
         Args: {
           p_property_id: number;

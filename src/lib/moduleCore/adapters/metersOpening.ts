@@ -1,7 +1,7 @@
 /**
- * Phase IS-3 — Water / Electricity meter opening helpers.
- * Inventory via canonical assign_* only. Operational reading-row writes BLOCKED
- * (submit_water_reading / submit_electricity_reading create ledger charges).
+ * Phase IS-3 / MTR-3 — Water / Electricity meter opening helpers.
+ * Inventory via canonical assign_* plus charge-free register_*_opening_reading.
+ * Operational submit_* remain distinct (create ledger charges).
  */
 
 import * as XLSX from 'xlsx';
@@ -12,8 +12,9 @@ export const WATER_MODULE_KEY = 'water';
 export const ELECTRICITY_MODULE_KEY = 'electricity';
 export const METERS_SETUP_SCHEMA_VERSION = '1.0';
 
-/** Opening reading ROWS (water_readings / meter_readings) are not committed by IS-3. */
-export const OPENING_READING_ROW_COMMIT = 'BLOCKED' as const;
+/** Opening reading ROWS via register_*_opening_reading (charge-free). MTR-3 ENABLED. */
+export type OpeningReadingRowCommitMode = 'BLOCKED' | 'ENABLED';
+export const OPENING_READING_ROW_COMMIT: OpeningReadingRowCommitMode = 'ENABLED';
 
 export type MeterUtility = 'water' | 'electricity';
 
@@ -113,8 +114,8 @@ export function validateElectricityMeterRow(row: Record<string, string>): string
 }
 
 /**
- * Opening-reading *row* validation for preview notes only.
- * Commit of water_readings / meter_readings remains BLOCKED (charges).
+ * Opening-reading *row* validation for preview notes.
+ * Commit uses register_*_opening_reading (not submit_*).
  */
 export function validateOpeningReadingPreviewFields(
   utility: MeterUtility,
@@ -533,7 +534,12 @@ export function downloadMeterErrorReport(
   downloadBuf(buildMeterErrorReportXlsx(preview), fileName);
 }
 
-/** True if preview commit would not call submit_* reading RPCs (always true for IS-3). */
+/** True when opening reading-row commit is disabled (legacy IS-3). MTR-3 → false. */
 export function isOpeningReadingRowCommitBlocked(): boolean {
   return OPENING_READING_ROW_COMMIT === 'BLOCKED';
+}
+
+/** True when charge-free opening reading rows are committed after assign_*. */
+export function isOpeningReadingRowCommitEnabled(): boolean {
+  return OPENING_READING_ROW_COMMIT === 'ENABLED';
 }

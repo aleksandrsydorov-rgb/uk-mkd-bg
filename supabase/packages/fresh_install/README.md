@@ -1,36 +1,74 @@
-# AMADEUS 11 — Fresh-install baseline package (IS-7a)
+# AMADEUS 11 — Fresh-install baseline package (IS-9b)
 
-**Status:** Packaging only. Do **not** apply to production `klowacuvufknbrkayjhz` in IS-7a.  
-**Purpose:** Provide ordered, idempotent DDL so a **future empty** Supabase can create Property Book / meter prerequisites **before** the chronological `supabase/migrations/` chain.
+**Status:** **READY_FOR_ISOLATED_TEST** — packaging complete for a separately authorized empty-environment apply.  
+**Do not** claim clean-install **PASS** until that isolated test succeeds.  
+**Do not** apply to production `klowacuvufknbrkayjhz` in IS-9b.
 
-## Why a package (not only a late migration)
+## Purpose
 
-Many migrations in `supabase/migrations/` **ALTER** or **reference** `properties`, `water_meters`, and `electricity_meters` but never **CREATE** them. Those objects historically came from legacy scripts under `supabase/legacy/DO_NOT_RUN/` (must not be executed as-is).
+Ordered, idempotent DDL + canonical helpers so a **future empty** Supabase can host Property Book, auth, meters/readings/ledgers, Capital Repair, and Tariff Core prerequisites **before** chronological `supabase/migrations/`.
 
-A late `CREATE IF NOT EXISTS` migration is **safe on existing installs** (no-op) but **cannot** repair greenfield chronological apply: earlier migrations would already fail. This package is the documented bootstrap step for empty projects.
+Continues IS-7a / IS-9a; does not restart or duplicate their intent.
 
-## Apply order (empty project only)
+## Deterministic execution order (empty project only)
 
-1. Create empty Supabase project (not done in IS-7a).
-2. Apply files in `MANIFEST.json` `orderedFiles` order via `psql` / SQL editor (or future distributive tool).
-3. Then apply `supabase/migrations/` chronologically (`supabase db push` / migrate).
-4. Companion no-op-safe migration `20261026120000_is7a_fresh_install_meter_baseline_ddl.sql` remains in the chain for existing DBs.
+1. Create empty Supabase project (**not** done in IS-9b).
+2. Ensure extension `pgcrypto`.
+3. Apply `MANIFEST.json` `orderedFiles` in order (preflight first — refuses populated DBs).
+4. Installation owner sets first-admin approval via `install_bootstrap_set_approval` (service_role).
+5. Authenticated candidate claims admin via `install_bootstrap_claim_first_admin`.
+6. Apply `supabase/migrations/` chronologically.
+7. Admin publishes tariff versions via Tariffs UI (**no** prices in this package).
 
-## Explicit remaining greenfield gaps
+| Order | File | Role |
+|------:|------|------|
+| 00a | `00_preflight_refuse_populated.sql` | Refuse populated production |
+| 00 | `00_properties_baseline.sql` | `properties` |
+| 05 | `05_auth_staff_helpers.sql` | Empty `staff` + role helpers |
+| 10–20 | meter baselines | `water_meters` / `electricity_meters` |
+| 40 | `40_property_registry_people.sql` | Book people / absences |
+| 45 | `45_property_book_auth_helpers.sql` | BOOK-ONLY `owns_property` + Book RPCs |
+| 30 | `30_meter_rls_enable.sql` | Meter RLS (after owns_property) |
+| 50 | `50_capital_repair_baseline.sql` | Capital assessments/ledger |
+| 60–70 | module + tariff catalog | Metadata only |
+| 75 | `75_utilities_readings_ledgers.sql` | Readings + ledgers (no price seeds) |
+| 80 | `80_capital_repair_operational_rpcs.sql` | Payment + balance/reporting |
+| 85 | `85_tariff_versions_schema.sql` | Versions schema + charge resolver |
+| 90 | `90_first_admin_bootstrap.sql` | Controlled first-admin claim |
 
-This package does **not** claim full greenfield readiness. Still missing from a pure `migrations/` + this package empty chain (non-exhaustive):
+### Companions (existing installs; **exclude** preflight)
 
-- Full Property Book registry (`property_registry_people` and related Book tables/RPCs beyond minimal `properties`)
-- `meter_readings` / `water_readings` / water & electricity ledgers
-- Auth helpers (`owns_property`, `has_staff_role`, `is_owner`, staff) — expected from early migrations / platform baseline
-- Tariff Core catalog seed / publish workflow (admin Tariffs UI — no auto-publish)
-- Support Fee / Internet operational ledger baselines beyond what migrations already create
-- **Capital Repair (IS-8 documented):** `capital_repair_assessments` / `capital_repair_ledger` baseline DDL, operational charge/payment/balance RPCs, and tariff year charge helpers — still live via legacy `DO_NOT_RUN` + incremental migrations on existing installs; **not** packaged for empty greenfield here
-- Module catalog / building_modules seed data for a new complex
+- `20261026120000_is7a_…`
+- `20261028120000_is9a_…`
+- `20261029120000_is9b_…` (no-op when objects exist; **no** preflight)
+
+## First-administrator bootstrap
+
+1. Create Auth user out-of-band (invite / dashboard) — **no** package passwords.
+2. As `service_role`: `select public.install_bootstrap_set_approval('<token>=32 chars', 'install note');`
+3. As that Auth user: `select public.install_bootstrap_claim_first_admin('<token>', 'Display Name');`
+4. Token hash cleared on success. Second admin cannot use this path.
+
+## What is / is not packaged
+
+| Packaged | Not packaged (admin / later migrations) |
+|----------|----------------------------------------|
+| Book auth helpers + validate / active_owners | Full ownership-transfer / extract RPC surface |
+| Readings + ledgers DDL + RLS | Water/electricity submit operational RPCs |
+| Capital payment + IS-8 balance + charge(single) | Bulk/year-bulk charge RPCs |
+| Tariff catalog + empty versions/rates schema | `publish_tariff_version` body (migrations) / published prices |
+| First-admin bootstrap protocol | Public self-registration |
+
+## Remaining gaps
+
+See `MANIFEST.json` → `explicitRemainingGaps`. Package remains structurally ready for isolated test; chronological migrations fill publish/bulk/submit surfaces.
 
 ## Safety
 
-- Idempotent: `CREATE TABLE/INDEX IF NOT EXISTS`, no DROP/TRUNCATE/CASCADE of business data
-- No seed of AMADEUS 11 production rows
-- No execution of `supabase/legacy/DO_NOT_RUN/*`
-- Existing production: apply companion migration only when approved in a later DB Release; tables already exist → no-op
+- Idempotent CREATE IF NOT EXISTS / conditional policies
+- Preflight refuses populated core tables
+- No seed of AMADEUS 11 production rows (no apartment/owner/building payloads)
+- No default passwords / embedded credentials
+- No `DO_NOT_RUN` execution
+- Email sending OFF · Debt gate OFF (out of scope)
+- No Rental Management

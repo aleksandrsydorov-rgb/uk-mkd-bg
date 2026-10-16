@@ -1,18 +1,54 @@
 /**
- * IS-7a — Fresh-install Property Book / meter DDL packaging helpers.
+ * IS-7a / IS-9a / IS-9b — Fresh-install DDL packaging helpers.
  * Pure analysis (no node:fs) so client bundles stay clean.
  */
 
 export const FRESH_INSTALL_PACKAGE_DIR = 'supabase/packages/fresh_install';
+
+/** @deprecated Prefer FRESH_INSTALL_COMPANION_MIGRATIONS — kept for IS-7a callers. */
 export const FRESH_INSTALL_COMPANION_MIGRATION =
   'supabase/migrations/20261026120000_is7a_fresh_install_meter_baseline_ddl.sql';
 
+export const FRESH_INSTALL_IS9A_COMPANION_MIGRATION =
+  'supabase/migrations/20261028120000_is9a_fresh_install_book_auth_capital_tariff_ddl.sql';
+
+export const FRESH_INSTALL_IS9B_COMPANION_MIGRATION =
+  'supabase/migrations/20261029120000_is9b_fresh_install_complete_dependencies_ddl.sql';
+
+/** IS-10d distributive neutralize — no-op on brownfield without install_distributive_flags. */
+export const FRESH_INSTALL_IS10D_COMPANION_MIGRATION =
+  'supabase/migrations/20261030120000_is10d_distributive_neutralize_amadeus11_sf_cutover.sql';
+
+export const FRESH_INSTALL_COMPANION_MIGRATIONS = [
+  FRESH_INSTALL_COMPANION_MIGRATION,
+  FRESH_INSTALL_IS9A_COMPANION_MIGRATION,
+  FRESH_INSTALL_IS9B_COMPANION_MIGRATION,
+  FRESH_INSTALL_IS10D_COMPANION_MIGRATION,
+] as const;
+
 export const FRESH_INSTALL_ORDERED_FILES = [
+  '00_preflight_refuse_populated.sql',
   '00_properties_baseline.sql',
+  '05_auth_staff_helpers.sql',
   '10_water_meters.sql',
   '20_electricity_meters.sql',
+  '40_property_registry_people.sql',
+  '45_property_book_auth_helpers.sql',
   '30_meter_rls_enable.sql',
+  '50_capital_repair_baseline.sql',
+  '55_support_fee_ledger_baseline.sql',
+  '57_general_meetings_baseline.sql',
+  '58_pre_hardening_surface_baselines.sql',
+  '60_module_catalog_baseline.sql',
+  '70_tariff_catalog_shell.sql',
+  '75_utilities_readings_ledgers.sql',
+  '80_capital_repair_operational_rpcs.sql',
+  '85_tariff_versions_schema.sql',
+  '86_distributive_block_amadeus11_sf_cutover.sql',
+  '90_first_admin_bootstrap.sql',
 ] as const;
+
+export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;
 
 /** Relations this package aims to establish before chronological migrations. */
 export const CANONICAL_METER_SCHEMA_PREREQUISITES = [
@@ -21,38 +57,62 @@ export const CANONICAL_METER_SCHEMA_PREREQUISITES = [
   'public.electricity_meters',
 ] as const;
 
-/** Explicit greenfield gaps — package + migrations alone are PARTIAL. */
+export const CANONICAL_IS9A_SCHEMA_PREREQUISITES = [
+  'public.staff',
+  'public.property_registry_people',
+  'public.property_absence_periods',
+  'public.capital_repair_assessments',
+  'public.capital_repair_ledger',
+  'public.module_catalog',
+  'public.building_modules',
+  'public.tariff_catalog',
+] as const;
+
+export const CANONICAL_IS9B_SCHEMA_PREREQUISITES = [
+  'public.water_tariffs',
+  'public.water_readings',
+  'public.water_ledger',
+  'public.meter_readings',
+  'public.electricity_tariffs',
+  'public.electricity_charges',
+  'public.electricity_ledger',
+  'public.tariff_versions',
+  'public.tariff_rate_items',
+  'public.install_bootstrap_state',
+] as const;
+
+/** Explicit greenfield gaps after IS-9b — isolated empty-env proof still required. */
 export const REMAINING_GREENFIELD_MIGRATION_GAPS = [
-  'property_registry_people',
-  'meter_readings',
-  'water_readings',
-  'water_ledger',
-  'electricity_ledger',
-  'full_property_book_rpc_baseline',
-  'auth_helpers_owns_property_has_staff_role',
-  'tariff_catalog_publish_seed',
-  // IS-8: Capital Repair live DDL/RPC still live only via legacy DO_NOT_RUN + incremental migrations.
-  'capital_repair_assessments_ledger_baseline',
-  'capital_repair_operational_rpcs_charge_payment_balance',
-  'capital_repair_tariff_year_charge_helpers',
+  'publish_tariff_version_full_rpc_from_migrations',
+  'charge_capital_repair_bulk_and_year_bulk',
+  'water_electricity_submit_operational_rpcs',
+  'full_property_book_import_transfer_rpc_surface',
+  'rental_management_not_implemented',
 ] as const;
 
 export type FreshInstallManifest = {
   packageId: string;
   phase: string;
+  status?: string;
   applyBeforeMigrations: boolean;
   orderedFiles: string[];
   companionMigration: string;
+  companionMigrations?: string[];
+  requiredExtensions?: string[];
   requiredRelationsAfterPackage: string[];
+  requiredFunctionsAfterPackage?: string[];
+  dependencyChecks?: string[];
+  safeFailureConditions?: string[];
   explicitRemainingGaps: string[];
   forbidden: string[];
+  excludeFromCompanion?: string[];
 };
 
 export function parseFreshInstallManifest(raw: string): FreshInstallManifest {
   return JSON.parse(raw) as FreshInstallManifest;
 }
 
-/** Lexicographic migration order: companion must sort after IS-6a. */
+/** Lexicographic migration order: IS-7a companion after IS-6a. */
 export function assertCompanionMigrationOrdering(migrationFileNames: string[]): {
   ok: boolean;
   companionPresent: boolean;
@@ -69,8 +129,42 @@ export function assertCompanionMigrationOrdering(migrationFileNames: string[]): 
   return { ok: companionPresent && afterIs6a, companionPresent, afterIs6a };
 }
 
+/** IS-9a companion must sort after IS-8 opening migration. */
+export function assertIs9aCompanionMigrationOrdering(migrationFileNames: string[]): {
+  ok: boolean;
+  companionPresent: boolean;
+  afterIs8: boolean;
+} {
+  const companion = FRESH_INSTALL_IS9A_COMPANION_MIGRATION.split('/').pop()!;
+  const sorted = [...migrationFileNames].sort();
+  const companionPresent = sorted.includes(companion);
+  const is8 = '20261027120000_is8_capital_repair_opening_state.sql';
+  const afterIs8 =
+    companionPresent &&
+    sorted.indexOf(is8) >= 0 &&
+    sorted.indexOf(companion) > sorted.indexOf(is8);
+  return { ok: companionPresent && afterIs8, companionPresent, afterIs8 };
+}
+
+/** IS-9b companion must sort after IS-9a companion. */
+export function assertIs9bCompanionMigrationOrdering(migrationFileNames: string[]): {
+  ok: boolean;
+  companionPresent: boolean;
+  afterIs9a: boolean;
+} {
+  const companion = FRESH_INSTALL_IS9B_COMPANION_MIGRATION.split('/').pop()!;
+  const is9a = FRESH_INSTALL_IS9A_COMPANION_MIGRATION.split('/').pop()!;
+  const sorted = [...migrationFileNames].sort();
+  const companionPresent = sorted.includes(companion);
+  const afterIs9a =
+    companionPresent &&
+    sorted.indexOf(is9a) >= 0 &&
+    sorted.indexOf(companion) > sorted.indexOf(is9a);
+  return { ok: companionPresent && afterIs9a, companionPresent, afterIs9a };
+}
+
 const DANGEROUS_DDL =
-  /\b(drop\s+table|truncate|cascade\s*;|delete\s+from\s+public\.(water_meters|electricity_meters|properties))\b/i;
+  /\b(drop\s+table|truncate|cascade\s*;|delete\s+from\s+public\.(water_meters|electricity_meters|properties|staff|property_registry_people|capital_repair_ledger|capital_repair_assessments|tariff_catalog|water_ledger|electricity_ledger|meter_readings))\b/i;
 
 /** Existing-install safety: must be idempotent CREATE IF NOT EXISTS, no destructive ops. */
 export function assertExistingInstallNoOpSafety(sql: string): {
@@ -83,13 +177,87 @@ export function assertExistingInstallNoOpSafety(sql: string): {
     /create\s+table\s+if\s+not\s+exists\s+public\.water_meters/i.test(sql) &&
     /create\s+table\s+if\s+not\s+exists\s+public\.electricity_meters/i.test(sql);
   const noDangerousDdl = !DANGEROUS_DDL.test(sql);
-  // Flag only executable includes — comments may mention DO_NOT_RUN.
   const noLegacyDoNotRun = !/(?:\\i|\\include|include)\s+.*DO_NOT_RUN/i.test(sql);
   return {
     ok: usesIfNotExists && noDangerousDdl && noLegacyDoNotRun,
     usesIfNotExists,
     noDangerousDdl,
     noLegacyDoNotRun,
+  };
+}
+
+/** IS-9a companion: Book/auth/capital/tariff CREATE IF NOT EXISTS, no destructive ops. */
+export function assertIs9aExistingInstallNoOpSafety(sql: string): {
+  ok: boolean;
+  usesIfNotExists: boolean;
+  noDangerousDdl: boolean;
+  noLegacyDoNotRun: boolean;
+  noStaffInsert: boolean;
+  noTariffVersionsInsert: boolean;
+  noCredentials: boolean;
+} {
+  const usesIfNotExists =
+    /create\s+table\s+if\s+not\s+exists\s+public\.staff/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.property_registry_people/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.capital_repair_assessments/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.capital_repair_ledger/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.tariff_catalog/i.test(sql);
+  const noDangerousDdl = !DANGEROUS_DDL.test(sql);
+  const noLegacyDoNotRun = !/(?:\\i|\\include|include)\s+.*DO_NOT_RUN/i.test(sql);
+  const noStaffInsert = !/\binsert\s+into\s+public\.staff\b/i.test(sql);
+  const noTariffVersionsInsert = !/\binsert\s+into\s+public\.tariff_versions\b/i.test(sql);
+  const noCredentials =
+    !/password\s*=/i.test(sql) &&
+    !/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\./.test(sql);
+  return {
+    ok:
+      usesIfNotExists &&
+      noDangerousDdl &&
+      noLegacyDoNotRun &&
+      noStaffInsert &&
+      noTariffVersionsInsert &&
+      noCredentials,
+    usesIfNotExists,
+    noDangerousDdl,
+    noLegacyDoNotRun,
+    noStaffInsert,
+    noTariffVersionsInsert,
+    noCredentials,
+  };
+}
+
+export function assertIs9bExistingInstallNoOpSafety(sql: string): {
+  ok: boolean;
+  usesIfNotExists: boolean;
+  noDangerousDdl: boolean;
+  noPreflight: boolean;
+  noPublishedTariffInsert: boolean;
+  noCredentials: boolean;
+} {
+  const usesIfNotExists =
+    /create\s+table\s+if\s+not\s+exists\s+public\.water_readings/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.water_ledger/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.meter_readings/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.electricity_ledger/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.tariff_versions/i.test(sql);
+  const noDangerousDdl = !DANGEROUS_DDL.test(sql);
+  const noPreflight = !/fresh_install_preflight/i.test(sql);
+  const noPublishedTariffInsert = !/\binsert\s+into\s+public\.tariff_versions\b/i.test(sql);
+  const noCredentials =
+    !/password\s*=/i.test(sql) &&
+    !/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\./.test(sql);
+  return {
+    ok:
+      usesIfNotExists &&
+      noDangerousDdl &&
+      noPreflight &&
+      noPublishedTariffInsert &&
+      noCredentials,
+    usesIfNotExists,
+    noDangerousDdl,
+    noPreflight,
+    noPublishedTariffInsert,
+    noCredentials,
   };
 }
 
@@ -118,6 +286,158 @@ export function assertCanonicalMeterSchemaSql(sql: string): {
   };
 }
 
+export function assertCanonicalIs9aSchemaSql(sql: string): {
+  ok: boolean;
+  hasStaff: boolean;
+  hasRegistryPeople: boolean;
+  hasCapitalAssessments: boolean;
+  hasCapitalLedger: boolean;
+  hasOpeningKinds: boolean;
+  hasModuleCatalog: boolean;
+  hasTariffCatalog: boolean;
+  hasAuthHelpers: boolean;
+  noOwnsPropertyInvention: boolean;
+  noPublishedTariffVersions: boolean;
+} {
+  const hasStaff = /create\s+table\s+if\s+not\s+exists\s+public\.staff/i.test(sql);
+  const hasRegistryPeople =
+    /create\s+table\s+if\s+not\s+exists\s+public\.property_registry_people/i.test(sql);
+  const hasCapitalAssessments =
+    /create\s+table\s+if\s+not\s+exists\s+public\.capital_repair_assessments/i.test(sql);
+  const hasCapitalLedger =
+    /create\s+table\s+if\s+not\s+exists\s+public\.capital_repair_ledger/i.test(sql);
+  const hasOpeningKinds =
+    /opening_obligation/i.test(sql) &&
+    /opening_historical_settlement/i.test(sql) &&
+    /opening_credit/i.test(sql);
+  const hasModuleCatalog =
+    /create\s+table\s+if\s+not\s+exists\s+public\.module_catalog/i.test(sql);
+  const hasTariffCatalog =
+    /create\s+table\s+if\s+not\s+exists\s+public\.tariff_catalog/i.test(sql);
+  const hasAuthHelpers =
+    /create\s+or\s+replace\s+function\s+public\.is_staff\s*\(/i.test(sql) &&
+    /create\s+or\s+replace\s+function\s+public\.has_staff_role\s*\(/i.test(sql) &&
+    /set\s+search_path\s*=\s*''/i.test(sql);
+  // IS-9b packages canonical owns_property — invention = portal owner_email path
+  const noOwnsPropertyInvention = !/properties\.owner_email/i.test(
+    sql.match(
+      /create\s+or\s+replace\s+function\s+public\.owns_property[\s\S]*?\$fn\$;/i,
+    )?.[0] ?? '',
+  );
+  // IS-10d may insert a CANCELLED distributive sentinel; published status is forbidden.
+  const noPublishedTariffVersions =
+    !/\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[\s\S]*?'published'/i.test(
+      sql,
+    );
+  return {
+    ok:
+      hasStaff &&
+      hasRegistryPeople &&
+      hasCapitalAssessments &&
+      hasCapitalLedger &&
+      hasOpeningKinds &&
+      hasModuleCatalog &&
+      hasTariffCatalog &&
+      hasAuthHelpers &&
+      noOwnsPropertyInvention &&
+      noPublishedTariffVersions,
+    hasStaff,
+    hasRegistryPeople,
+    hasCapitalAssessments,
+    hasCapitalLedger,
+    hasOpeningKinds,
+    hasModuleCatalog,
+    hasTariffCatalog,
+    hasAuthHelpers,
+    noOwnsPropertyInvention,
+    noPublishedTariffVersions,
+  };
+}
+
+export function assertCanonicalIs9bSchemaSql(sql: string): {
+  ok: boolean;
+  hasOwnsProperty: boolean;
+  hasBookValidate: boolean;
+  hasMeterReadings: boolean;
+  hasWaterReadings: boolean;
+  hasWaterLedger: boolean;
+  hasElectricityLedger: boolean;
+  hasCapitalPayment: boolean;
+  hasCapitalBalance: boolean;
+  hasCapitalCharge: boolean;
+  hasTariffVersions: boolean;
+  hasFirstAdminBootstrap: boolean;
+  noPublishedPrices: boolean;
+  hasPreflight: boolean;
+} {
+  const hasOwnsProperty =
+    /create\s+or\s+replace\s+function\s+public\.owns_property\s*\(/i.test(sql) &&
+    /property_book_active_owner_by_email/i.test(sql) &&
+    /property_book_owner_row_access_ready/i.test(sql);
+  const hasBookValidate =
+    /create\s+or\s+replace\s+function\s+public\.property_book_validate\s*\(/i.test(sql);
+  const hasMeterReadings =
+    /create\s+table\s+if\s+not\s+exists\s+public\.meter_readings/i.test(sql);
+  const hasWaterReadings =
+    /create\s+table\s+if\s+not\s+exists\s+public\.water_readings/i.test(sql);
+  const hasWaterLedger =
+    /create\s+table\s+if\s+not\s+exists\s+public\.water_ledger/i.test(sql);
+  const hasElectricityLedger =
+    /create\s+table\s+if\s+not\s+exists\s+public\.electricity_ledger/i.test(sql);
+  const hasCapitalPayment =
+    /create\s+or\s+replace\s+function\s+public\.record_capital_repair_payment\s*\(/i.test(sql);
+  const hasCapitalBalance =
+    /create\s+or\s+replace\s+function\s+public\.get_capital_repair_balance\s*\(/i.test(sql) &&
+    /opening_obligation/i.test(sql);
+  const hasCapitalCharge =
+    /create\s+or\s+replace\s+function\s+public\.charge_capital_repair\s*\(/i.test(sql);
+  const hasTariffVersions =
+    /create\s+table\s+if\s+not\s+exists\s+public\.tariff_versions/i.test(sql) &&
+    /create\s+table\s+if\s+not\s+exists\s+public\.tariff_rate_items/i.test(sql);
+  const hasFirstAdminBootstrap =
+    /install_bootstrap_claim_first_admin/i.test(sql) &&
+    /install_bootstrap_set_approval/i.test(sql) &&
+    /service_role required/i.test(sql);
+  // Allow cancelled distributive sentinels (IS-10d); forbid publishing prices.
+  const noPublishedPrices =
+    !/\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[\s\S]*?'published'/i.test(
+      sql,
+    ) &&
+    !/\binsert\s+into\s+public\.tariff_rate_items\b/i.test(sql) &&
+    !/\binsert\s+into\s+public\.water_tariffs\b/i.test(sql) &&
+    !/\binsert\s+into\s+public\.electricity_tariffs\b/i.test(sql);
+  const hasPreflight = /fresh_install_preflight/i.test(sql);
+  return {
+    ok:
+      hasOwnsProperty &&
+      hasBookValidate &&
+      hasMeterReadings &&
+      hasWaterReadings &&
+      hasWaterLedger &&
+      hasElectricityLedger &&
+      hasCapitalPayment &&
+      hasCapitalBalance &&
+      hasCapitalCharge &&
+      hasTariffVersions &&
+      hasFirstAdminBootstrap &&
+      noPublishedPrices &&
+      hasPreflight,
+    hasOwnsProperty,
+    hasBookValidate,
+    hasMeterReadings,
+    hasWaterReadings,
+    hasWaterLedger,
+    hasElectricityLedger,
+    hasCapitalPayment,
+    hasCapitalBalance,
+    hasCapitalCharge,
+    hasTariffVersions,
+    hasFirstAdminBootstrap,
+    noPublishedPrices,
+    hasPreflight,
+  };
+}
+
 /** RLS compatibility: enable RLS; policies only when helpers exist (no blind overwrite). */
 export function assertRlsAccessCompatibility(sql: string): {
   ok: boolean;
@@ -137,5 +457,156 @@ export function assertRlsAccessCompatibility(sql: string): {
     enablesRls,
     conditionalPolicies,
     noDropPolicyBlind,
+  };
+}
+
+export function assertIs9aRlsCompleteness(sql: string): {
+  ok: boolean;
+  capitalRls: boolean;
+  registryRls: boolean;
+  staffRls: boolean;
+  tariffRls: boolean;
+  conditionalOwnsProperty: boolean;
+} {
+  const capitalRls =
+    /alter\s+table\s+public\.capital_repair_assessments\s+enable\s+row\s+level\s+security/i.test(
+      sql,
+    ) &&
+    /alter\s+table\s+public\.capital_repair_ledger\s+enable\s+row\s+level\s+security/i.test(sql);
+  const registryRls =
+    /alter\s+table\s+public\.property_registry_people\s+enable\s+row\s+level\s+security/i.test(
+      sql,
+    );
+  const staffRls = /alter\s+table\s+public\.staff\s+enable\s+row\s+level\s+security/i.test(sql);
+  const tariffRls =
+    /alter\s+table\s+public\.tariff_catalog\s+enable\s+row\s+level\s+security/i.test(sql);
+  const conditionalOwnsProperty =
+    /to_regprocedure\('public\.owns_property\(bigint\)'\)/i.test(sql);
+  return {
+    ok: capitalRls && registryRls && staffRls && tariffRls && conditionalOwnsProperty,
+    capitalRls,
+    registryRls,
+    staffRls,
+    tariffRls,
+    conditionalOwnsProperty,
+  };
+}
+
+export function assertIs9bRlsAndSecurity(sql: string): {
+  ok: boolean;
+  utilitiesRls: boolean;
+  bootstrapLeastPrivilege: boolean;
+  noAnonBootstrapGrant: boolean;
+} {
+  const utilitiesRls =
+    /alter\s+table\s+public\.water_ledger\s+enable\s+row\s+level\s+security/i.test(sql) &&
+    /alter\s+table\s+public\.electricity_ledger\s+enable\s+row\s+level\s+security/i.test(sql) &&
+    /alter\s+table\s+public\.meter_readings\s+enable\s+row\s+level\s+security/i.test(sql);
+  const bootstrapLeastPrivilege =
+    /revoke\s+all\s+on\s+function\s+public\.install_bootstrap_set_approval/i.test(sql) &&
+    /grant\s+execute\s+on\s+function\s+public\.install_bootstrap_claim_first_admin/i.test(sql);
+  const noAnonBootstrapGrant =
+    !/grant\s+execute\s+on\s+function\s+public\.install_bootstrap_set_approval[^;]*\s+to\s+anon/i.test(
+      sql,
+    ) &&
+    !/grant\s+execute\s+on\s+function\s+public\.install_bootstrap_set_approval[^;]*\s+to\s+authenticated/i.test(
+      sql,
+    );
+  return {
+    ok: utilitiesRls && bootstrapLeastPrivilege && noAnonBootstrapGrant,
+    utilitiesRls,
+    bootstrapLeastPrivilege,
+    noAnonBootstrapGrant,
+  };
+}
+
+/** No AMADEUS 11-specific apartment / owner production payloads. */
+export function assertNoAmadeus11ProductionData(sql: string): {
+  ok: boolean;
+  noApartmentSeed: boolean;
+  noOwnerEmailSeed: boolean;
+} {
+  const noApartmentSeed =
+    !/\binsert\s+into\s+public\.properties\b/i.test(sql) &&
+    !/\bapartment_number\s*=\s*'[^']+'/i.test(sql);
+  const noOwnerEmailSeed = !/\binsert\s+into\s+public\.property_registry_people\b/i.test(sql);
+  return {
+    ok: noApartmentSeed && noOwnerEmailSeed,
+    noApartmentSeed,
+    noOwnerEmailSeed,
+  };
+}
+
+/** Deterministic dependency order checks for MANIFEST orderedFiles. */
+export function assertFreshInstallDependencyOrder(orderedFiles: readonly string[]): {
+  ok: boolean;
+  preflightFirst: boolean;
+  registryBeforeBookAuth: boolean;
+  bookAuthBeforeMeterRls: boolean;
+  catalogBeforeTariffVersions: boolean;
+  capitalTablesBeforeOps: boolean;
+} {
+  const idx = (name: string) => orderedFiles.indexOf(name);
+  const preflightFirst = idx('00_preflight_refuse_populated.sql') === 0;
+  const registryBeforeBookAuth =
+    idx('40_property_registry_people.sql') >= 0 &&
+    idx('45_property_book_auth_helpers.sql') > idx('40_property_registry_people.sql');
+  const bookAuthBeforeMeterRls =
+    idx('45_property_book_auth_helpers.sql') >= 0 &&
+    idx('30_meter_rls_enable.sql') > idx('45_property_book_auth_helpers.sql');
+  const catalogBeforeTariffVersions =
+    idx('70_tariff_catalog_shell.sql') >= 0 &&
+    idx('85_tariff_versions_schema.sql') > idx('70_tariff_catalog_shell.sql');
+  const capitalTablesBeforeOps =
+    idx('50_capital_repair_baseline.sql') >= 0 &&
+    idx('80_capital_repair_operational_rpcs.sql') > idx('50_capital_repair_baseline.sql') &&
+    idx('85_tariff_versions_schema.sql') > idx('50_capital_repair_baseline.sql');
+  const meetingsBeforeTariffVersions =
+    idx('57_general_meetings_baseline.sql') >= 0 &&
+    idx('85_tariff_versions_schema.sql') > idx('57_general_meetings_baseline.sql');
+  return {
+    ok:
+      preflightFirst &&
+      registryBeforeBookAuth &&
+      bookAuthBeforeMeterRls &&
+      catalogBeforeTariffVersions &&
+      capitalTablesBeforeOps &&
+      meetingsBeforeTariffVersions,
+    preflightFirst,
+    registryBeforeBookAuth,
+    bookAuthBeforeMeterRls,
+    catalogBeforeTariffVersions,
+    capitalTablesBeforeOps,
+  };
+}
+
+/** Detect missing required objects listed in manifest vs package SQL. */
+export function assertPackageObjectCoverage(
+  sql: string,
+  requiredRelations: readonly string[],
+  requiredFunctions: readonly string[],
+): {
+  ok: boolean;
+  missingRelations: string[];
+  missingFunctions: string[];
+} {
+  const missingRelations = requiredRelations.filter((rel) => {
+    const name = rel.replace(/^public\./, '');
+    return !new RegExp(
+      `create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${name}\\b`,
+      'i',
+    ).test(sql);
+  });
+  const missingFunctions = requiredFunctions.filter((fn) => {
+    const base = fn.replace(/^public\./, '').replace(/\(.*\)$/, '');
+    return !new RegExp(
+      `create\\s+or\\s+replace\\s+function\\s+public\\.${base}\\s*\\(`,
+      'i',
+    ).test(sql);
+  });
+  return {
+    ok: missingRelations.length === 0 && missingFunctions.length === 0,
+    missingRelations,
+    missingFunctions,
   };
 }

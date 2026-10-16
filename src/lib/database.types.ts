@@ -3651,6 +3651,792 @@ export interface Database {
         };
         Relationships: [];
       };
+      inventory_asset_events: {
+        Row: {
+          actor_email: string | null;
+          actor_uid: string | null;
+          asset_id: string;
+          event_at: string;
+          event_kind: string;
+          id: number;
+          note: string | null;
+          payload: NonNullable<Json>;
+        };
+        Insert: {
+          actor_email?: string | null;
+          actor_uid?: string | null;
+          asset_id: string;
+          event_at?: string;
+          event_kind: string;
+          id?: never;
+          note?: string | null;
+          payload?: NonNullable<Json>;
+        };
+        Update: {
+          actor_email?: string | null;
+          actor_uid?: string | null;
+          asset_id?: string;
+          event_at?: string;
+          event_kind?: string;
+          id?: never;
+          note?: string | null;
+          payload?: NonNullable<Json>;
+        };
+        Relationships: [];
+      };
+      inventory_asset_expense_links: {
+        Row: {
+          asset_id: string;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          link_kind: string;
+          note: string | null;
+          uk_expense_id: number;
+        };
+        Insert: {
+          asset_id: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          id?: string;
+          link_kind?: string;
+          note?: string | null;
+          uk_expense_id: number;
+        };
+        Update: {
+          asset_id?: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          id?: string;
+          link_kind?: string;
+          note?: string | null;
+          uk_expense_id?: number;
+        };
+        Relationships: [];
+      };
+      inventory_assets: {
+        Row: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        };
+        Insert: {
+          acquired_on?: string | null;
+          acquisition_cost_eur?: number | null;
+          acquisition_method?: string | null;
+          category_id?: string | null;
+          condition?: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          description?: string | null;
+          estimated_value_eur?: number | null;
+          id?: string;
+          idempotency_key?: string | null;
+          inventory_number: string;
+          location_id?: string | null;
+          location_note?: string | null;
+          manufacturer?: string | null;
+          model?: string | null;
+          name: string;
+          opening_import?: boolean;
+          operational_status?: string;
+          ownership_kind: string;
+          ownership_note?: string | null;
+          responsible_staff_id?: number | null;
+          serial_number?: string | null;
+          tracking_type?: string;
+          updated_at?: string;
+          updated_by_email?: string | null;
+          write_off_by_email?: string | null;
+          write_off_reason?: string | null;
+          written_off_at?: string | null;
+        };
+        Update: {
+          acquired_on?: string | null;
+          acquisition_cost_eur?: number | null;
+          acquisition_method?: string | null;
+          category_id?: string | null;
+          condition?: string;
+          created_at?: string;
+          created_by_email?: string | null;
+          description?: string | null;
+          estimated_value_eur?: number | null;
+          id?: string;
+          idempotency_key?: string | null;
+          inventory_number?: string;
+          location_id?: string | null;
+          location_note?: string | null;
+          manufacturer?: string | null;
+          model?: string | null;
+          name?: string;
+          opening_import?: boolean;
+          operational_status?: string;
+          ownership_kind?: string;
+          ownership_note?: string | null;
+          responsible_staff_id?: number | null;
+          serial_number?: string | null;
+          tracking_type?: string;
+          updated_at?: string;
+          updated_by_email?: string | null;
+          write_off_by_email?: string | null;
+          write_off_reason?: string | null;
+          written_off_at?: string | null;
+        };
+        Relationships: [];
+      };
+      inventory_assignments: {
+        Row: {
+          asset_id: string;
+          assigned_at: string;
+          assigned_by_email: string | null;
+          assigned_to_staff_id: number;
+          from_location_id: string | null;
+          id: string;
+          note: string | null;
+          release_reason: string | null;
+          released_at: string | null;
+          to_location_id: string | null;
+        };
+        Insert: {
+          asset_id: string;
+          assigned_at?: string;
+          assigned_by_email?: string | null;
+          assigned_to_staff_id: number;
+          from_location_id?: string | null;
+          id?: string;
+          note?: string | null;
+          release_reason?: string | null;
+          released_at?: string | null;
+          to_location_id?: string | null;
+        };
+        Update: {
+          asset_id?: string;
+          assigned_at?: string;
+          assigned_by_email?: string | null;
+          assigned_to_staff_id?: number;
+          from_location_id?: string | null;
+          id?: string;
+          note?: string | null;
+          release_reason?: string | null;
+          released_at?: string | null;
+          to_location_id?: string | null;
+        };
+        Relationships: [];
+      };
+      inventory_categories: {
+        Row: {
+          active: boolean;
+          allowed_tracking_type: string | null;
+          archived_at: string | null;
+          code: string;
+          created_at: string;
+          description: string | null;
+          id: string;
+          name_bg: string;
+          name_en: string;
+          name_ru: string;
+          parent_id: string | null;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          allowed_tracking_type?: string | null;
+          archived_at?: string | null;
+          code: string;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          name_bg: string;
+          name_en: string;
+          name_ru: string;
+          parent_id?: string | null;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          allowed_tracking_type?: string | null;
+          archived_at?: string | null;
+          code?: string;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          name_bg?: string;
+          name_en?: string;
+          name_ru?: string;
+          parent_id?: string | null;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inventory_documents: {
+        Row: {
+          archived_at: string | null;
+          archived_by_email: string | null;
+          asset_id: string | null;
+          byte_size: number | null;
+          created_at: string;
+          doc_kind: string;
+          id: string;
+          maintenance_event_id: string | null;
+          mime_type: string | null;
+          note: string | null;
+          original_filename: string | null;
+          row_version: number;
+          session_item_id: string | null;
+          stock_item_id: string | null;
+          storage_path: string;
+          superseded_by_id: string | null;
+          title: string;
+          uploaded_by_email: string | null;
+          uploaded_by_staff_id: number | null;
+          uploaded_by_uid: string | null;
+        };
+        Insert: {
+          archived_at?: string | null;
+          archived_by_email?: string | null;
+          asset_id?: string | null;
+          byte_size?: number | null;
+          created_at?: string;
+          doc_kind?: string;
+          id?: string;
+          maintenance_event_id?: string | null;
+          mime_type?: string | null;
+          note?: string | null;
+          original_filename?: string | null;
+          row_version?: number;
+          session_item_id?: string | null;
+          stock_item_id?: string | null;
+          storage_path: string;
+          superseded_by_id?: string | null;
+          title: string;
+          uploaded_by_email?: string | null;
+          uploaded_by_staff_id?: number | null;
+          uploaded_by_uid?: string | null;
+        };
+        Update: {
+          archived_at?: string | null;
+          archived_by_email?: string | null;
+          asset_id?: string | null;
+          byte_size?: number | null;
+          created_at?: string;
+          doc_kind?: string;
+          id?: string;
+          maintenance_event_id?: string | null;
+          mime_type?: string | null;
+          note?: string | null;
+          original_filename?: string | null;
+          row_version?: number;
+          session_item_id?: string | null;
+          stock_item_id?: string | null;
+          storage_path?: string;
+          superseded_by_id?: string | null;
+          title?: string;
+          uploaded_by_email?: string | null;
+          uploaded_by_staff_id?: number | null;
+          uploaded_by_uid?: string | null;
+        };
+        Relationships: [];
+      };
+      inventory_locations: {
+        Row: {
+          active: boolean;
+          code: string;
+          created_at: string;
+          id: string;
+          location_kind: string;
+          name: string;
+          note: string | null;
+          property_id: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          code: string;
+          created_at?: string;
+          id?: string;
+          location_kind: string;
+          name: string;
+          note?: string | null;
+          property_id?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          code?: string;
+          created_at?: string;
+          id?: string;
+          location_kind?: string;
+          name?: string;
+          note?: string | null;
+          property_id?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inventory_maintenance_events: {
+        Row: {
+          asset_id: string;
+          cost_eur: number | null;
+          created_at: string;
+          event_kind: string;
+          id: string;
+          performed_by_email: string | null;
+          performed_by_staff_id: number | null;
+          performed_on: string;
+          summary: string;
+          uk_expense_id: number | null;
+          work_order_id: string | null;
+        };
+        Insert: {
+          asset_id: string;
+          cost_eur?: number | null;
+          created_at?: string;
+          event_kind: string;
+          id?: string;
+          performed_by_email?: string | null;
+          performed_by_staff_id?: number | null;
+          performed_on?: string;
+          summary: string;
+          uk_expense_id?: number | null;
+          work_order_id?: string | null;
+        };
+        Update: {
+          asset_id?: string;
+          cost_eur?: number | null;
+          created_at?: string;
+          event_kind?: string;
+          id?: string;
+          performed_by_email?: string | null;
+          performed_by_staff_id?: number | null;
+          performed_on?: string;
+          summary?: string;
+          uk_expense_id?: number | null;
+          work_order_id?: string | null;
+        };
+        Relationships: [];
+      };
+      inventory_session_events: {
+        Row: {
+          actor_email: string | null;
+          actor_uid: string | null;
+          event_at: string;
+          event_kind: string;
+          id: number;
+          note: string | null;
+          payload: NonNullable<Json>;
+          session_id: string;
+        };
+        Insert: {
+          actor_email?: string | null;
+          actor_uid?: string | null;
+          event_at?: string;
+          event_kind: string;
+          id?: never;
+          note?: string | null;
+          payload?: NonNullable<Json>;
+          session_id: string;
+        };
+        Update: {
+          actor_email?: string | null;
+          actor_uid?: string | null;
+          event_at?: string;
+          event_kind?: string;
+          id?: never;
+          note?: string | null;
+          payload?: NonNullable<Json>;
+          session_id?: string;
+        };
+        Relationships: [];
+      };
+      inventory_session_items: {
+        Row: {
+          asset_id: string | null;
+          counted_qty: number | null;
+          created_at: string;
+          discrepancy_note: string | null;
+          draft_category_id: string | null;
+          draft_condition: string | null;
+          draft_inventory_number: string | null;
+          draft_location_id: string | null;
+          draft_name: string;
+          draft_ownership_kind: string | null;
+          draft_sku_code: string | null;
+          entered_by_email: string | null;
+          entered_by_staff_id: number | null;
+          expected_qty: number | null;
+          finding_status: string;
+          id: string;
+          posted_asset_id: string | null;
+          posted_at: string | null;
+          posted_stock_item_id: string | null;
+          row_version: number;
+          session_id: string;
+          stock_item_id: string | null;
+          tracking_type: string;
+          unit_code: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          asset_id?: string | null;
+          counted_qty?: number | null;
+          created_at?: string;
+          discrepancy_note?: string | null;
+          draft_category_id?: string | null;
+          draft_condition?: string | null;
+          draft_inventory_number?: string | null;
+          draft_location_id?: string | null;
+          draft_name: string;
+          draft_ownership_kind?: string | null;
+          draft_sku_code?: string | null;
+          entered_by_email?: string | null;
+          entered_by_staff_id?: number | null;
+          expected_qty?: number | null;
+          finding_status?: string;
+          id?: string;
+          posted_asset_id?: string | null;
+          posted_at?: string | null;
+          posted_stock_item_id?: string | null;
+          row_version?: number;
+          session_id: string;
+          stock_item_id?: string | null;
+          tracking_type: string;
+          unit_code?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          asset_id?: string | null;
+          counted_qty?: number | null;
+          created_at?: string;
+          discrepancy_note?: string | null;
+          draft_category_id?: string | null;
+          draft_condition?: string | null;
+          draft_inventory_number?: string | null;
+          draft_location_id?: string | null;
+          draft_name?: string;
+          draft_ownership_kind?: string | null;
+          draft_sku_code?: string | null;
+          entered_by_email?: string | null;
+          entered_by_staff_id?: number | null;
+          expected_qty?: number | null;
+          finding_status?: string;
+          id?: string;
+          posted_asset_id?: string | null;
+          posted_at?: string | null;
+          posted_stock_item_id?: string | null;
+          row_version?: number;
+          session_id?: string;
+          stock_item_id?: string | null;
+          tracking_type?: string;
+          unit_code?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inventory_session_participants: {
+        Row: {
+          active: boolean;
+          assigned_category_id: string | null;
+          assigned_zone_location_id: string | null;
+          id: string;
+          joined_at: string;
+          role_in_session: string;
+          session_id: string;
+          staff_id: number;
+        };
+        Insert: {
+          active?: boolean;
+          assigned_category_id?: string | null;
+          assigned_zone_location_id?: string | null;
+          id?: string;
+          joined_at?: string;
+          role_in_session?: string;
+          session_id: string;
+          staff_id: number;
+        };
+        Update: {
+          active?: boolean;
+          assigned_category_id?: string | null;
+          assigned_zone_location_id?: string | null;
+          id?: string;
+          joined_at?: string;
+          role_in_session?: string;
+          session_id?: string;
+          staff_id?: number;
+        };
+        Relationships: [];
+      };
+      inventory_sessions: {
+        Row: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        };
+        Insert: {
+          approval_note?: string | null;
+          approved_at?: string | null;
+          approved_by_email?: string | null;
+          category_id?: string | null;
+          closed_at?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          id?: string;
+          row_version?: number;
+          scope_note?: string | null;
+          started_at?: string | null;
+          status?: string;
+          target_end_at?: string | null;
+          title: string;
+          updated_at?: string;
+          updated_by_email?: string | null;
+          zone_location_id?: string | null;
+        };
+        Update: {
+          approval_note?: string | null;
+          approved_at?: string | null;
+          approved_by_email?: string | null;
+          category_id?: string | null;
+          closed_at?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          id?: string;
+          row_version?: number;
+          scope_note?: string | null;
+          started_at?: string | null;
+          status?: string;
+          target_end_at?: string | null;
+          title?: string;
+          updated_at?: string;
+          updated_by_email?: string | null;
+          zone_location_id?: string | null;
+        };
+        Relationships: [];
+      };
+      inventory_stock_items: {
+        Row: {
+          active: boolean;
+          category_id: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          default_location_id: string | null;
+          description: string | null;
+          estimated_unit_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          min_qty: number | null;
+          name: string;
+          opening_import: boolean;
+          ownership_kind: string;
+          ownership_note: string | null;
+          sku_code: string;
+          tracking_type: string;
+          unit_code: string;
+          updated_at: string;
+          updated_by_email: string | null;
+        };
+        Insert: {
+          active?: boolean;
+          category_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          default_location_id?: string | null;
+          description?: string | null;
+          estimated_unit_value_eur?: number | null;
+          id?: string;
+          idempotency_key?: string | null;
+          min_qty?: number | null;
+          name: string;
+          opening_import?: boolean;
+          ownership_kind: string;
+          ownership_note?: string | null;
+          sku_code: string;
+          tracking_type?: string;
+          unit_code: string;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Update: {
+          active?: boolean;
+          category_id?: string | null;
+          created_at?: string;
+          created_by_email?: string | null;
+          default_location_id?: string | null;
+          description?: string | null;
+          estimated_unit_value_eur?: number | null;
+          id?: string;
+          idempotency_key?: string | null;
+          min_qty?: number | null;
+          name?: string;
+          opening_import?: boolean;
+          ownership_kind?: string;
+          ownership_note?: string | null;
+          sku_code?: string;
+          tracking_type?: string;
+          unit_code?: string;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Relationships: [];
+      };
+      inventory_stock_movements: {
+        Row: {
+          created_at: string;
+          created_by_email: string | null;
+          created_by_staff_id: number | null;
+          from_location_id: string | null;
+          id: number;
+          idempotency_key: string | null;
+          location_id: string | null;
+          movement_type: string;
+          qty_delta: number;
+          reason: string | null;
+          session_item_id: string | null;
+          stock_item_id: string;
+          to_location_id: string | null;
+          uk_expense_id: number | null;
+          unit_code: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by_email?: string | null;
+          created_by_staff_id?: number | null;
+          from_location_id?: string | null;
+          id?: never;
+          idempotency_key?: string | null;
+          location_id?: string | null;
+          movement_type: string;
+          qty_delta: number;
+          reason?: string | null;
+          session_item_id?: string | null;
+          stock_item_id: string;
+          to_location_id?: string | null;
+          uk_expense_id?: number | null;
+          unit_code: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by_email?: string | null;
+          created_by_staff_id?: number | null;
+          from_location_id?: string | null;
+          id?: never;
+          idempotency_key?: string | null;
+          location_id?: string | null;
+          movement_type?: string;
+          qty_delta?: number;
+          reason?: string | null;
+          session_item_id?: string | null;
+          stock_item_id?: string;
+          to_location_id?: string | null;
+          uk_expense_id?: number | null;
+          unit_code?: string;
+        };
+        Relationships: [];
+      };
+      inventory_units: {
+        Row: {
+          code: string;
+          name_bg: string;
+          name_en: string;
+          name_ru: string;
+        };
+        Insert: {
+          code: string;
+          name_bg: string;
+          name_en: string;
+          name_ru: string;
+        };
+        Update: {
+          code?: string;
+          name_bg?: string;
+          name_en?: string;
+          name_ru?: string;
+        };
+        Relationships: [];
+      };
+      staff_inventory_capabilities: {
+        Row: {
+          can_approve_sessions: boolean;
+          can_edit_assets: boolean;
+          can_manage_categories: boolean;
+          can_session_participate: boolean;
+          can_session_review: boolean;
+          can_stock_move: boolean;
+          can_view: boolean;
+          can_write_off: boolean;
+          staff_id: number;
+          updated_at: string;
+          updated_by_email: string | null;
+        };
+        Insert: {
+          can_approve_sessions?: boolean;
+          can_edit_assets?: boolean;
+          can_manage_categories?: boolean;
+          can_session_participate?: boolean;
+          can_session_review?: boolean;
+          can_stock_move?: boolean;
+          can_view?: boolean;
+          can_write_off?: boolean;
+          staff_id: number;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Update: {
+          can_approve_sessions?: boolean;
+          can_edit_assets?: boolean;
+          can_manage_categories?: boolean;
+          can_session_participate?: boolean;
+          can_session_review?: boolean;
+          can_stock_move?: boolean;
+          can_view?: boolean;
+          can_write_off?: boolean;
+          staff_id?: number;
+          updated_at?: string;
+          updated_by_email?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -5965,6 +6751,1227 @@ export interface Database {
           p_resend_invite?: boolean;
         };
         Returns: Json;
+      };
+      inventory_activate_asset: {
+        Args: {
+          p_asset_id: string;
+          p_idempotency_key?: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_actor_email: {
+        Args: Record<PropertyKey, never>;
+        Returns: string
+      };
+      inventory_add_session_item: {
+        Args: {
+          p_asset_id?: string;
+          p_counted_qty?: number;
+          p_discrepancy_note?: string;
+          p_draft_category_id?: string;
+          p_draft_condition?: string;
+          p_draft_inventory_number?: string;
+          p_draft_location_id?: string;
+          p_draft_name: string;
+          p_draft_ownership_kind?: string;
+          p_draft_sku_code?: string;
+          p_expected_qty?: number;
+          p_session_id: string;
+          p_stock_item_id?: string;
+          p_tracking_type: string;
+          p_unit_code?: string;
+        }
+        Returns: {
+          asset_id: string | null;
+          counted_qty: number | null;
+          created_at: string;
+          discrepancy_note: string | null;
+          draft_category_id: string | null;
+          draft_condition: string | null;
+          draft_inventory_number: string | null;
+          draft_location_id: string | null;
+          draft_name: string;
+          draft_ownership_kind: string | null;
+          draft_sku_code: string | null;
+          entered_by_email: string | null;
+          entered_by_staff_id: number | null;
+          expected_qty: number | null;
+          finding_status: string;
+          id: string;
+          posted_asset_id: string | null;
+          posted_at: string | null;
+          posted_stock_item_id: string | null;
+          row_version: number;
+          session_id: string;
+          stock_item_id: string | null;
+          tracking_type: string;
+          unit_code: string | null;
+          updated_at: string;
+        }
+      };
+      inventory_add_session_participant: {
+        Args: {
+          p_assigned_category_id?: string;
+          p_assigned_zone_location_id?: string;
+          p_role_in_session?: string;
+          p_session_id: string;
+          p_staff_id: number;
+        }
+        Returns: {
+          active: boolean;
+          assigned_category_id: string | null;
+          assigned_zone_location_id: string | null;
+          id: string;
+          joined_at: string;
+          role_in_session: string;
+          session_id: string;
+          staff_id: number;
+        }
+      };
+      inventory_approve_and_post_session: {
+        Args: {
+          p_approval_note?: string;
+          p_row_version: number;
+          p_session_id: string;
+        }
+        Returns: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        }
+      };
+      inventory_approve_asset_write_off: {
+        Args: {
+          p_asset_id: string;
+          p_reason?: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_archive_asset: {
+        Args: {
+          p_asset_id: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_archive_category: {
+        Args: {
+          p_id: string;
+        }
+        Returns: {
+          active: boolean;
+          allowed_tracking_type: string | null;
+          archived_at: string | null;
+          code: string;
+          created_at: string;
+          description: string | null;
+          id: string;
+          name_bg: string;
+          name_en: string;
+          name_ru: string;
+          parent_id: string | null;
+          sort_order: number;
+          updated_at: string;
+        }
+      };
+      inventory_archive_document: {
+        Args: {
+          p_document_id: string;
+          p_note?: string;
+          p_row_version?: number;
+        }
+        Returns: {
+          archived_at: string | null;
+          archived_by_email: string | null;
+          asset_id: string | null;
+          byte_size: number | null;
+          created_at: string;
+          doc_kind: string;
+          id: string;
+          maintenance_event_id: string | null;
+          mime_type: string | null;
+          note: string | null;
+          original_filename: string | null;
+          row_version: number;
+          session_item_id: string | null;
+          stock_item_id: string | null;
+          storage_path: string;
+          superseded_by_id: string | null;
+          title: string;
+          uploaded_by_email: string | null;
+          uploaded_by_staff_id: number | null;
+          uploaded_by_uid: string | null;
+        }
+      };
+      inventory_archive_location: {
+        Args: {
+          p_id: string;
+        }
+        Returns: {
+          active: boolean;
+          code: string;
+          created_at: string;
+          id: string;
+          location_kind: string;
+          name: string;
+          note: string | null;
+          property_id: number | null;
+          updated_at: string;
+        }
+      };
+      inventory_assert_authenticated: {
+        Args: Record<PropertyKey, never>;
+        Returns: undefined
+      };
+      inventory_assert_cap: {
+        Args: {
+          p_cap: string;
+        }
+        Returns: undefined
+      };
+      inventory_assert_session_participant: {
+        Args: {
+          p_session_id: string;
+        }
+        Returns: undefined
+      };
+      inventory_assign_asset: {
+        Args: {
+          p_asset_id: string;
+          p_note?: string;
+          p_staff_id: number;
+          p_to_location_id?: string;
+        }
+        Returns: {
+          asset_id: string;
+          assigned_at: string;
+          assigned_by_email: string | null;
+          assigned_to_staff_id: number;
+          from_location_id: string | null;
+          id: string;
+          note: string | null;
+          release_reason: string | null;
+          released_at: string | null;
+          to_location_id: string | null;
+        }
+      };
+      inventory_build_document_path: {
+        Args: {
+          p_extension: string;
+          p_file_id: string;
+          p_scope: string;
+          p_target_id: string;
+        }
+        Returns: string
+      };
+      inventory_bump_session: {
+        Args: {
+          p_new_status?: string;
+          p_row_version: number;
+          p_session_id: string;
+        }
+        Returns: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        }
+      };
+      inventory_can_attach_to_asset: {
+        Args: {
+          p_asset_id: string;
+        }
+        Returns: boolean
+      };
+      inventory_can_attach_to_maintenance: {
+        Args: {
+          p_event_id: string;
+        }
+        Returns: boolean
+      };
+      inventory_can_attach_to_session_item: {
+        Args: {
+          p_session_item_id: string;
+        }
+        Returns: boolean
+      };
+      inventory_can_attach_to_stock: {
+        Args: {
+          p_stock_item_id: string;
+        }
+        Returns: boolean
+      };
+      inventory_can_read_document_row: {
+        Args: {
+          p_doc_id: string;
+        }
+        Returns: boolean
+      };
+      inventory_close_session: {
+        Args: {
+          p_row_version: number;
+          p_session_id: string;
+        }
+        Returns: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        }
+      };
+      inventory_create_draft_asset: {
+        Args: {
+          p_acquisition_method?: string;
+          p_category_id?: string;
+          p_condition?: string;
+          p_description?: string;
+          p_estimated_value_eur?: number;
+          p_idempotency_key?: string;
+          p_inventory_number: string;
+          p_location_id?: string;
+          p_location_note?: string;
+          p_manufacturer?: string;
+          p_model?: string;
+          p_name: string;
+          p_ownership_kind: string;
+          p_ownership_note?: string;
+          p_serial_number?: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_create_session: {
+        Args: {
+          p_category_id?: string;
+          p_scope_note?: string;
+          p_target_end_at?: string;
+          p_title: string;
+          p_zone_location_id?: string;
+        }
+        Returns: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        }
+      };
+      inventory_current_staff_id: {
+        Args: Record<PropertyKey, never>;
+        Returns: number
+      };
+      inventory_document_max_bytes: {
+        Args: Record<PropertyKey, never>;
+        Returns: number
+      };
+      inventory_document_mime_allowed: {
+        Args: {
+          p_mime: string;
+        }
+        Returns: boolean
+      };
+      inventory_install_key: {
+        Args: Record<PropertyKey, never>;
+        Returns: string
+      };
+      inventory_is_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean
+      };
+      inventory_list_documents_for_asset: {
+        Args: {
+          p_asset_id: string;
+        }
+        Returns: {
+          archived_at: string | null;
+          archived_by_email: string | null;
+          asset_id: string | null;
+          byte_size: number | null;
+          created_at: string;
+          doc_kind: string;
+          id: string;
+          maintenance_event_id: string | null;
+          mime_type: string | null;
+          note: string | null;
+          original_filename: string | null;
+          row_version: number;
+          session_item_id: string | null;
+          stock_item_id: string | null;
+          storage_path: string;
+          superseded_by_id: string | null;
+          title: string;
+          uploaded_by_email: string | null;
+          uploaded_by_staff_id: number | null;
+          uploaded_by_uid: string | null;
+        }
+      };
+      inventory_list_documents_for_session_item: {
+        Args: {
+          p_session_item_id: string;
+        }
+        Returns: {
+          archived_at: string | null;
+          archived_by_email: string | null;
+          asset_id: string | null;
+          byte_size: number | null;
+          created_at: string;
+          doc_kind: string;
+          id: string;
+          maintenance_event_id: string | null;
+          mime_type: string | null;
+          note: string | null;
+          original_filename: string | null;
+          row_version: number;
+          session_item_id: string | null;
+          stock_item_id: string | null;
+          storage_path: string;
+          superseded_by_id: string | null;
+          title: string;
+          uploaded_by_email: string | null;
+          uploaded_by_staff_id: number | null;
+          uploaded_by_uid: string | null;
+        }
+      };
+      inventory_log_asset_event: {
+        Args: {
+          p_asset_id: string;
+          p_event_kind: string;
+          p_note?: string;
+          p_payload?: Json;
+        }
+        Returns: undefined
+      };
+      inventory_log_session_event: {
+        Args: {
+          p_event_kind: string;
+          p_note?: string;
+          p_payload?: Json;
+          p_session_id: string;
+        }
+        Returns: undefined
+      };
+      inventory_module_enabled: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean
+      };
+      inventory_object_name_ok: {
+        Args: {
+          p_name: string;
+        }
+        Returns: boolean
+      };
+      inventory_post_session_item: {
+        Args: {
+          p_item_id: string;
+        }
+        Returns: {
+          asset_id: string | null;
+          counted_qty: number | null;
+          created_at: string;
+          discrepancy_note: string | null;
+          draft_category_id: string | null;
+          draft_condition: string | null;
+          draft_inventory_number: string | null;
+          draft_location_id: string | null;
+          draft_name: string;
+          draft_ownership_kind: string | null;
+          draft_sku_code: string | null;
+          entered_by_email: string | null;
+          entered_by_staff_id: number | null;
+          expected_qty: number | null;
+          finding_status: string;
+          id: string;
+          posted_asset_id: string | null;
+          posted_at: string | null;
+          posted_stock_item_id: string | null;
+          row_version: number;
+          session_id: string;
+          stock_item_id: string | null;
+          tracking_type: string;
+          unit_code: string | null;
+          updated_at: string;
+        }
+      };
+      inventory_propose_asset_write_off: {
+        Args: {
+          p_asset_id: string;
+          p_reason: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_record_maintenance: {
+        Args: {
+          p_asset_id: string;
+          p_cost_eur?: number;
+          p_event_kind: string;
+          p_performed_on?: string;
+          p_summary: string;
+          p_work_order_id?: string;
+        }
+        Returns: {
+          asset_id: string;
+          cost_eur: number | null;
+          created_at: string;
+          event_kind: string;
+          id: string;
+          performed_by_email: string | null;
+          performed_by_staff_id: number | null;
+          performed_on: string;
+          summary: string;
+          uk_expense_id: number | null;
+          work_order_id: string | null;
+        }
+      };
+      inventory_register_document: {
+        Args: {
+          p_asset_id?: string;
+          p_byte_size?: number;
+          p_doc_kind: string;
+          p_maintenance_event_id?: string;
+          p_mime_type: string;
+          p_note?: string;
+          p_original_filename?: string;
+          p_session_item_id?: string;
+          p_session_item_row_version?: number;
+          p_stock_item_id?: string;
+          p_storage_path: string;
+          p_title: string;
+        }
+        Returns: {
+          archived_at: string | null;
+          archived_by_email: string | null;
+          asset_id: string | null;
+          byte_size: number | null;
+          created_at: string;
+          doc_kind: string;
+          id: string;
+          maintenance_event_id: string | null;
+          mime_type: string | null;
+          note: string | null;
+          original_filename: string | null;
+          row_version: number;
+          session_item_id: string | null;
+          stock_item_id: string | null;
+          storage_path: string;
+          superseded_by_id: string | null;
+          title: string;
+          uploaded_by_email: string | null;
+          uploaded_by_staff_id: number | null;
+          uploaded_by_uid: string | null;
+        }
+      };
+      inventory_register_stock_item: {
+        Args: {
+          p_category_id?: string;
+          p_default_location_id?: string;
+          p_description?: string;
+          p_estimated_unit_value_eur?: number;
+          p_idempotency_key?: string;
+          p_min_qty?: number;
+          p_name: string;
+          p_ownership_kind: string;
+          p_ownership_note?: string;
+          p_sku_code: string;
+          p_unit_code: string;
+        }
+        Returns: {
+          active: boolean;
+          category_id: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          default_location_id: string | null;
+          description: string | null;
+          estimated_unit_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          min_qty: number | null;
+          name: string;
+          opening_import: boolean;
+          ownership_kind: string;
+          ownership_note: string | null;
+          sku_code: string;
+          tracking_type: string;
+          unit_code: string;
+          updated_at: string;
+          updated_by_email: string | null;
+        }
+      };
+      inventory_review_session_item: {
+        Args: {
+          p_decision: string;
+          p_item_id: string;
+          p_note?: string;
+        }
+        Returns: {
+          asset_id: string | null;
+          counted_qty: number | null;
+          created_at: string;
+          discrepancy_note: string | null;
+          draft_category_id: string | null;
+          draft_condition: string | null;
+          draft_inventory_number: string | null;
+          draft_location_id: string | null;
+          draft_name: string;
+          draft_ownership_kind: string | null;
+          draft_sku_code: string | null;
+          entered_by_email: string | null;
+          entered_by_staff_id: number | null;
+          expected_qty: number | null;
+          finding_status: string;
+          id: string;
+          posted_asset_id: string | null;
+          posted_at: string | null;
+          posted_stock_item_id: string | null;
+          row_version: number;
+          session_id: string;
+          stock_item_id: string | null;
+          tracking_type: string;
+          unit_code: string | null;
+          updated_at: string;
+        }
+      };
+      inventory_safe_filename: {
+        Args: {
+          p_name: string;
+        }
+        Returns: string
+      };
+      inventory_set_asset_condition: {
+        Args: {
+          p_asset_id: string;
+          p_condition: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_set_asset_number: {
+        Args: {
+          p_asset_id: string;
+          p_inventory_number: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_set_staff_capabilities: {
+        Args: {
+          p_can_approve_sessions?: boolean;
+          p_can_edit_assets?: boolean;
+          p_can_manage_categories?: boolean;
+          p_can_session_participate?: boolean;
+          p_can_session_review?: boolean;
+          p_can_stock_move?: boolean;
+          p_can_view?: boolean;
+          p_can_write_off?: boolean;
+          p_staff_id: number;
+        }
+        Returns: {
+          can_approve_sessions: boolean;
+          can_edit_assets: boolean;
+          can_manage_categories: boolean;
+          can_session_participate: boolean;
+          can_session_review: boolean;
+          can_stock_move: boolean;
+          can_view: boolean;
+          can_write_off: boolean;
+          staff_id: number;
+          updated_at: string;
+          updated_by_email: string | null;
+        }
+      };
+      inventory_staff_cap: {
+        Args: {
+          p_cap: string;
+        }
+        Returns: boolean
+      };
+      inventory_start_session: {
+        Args: {
+          p_row_version: number;
+          p_session_id: string;
+        }
+        Returns: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        }
+      };
+      inventory_stock_move: {
+        Args: {
+          p_from_location_id?: string;
+          p_idempotency_key?: string;
+          p_location_id?: string;
+          p_movement_type: string;
+          p_qty: number;
+          p_reason?: string;
+          p_session_item_id?: string;
+          p_stock_item_id: string;
+          p_to_location_id?: string;
+        }
+        Returns: {
+          created_at: string;
+          created_by_email: string | null;
+          created_by_staff_id: number | null;
+          from_location_id: string | null;
+          id: number;
+          idempotency_key: string | null;
+          location_id: string | null;
+          movement_type: string;
+          qty_delta: number;
+          reason: string | null;
+          session_item_id: string | null;
+          stock_item_id: string;
+          to_location_id: string | null;
+          uk_expense_id: number | null;
+          unit_code: string;
+        }
+      };
+      inventory_stock_on_hand: {
+        Args: {
+          p_stock_item_id: string;
+        }
+        Returns: number
+      };
+      inventory_submit_session_for_review: {
+        Args: {
+          p_row_version: number;
+          p_session_id: string;
+        }
+        Returns: {
+          approval_note: string | null;
+          approved_at: string | null;
+          approved_by_email: string | null;
+          category_id: string | null;
+          closed_at: string | null;
+          created_at: string;
+          created_by_email: string | null;
+          id: string;
+          row_version: number;
+          scope_note: string | null;
+          started_at: string | null;
+          status: string;
+          target_end_at: string | null;
+          title: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          zone_location_id: string | null;
+        }
+      };
+      inventory_submit_session_item: {
+        Args: {
+          p_item_id: string;
+        }
+        Returns: {
+          asset_id: string | null;
+          counted_qty: number | null;
+          created_at: string;
+          discrepancy_note: string | null;
+          draft_category_id: string | null;
+          draft_condition: string | null;
+          draft_inventory_number: string | null;
+          draft_location_id: string | null;
+          draft_name: string;
+          draft_ownership_kind: string | null;
+          draft_sku_code: string | null;
+          entered_by_email: string | null;
+          entered_by_staff_id: number | null;
+          expected_qty: number | null;
+          finding_status: string;
+          id: string;
+          posted_asset_id: string | null;
+          posted_at: string | null;
+          posted_stock_item_id: string | null;
+          row_version: number;
+          session_id: string;
+          stock_item_id: string | null;
+          tracking_type: string;
+          unit_code: string | null;
+          updated_at: string;
+        }
+      };
+      inventory_supersede_document: {
+        Args: {
+          p_byte_size?: number;
+          p_doc_kind: string;
+          p_mime_type: string;
+          p_note?: string;
+          p_old_document_id: string;
+          p_original_filename?: string;
+          p_storage_path: string;
+          p_title: string;
+        }
+        Returns: {
+          archived_at: string | null;
+          archived_by_email: string | null;
+          asset_id: string | null;
+          byte_size: number | null;
+          created_at: string;
+          doc_kind: string;
+          id: string;
+          maintenance_event_id: string | null;
+          mime_type: string | null;
+          note: string | null;
+          original_filename: string | null;
+          row_version: number;
+          session_item_id: string | null;
+          stock_item_id: string | null;
+          storage_path: string;
+          superseded_by_id: string | null;
+          title: string;
+          uploaded_by_email: string | null;
+          uploaded_by_staff_id: number | null;
+          uploaded_by_uid: string | null;
+        }
+      };
+      inventory_transfer_asset: {
+        Args: {
+          p_asset_id: string;
+          p_note?: string;
+          p_to_location_id?: string;
+          p_to_staff_id?: number;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_update_asset: {
+        Args: {
+          p_asset_id: string;
+          p_category_id?: string;
+          p_description?: string;
+          p_estimated_value_eur?: number;
+          p_location_id?: string;
+          p_location_note?: string;
+          p_manufacturer?: string;
+          p_model?: string;
+          p_name?: string;
+          p_ownership_kind?: string;
+          p_ownership_note?: string;
+          p_serial_number?: string;
+        }
+        Returns: {
+          acquired_on: string | null;
+          acquisition_cost_eur: number | null;
+          acquisition_method: string | null;
+          category_id: string | null;
+          condition: string;
+          created_at: string;
+          created_by_email: string | null;
+          description: string | null;
+          estimated_value_eur: number | null;
+          id: string;
+          idempotency_key: string | null;
+          inventory_number: string;
+          location_id: string | null;
+          location_note: string | null;
+          manufacturer: string | null;
+          model: string | null;
+          name: string;
+          opening_import: boolean;
+          operational_status: string;
+          ownership_kind: string;
+          ownership_note: string | null;
+          responsible_staff_id: number | null;
+          serial_number: string | null;
+          tracking_type: string;
+          updated_at: string;
+          updated_by_email: string | null;
+          write_off_by_email: string | null;
+          write_off_reason: string | null;
+          written_off_at: string | null;
+        }
+      };
+      inventory_update_session_item: {
+        Args: {
+          p_counted_qty?: number;
+          p_discrepancy_note?: string;
+          p_draft_category_id?: string;
+          p_draft_condition?: string;
+          p_draft_inventory_number?: string;
+          p_draft_location_id?: string;
+          p_draft_name?: string;
+          p_draft_ownership_kind?: string;
+          p_draft_sku_code?: string;
+          p_expected_qty?: number;
+          p_item_id: string;
+          p_row_version: number;
+          p_unit_code?: string;
+        }
+        Returns: {
+          asset_id: string | null;
+          counted_qty: number | null;
+          created_at: string;
+          discrepancy_note: string | null;
+          draft_category_id: string | null;
+          draft_condition: string | null;
+          draft_inventory_number: string | null;
+          draft_location_id: string | null;
+          draft_name: string;
+          draft_ownership_kind: string | null;
+          draft_sku_code: string | null;
+          entered_by_email: string | null;
+          entered_by_staff_id: number | null;
+          expected_qty: number | null;
+          finding_status: string;
+          id: string;
+          posted_asset_id: string | null;
+          posted_at: string | null;
+          posted_stock_item_id: string | null;
+          row_version: number;
+          session_id: string;
+          stock_item_id: string | null;
+          tracking_type: string;
+          unit_code: string | null;
+          updated_at: string;
+        }
+      };
+      inventory_upsert_category: {
+        Args: {
+          p_allowed_tracking_type?: string;
+          p_code: string;
+          p_description?: string;
+          p_id?: string;
+          p_name_bg: string;
+          p_name_en: string;
+          p_name_ru: string;
+          p_parent_id?: string;
+          p_sort_order?: number;
+        }
+        Returns: {
+          active: boolean;
+          allowed_tracking_type: string | null;
+          archived_at: string | null;
+          code: string;
+          created_at: string;
+          description: string | null;
+          id: string;
+          name_bg: string;
+          name_en: string;
+          name_ru: string;
+          parent_id: string | null;
+          sort_order: number;
+          updated_at: string;
+        }
+      };
+      inventory_upsert_location: {
+        Args: {
+          p_code: string;
+          p_id?: string;
+          p_location_kind: string;
+          p_name: string;
+          p_note?: string;
+          p_property_id?: number;
+        }
+        Returns: {
+          active: boolean;
+          code: string;
+          created_at: string;
+          id: string;
+          location_kind: string;
+          name: string;
+          note: string | null;
+          property_id: number | null;
+          updated_at: string;
+        }
       };
     };
     Enums: Record<string, never>;

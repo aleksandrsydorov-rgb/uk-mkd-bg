@@ -45,3 +45,10 @@ comment on table public.properties is
 
 create index if not exists properties_apartment_number_idx
   on public.properties (apartment_number);
+
+-- RLS must be enabled for SH-* policies to enforce. Legacy enable_rls.sql is
+-- not in the chronological migration chain, so greenfield enables here.
+alter table public.properties enable row level security;
+revoke all on table public.properties from public, anon;
+revoke insert, update, delete on table public.properties from authenticated;
+grant select on table public.properties to authenticated;

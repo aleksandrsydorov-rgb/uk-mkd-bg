@@ -3,6 +3,7 @@ import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningA
 import { internetOpeningAdapter } from '@/lib/moduleCore/adapters/internetOpeningAdapter';
 import { propertyBookOpeningAdapter } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
 import { capitalRepairOpeningAdapter } from '@/lib/moduleCore/adapters/capitalRepairOpeningAdapter';
+import { inventoryOpeningAdapter } from '@/lib/moduleCore/adapters/inventoryOpeningAdapter';
 import { supportFeeOpeningAdapter } from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
 import { ukExpensesOpeningAdapter } from '@/lib/moduleCore/adapters/ukExpensesOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
@@ -71,6 +72,8 @@ export function bootstrapModuleSetupAdapters(): void {
   registerModuleAdapter(ukExpensesOpeningAdapter);
   // IS-8: Capital Repair opening inventarisation (import_capital_repair_opening_state; optional history).
   registerModuleAdapter(capitalRepairOpeningAdapter);
+  // INV-6: Inventory opening (empty / manual / XLSX / optional physical session).
+  registerModuleAdapter(inventoryOpeningAdapter);
   // No initial data required — may go DISABLED → READY.
   registerModuleAdapter(metadataAdapter('guest_mode', { requiresInitialSetup: false }));
   registerModuleAdapter(metadataAdapter('chat', { requiresInitialSetup: false }));

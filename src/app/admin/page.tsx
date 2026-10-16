@@ -108,6 +108,8 @@ import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
 import { AdminSecurity } from '@/components/admin/AdminSecurity';
 import { AdminCleaning } from '@/components/admin/AdminCleaning';
+import { AdminInventory } from '@/components/admin/AdminInventory';
+import { StaffInventory } from '@/components/admin/StaffInventory';
 import { AdminBudget } from '@/components/admin/AdminBudget';
 import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
@@ -143,6 +145,14 @@ import { canSeeInternetAdmin } from '@/lib/internet';
 import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import { canSeeSecurityAdmin, isGuardRole, staffHomePath } from '@/lib/security';
 import { canSeeCleaningAdmin } from '@/lib/cleaning';
+import {
+  emptyInventoryStaffCapabilities,
+  inventorySelect,
+  parseInventoryStaffCapabilities,
+  shouldShowInventoryAdmin,
+  shouldShowInventoryStaff,
+  type InventoryStaffCapabilityFlags,
+} from '@/lib/inventory';
 import { canSeeBudgetAdmin, categoryLabel, type BudgetCategory } from '@/lib/budget';
 import { canSeePlatformSupportAdmin } from '@/lib/platformControl';
 import { AdminPlatformSupport } from '@/components/admin/AdminPlatformSupport';
@@ -305,6 +315,8 @@ type AdminSection =
   | 'блокировка'
   | 'охрана'
   | 'уборка'
+  | 'инвентарь'
+  | 'моя_инвентаризация'
   | 'бюджет'
   | 'собрания'
   | 'решения'
@@ -338,6 +350,8 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'блокировка',
   'охрана',
   'уборка',
+  'инвентарь',
+  'моя_инвентаризация',
   'бюджет',
   'собрания',
   'решения',
@@ -433,6 +447,8 @@ function AdminPortal() {
       { key: 'блокировка', label: t('admin.serviceLock'), icon: '🔒' },
       { key: 'охрана', label: t('admin.security'), icon: '🛡️' },
       { key: 'уборка', label: t('admin.cleaning'), icon: '🧹' },
+      { key: 'инвентарь', label: t('admin.inventory'), icon: '📦' },
+      { key: 'моя_инвентаризация', label: t('admin.invStaff'), icon: '📋' },
       { key: 'бюджет', label: t('admin.budget'), icon: '📈' },
       { key: 'собрания', label: t('admin.navMeetings'), icon: '🏛️' },
       { key: 'решения', label: t('admin.navDecisions'), icon: '📜' },
@@ -453,6 +469,11 @@ function AdminPortal() {
   const [sessionEmail, setSessionEmail] = useState('');
   const [staffRole, setStaffRole] = useState('');
   const [staffActive, setStaffActive] = useState(false);
+  const [staffId, setStaffId] = useState<number | null>(null);
+  const [inventoryStaffCaps, setInventoryStaffCaps] = useState<InventoryStaffCapabilityFlags>(
+    () => emptyInventoryStaffCapabilities(),
+  );
+  const [inventoryAssigned, setInventoryAssigned] = useState(false);
   const [workClaimProfile, setWorkClaimProfile] = useState<MyWorkClaimProfile | null>(null);
   const [buildingModules, setBuildingModules] = useState<BuildingModulesState>(() => emptyBuildingModulesState());
   const [moduleCatalog, setModuleCatalog] = useState<BuildingModuleV2Row[]>([]);
@@ -466,6 +487,12 @@ function AdminPortal() {
     canSeeSecurityAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'security');
   const showCleaning =
     canSeeCleaningAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'cleaning');
+  const showInventory = shouldShowInventoryAdmin(staffRole, buildingModules);
+  const showInventoryStaff = shouldShowInventoryStaff(buildingModules, {
+    staffActive,
+    caps: inventoryStaffCaps,
+    hasAssignedSessions: inventoryAssigned,
+  });
   const showBudget =
     canSeeBudgetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'budget');
   // Platform-core: always available to complex admin (not an optional module toggle).
@@ -499,6 +526,13 @@ function AdminPortal() {
       ...(showMyTasks
         ? [{ id: 'mytasks', label: t('admin.myTasks'), items: ['мои_задачи'] as AdminSection[] }]
         : []),
+      ...(showInventoryStaff
+        ? [{
+            id: 'invstaff',
+            label: t('admin.invStaff'),
+            items: ['моя_инвентаризация'] as AdminSection[],
+          }]
+        : []),
       ...(canManageCriticalAccess
         ? [{
             id: 'objects',
@@ -510,6 +544,7 @@ function AdminPortal() {
               ...(showServiceLock ? (['блокировка'] as const) : []),
               ...(showSecurity ? (['охрана'] as const) : []),
               ...(showCleaning ? (['уборка'] as const) : []),
+              ...(showInventory ? (['инвентарь'] as const) : []),
             ] as AdminSection[],
           }]
         : []),
@@ -589,6 +624,8 @@ function AdminPortal() {
     showServiceLock,
     showSecurity,
     showCleaning,
+    showInventory,
+    showInventoryStaff,
     showBudget,
     showSupportFee,
     showRequests,
@@ -1067,6 +1104,7 @@ function AdminPortal() {
         setSessionEmail(email);
         setStaffRole(access.staff?.role ?? '');
         setStaffActive(access.staff?.active === true);
+        setStaffId(access.staff?.id ?? null);
         setHasCabinet(access.isOwner);
         setAllowed(true);
         try {
@@ -1096,6 +1134,9 @@ function AdminPortal() {
     setSessionEmail('');
     setStaffRole('');
     setStaffActive(false);
+    setStaffId(null);
+    setInventoryStaffCaps(emptyInventoryStaffCapabilities());
+    setInventoryAssigned(false);
     setWorkClaimProfile(null);
     setHasCabinet(false);
     setAllowed(false);
@@ -1113,6 +1154,52 @@ function AdminPortal() {
     });
     return () => subscription.unsubscribe();
   }, [supabase, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function probeInventoryStaff() {
+      if (
+        !staffActive ||
+        staffId == null ||
+        !isBuildingModuleEnabled(buildingModules, 'inventory')
+      ) {
+        if (!cancelled) {
+          setInventoryStaffCaps(emptyInventoryStaffCapabilities());
+          setInventoryAssigned(false);
+        }
+        return;
+      }
+      try {
+        const [capsRes, partRes] = await Promise.all([
+          inventorySelect<Record<string, unknown>>(
+            supabase,
+            'staff_inventory_capabilities',
+            '*',
+            { eq: { staff_id: staffId } },
+          ),
+          inventorySelect<{ id: string }>(
+            supabase,
+            'inventory_session_participants',
+            'id',
+            { eq: { staff_id: staffId, active: true } },
+          ),
+        ]);
+        if (cancelled) return;
+        const capRow = capsRes.data?.[0] ?? null;
+        setInventoryStaffCaps(parseInventoryStaffCapabilities(capRow));
+        setInventoryAssigned((partRes.data ?? []).length > 0);
+      } catch {
+        if (!cancelled) {
+          setInventoryStaffCaps(emptyInventoryStaffCapabilities());
+          setInventoryAssigned(false);
+        }
+      }
+    }
+    void probeInventoryStaff();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, staffActive, staffId, buildingModules]);
 
   async function handleLogout() {
     try {
@@ -3857,6 +3944,19 @@ function AdminPortal() {
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
+          />
+        );
+
+      case 'инвентарь':
+        return <AdminInventory supabase={supabase} staffRole={staffRole} />;
+
+      case 'моя_инвентаризация':
+        return (
+          <StaffInventory
+            supabase={supabase}
+            staffId={staffId}
+            staffRole={staffRole}
+            caps={inventoryStaffCaps}
           />
         );
 

@@ -5,8 +5,10 @@ export const REQUEST_PHOTOS_BUCKET = 'request-photos';
 export const CHAT_FILES_BUCKET = 'chat-files';
 export const EXPENSE_RECEIPTS_BUCKET = 'uk-expense-receipts';
 export const POLL_IMAGES_BUCKET = 'poll-images';
+export const INVENTORY_DOCUMENTS_BUCKET = 'inventory-documents';
 
 export const MAX_PRIVATE_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_INVENTORY_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 const IMAGE_MIMES = new Set([
   'image/jpeg',
@@ -50,6 +52,10 @@ function normalizedMime(file: File) {
 }
 
 export function privateUploadRejectReason(bucket: string, file: File): 'type' | 'size' | null {
+  if (bucket === INVENTORY_DOCUMENTS_BUCKET) {
+    if (file.size > MAX_INVENTORY_UPLOAD_BYTES) return 'size';
+    return CHAT_MIMES.has(normalizedMime(file)) ? null : 'type';
+  }
   if (file.size > MAX_PRIVATE_UPLOAD_BYTES) return 'size';
   const mime = normalizedMime(file);
   if (bucket === CHAT_FILES_BUCKET) {
@@ -112,6 +118,9 @@ export function bucketForStoredPath(stored: string | null | undefined) {
   if (/^properties\/[0-9]+\//.test(path)) return CHAT_FILES_BUCKET;
   if (/^expenses\/[0-9]+\//.test(path)) return EXPENSE_RECEIPTS_BUCKET;
   if (/^polls\/[0-9]+\//.test(path)) return POLL_IMAGES_BUCKET;
+  if (/^inventory\/[a-z0-9_-]+\/(asset|stock|session-item|maintenance)\//.test(path)) {
+    return INVENTORY_DOCUMENTS_BUCKET;
+  }
   return null;
 }
 

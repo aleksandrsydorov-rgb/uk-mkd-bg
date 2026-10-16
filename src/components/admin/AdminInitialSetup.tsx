@@ -22,6 +22,8 @@ import {
   SUPPORT_FEE_SETUP_SCHEMA_VERSION,
   UK_EXPENSES_SETUP_KEY,
   UK_EXPENSES_SETUP_SCHEMA_VERSION,
+  INVENTORY_MODULE_KEY,
+  INVENTORY_SETUP_SCHEMA_VERSION,
   WATER_MODULE_KEY,
   activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
@@ -43,9 +45,11 @@ import {
   classifySupportFeeOpeningRows,
   classifyUkExpenseOpeningErrorMessage,
   classifyUkExpenseOpeningRows,
+  classifyInventoryOpeningRows,
   classifyWaterMeterOpeningRows,
   commitCapitalRepairOpeningBatch,
   commitInternetOpeningBatch,
+  commitInventoryOpeningBatch,
   commitSupportFeeOpeningBatch,
   commitUkExpenseOpeningBatch,
   crCommitAuditPayload,
@@ -62,7 +66,15 @@ import {
   downloadSupportFeeOpeningTemplate,
   downloadUkExpensesErrorReport,
   downloadUkExpensesOpeningTemplate,
+  downloadInventoryOpeningErrorReport,
+  downloadInventoryOpeningTemplate,
   downloadWaterOpeningTemplate,
+  filterPreviewForInventoryRetry,
+  inventoryCommitAuditPayload,
+  inventoryOpeningIdempotencyKey,
+  mergeInventoryCommitBatches,
+  parseInventoryOpeningXlsxBuffer,
+  retryCandidatesFromInventoryBatch,
   commitMeterInventoryBatch,
   filterPreviewForCrRetry,
   filterPreviewForInternetRetry,
@@ -106,6 +118,10 @@ import {
   type MeterCommitBatchResult,
   type SfCommitBatchResult,
   type UkExpenseCommitBatchResult,
+  type InventoryCommitBatchResult,
+  type InventoryOpeningClassifyContext,
+  type ExistingInventoryAssetRef,
+  type ExistingInventoryStockRef,
   type ModuleLifecycleState,
   type TariffListSnapshot,
   type ModuleTariffReadiness,
@@ -172,6 +188,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [ukExpenseCommitResult, setUkExpenseCommitResult] = useState<UkExpenseCommitBatchResult | null>(
     null,
   );
+  const [pendingInventoryPreview, setPendingInventoryPreview] = useState<ImportPreviewResult | null>(
+    null,
+  );
+  const [inventoryCommitResult, setInventoryCommitResult] =
+    useState<InventoryCommitBatchResult | null>(null);
   const [pendingCrPreview, setPendingCrPreview] = useState<ImportPreviewResult | null>(null);
   const [crCommitResult, setCrCommitResult] = useState<CrCommitBatchResult | null>(null);
   const [tariffSnapshots, setTariffSnapshots] = useState<TariffListSnapshot[]>([]);
@@ -246,6 +267,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isInternet = selectedKey === INTERNET_MODULE_KEY;
   const isUkExpenses = selectedKey === UK_EXPENSES_SETUP_KEY;
   const isCapitalRepair = selectedKey === CAPITAL_REPAIR_MODULE_KEY;
+  const isInventory = selectedKey === INVENTORY_MODULE_KEY;
 
   const tariffReadiness = useMemo(
     () => evaluateAllTariffSetupGates(tariffSnapshots),
@@ -285,6 +307,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setPendingInternetPreview(null);
     setInternetCommitResult(null);
     setPendingUkExpensePreview(null);
+    setPendingInventoryPreview(null);
+    setInventoryCommitResult(null);
     setUkExpenseCommitResult(null);
     setPendingCrPreview(null);
     setCrCommitResult(null);
@@ -658,6 +682,99 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     };
   }
 
+  async function loadInventoryClassifyContext(): Promise<InventoryOpeningClassifyContext> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const [cats, locs, units, assets, stock, moves] = await Promise.all([
+      sb.from('inventory_categories').select('id, code, active'),
+      sb.from('inventory_locations').select('id, code, active'),
+      sb.from('inventory_units').select('code'),
+      sb
+        .from('inventory_assets')
+        .select(
+          'id, inventory_number, name, ownership_kind, category_id, location_id, condition, serial_number, estimated_value_eur',
+        ),
+      sb
+        .from('inventory_stock_items')
+        .select(
+          'id, sku_code, name, unit_code, ownership_kind, category_id, default_location_id',
+        ),
+      sb.from('inventory_stock_movements').select('stock_item_id, movement_type'),
+    ]);
+
+    const categoriesByCode = new Map<string, string>();
+    for (const c of (cats.data ?? []) as { id: string; code: string; active?: boolean }[]) {
+      if (c.active === false) continue;
+      categoriesByCode.set(String(c.code).toLowerCase(), String(c.id));
+    }
+    const locationsByCode = new Map<string, string>();
+    for (const l of (locs.data ?? []) as { id: string; code: string; active?: boolean }[]) {
+      if (l.active === false) continue;
+      locationsByCode.set(String(l.code).toLowerCase(), String(l.id));
+    }
+    const unitSet = new Set<string>(
+      ((units.data ?? []) as { code: string }[]).map((u) => String(u.code)),
+    );
+    const assetsByNumber = new Map<string, ExistingInventoryAssetRef>();
+    for (const a of (assets.data ?? []) as Array<{
+      id: string;
+      inventory_number: string;
+      name: string;
+      ownership_kind: string;
+      category_id: string | null;
+      location_id: string | null;
+      condition: string;
+      serial_number: string | null;
+      estimated_value_eur: number | null;
+    }>) {
+      assetsByNumber.set(String(a.inventory_number).toLowerCase(), {
+        id: String(a.id),
+        inventoryNumber: String(a.inventory_number),
+        name: String(a.name),
+        ownershipKind: String(a.ownership_kind),
+        categoryId: a.category_id ? String(a.category_id) : null,
+        locationId: a.location_id ? String(a.location_id) : null,
+        condition: String(a.condition),
+        serialNumber: a.serial_number,
+        estimatedValueEur: a.estimated_value_eur,
+      });
+    }
+    const openingSkus = new Set<string>();
+    for (const m of (moves.data ?? []) as { stock_item_id: string; movement_type: string }[]) {
+      if (m.movement_type === 'OPENING') openingSkus.add(String(m.stock_item_id));
+    }
+    const stockBySku = new Map<string, ExistingInventoryStockRef>();
+    for (const s of (stock.data ?? []) as {
+      id: string;
+      sku_code: string;
+      name: string;
+      unit_code: string;
+      ownership_kind: string;
+      category_id: string | null;
+      default_location_id: string | null;
+    }[]) {
+      stockBySku.set(String(s.sku_code).toLowerCase(), {
+        id: String(s.id),
+        skuCode: String(s.sku_code),
+        name: String(s.name),
+        unitCode: String(s.unit_code),
+        ownershipKind: String(s.ownership_kind),
+        categoryId: s.category_id ? String(s.category_id) : null,
+        defaultLocationId: s.default_location_id ? String(s.default_location_id) : null,
+        hasOpeningMovement: openingSkus.has(String(s.id)),
+        qtyOnHand: 0,
+      });
+    }
+    return {
+      categoriesByCode,
+      locationsByCode,
+      units: unitSet,
+      assetsByNumber,
+      stockBySku,
+      sourceRefsSeen: new Set(),
+    };
+  }
+
   async function saveDraft() {
     if (!selectedKey || !adapter) return;
     setBusy(true);
@@ -701,8 +818,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       verified_existing_readonly: verifiedExisting,
       skip_historical_import: skipHistoricalExpenses,
     };
-    if (isUkExpenses || isCapitalRepair) {
-      const validation = adapter.validateManual?.(draft);
+    if (isUkExpenses || isCapitalRepair || isInventory) {
+      const inventoryDraft = isInventory
+        ? {
+            confirmed: draftConfirmed || verifiedExisting || skipHistoricalExpenses,
+            skip_import: skipHistoricalExpenses,
+            empty_inventory_ok: verifiedExisting,
+            start_physical_inventory: allowCreateMissing,
+          }
+        : draft;
+      const validation = adapter.validateManual?.(isInventory ? inventoryDraft : draft);
       if (!validation || !validation.ok) {
         setError(t('admin.is1SetupIncomplete'));
         return;
@@ -1078,6 +1203,68 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setPreviewNote(
           t('admin.is1PreviewSaved').replace('{id}', id) +
             ` · ${t('admin.is5InternetNoSyntheticPayments')}`,
+        );
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (isInventory) {
+      setBusy(true);
+      setError(null);
+      try {
+        const buf = await file.arrayBuffer();
+        const parsed = parseInventoryOpeningXlsxBuffer(buf);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.rows.length === 0) {
+          setError(t('admin.inv6EmptySheet'));
+          return;
+        }
+        const ctx = await loadInventoryClassifyContext();
+        const result = classifyInventoryOpeningRows(parsed.rows, ctx);
+        setPreview(result);
+        setPendingInventoryPreview(result);
+        const { data: batch, error: batchErr } = await supabase.rpc(
+          'admin_create_module_import_batch',
+          {
+            p_module_key: selectedKey,
+            p_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+            p_source: 'xlsx',
+            p_file_name: file.name,
+            p_preview: {
+              local: result,
+              policy: {
+                read_only_preview: true,
+                no_finance: true,
+                estimated_value_informational: true,
+                conflict_no_overwrite: true,
+              },
+            },
+            p_row_count: result.rows.length,
+            p_create_count: result.createCount,
+            p_update_count: result.updateCount,
+            p_skip_count: result.skipCount,
+            p_error_count: result.errorCount,
+            p_error_report: result.rows
+              .filter((r) => r.errors.length)
+              .map((r) => ({
+                rowNumber: r.rowNumber,
+                preview_class: r.data.preview_class,
+                errors: r.errors,
+              })),
+          },
+        );
+        if (batchErr) throw batchErr;
+        const id = String((batch as { id?: string })?.id ?? '');
+        setBatchId(id || null);
+        setPreviewNote(
+          t('admin.is1PreviewSaved').replace('{id}', id) + ` · ${t('admin.inv6NoFinance')}`,
         );
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : t('admin.errGeneric'));
@@ -1822,6 +2009,165 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
   }
 
+  async function confirmInventoryImport(opts?: { retryOnly?: boolean }) {
+    if (!isInventory || !pendingInventoryPreview || !batchId || !preview) return;
+    if (preview.errorCount > 0 && !opts?.retryOnly) {
+      setError(t('admin.inv6FixErrors'));
+      return;
+    }
+    if (!window.confirm(t('admin.inv6ConfirmImport'))) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      let workPreview = pendingInventoryPreview;
+      if (opts?.retryOnly && inventoryCommitResult) {
+        const retryNums = new Set(retryCandidatesFromInventoryBatch(inventoryCommitResult));
+        workPreview = filterPreviewForInventoryRetry(
+          pendingInventoryPreview,
+          retryNums,
+        );
+        if (workPreview.rows.length === 0) {
+          setPreviewNote(t('admin.inv6RetryEmpty'));
+          return;
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
+      const rawBatch = await commitInventoryOpeningBatch({
+        preview: workPreview,
+        batchId,
+        idempotencyKeyForRow: (rowNumber, kind) =>
+          inventoryOpeningIdempotencyKey(batchId, rowNumber, kind),
+        fns: {
+          createDraftAsset: async (a) => {
+            const { data, error: rpcErr } = await sb.rpc('inventory_create_draft_asset', {
+              p_inventory_number: a.inventoryNumber,
+              p_name: a.name,
+              p_ownership_kind: a.ownershipKind,
+              p_category_id: a.categoryId,
+              p_location_id: a.locationId,
+              p_serial_number: a.serialNumber,
+              p_condition: a.condition,
+              p_estimated_value_eur: a.estimatedValueEur,
+              p_description: a.description,
+              p_idempotency_key: a.idempotencyKey,
+            });
+            if (rpcErr) return { ok: false as const, message: rpcErr.message };
+            return { ok: true as const, assetId: String((data as { id: string }).id) };
+          },
+          activateAsset: async (assetId) => {
+            const { error: rpcErr } = await sb.rpc('inventory_activate_asset', {
+              p_asset_id: assetId,
+            });
+            if (rpcErr) return { ok: false as const, message: rpcErr.message };
+            return { ok: true as const };
+          },
+          registerStockItem: async (a) => {
+            const { data, error: rpcErr } = await sb.rpc('inventory_register_stock_item', {
+              p_sku_code: a.skuCode,
+              p_name: a.name,
+              p_ownership_kind: a.ownershipKind,
+              p_unit_code: a.unitCode,
+              p_category_id: a.categoryId,
+              p_default_location_id: a.defaultLocationId,
+              p_estimated_unit_value_eur: a.estimatedUnitValueEur,
+              p_description: a.description,
+              p_idempotency_key: a.idempotencyKey,
+            });
+            if (rpcErr) return { ok: false as const, message: rpcErr.message };
+            return { ok: true as const, stockItemId: String((data as { id: string }).id) };
+          },
+          postOpeningMove: async (a) => {
+            const { error: rpcErr } = await sb.rpc('inventory_stock_move', {
+              p_stock_item_id: a.stockItemId,
+              p_movement_type: 'OPENING',
+              p_qty: a.qty,
+              p_location_id: a.locationId,
+              p_reason: a.reason,
+              p_idempotency_key: a.idempotencyKey,
+            });
+            if (rpcErr) return { ok: false as const, message: rpcErr.message };
+            return { ok: true as const };
+          },
+        },
+      });
+
+      const merged = mergeInventoryCommitBatches(
+        opts?.retryOnly && inventoryCommitResult
+          ? inventoryCommitResult
+          : {
+              rows: [],
+              createdCount: 0,
+              skippedExistingCount: 0,
+              conflictCount: 0,
+              failedCount: 0,
+              notProcessedCount: 0,
+              fullySuccessful: true,
+              stoppedEarly: false,
+              financeTouched: false,
+            },
+        rawBatch,
+      );
+      setInventoryCommitResult(merged);
+
+      const { error: auditErr } = await supabase.rpc('admin_create_module_import_batch', {
+        p_module_key: selectedKey!,
+        p_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+        p_source: 'api',
+        p_file_name: `inventory-opening-commit-${batchId}`,
+        p_preview: inventoryCommitAuditPayload(merged) as Json,
+        p_row_count: merged.rows.length,
+        p_create_count: merged.createdCount,
+        p_update_count: 0,
+        p_skip_count: merged.skippedExistingCount,
+        p_error_count: merged.failedCount + merged.notProcessedCount + merged.conflictCount,
+        p_error_report: merged.rows
+          .filter(
+            (r) =>
+              r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED' || r.outcome === 'CONFLICT',
+          )
+          .map((r) => ({
+            rowNumber: r.rowNumber,
+            outcome: r.outcome,
+            detail: r.detail,
+          })) as Json,
+      });
+      if (auditErr) throw auditErr;
+
+      if (merged.fullySuccessful) {
+        const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
+          p_batch_id: batchId,
+        });
+        if (commitErr) throw commitErr;
+        setPreviewNote(t('admin.inv6ImportCommitted'));
+        if (
+          selected &&
+          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
+        ) {
+          await transition('SETUP_IN_PROGRESS', 'inventory_opening_committed');
+        } else {
+          await load();
+        }
+      } else {
+        setPreviewNote(
+          t('admin.inv6PartialCommit')
+            .replace('{c}', String(merged.createdCount))
+            .replace('{s}', String(merged.skippedExistingCount))
+            .replace('{x}', String(merged.conflictCount))
+            .replace('{f}', String(merged.failedCount))
+            .replace('{n}', String(merged.notProcessedCount)),
+        );
+        setError(t('admin.inv6PartialNotFullySuccessful'));
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmUkExpenseImport(opts?: { retryOnly?: boolean }) {
     if (!isUkExpenses || !pendingUkExpensePreview || !batchId || !preview) return;
     if (preview.errorCount > 0 && !opts?.retryOnly) {
@@ -1997,6 +2343,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
     if (isUkExpenses) {
       downloadUkExpensesOpeningTemplate();
+      return;
+    }
+    if (isInventory) {
+      downloadInventoryOpeningTemplate();
       return;
     }
     if (isCapitalRepair) {
@@ -2255,6 +2605,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   {isUkExpenses ? (
                     <p className="text-xs text-secondary">{t('admin.is6aExpensesManualHint')}</p>
                   ) : null}
+                  {isInventory ? (
+                    <p className="text-xs text-secondary">{t('admin.inv6ManualHint')}</p>
+                  ) : null}
                   {isCapitalRepair ? (
                     <p className="text-xs text-secondary">{t('admin.is8CapitalRepairManualHint')}</p>
                   ) : null}
@@ -2276,11 +2629,13 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                               ? t('admin.is5InternetManualConfirm')
                               : isUkExpenses
                                 ? t('admin.is6aExpensesManualConfirm')
-                                : isCapitalRepair
-                                  ? t('admin.is8CapitalRepairManualConfirm')
-                                  : t('admin.is1ManualConfirm')}
+                                : isInventory
+                                  ? t('admin.inv6ManualConfirm')
+                                  : isCapitalRepair
+                                    ? t('admin.is8CapitalRepairManualConfirm')
+                                    : t('admin.is1ManualConfirm')}
                   </label>
-                  {isUkExpenses || isCapitalRepair ? (
+                  {isUkExpenses || isCapitalRepair || isInventory ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -2289,7 +2644,19 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                       />
                       {isCapitalRepair
                         ? t('admin.is8CapitalRepairSkipImport')
-                        : t('admin.is6aExpensesSkipImport')}
+                        : isInventory
+                          ? t('admin.inv6SkipImport')
+                          : t('admin.is6aExpensesSkipImport')}
+                    </label>
+                  ) : null}
+                  {isInventory ? (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={allowCreateMissing}
+                        onChange={(e) => setAllowCreateMissing(e.target.checked)}
+                      />
+                      {t('admin.inv6StartPhysical')}
                     </label>
                   ) : null}
                   {isPropertyBook ||
@@ -2297,6 +2664,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   isSupportFee ||
                   isInternet ||
                   isUkExpenses ||
+                  isInventory ||
                   isCapitalRepair ? (
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -2312,9 +2680,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                             ? t('admin.is5InternetVerifiedExisting')
                             : isUkExpenses
                               ? t('admin.is6aExpensesVerifiedExisting')
-                              : isCapitalRepair
-                                ? t('admin.is8CapitalRepairVerifiedExisting')
-                                : t('admin.is3MetersVerifiedExisting')}
+                              : isInventory
+                                ? t('admin.inv6EmptyOk')
+                                : isCapitalRepair
+                                  ? t('admin.is8CapitalRepairVerifiedExisting')
+                                  : t('admin.is3MetersVerifiedExisting')}
                     </label>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
@@ -2345,6 +2715,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   ) : null}
                   {isUkExpenses ? (
                     <p className="text-xs text-secondary">{t('admin.is6aExpensesXlsxHint')}</p>
+                  ) : null}
+                  {isInventory ? (
+                    <p className="text-xs text-secondary">{t('admin.inv6XlsxHint')}</p>
                   ) : null}
                   {isCapitalRepair ? (
                     <p className="text-xs text-secondary">{t('admin.is8CapitalRepairXlsxHint')}</p>
@@ -2395,9 +2768,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   ? downloadInternetErrorReport(preview)
                                   : isUkExpenses
                                     ? downloadUkExpensesErrorReport(preview)
-                                    : isCapitalRepair
-                                      ? downloadCapitalRepairErrorReport(preview)
-                                      : downloadPropertyBookErrorReport(preview)
+                                    : isInventory
+                                      ? downloadInventoryOpeningErrorReport(preview)
+                                      : isCapitalRepair
+                                        ? downloadCapitalRepairErrorReport(preview)
+                                        : downloadPropertyBookErrorReport(preview)
                           }
                         >
                           {t('admin.is2PropertyBookDownloadErrors')}
@@ -2451,6 +2826,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() => void confirmUkExpenseImport()}
                         >
                           {t('admin.is6aExpensesConfirmButton')}
+                        </button>
+                      ) : null}
+                      {isInventory && pendingInventoryPreview && batchId ? (
+                        <button
+                          type="button"
+                          className={adminBtnPrimaryClass}
+                          disabled={busy || preview.errorCount > 0}
+                          onClick={() => void confirmInventoryImport()}
+                        >
+                          {t('admin.inv6ConfirmButton')}
                         </button>
                       ) : null}
                       {isCapitalRepair && pendingCrPreview && batchId ? (
@@ -2513,6 +2898,19 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           onClick={() => void confirmUkExpenseImport({ retryOnly: true })}
                         >
                           {t('admin.is6aExpensesRetryMissing')}
+                        </button>
+                      ) : null}
+                      {isInventory &&
+                      inventoryCommitResult &&
+                      !inventoryCommitResult.fullySuccessful &&
+                      pendingInventoryPreview ? (
+                        <button
+                          type="button"
+                          className={adminBtnSecondaryClass}
+                          disabled={busy}
+                          onClick={() => void confirmInventoryImport({ retryOnly: true })}
+                        >
+                          {t('admin.inv6RetryMissing')}
                         </button>
                       ) : null}
                       {isCapitalRepair &&

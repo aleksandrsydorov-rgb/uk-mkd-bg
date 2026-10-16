@@ -2,12 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import {
+  assertCanonicalIs9aSchemaSql,
+  assertCanonicalIs9bSchemaSql,
   assertCanonicalMeterSchemaSql,
   assertCompanionMigrationOrdering,
   assertExistingInstallNoOpSafety,
+  assertFreshInstallDependencyOrder,
+  assertIs9aCompanionMigrationOrdering,
+  assertIs9aExistingInstallNoOpSafety,
+  assertIs9aRlsCompleteness,
+  assertIs9bCompanionMigrationOrdering,
+  assertIs9bExistingInstallNoOpSafety,
+  assertIs9bRlsAndSecurity,
+  assertNoAmadeus11ProductionData,
+  assertPackageObjectCoverage,
   assertRlsAccessCompatibility,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
+  CANONICAL_IS9A_SCHEMA_PREREQUISITES,
+  CANONICAL_IS9B_SCHEMA_PREREQUISITES,
   CANONICAL_METER_SCHEMA_PREREQUISITES,
   classifyElectricityMeterOpeningRows,
   classifyInternetOpeningRows,
@@ -17,8 +30,12 @@ import {
   evaluateAllTariffSetupGates,
   evaluateTariffSetupGate,
   FRESH_INSTALL_COMPANION_MIGRATION,
+  FRESH_INSTALL_IS9A_COMPANION_MIGRATION,
+  FRESH_INSTALL_IS9B_COMPANION_MIGRATION,
+  FRESH_INSTALL_IS10D_COMPANION_MIGRATION,
   FRESH_INSTALL_ORDERED_FILES,
   FRESH_INSTALL_PACKAGE_DIR,
+  FRESH_INSTALL_PACKAGE_STATUS,
   getModuleAdapter,
   INTERNET_MODULE_KEY,
   meterInventoryIndependentOfBillingTariff,
@@ -59,6 +76,14 @@ function companionSql(): string {
   return readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_COMPANION_MIGRATION), 'utf8');
 }
 
+function is9aCompanionSql(): string {
+  return readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_IS9A_COMPANION_MIGRATION), 'utf8');
+}
+
+function is9bCompanionSql(): string {
+  return readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_IS9B_COMPANION_MIGRATION), 'utf8');
+}
+
 describe('IS-7a · fresh-install DDL packaging', () => {
   it('package files and manifest order exist', () => {
     for (const f of FRESH_INSTALL_ORDERED_FILES) {
@@ -70,7 +95,15 @@ describe('IS-7a · fresh-install DDL packaging', () => {
     expect(manifest.applyBeforeMigrations).toBe(true);
     expect(manifest.orderedFiles).toEqual([...FRESH_INSTALL_ORDERED_FILES]);
     expect(manifest.companionMigration.replace(/\\/g, '/')).toContain(
-      path.basename(FRESH_INSTALL_COMPANION_MIGRATION),
+      path.basename(FRESH_INSTALL_IS10D_COMPANION_MIGRATION),
+    );
+    expect(manifest.companionMigrations ?? []).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(path.basename(FRESH_INSTALL_COMPANION_MIGRATION)),
+        expect.stringContaining(path.basename(FRESH_INSTALL_IS9A_COMPANION_MIGRATION)),
+        expect.stringContaining(path.basename(FRESH_INSTALL_IS9B_COMPANION_MIGRATION)),
+        expect.stringContaining(path.basename(FRESH_INSTALL_IS10D_COMPANION_MIGRATION)),
+      ]),
     );
     expect(manifest.requiredRelationsAfterPackage).toEqual(
       expect.arrayContaining([...CANONICAL_METER_SCHEMA_PREREQUISITES]),
@@ -120,10 +153,191 @@ describe('IS-7a · fresh-install DDL packaging', () => {
     );
   });
 
-  it('marks remaining greenfield gaps explicitly (PARTIAL readiness)', () => {
+  it('marks remaining greenfield gaps explicitly (no fake completeness)', () => {
     expect(REMAINING_GREENFIELD_MIGRATION_GAPS.length).toBeGreaterThan(0);
-    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).toContain('property_registry_people');
-    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).toContain('water_readings');
+    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).toContain(
+      'rental_management_not_implemented',
+    );
+    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain('property_registry_people');
+    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain('water_readings');
+    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain('owns_property_book_only_helpers');
+    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain(
+      'isolated_empty_environment_execution_proof',
+    );
+  });
+});
+
+describe('IS-9a · fresh-install Book/auth/capital/tariff packaging', () => {
+  it('manifest covers IS-9a baselines within IS-9b package', () => {
+    const manifest = parseFreshInstallManifest(
+      readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json'), 'utf8'),
+    );
+    expect(manifest.orderedFiles).toEqual([...FRESH_INSTALL_ORDERED_FILES]);
+    expect(manifest.orderedFiles).toContain('05_auth_staff_helpers.sql');
+    expect(manifest.orderedFiles).toContain('50_capital_repair_baseline.sql');
+    expect(manifest.orderedFiles).toContain('70_tariff_catalog_shell.sql');
+    expect(manifest.requiredRelationsAfterPackage).toEqual(
+      expect.arrayContaining([
+        ...CANONICAL_METER_SCHEMA_PREREQUISITES,
+        ...CANONICAL_IS9A_SCHEMA_PREREQUISITES,
+      ]),
+    );
+    expect(manifest.requiredFunctionsAfterPackage).toEqual(
+      expect.arrayContaining(['public.is_staff()', 'public.has_staff_role(text)']),
+    );
+    expect(manifest.explicitRemainingGaps).toEqual(
+      expect.arrayContaining([...REMAINING_GREENFIELD_MIGRATION_GAPS]),
+    );
+  });
+
+  it('IS-9a companion sorts after IS-8 opening migration', () => {
+    const names = readdirSync(path.resolve(process.cwd(), 'supabase/migrations')).filter((f) =>
+      f.endsWith('.sql'),
+    );
+    const order = assertIs9aCompanionMigrationOrdering(names);
+    expect(order.companionPresent).toBe(true);
+    expect(order.afterIs8).toBe(true);
+    expect(order.ok).toBe(true);
+  });
+
+  it('canonical Book/auth/capital/tariff schema is packaged without portal-email owns_property', () => {
+    const schema = assertCanonicalIs9aSchemaSql(packageSqlConcat());
+    expect(schema.ok).toBe(true);
+    expect(schema.hasOpeningKinds).toBe(true);
+    expect(schema.noOwnsPropertyInvention).toBe(true);
+    expect(schema.noPublishedTariffVersions).toBe(true);
+  });
+
+  it('auth helpers use SECURITY DEFINER empty search_path and least privilege', () => {
+    const sql = packageSqlConcat();
+    expect(sql).toMatch(/create\s+or\s+replace\s+function\s+public\.has_staff_role/i);
+    expect(sql).toMatch(/security\s+definer/i);
+    expect(sql).toMatch(/set\s+search_path\s*=\s*''/i);
+    // Staff rows only via install_bootstrap_claim_first_admin — never seeded emails/passwords.
+    expect(sql).toMatch(/install_bootstrap_claim_first_admin/i);
+    expect(sql).not.toMatch(/password\s*=/i);
+    expect(sql).not.toMatch(/@amadeus11\.(online|bg|com)/i);
+  });
+
+  it('RLS completeness for staff/registry/capital/tariff', () => {
+    expect(assertIs9aRlsCompleteness(packageSqlConcat()).ok).toBe(true);
+    expect(assertIs9aRlsCompleteness(is9aCompanionSql()).ok).toBe(true);
+  });
+
+  it('tariff bootstrap has catalog definitions without published prices', () => {
+    const sql = packageSqlConcat();
+    expect(sql).toMatch(/insert\s+into\s+public\.tariff_catalog/i);
+    // IS-10d may insert a cancelled distributive sentinel; must not publish.
+    expect(sql).not.toMatch(
+      /insert\s+into\s+public\.tariff_versions[\s\S]*?\bvalues\b[\s\S]*?'published'/i,
+    );
+    expect(sql).toMatch(/86_distributive_block_amadeus11_sf_cutover/i);
+    expect(sql).toMatch(/No published prices/i);
+  });
+
+  it('no AMADEUS 11-specific apartment/owner production data', () => {
+    expect(assertNoAmadeus11ProductionData(packageSqlConcat()).ok).toBe(true);
+    expect(assertNoAmadeus11ProductionData(is9aCompanionSql()).ok).toBe(true);
+  });
+
+  it('IS-9a companion is existing-install no-op / data-safe', () => {
+    const safety = assertIs9aExistingInstallNoOpSafety(is9aCompanionSql());
+    expect(safety.ok).toBe(true);
+    expect(safety.noStaffInsert).toBe(true);
+    expect(safety.noTariffVersionsInsert).toBe(true);
+    expect(safety.noCredentials).toBe(true);
+  });
+
+  it('package completeness: every ordered file exists and dependency order is deterministic', () => {
+    const order = assertFreshInstallDependencyOrder(FRESH_INSTALL_ORDERED_FILES);
+    expect(order.ok).toBe(true);
+    for (const f of FRESH_INSTALL_ORDERED_FILES) {
+      expect(existsSync(path.resolve(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, f))).toBe(true);
+    }
+  });
+
+  it('capital repair remains independent of support fee opening mechanisms', () => {
+    const capitalSql = readFileSync(
+      path.resolve(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, '50_capital_repair_baseline.sql'),
+      'utf8',
+    );
+    expect(capitalSql).not.toMatch(/support_fee/i);
+    expect(capitalSql).not.toMatch(/opening_obligation.*support/i);
+    expect(capitalSql).toMatch(/opening_obligation/);
+  });
+});
+
+describe('IS-9b · complete fresh-install database dependencies', () => {
+  it('manifest status READY_FOR_ISOLATED_TEST and phase IS-9b', () => {
+    expect(FRESH_INSTALL_PACKAGE_STATUS).toBe('READY_FOR_ISOLATED_TEST');
+    const manifest = parseFreshInstallManifest(
+      readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json'), 'utf8'),
+    );
+    expect(manifest.status).toBe('READY_FOR_ISOLATED_TEST');
+    expect(manifest.phase).toBe('IS-10d');
+    expect(manifest.excludeFromCompanion).toContain('00_preflight_refuse_populated.sql');
+    expect(manifest.requiredRelationsAfterPackage).toEqual(
+      expect.arrayContaining([...CANONICAL_IS9B_SCHEMA_PREREQUISITES]),
+    );
+    expect(manifest.requiredFunctionsAfterPackage).toEqual(
+      expect.arrayContaining([
+        'public.owns_property(bigint)',
+        'public.record_capital_repair_payment(bigint,numeric,text,uuid)',
+        'public.charge_capital_repair(bigint,uuid,integer,text,uuid)',
+        'public.install_bootstrap_claim_first_admin(text,text)',
+      ]),
+    );
+  });
+
+  it('IS-9b companion sorts after IS-9a and excludes preflight', () => {
+    const names = readdirSync(path.resolve(process.cwd(), 'supabase/migrations')).filter((f) =>
+      f.endsWith('.sql'),
+    );
+    const order = assertIs9bCompanionMigrationOrdering(names);
+    expect(order.ok).toBe(true);
+    const companion = is9bCompanionSql();
+    expect(assertIs9bExistingInstallNoOpSafety(companion).ok).toBe(true);
+    expect(companion).not.toMatch(/fresh_install_preflight/i);
+  });
+
+  it('Book + utilities + capital + tariff + bootstrap schema coverage', () => {
+    const schema = assertCanonicalIs9bSchemaSql(packageSqlConcat());
+    expect(schema.ok).toBe(true);
+    expect(schema.hasOwnsProperty).toBe(true);
+    expect(schema.hasMeterReadings).toBe(true);
+    expect(schema.hasWaterLedger).toBe(true);
+    expect(schema.hasCapitalCharge).toBe(true);
+    expect(schema.hasFirstAdminBootstrap).toBe(true);
+    expect(schema.noPublishedPrices).toBe(true);
+  });
+
+  it('RLS/security and bootstrap least privilege', () => {
+    expect(assertIs9bRlsAndSecurity(packageSqlConcat()).ok).toBe(true);
+  });
+
+  it('package object coverage matches MANIFEST required lists', () => {
+    const manifest = parseFreshInstallManifest(
+      readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json'), 'utf8'),
+    );
+    const coverage = assertPackageObjectCoverage(
+      packageSqlConcat(),
+      manifest.requiredRelationsAfterPackage,
+      manifest.requiredFunctionsAfterPackage ?? [],
+    );
+    expect(coverage.missingRelations).toEqual([]);
+    expect(coverage.missingFunctions).toEqual([]);
+    expect(coverage.ok).toBe(true);
+  });
+
+  it('no AMADEUS 11 production data; no credentials', () => {
+    const sql = packageSqlConcat();
+    expect(assertNoAmadeus11ProductionData(sql).ok).toBe(true);
+    expect(sql).not.toMatch(/password\s*=/i);
+    expect(sql).not.toMatch(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\./);
+  });
+
+  it('dependency order places Book auth before meter RLS and tariff versions after catalog', () => {
+    expect(assertFreshInstallDependencyOrder(FRESH_INSTALL_ORDERED_FILES).ok).toBe(true);
   });
 });
 

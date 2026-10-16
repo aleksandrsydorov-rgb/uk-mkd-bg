@@ -147,11 +147,17 @@ import { canSeeSecurityAdmin, isGuardRole, staffHomePath } from '@/lib/security'
 import { canSeeCleaningAdmin } from '@/lib/cleaning';
 import {
   emptyInventoryStaffCapabilities,
+  emptyStaffInventoryPermissionsForm,
+  inventoryRpc,
   inventorySelect,
   parseInventoryStaffCapabilities,
   shouldShowInventoryAdmin,
   shouldShowInventoryStaff,
+  staffInventoryCapabilitiesPayload,
+  staffInventoryFormFromCapabilities,
+  withInventoryAccess,
   type InventoryStaffCapabilityFlags,
+  type StaffInventoryPermissionsForm,
 } from '@/lib/inventory';
 import { canSeeBudgetAdmin, categoryLabel, type BudgetCategory } from '@/lib/budget';
 import { canSeePlatformSupportAdmin } from '@/lib/platformControl';
@@ -840,6 +846,7 @@ function AdminPortal() {
     can_self_claim_requests: false,
     can_receive_work_orders: false,
     categories: [] as string[],
+    inventory: emptyStaffInventoryPermissionsForm() as StaffInventoryPermissionsForm,
   });
 
   const [showPollForm, setShowPollForm] = useState(false);
@@ -2602,6 +2609,7 @@ function AdminPortal() {
       can_self_claim_requests: false,
       can_receive_work_orders: false,
       categories: [],
+      inventory: emptyStaffInventoryPermissionsForm(),
     });
     setShowStaffForm(true);
     try {
@@ -2619,6 +2627,23 @@ function AdminPortal() {
     } catch {
       // Profile RPC may be missing before migration is applied.
     }
+    try {
+      const capsRes = await inventorySelect<Record<string, unknown>>(
+        supabase,
+        'staff_inventory_capabilities',
+        '*',
+        { eq: { staff_id: s.id } },
+      );
+      setStaffForm((prev) => ({
+        ...prev,
+        inventory: staffInventoryFormFromCapabilities(capsRes.data?.[0] ?? null),
+      }));
+    } catch {
+      setStaffForm((prev) => ({
+        ...prev,
+        inventory: emptyStaffInventoryPermissionsForm(),
+      }));
+    }
   }
 
   function startNewStaff() {
@@ -2633,6 +2658,7 @@ function AdminPortal() {
       can_self_claim_requests: false,
       can_receive_work_orders: false,
       categories: [],
+      inventory: emptyStaffInventoryPermissionsForm(),
     });
     setShowStaffForm(true);
   }
@@ -2667,6 +2693,20 @@ function AdminPortal() {
         });
         if (profileErr && !isMissingRelation(profileErr, 'set_staff_work_profile')) {
           throw profileErr;
+        }
+        const invPayload = staffInventoryCapabilitiesPayload(staffForm.inventory, {
+          employeeActive: staffForm.active,
+        });
+        const { error: invCapErr } = await inventoryRpc(
+          supabase,
+          'inventory_set_staff_capabilities',
+          {
+            p_staff_id: staffId,
+            ...invPayload,
+          },
+        );
+        if (invCapErr && !isMissingRelation(invCapErr, 'inventory_set_staff_capabilities')) {
+          throw invCapErr;
         }
       }
       setShowStaffForm(false);
@@ -4747,6 +4787,106 @@ function AdminPortal() {
                     </div>
                   </div>
                 </div>
+                {isBuildingModuleEnabled(buildingModules, 'inventory') ? (
+                  <div className="space-y-3 rounded-[12px] border border-border bg-surface-secondary/80 p-3 sm:col-span-2 lg:col-span-3">
+                    <p className="text-sm font-semibold text-foreground">{t('admin.invStaffRespTitle')}</p>
+                    <label className="flex items-center gap-2 text-sm text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={staffForm.inventory.hasAccess}
+                        onChange={(e) =>
+                          setStaffForm({
+                            ...staffForm,
+                            inventory: withInventoryAccess(staffForm.inventory, e.target.checked),
+                          })
+                        }
+                      />
+                      {t('admin.invStaffRespAccess')}
+                    </label>
+                    {staffForm.inventory.hasAccess ? (
+                      <div className="space-y-2 pl-1">
+                        <label className="flex items-center gap-2 text-sm text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={staffForm.inventory.canView}
+                            onChange={(e) =>
+                              setStaffForm({
+                                ...staffForm,
+                                inventory: { ...staffForm.inventory, canView: e.target.checked },
+                              })
+                            }
+                          />
+                          {t('admin.invStaffRespView')}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={staffForm.inventory.canSessionParticipate}
+                            onChange={(e) =>
+                              setStaffForm({
+                                ...staffForm,
+                                inventory: {
+                                  ...staffForm.inventory,
+                                  canSessionParticipate: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          {t('admin.invStaffRespParticipate')}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={staffForm.inventory.canEditAssets}
+                            onChange={(e) =>
+                              setStaffForm({
+                                ...staffForm,
+                                inventory: {
+                                  ...staffForm.inventory,
+                                  canEditAssets: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          {t('admin.invStaffRespEditAssets')}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={staffForm.inventory.canStockMove}
+                            onChange={(e) =>
+                              setStaffForm({
+                                ...staffForm,
+                                inventory: {
+                                  ...staffForm.inventory,
+                                  canStockMove: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          {t('admin.invStaffRespStockMove')}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={staffForm.inventory.canRecordMaintenance}
+                            onChange={(e) =>
+                              setStaffForm({
+                                ...staffForm,
+                                inventory: {
+                                  ...staffForm.inventory,
+                                  canRecordMaintenance: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          {t('admin.invStaffRespMaintenance')}
+                        </label>
+                        <p className="text-xs text-muted">{t('admin.invStaffRespHint')}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <AdminPrimaryButton type="submit">{t('common.save')}</AdminPrimaryButton>
                   <AdminSecondaryButton type="button" onClick={() => setShowStaffForm(false)}>

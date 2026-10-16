@@ -116,6 +116,16 @@ export {
 } from './staff';
 
 export {
+  emptyStaffInventoryPermissionsForm,
+  staffInventoryFormFromCapabilities,
+  staffInventoryCapabilitiesPayload,
+  withInventoryAccess,
+  inventoryStaffFormMentionsAdminOnlyCaps,
+  type StaffInventoryPermissionsForm,
+  type StaffInventoryCapabilitiesPayload,
+} from './staffPermissionsForm';
+
+export {
   INVENTORY_SETUP_SCHEMA_VERSION,
   INVENTORY_OPENING_HEADERS,
   INVENTORY_OPENING_SHEET,

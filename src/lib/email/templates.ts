@@ -8,7 +8,7 @@ export function renderTransactionalEmail(opts: {
   subject?: string | null;
   payload?: Record<string, unknown> | null;
   complexName?: string | null;
-}): { subject: string; html: string } {
+}): { subject: string; html: string; text: string } {
   const locale: EmailTemplateLocale = ['bg', 'ru', 'en'].includes(opts.locale)
     ? (opts.locale as EmailTemplateLocale)
     : 'bg';
@@ -25,6 +25,8 @@ export function renderTransactionalEmail(opts: {
     apartment,
     eventKind,
     reminderType,
+    preferredDate: str(payload.preferred_date ?? payload.preferredDate),
+    timeSlot: str(payload.time_slot ?? payload.timeSlot),
   });
 
   const subject = (opts.subject ?? '').trim() || pack.subject;
@@ -44,7 +46,28 @@ export function renderTransactionalEmail(opts: {
 </body>
 </html>`;
 
-  return { subject, html };
+  const textParts = [pack.greeting, '', pack.body];
+  if (inviteLink) {
+    textParts.push('', `${pack.cta}: ${inviteLink}`);
+  }
+  textParts.push('', pack.footer);
+  const text = textParts.join('\n');
+
+  return { subject, html, text };
+}
+
+/** Preview helper — renders without enqueue or provider calls. */
+export function previewTransactionalEmail(opts: {
+  templateKey: string;
+  locale: Locale;
+  payload?: Record<string, unknown> | null;
+  complexName?: string | null;
+}): { subject: string; html: string; text: string; locale: EmailTemplateLocale } {
+  const locale: EmailTemplateLocale = ['bg', 'ru', 'en'].includes(String(opts.locale))
+    ? (opts.locale as EmailTemplateLocale)
+    : 'bg';
+  const rendered = renderTransactionalEmail({ ...opts, locale });
+  return { ...rendered, locale };
 }
 
 function resolveTemplate(
@@ -56,6 +79,8 @@ function resolveTemplate(
     apartment: string;
     eventKind: string;
     reminderType: string;
+    preferredDate?: string;
+    timeSlot?: string;
   }
 ): { subject: string; greeting: string; body: string; cta: string; footer: string } {
   const key = templateKey.trim().toLowerCase();
@@ -117,18 +142,136 @@ function resolveTemplate(
     };
   }
 
-  if (key.startsWith('meeting_')) {
+  if (key.startsWith('meters_') || key.startsWith('support_fee_') || key.startsWith('capital_repair_')) {
+    const isPay = key.includes('payment');
     return {
       subject: t(locale, {
-        bg: `${ctx.complex}: събрание`,
-        ru: `${ctx.complex}: собрание`,
-        en: `${ctx.complex}: meeting`,
+        bg: isPay ? `${ctx.complex}: плащане` : `${ctx.complex}: финансово известие`,
+        ru: isPay ? `${ctx.complex}: платёж` : `${ctx.complex}: финансовое уведомление`,
+        en: isPay ? `${ctx.complex}: payment` : `${ctx.complex}: financial notice`,
       }),
       greeting: greeting(locale),
       body: t(locale, {
-        bg: `Информация за събрание от ${ctx.complex}. Подробностите са в кабинета.`,
-        ru: `Информация о собрании от ${ctx.complex}. Подробности в кабинете.`,
-        en: `Meeting information from ${ctx.complex}. Details are in your cabinet.`,
+        bg: isPay
+          ? `Регистрирано е плащане по вашия апартамент в ${ctx.complex}. Детайлите са в кабинета. Това не е напомняне за дълг.`
+          : `Има промяна по финансов запис за вашия апартамент в ${ctx.complex}. Проверете кабинета. Това не е напомняне за дълг.`,
+        ru: isPay
+          ? `Зафиксирован платёж по вашей квартире в ${ctx.complex}. Подробности в кабинете. Это не напоминание о долге.`
+          : `Изменение финансового записи по вашей квартире в ${ctx.complex}. Проверьте кабинет. Это не напоминание о долге.`,
+        en: isPay
+          ? `A payment was recorded for your apartment at ${ctx.complex}. See details in your cabinet. This is not a debt reminder.`
+          : `A financial record changed for your apartment at ${ctx.complex}. Check your cabinet. This is not a debt reminder.`,
+      }),
+      cta: t(locale, { bg: 'Към кабинета', ru: 'В кабинет', en: 'Open cabinet' }),
+      footer: footer(locale),
+    };
+  }
+
+  if (key === 'ticket_new_message') {
+    return {
+      subject: t(locale, {
+        bg: `${ctx.complex}: ново съобщение`,
+        ru: `${ctx.complex}: новое сообщение`,
+        en: `${ctx.complex}: new message`,
+      }),
+      greeting: greeting(locale),
+      body: t(locale, {
+        bg: `Има ново съобщение в чата по вашия апартамент в ${ctx.complex}. Отворете кабинета, за да го прочетете. Съдържанието не се изпраща по имейл.`,
+        ru: `В чате по вашей квартире в ${ctx.complex} есть новое сообщение. Откройте кабинет, чтобы прочитать. Текст сообщения в письме не передаётся.`,
+        en: `There is a new message in your apartment chat at ${ctx.complex}. Open the cabinet to read it. Message content is not included in this email.`,
+      }),
+      cta: t(locale, { bg: 'Към чата', ru: 'К чату', en: 'Open chat' }),
+      footer: footer(locale),
+    };
+  }
+
+  if (key.startsWith('ticket_')) {
+    return {
+      subject: t(locale, {
+        bg: `${ctx.complex}: заявка`,
+        ru: `${ctx.complex}: заявка`,
+        en: `${ctx.complex}: ticket`,
+      }),
+      greeting: greeting(locale),
+      body: t(locale, {
+        bg: `Статусът на вашата заявка е обновен (${ctx.eventKind || key}). Подробности в кабинета.`,
+        ru: `Статус вашей заявки обновлён (${ctx.eventKind || key}). Подробности в кабинете.`,
+        en: `Your ticket status was updated (${ctx.eventKind || key}). See details in your cabinet.`,
+      }),
+      cta: t(locale, { bg: 'Към кабинета', ru: 'В кабинет', en: 'Open cabinet' }),
+      footer: footer(locale),
+    };
+  }
+
+  if (key.startsWith('cleaning_')) {
+    const datePart = String(ctx.preferredDate || ctx.eventKind || '').trim();
+    const slotPart = String(ctx.timeSlot || '').trim();
+    const scheduleHint = [datePart, slotPart].filter(Boolean).join(' · ') || '—';
+    return {
+      subject: t(locale, {
+        bg: `${ctx.complex}: промяна в графика за почистване`,
+        ru: `${ctx.complex}: изменение графика уборки`,
+        en: `${ctx.complex}: cleaning schedule change`,
+      }),
+      greeting: greeting(locale),
+      body: t(locale, {
+        bg: `Графикът или назначението на вашата задача за почистване е променено (${scheduleHint}). Отворете кабинета за детайли.`,
+        ru: `График или назначение вашей задачи по уборке изменено (${scheduleHint}). Подробности — в кабинете.`,
+        en: `Your cleaning task schedule or assignment changed (${scheduleHint}). See details in your cabinet.`,
+      }),
+      cta: t(locale, { bg: 'Към задачите', ru: 'К задачам', en: 'Open tasks' }),
+      footer: footer(locale),
+    };
+  }
+
+  if (key.startsWith('residence_') || key.startsWith('internet_') || key.startsWith('uk_') || key.startsWith('inventory_')) {
+    return {
+      subject: t(locale, {
+        bg: `${ctx.complex}: известие`,
+        ru: `${ctx.complex}: уведомление`,
+        en: `${ctx.complex}: notice`,
+      }),
+      greeting: greeting(locale),
+      body: t(locale, {
+        bg: `Служебно известие (${key}) от ${ctx.complex}. Отворете кабинета за подробности.`,
+        ru: `Служебное уведомление (${key}) от ${ctx.complex}. Откройте кабинет для подробностей.`,
+        en: `Service notice (${key}) from ${ctx.complex}. Open your cabinet for details.`,
+      }),
+      cta: t(locale, { bg: 'Отвори', ru: 'Открыть', en: 'Open' }),
+      footer: footer(locale),
+    };
+  }
+
+  if (key === 'email_digest_daily' || key.startsWith('email_digest')) {
+    return {
+      subject: t(locale, {
+        bg: `${ctx.complex}: дневен преглед`,
+        ru: `${ctx.complex}: дневная сводка`,
+        en: `${ctx.complex}: daily digest`,
+      }),
+      greeting: greeting(locale),
+      body: t(locale, {
+        bg: `Обобщение на информационни известия от ${ctx.complex} за деня. Отворете кабинета за детайли.`,
+        ru: `Сводка информационных уведомлений комплекса ${ctx.complex} за день. Подробности — в кабинете.`,
+        en: `A summary of informational notices from ${ctx.complex} for the day. Open your cabinet for details.`,
+      }),
+      cta: t(locale, { bg: 'Към кабинета', ru: 'В кабинет', en: 'Open cabinet' }),
+      footer: footer(locale),
+    };
+  }
+
+  if (key.startsWith('meeting_')) {
+    return {
+      subject: t(locale, {
+        bg: `${ctx.complex}: събрание (информационно)`,
+        ru: `${ctx.complex}: собрание (информационно)`,
+        en: `${ctx.complex}: meeting (informational)`,
+      }),
+      greeting: greeting(locale),
+      body: t(locale, {
+        bg: `Информационно известие за събрание в ${ctx.complex}. Това не замества законовите процедури по ЗУЕС. Подробностите са в кабинета.`,
+        ru: `Информационное уведомление о собрании в ${ctx.complex}. Это не заменяет предусмотренные законом процедуры. Подробности в кабинете.`,
+        en: `Informational meeting notice for ${ctx.complex}. This does not replace legally required procedures. Details are in your cabinet.`,
       }),
       cta: t(locale, { bg: 'Към кабинета', ru: 'В кабинет', en: 'Open cabinet' }),
       footer: footer(locale),

@@ -13,6 +13,12 @@ import {
 import { createResendAdapter, type ResendAdapter } from '@/lib/email/resendAdapter';
 import { renderTransactionalEmail } from '@/lib/email/templates';
 import { isNonPublicInviteUrl } from '@/lib/publicAppUrl';
+import {
+  getEmailEvent,
+  resolveEventKeyFromEnqueue,
+} from '@/lib/email/eventCatalog';
+import { evaluateNotificationPolicy } from '@/lib/email/notificationPolicy';
+import { fetchPolicySnapshotForRecipient } from '@/lib/email/notificationPrefsClient';
 
 export const EMAIL_WORKER_MAX_BATCH = 10;
 
@@ -39,6 +45,7 @@ type OutboxRow = {
   subject: string | null;
   payload: Record<string, unknown> | null;
   attempts: number;
+  event_key?: string | null;
 };
 
 export function assertWorkerAuthorized(
@@ -138,6 +145,15 @@ export async function runOutboxWorker(opts: {
     };
   }
 
+  // Flush prior-day digests into outbox (canonical worker — no separate scheduler).
+  try {
+    await opts.supabase.rpc('email_core_digest_flush_ready' as never, {
+      p_before_day: null,
+    } as never);
+  } catch {
+    /* migration may be absent */
+  }
+
   const limit = Math.min(
     Math.max(opts.limit ?? EMAIL_WORKER_MAX_BATCH, 1),
     EMAIL_WORKER_MAX_BATCH
@@ -200,6 +216,57 @@ export async function runOutboxWorker(opts: {
       cancelled += 1;
       failed += 1;
       continue;
+    }
+
+    // Send-time preference recheck (optional events may have been disabled after queue).
+    const eventKey =
+      String(row.event_key ?? payload.event_key ?? '').trim() ||
+      resolveEventKeyFromEnqueue({
+        moduleKey: row.module_key,
+        templateKey: row.template_key,
+        payload,
+      });
+    if (eventKey && getEmailEvent(eventKey)?.importance !== 'security_mandatory') {
+      try {
+        const snap = await fetchPolicySnapshotForRecipient(opts.supabase, {
+          toEmail: row.to_email,
+        });
+        const decision = evaluateNotificationPolicy({
+          eventKey,
+          complex: snap.complex,
+          personal: snap.personal,
+          phase: 'dispatch',
+          isAdminControlledTest: row.module_key === 'email_test',
+        });
+        if (!decision.allow) {
+          await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
+            p_outbox_id: row.id,
+            p_reason: decision.reason,
+          } as never);
+          cancelled += 1;
+          continue;
+        }
+        if (decision.channel === 'digest') {
+          await opts.supabase.rpc('email_core_digest_buffer_upsert' as never, {
+            p_to_email: row.to_email,
+            p_user_id: null,
+            p_event_key: eventKey,
+            p_module_key: row.module_key,
+            p_template_key: row.template_key,
+            p_locale: row.locale,
+            p_payload: payload,
+            p_idempotency_key: `digest-move:${row.idempotency_key}`,
+          } as never);
+          await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
+            p_outbox_id: row.id,
+            p_reason: 'moved_to_digest',
+          } as never);
+          cancelled += 1;
+          continue;
+        }
+      } catch {
+        /* prefs missing — proceed under dual gates only */
+      }
     }
 
     const rendered = renderTransactionalEmail({

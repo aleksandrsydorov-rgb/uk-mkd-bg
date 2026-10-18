@@ -161,8 +161,10 @@ export async function emailCoreNotifyPkgXfer(
 }
 
 /**
- * Meeting notices — in_app_only by default.
- * Does not enqueue unless explicitly allowEmail=true (legal/email path not enabled yet).
+ * Meeting notices.
+ * - Legal / ZUES summons: never auto-email (require allowEmail=true).
+ * - Informational lifecycle (`published`, `registration_open`): may enqueue;
+ *   never replaces legally required procedures.
  */
 export async function emailCoreNotifyMeeting(
   supabase: Sb,
@@ -173,30 +175,41 @@ export async function emailCoreNotifyMeeting(
     emailHash?: string;
     locale?: EmailTemplateLocale | string | null;
     installationLocale?: EmailTemplateLocale | string | null;
-    /** Explicit opt-in only — never invent legal-notice email delivery. */
+    /** Explicit opt-in for non-informational / legal-adjacent paths. */
     allowEmail?: boolean;
+    userId?: string | null;
   }
 ) {
-  if (!input.allowEmail) {
+  const kind = String(input.kind ?? '')
+    .trim()
+    .toLowerCase();
+  const informational = kind === 'published' || kind === 'registration_open';
+  if (!informational && !input.allowEmail) {
     return {
       result: null,
       honesty: 'in_app_only' as ModuleHonestyStatus,
     };
   }
   const locale = resolveEmailLocale(input.locale, input.installationLocale);
+  const eventKey =
+    kind === 'registration_open' ? 'meeting_registration_open' : 'meeting_published';
   const result = await safeEnqueue(supabase, {
     consumer: 'meeting',
     toEmail: input.toEmail,
-    templateKey: `meeting_${input.kind}`,
+    templateKey: `meeting_${kind || 'published'}`,
     locale,
+    eventKey,
+    userId: input.userId ?? null,
     context: {
       meetingId: input.meetingId,
-      kind: input.kind,
+      kind: kind || 'published',
       emailHash: input.emailHash ?? input.toEmail,
     },
     payload: {
-      event_kind: input.kind,
+      event_kind: kind || 'published',
       meetingId: input.meetingId,
+      informational: true,
+      not_legal_notice: true,
     },
   });
   return {

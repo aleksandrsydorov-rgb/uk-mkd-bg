@@ -7,8 +7,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
 import { normalizeEmail } from '@/lib/email';
+import {
+  getEmailEvent,
+  resolveEventKeyFromEnqueue,
+} from '@/lib/email/eventCatalog';
+import { evaluateNotificationPolicy } from '@/lib/email/notificationPolicy';
+import { fetchPolicySnapshotForRecipient } from '@/lib/email/notificationPrefsClient';
 
 export const EMAIL_CORE_PHASE = 'D' as const;
+/** Notification policy layer built on Phase D Email Core. */
+export const EMAIL_CORE_NOTIFICATION_PHASE = 'EML-3' as const;
 
 type EnvProbe = Record<string, string | undefined>;
 
@@ -335,7 +343,7 @@ export type EmailCoreConsumer = {
 };
 
 export const EMAIL_CORE_CONSUMERS: Record<
-  'pb1' | 'userActivation' | 'pkgXfer' | 'meeting' | 'emailTest',
+  'pb1' | 'userActivation' | 'pkgXfer' | 'meeting' | 'emailTest' | 'system',
   EmailCoreConsumer
 > = {
   pb1: {
@@ -366,6 +374,18 @@ export const EMAIL_CORE_CONSUMERS: Record<
     module: 'email_test',
     buildIdempotencyKey: (ctx) =>
       buildIdempotencyKey(['email_test', ctx.toEmail, ctx.nonce ?? 'v1']),
+    honestyWhenNotReady: 'PROVIDER_NOT_CONFIGURED',
+  },
+  system: {
+    module: 'system',
+    buildIdempotencyKey: (ctx) =>
+      buildIdempotencyKey([
+        'sys',
+        ctx.eventKey,
+        ctx.entityId ?? 'e',
+        ctx.emailHash ?? ctx.toEmail,
+        ctx.version ?? 'v1',
+      ]),
     honestyWhenNotReady: 'PROVIDER_NOT_CONFIGURED',
   },
 };
@@ -499,28 +519,144 @@ export async function enqueueTransactionalEmail(
     locale?: EmailTemplateLocale | null;
     subject?: string | null;
     payload?: Record<string, unknown>;
+    /** Explicit catalog event; otherwise inferred from module/template/payload. */
+    eventKey?: string | null;
+    userId?: string | null;
+    skipPolicyCheck?: boolean;
   }
 ): Promise<EmailEnqueueResult & { honesty: ModuleHonestyStatus }> {
   const consumer = EMAIL_CORE_CONSUMERS[args.consumer];
   const key = consumer.buildIdempotencyKey(args.context);
+  const toEmail = normalizeEmail(args.toEmail);
+  const payload: Record<string, unknown> = { ...(args.payload ?? {}) };
+  const eventKey =
+    args.eventKey ??
+    resolveEventKeyFromEnqueue({
+      moduleKey: consumer.module,
+      templateKey: args.templateKey,
+      payload,
+    });
+
+  if (eventKey) {
+    payload.event_key = eventKey;
+  }
+
+  const catalog = eventKey ? getEmailEvent(eventKey) : undefined;
+  if (catalog?.producerStatus === 'needs_decision' && !args.skipPolicyCheck) {
+    return {
+      ok: false,
+      duplicate: false,
+      outbox_id: null,
+      status: 'cancelled',
+      fallback_status: 'PROVIDER_NOT_CONFIGURED',
+      queued: false,
+      sent: false,
+      honesty: moduleFallbackStatus(consumer.module, false),
+    };
+  }
+
+  if (eventKey && !args.skipPolicyCheck) {
+    try {
+      const snap = await fetchPolicySnapshotForRecipient(supabase, {
+        userId: args.userId ?? null,
+        toEmail,
+      });
+      let throttled = false;
+      if (catalog?.highFrequency && catalog.importance === 'informational') {
+        const { data: hit } = await supabase.rpc(
+          'email_core_recipient_throttle_hit' as never,
+          {
+            p_to_email: toEmail,
+            p_event_key: eventKey,
+            p_limit: 5,
+            p_window_minutes: 60,
+          } as never
+        );
+        throttled = hit === true;
+      }
+      const decision = evaluateNotificationPolicy({
+        eventKey,
+        complex: snap.complex,
+        personal: snap.personal,
+        phase: 'enqueue',
+        throttled,
+        isAdminControlledTest: consumer.module === 'email_test',
+      });
+      if (!decision.allow) {
+        return {
+          ok: true,
+          duplicate: false,
+          outbox_id: null,
+          status: 'cancelled',
+          fallback_status: decision.reason,
+          queued: false,
+          sent: false,
+          honesty: moduleFallbackStatus(consumer.module, false),
+        };
+      }
+      if (decision.channel === 'digest') {
+        const { data: dig, error: digErr } = await supabase.rpc(
+          'email_core_digest_buffer_upsert' as never,
+          {
+            p_to_email: toEmail,
+            p_user_id: args.userId ?? null,
+            p_event_key: eventKey,
+            p_module_key: consumer.module,
+            p_template_key: args.templateKey,
+            p_locale: args.locale ?? 'bg',
+            p_payload: payload as Json,
+            p_idempotency_key: key,
+          } as never
+        );
+        if (digErr) throw digErr;
+        const digRow =
+          dig && typeof dig === 'object' ? (dig as Record<string, unknown>) : {};
+        return {
+          ok: asBool(digRow.ok, true),
+          duplicate: asBool(digRow.duplicate, false),
+          outbox_id: null,
+          status: 'held',
+          fallback_status: 'QUEUED',
+          queued: true,
+          sent: false,
+          honesty: 'QUEUED',
+        };
+      }
+    } catch {
+      // Prefer fail-open to blocked_not_ready enqueue when prefs RPCs missing (pre-migration).
+    }
+  }
+
   const { data, error } = await supabase.rpc('email_core_enqueue', {
     p_idempotency_key: key,
     p_module_key: consumer.module,
     p_template_key: args.templateKey,
-    p_to_email: normalizeEmail(args.toEmail),
+    p_to_email: toEmail,
     p_locale: args.locale ?? null,
     p_subject: args.subject ?? null,
-    p_payload: (args.payload ?? {}) as Json,
+    p_payload: payload as Json,
   });
   if (error) throw error;
   const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
   const queued = asBool(row.queued, false);
   const sent = asBool(row.sent, false);
   const fallback = asString(row.fallback_status) ?? 'PROVIDER_NOT_CONFIGURED';
+  const outboxId = row.outbox_id == null ? null : Number(row.outbox_id);
+  if (outboxId != null && eventKey) {
+    try {
+      await supabase.rpc('email_core_set_outbox_event_meta' as never, {
+        p_outbox_id: outboxId,
+        p_event_key: eventKey,
+        p_policy_decision: 'allowed',
+      } as never);
+    } catch {
+      /* column/RPC may be absent until EML-3 migration applied */
+    }
+  }
   return {
     ok: asBool(row.ok, false),
     duplicate: asBool(row.duplicate, false),
-    outbox_id: row.outbox_id == null ? null : Number(row.outbox_id),
+    outbox_id: outboxId,
     status: String(row.status ?? 'blocked_not_ready'),
     fallback_status: fallback,
     queued,

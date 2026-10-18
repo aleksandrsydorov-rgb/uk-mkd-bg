@@ -223,11 +223,11 @@ describe('Email Core Phase D · gates + batch', () => {
 });
 
 describe('Email Core Phase D · meeting adapter', () => {
-  it('stays in_app_only and does not enqueue without allowEmail', async () => {
+  it('stays in_app_only and does not enqueue without allowEmail for non-informational kinds', async () => {
     const rpc = vi.fn();
     const out = await emailCoreNotifyMeeting({ rpc } as never, {
       meetingId: 'm1',
-      kind: 'notice',
+      kind: 'legal_summons',
       toEmail: 'owner@example.com',
     });
     expect(out.honesty).toBe('in_app_only');

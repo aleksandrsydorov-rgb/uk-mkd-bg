@@ -4639,6 +4639,37 @@ export interface Database {
           enabled: boolean;
         }[];
       };
+      install_bootstrap_claim_first_admin: {
+        Args: {
+          p_approval_token: string;
+          p_display_name: string;
+        };
+        Returns: number;
+      };
+      install_bootstrap_set_approval: {
+        Args: {
+          p_approval_token: string;
+          p_note?: string | null;
+        };
+        Returns: undefined;
+      };
+      install_bootstrap_status: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      install_bootstrap_acquire_provision: {
+        Args: {
+          p_email: string;
+        };
+        Returns: Json;
+      };
+      install_bootstrap_record_invite: {
+        Args: {
+          p_email: string;
+          p_auth_user_id?: string | null;
+        };
+        Returns: undefined;
+      };
       admin_list_module_lifecycle: {
         Args: Record<string, never>;
         Returns: {

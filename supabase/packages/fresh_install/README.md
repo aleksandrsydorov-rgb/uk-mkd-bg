@@ -34,7 +34,10 @@ Continues IS-7a / IS-9a; does not restart or duplicate their intent.
 | 75 | `75_utilities_readings_ledgers.sql` | Readings + ledgers (no price seeds) |
 | 80 | `80_capital_repair_operational_rpcs.sql` | Payment + balance/reporting |
 | 85 | `85_tariff_versions_schema.sql` | Versions schema + charge resolver |
+| 88 | `88_email_core_baseline.sql` | Email Core outbox/settings/RPCs (EML-5; `email_enabled=false`) |
+| 89 | `89_email_notification_policy.sql` | Notification prefs, digest buffer, policy audit (EML-3–5) |
 | 90 | `90_first_admin_bootstrap.sql` | Controlled first-admin claim |
+| 91–94 | `91`–`94` R1-UI polish | Polls/announcements grants · Cyrillic role repair · Book floor cast · poll_votes owner SELECT |
 
 ### Companions (existing installs; **exclude** preflight)
 
@@ -53,15 +56,15 @@ Continues IS-7a / IS-9a; does not restart or duplicate their intent.
 
 | Packaged | Not packaged (admin / later migrations) |
 |----------|----------------------------------------|
-| Book auth helpers + validate / active_owners | Full ownership-transfer / extract RPC surface |
+| Book auth helpers + portal owner_* sync + validate / active_owners | Full ownership-transfer / extract RPC surface (chronological pkg_xfer migrations) |
 | Readings + ledgers DDL + RLS | Water/electricity submit operational RPCs |
-| Capital payment + IS-8 balance + charge(single) | Bulk/year-bulk charge RPCs |
+| Capital payment + IS-8 balance + charge(single) + bulk/year-bulk | — |
 | Tariff catalog + empty versions/rates schema | `publish_tariff_version` body (migrations) / published prices |
 | First-admin bootstrap protocol | Public self-registration |
 
 ## Remaining gaps
 
-See `MANIFEST.json` → `explicitRemainingGaps`. Package remains structurally ready for isolated test; chronological migrations fill publish/bulk/submit surfaces.
+See `MANIFEST.json` → `explicitRemainingGaps`. Package remains structurally ready for isolated test; chronological migrations fill publish tariff RPC and full XFER surfaces.
 
 ## Safety
 
@@ -70,5 +73,6 @@ See `MANIFEST.json` → `explicitRemainingGaps`. Package remains structurally re
 - No seed of AMADEUS 11 production rows (no apartment/owner/building payloads)
 - No default passwords / embedded credentials
 - No `DO_NOT_RUN` execution
+- Email Core packaged (EML-5): empty outbox, `email_enabled=false`, no Resend secrets
 - Email sending OFF · Debt gate OFF (out of scope)
 - No Rental Management

@@ -39,10 +39,12 @@ export type EmailEnqueueModuleKey =
 export type EmailEnqueueAuthzContext = {
   role: RpcCallerRole;
   isBookAdmin: boolean;
-  /** For pkg_xfer: caller owns the property resolved from payload/transfer. */
+  /** For pkg_xfer / system: caller owns the property resolved from payload/transfer. */
   ownsPayloadProperty: boolean;
   moduleKey: EmailEnqueueModuleKey | string;
   templateKey: string;
+  /** EML-5: ticket_* may target staff admin emails when owner of property. */
+  recipientIsStaffAdmin?: boolean;
 };
 
 export function emailTemplateMatchesModule(
@@ -63,25 +65,48 @@ export function emailTemplateMatchesModule(
     case 'email_test':
       return tpl.startsWith('email_test');
     case 'system':
-      return tpl.startsWith('system_');
+      // EML-4 allowlist — no generic system_* (service_role bypasses this check path).
+      return (
+        tpl.startsWith('meters_') ||
+        tpl.startsWith('uk_') ||
+        tpl.startsWith('internet_') ||
+        tpl.startsWith('ticket_') ||
+        tpl.startsWith('residence_') ||
+        tpl.startsWith('cleaning_') ||
+        tpl.startsWith('support_fee_') ||
+        tpl.startsWith('capital_repair_') ||
+        tpl.startsWith('inventory_') ||
+        tpl.startsWith('email_digest')
+      );
     default:
       return false;
   }
 }
 
-/** SEC-P1-2 mirror: email_core_assert_can_enqueue decision. */
+/** SEC-P1-2 + EML-4 mirror: email_core_assert_can_enqueue decision. */
 export function canEnqueueEmail(ctx: EmailEnqueueAuthzContext): boolean {
   if (ctx.role === 'service_role') return true;
   if (ctx.role === 'anon') return false;
   if (!emailTemplateMatchesModule(ctx.moduleKey, ctx.templateKey)) return false;
 
-  if (ctx.moduleKey === 'system') return false;
+  if (ctx.moduleKey === 'system') {
+    if (ctx.isBookAdmin) return true;
+    if (!ctx.ownsPayloadProperty) return false;
+    const tpl = ctx.templateKey.trim().toLowerCase();
+    if (tpl.startsWith('ticket_') && ctx.recipientIsStaffAdmin) return true;
+    // Owner → co-owners (recipient ownership checked in SQL); mirror allows owned property.
+    return true;
+  }
+
+  // R1-MT-HIDE: meeting enqueue denied while Meetings excluded from Distribution R1.0.
+  if (ctx.moduleKey === 'meeting') {
+    return false;
+  }
 
   if (
     ctx.moduleKey === 'pb1_invite' ||
     ctx.moduleKey === 'user_activation' ||
-    ctx.moduleKey === 'email_test' ||
-    ctx.moduleKey === 'meeting'
+    ctx.moduleKey === 'email_test'
   ) {
     return ctx.isBookAdmin === true;
   }

@@ -53,6 +53,7 @@ Internet: monthly subscription tariff; charge on connect and auto-charge on bill
 | `service_lock` | communication | none (admin debt restriction) | Блокировка услуг | Soft lock with live scopes (water/internet/security/requests/…) |
 | `security` | services | none (v1) | Охрана: посты + заявки | Заявки пропуск/доставка/передача; кабинет `/guard` |
 | `cleaning` | services | none (v1) | Заказы уборки квартиры | Заказ уборки (standard/deep/after_guests); не путать с заявками «уборка» общих зон |
+| `inventory` | services | none (ops inventory; no owner billing) | Инвентарь / моя инвентаризация | — |
 | `requests` | communication | none | Заявки | Requests |
 | `chat` | communication | none | Чат | Chat |
 | `polls` | communication | none | Опросы | Polls |
@@ -70,7 +71,13 @@ Finance category in Settings has `tariffs` and `budget`. Fee, capital and intern
 ## Stub modules (implemented = false)
 
 `parking`, `rental`, `maintenance`,
-`access_control`, `contractors`, `inventory`, `common_areas`, `commercial_rentals`
+`access_control`, `contractors`, `common_areas`, `commercial_rentals`
+
+(`inventory` is live for Distribution R1.0 — see table above.)
+
+**Distribution Release 1.0 also excludes** `general_meeting` (Meetings) via `implemented=false`
+(R1-MT-HIDE). Schema and Meeting Core code remain for a later upgrade that sets
+`implemented=true` and enables the module — no reinstall required.
 
 Visible in Settings catalog as non-toggleable stubs. No product surface. No tariffs.
 Use [`docs/module-template.md`](module-template.md) when promoting one to live.

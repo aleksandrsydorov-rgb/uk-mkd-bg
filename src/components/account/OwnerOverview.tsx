@@ -294,17 +294,23 @@ export function OwnerOverview({
     [activePolls, pollVotes, property.id],
   );
 
-  const occupancyLabel =
-    occupancyStatus === 'standby'
+  // Active-context role (owner vs guest). Occupancy is secondary for owners only.
+  const contextRoleLabel = guestLimited
+    ? t('account.roleGuest')
+    : t('account.roleOwner');
+  const occupancyHint = guestLimited
+    ? null
+    : occupancyStatus === 'standby'
       ? t('account.away')
       : occupancyStatus === 'rented'
         ? t('account.tenants')
-        : t('account.elByOwner');
+        : null;
 
   const heroMeta = [
     property.area_sqm != null ? `${Number(property.area_sqm).toFixed(1)} ${t('common.sqm')}` : null,
     property.floor != null ? t('account.floorN', { n: property.floor }) : null,
-    occupancyLabel,
+    contextRoleLabel,
+    occupancyHint,
   ].filter(Boolean).join(' · ');
 
   const attention: Array<{ key: string; title: string; detail: string; onClick: () => void }> = [];

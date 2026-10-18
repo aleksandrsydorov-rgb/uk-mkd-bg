@@ -7,10 +7,13 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
 import {
+  budgetExecutionOverspendCategories,
   budgetStatusTone,
   canSeeBudgetAdmin,
   categoryLabel,
+  isBudgetOverspent,
   moneyEur,
+  sumBudgetExecutionTotals,
   type BudgetAdjustment,
   type BudgetCategory,
   type BudgetExecutionRow,
@@ -190,11 +193,12 @@ export function AdminBudget({
     }
   }, [adjCategoryId, categories]);
 
-  const totals = useMemo(() => {
-    const planned = execution.reduce((s, r) => s + Number(r.planned_amount_eur), 0);
-    const actual = execution.reduce((s, r) => s + Number(r.actual_amount_eur), 0);
-    return { planned, actual, remaining: planned - actual };
-  }, [execution]);
+  const totals = useMemo(() => sumBudgetExecutionTotals(execution), [execution]);
+
+  const overspendCategories = useMemo(
+    () => budgetExecutionOverspendCategories(execution),
+    [execution],
+  );
 
   async function createYear() {
     setBusy(true);
@@ -421,6 +425,16 @@ export function AdminBudget({
                 r: moneyEur(totals.remaining),
               })}
             </p>
+            {isBudgetOverspent(totals.remaining) ? (
+              <AdminInlineAlert tone="warning">
+                {t('admin.budgetOverspendWarn', { r: moneyEur(totals.remaining) })}
+                {overspendCategories.length > 0
+                  ? ` ${t('admin.budgetOverspendCats', {
+                      n: String(overspendCategories.length),
+                    })}`
+                  : null}
+              </AdminInlineAlert>
+            ) : null}
             <AdminTableShell>
               <table className="w-full min-w-[48rem] text-sm">
                 <thead>
@@ -434,16 +448,23 @@ export function AdminBudget({
                   </tr>
                 </thead>
                 <tbody>
-                  {execution.map((row) => (
-                    <tr key={row.category_id} className={adminTableRowClass}>
-                      <td className={adminTableCellClass}>{row.category_name_ru}</td>
-                      <td className={adminTableCellClass}>{moneyEur(row.planned_amount_eur)}</td>
-                      <td className={adminTableCellClass}>{moneyEur(row.expenses_amount_eur)}</td>
-                      <td className={adminTableCellClass}>{moneyEur(row.adjustments_amount_eur)}</td>
-                      <td className={adminTableCellClass}>{moneyEur(row.actual_amount_eur)}</td>
-                      <td className={adminTableCellClass}>{moneyEur(row.remaining_amount_eur)}</td>
-                    </tr>
-                  ))}
+                  {execution.map((row) => {
+                    const over = isBudgetOverspent(row.remaining_amount_eur);
+                    return (
+                      <tr key={row.category_id} className={adminTableRowClass}>
+                        <td className={adminTableCellClass}>{row.category_name_ru}</td>
+                        <td className={adminTableCellClass}>{moneyEur(row.planned_amount_eur)}</td>
+                        <td className={adminTableCellClass}>{moneyEur(row.expenses_amount_eur)}</td>
+                        <td className={adminTableCellClass}>{moneyEur(row.adjustments_amount_eur)}</td>
+                        <td className={adminTableCellClass}>{moneyEur(row.actual_amount_eur)}</td>
+                        <td
+                          className={`${adminTableCellClass}${over ? ' font-semibold text-warning' : ''}`}
+                        >
+                          {moneyEur(row.remaining_amount_eur)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </AdminTableShell>

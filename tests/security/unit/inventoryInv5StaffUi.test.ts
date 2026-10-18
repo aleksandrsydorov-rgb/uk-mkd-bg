@@ -67,13 +67,15 @@ function item(
 describe('INV-5 · staff navigation & module gating', () => {
   it('wires staff inventory section behind shouldShowInventoryStaff', () => {
     const page = read('src/app/admin/page.tsx');
+    const nav = read('src/lib/adminNav.ts');
     expect(page).toContain("import { StaffInventory }");
     expect(page).toContain("shouldShowInventoryStaff");
     expect(page).toContain("| 'моя_инвентаризация'");
-    expect(page).toContain("key: 'моя_инвентаризация'");
+    expect(page).toContain("['моя_инвентаризация', 'admin.invStaff']");
     expect(page).toContain("case 'моя_инвентаризация':");
     expect(page).toContain('<StaffInventory');
     expect(page).toContain("showInventoryStaff");
+    expect(nav).toContain("...(f.showInventoryStaff ? (['моя_инвентаризация'] as const) : [])");
   });
 
   it('hides staff inventory when module disabled or staff not eligible', () => {

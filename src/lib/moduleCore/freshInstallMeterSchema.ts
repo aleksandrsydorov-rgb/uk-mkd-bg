@@ -34,6 +34,7 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '20_electricity_meters.sql',
   '40_property_registry_people.sql',
   '45_property_book_auth_helpers.sql',
+  '46_property_book_portal_sync.sql',
   '30_meter_rls_enable.sql',
   '50_capital_repair_baseline.sql',
   '55_support_fee_ledger_baseline.sql',
@@ -48,9 +49,19 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '83f_charged_paid_reading_corrections.sql',
   '84_utility_balance_payment_rpcs.sql',
   '85_tariff_versions_schema.sql',
+  '85a_capital_repair_bulk_rpcs.sql',
   '86_distributive_block_amadeus11_sf_cutover.sql',
   '87_utility_submit_resolve_packaging.sql',
+  '88_email_core_baseline.sql',
+  '89_email_notification_policy.sql',
+  '88b_r1_mt_hide_general_meeting.sql',
   '90_first_admin_bootstrap.sql',
+  '91_r1_ui_polls_announcements_grants.sql',
+  '92_r1_ui_cyrillic_role_literal_repair.sql',
+  '93_r1_ui_admin_list_property_book_floor_cast.sql',
+  '94_r1_ui_poll_votes_owner_select.sql',
+  '95_r1_first_boot_invite.sql',
+  '96_r1_module_catalog_implemented_parity.sql',
 ] as const;
 
 export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;
@@ -89,8 +100,7 @@ export const CANONICAL_IS9B_SCHEMA_PREREQUISITES = [
 /** Explicit greenfield gaps after IS-9b / MTR-2 — isolated empty-env proof still required. */
 export const REMAINING_GREENFIELD_MIGRATION_GAPS = [
   'publish_tariff_version_full_rpc_from_migrations',
-  'charge_capital_repair_bulk_and_year_bulk',
-  'full_property_book_import_transfer_rpc_surface',
+  'full_property_book_import_transfer_rpc_surface_via_chronological_pkg_xfer_migrations',
   'rental_management_not_implemented',
 ] as const;
 
@@ -358,6 +368,34 @@ export function assertCanonicalIs9aSchemaSql(sql: string): {
   };
 }
 
+/** R1-CLOSE: package must ship portal mirror sync (display only; never authorizes). */
+export function assertPropertyBookPortalSyncSql(sql: string): {
+  ok: boolean;
+  hasSyncFn: boolean;
+  hasMutationGuard: boolean;
+  syncDoesNotAuthorize: boolean;
+} {
+  const hasSyncFn =
+    /create\s+or\s+replace\s+function\s+public\.property_book_sync_portal_owner_fields\s*\(/i.test(
+      sql,
+    );
+  const hasMutationGuard =
+    /properties_block_independent_owner_mutation/i.test(sql) &&
+    /property_book\.mutating/i.test(sql);
+  // Sync may SET owner_email; must not appear inside owns_property body.
+  const ownsBody =
+    sql.match(
+      /create\s+or\s+replace\s+function\s+public\.owns_property[\s\S]*?\$fn\$;/i,
+    )?.[0] ?? '';
+  const syncDoesNotAuthorize = !/properties\.owner_email/i.test(ownsBody);
+  return {
+    ok: hasSyncFn && hasMutationGuard && syncDoesNotAuthorize,
+    hasSyncFn,
+    hasMutationGuard,
+    syncDoesNotAuthorize,
+  };
+}
+
 export function assertCanonicalIs9bSchemaSql(sql: string): {
   ok: boolean;
   hasOwnsProperty: boolean;
@@ -583,6 +621,16 @@ export function assertFreshInstallDependencyOrder(orderedFiles: readonly string[
     idx('85_tariff_versions_schema.sql') > idx('84_utility_balance_payment_rpcs.sql');
   const submitAfterTariffVersions =
     idx('87_utility_submit_resolve_packaging.sql') > idx('85_tariff_versions_schema.sql');
+  const emailCoreAfterBookAuth =
+    idx('88_email_core_baseline.sql') > idx('45_property_book_auth_helpers.sql') &&
+    idx('88_email_core_baseline.sql') > idx('05_auth_staff_helpers.sql') &&
+    (idx('90_first_admin_bootstrap.sql') < 0 ||
+      idx('88_email_core_baseline.sql') < idx('90_first_admin_bootstrap.sql'));
+  const emailPolicyAfterEmailCore =
+    idx('89_email_notification_policy.sql') < 0 ||
+    (idx('89_email_notification_policy.sql') > idx('88_email_core_baseline.sql') &&
+      (idx('90_first_admin_bootstrap.sql') < 0 ||
+        idx('89_email_notification_policy.sql') < idx('90_first_admin_bootstrap.sql')));
   return {
     ok:
       preflightFirst &&
@@ -594,7 +642,9 @@ export function assertFreshInstallDependencyOrder(orderedFiles: readonly string[
       electricityMetersBeforeAssign &&
       utilitiesBeforeOpeningRpcs &&
       balanceBeforeTariffVersions &&
-      submitAfterTariffVersions,
+      submitAfterTariffVersions &&
+      emailCoreAfterBookAuth &&
+      emailPolicyAfterEmailCore,
     preflightFirst,
     registryBeforeBookAuth,
     bookAuthBeforeMeterRls,

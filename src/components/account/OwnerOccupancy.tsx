@@ -14,6 +14,7 @@ import {
   sessionOwnerDisplayName,
   type PropertyRegistryPerson,
 } from '@/lib/propertyBook';
+import { validateResidenceSave } from '@/lib/residenceStatus';
 import { useEffect, useState } from 'react';
 
 export type OccupancyStatus = 'owner' | 'standby' | 'rented';
@@ -288,6 +289,18 @@ export function OwnerOccupancy({
 
   async function saveStatus() {
     setStatusError(null);
+    const coherence = validateResidenceSave({
+      occupancy_status: draft,
+      occupant_until: untilForSave,
+    });
+    if (coherence.includes('rented_requires_until')) {
+      setStatusError(t('account.occRentedUntilRequired'));
+      return;
+    }
+    if (coherence.length > 0) {
+      setStatusError(t('err.status'));
+      return;
+    }
     try {
       await onSaveStatus({
         occupancy_status: draft,

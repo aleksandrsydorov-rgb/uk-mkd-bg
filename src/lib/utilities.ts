@@ -248,6 +248,16 @@ export type AdminRpcErrorKey =
   | 'admin.errCorrectionAdjPosted'
   | 'admin.errGeneric';
 
+/** True when utility tariff RPC reports no published tariff (fresh install / unpublished). */
+export function isUtilityTariffUnavailableMessage(message: string): boolean {
+  const msg = message.toLowerCase();
+  return (
+    msg.includes('no electricity tariff is defined') ||
+    msg.includes('no water tariff configured') ||
+    msg.includes('no applicable tariff')
+  );
+}
+
 export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   const msg = message.toLowerCase();
   if (msg.includes('active water meter is already assigned') || msg.includes('active electricity meter is already assigned')) return 'admin.errMeterAssigned';
@@ -276,7 +286,7 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('service_lock: restricted') || msg.includes('service_lock')) {
     return 'admin.errServiceLock';
   }
-  if (msg.includes('no electricity tariff is defined') || msg.includes('no water tariff configured')) return 'admin.errNoTariff';
+  if (isUtilityTariffUnavailableMessage(msg)) return 'admin.errNoTariff';
   if (msg.includes('legacy tariff publication disabled')) return 'admin.errLegacyTariffDisabled';
   if (msg.includes('tariff already exists') || msg.includes('already exists for this valid_from')) {
     return 'admin.errTariffDate';

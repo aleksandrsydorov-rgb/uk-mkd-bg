@@ -168,7 +168,17 @@ export function AdminMeetingConduct({
       const { error } = await supabase.rpc('gm_ensure_registration_open', {
         p_meeting_id: meeting.id,
       });
-      if (!cancelled && !error) await onReload();
+      if (!cancelled && !error) {
+        void import('@/lib/email/eventProducers')
+          .then(({ notifyMeetingInformational }) =>
+            notifyMeetingInformational(supabase, {
+              meetingId: meeting.id,
+              kind: 'registration_open',
+            })
+          )
+          .catch(() => undefined);
+        await onReload();
+      }
     })();
     return () => {
       cancelled = true;

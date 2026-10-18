@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   activeBookOwners,
   bookOwnerForEmail,
+  bookOwnershipIsAuthoritative,
+  computePortalOwnerMirrorFromBook,
   displayedPropertyOwners,
   isActiveBookOwner,
+  legacyPortalOwnerEmailConflictsWithBook,
   sessionOwnerDisplayName,
   type PropertyRegistryPerson,
 } from '@/lib/propertyBook';
@@ -83,9 +86,11 @@ describe('PKG-XFER unit · current ownership = active Property Book only (Packag
     expect(shown[0].email).toBe('book@example.com');
     expect(shown[0].name).toBe('Book Owner');
     expect(shown[0].ownershipSharePercent).toBe(100);
+    expect(shown[0].source).toBe('book');
+    expect(bookOwnershipIsAuthoritative(people)).toBe(true);
   });
 
-  it('falls back to legacy property owner only when Book empty', () => {
+  it('falls back to legacy property owner only when Book empty (display-only)', () => {
     const shown = displayedPropertyOwners(
       { owner_name: 'Legacy', owner_email: 'legacy@example.com' },
       []
@@ -95,7 +100,50 @@ describe('PKG-XFER unit · current ownership = active Property Book only (Packag
         key: 'property-owner',
         name: 'Legacy',
         email: 'legacy@example.com',
+        source: 'legacy_portal_fallback',
       }),
     ]);
+    expect(bookOwnershipIsAuthoritative([])).toBe(false);
+  });
+
+  it('legacyPortalOwnerEmailConflictsWithBook flags stale portal mirror (not access)', () => {
+    const people = [person({ id: 1, email: 'book@example.com' })];
+    expect(
+      legacyPortalOwnerEmailConflictsWithBook({ owner_email: 'stale@example.com' }, people),
+    ).toBe(true);
+    expect(
+      legacyPortalOwnerEmailConflictsWithBook({ owner_email: 'book@example.com' }, people),
+    ).toBe(false);
+  });
+
+  it('computePortalOwnerMirrorFromBook mirrors first active Book owner for display', () => {
+    const people = [
+      person({
+        id: 1,
+        email: 'Owner@Example.com',
+        first_name: 'Ana',
+        last_name: 'Petrov',
+      }),
+      person({
+        id: 2,
+        email: 'second@example.com',
+        first_name: 'Bob',
+        last_name: 'Ivanov',
+        ownership_share_percent: 0,
+        ideal_parts_percent: 0,
+      }),
+    ];
+    expect(computePortalOwnerMirrorFromBook(people)).toEqual({
+      owner_email: 'owner@example.com',
+      owner_name: 'Ana Petrov',
+      owner_type: 'физическое лицо',
+      company_name: null,
+    });
+    expect(computePortalOwnerMirrorFromBook([])).toEqual({
+      owner_email: null,
+      owner_name: null,
+      owner_type: null,
+      company_name: null,
+    });
   });
 });

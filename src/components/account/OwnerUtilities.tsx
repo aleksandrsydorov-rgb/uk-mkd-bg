@@ -34,6 +34,7 @@ import {
   type WaterReading,
   type WaterSubmitResult,
   type CurrentWaterTariffView,
+  isUtilityTariffUnavailableMessage,
 } from '@/lib/utilities';
 
 type Variant = 'finance' | 'meters';
@@ -227,7 +228,13 @@ export function OwnerUtilities({
           p_tariff_key: 'water',
           p_on_date: null,
         });
-        if (tariffErr && !isMissingRelation(tariffErr, 'get_applicable_utility_tariff')) throw tariffErr;
+        if (
+          tariffErr &&
+          !isMissingRelation(tariffErr, 'get_applicable_utility_tariff') &&
+          !isUtilityTariffUnavailableMessage(String(tariffErr.message ?? ''))
+        ) {
+          throw tariffErr;
+        }
         const row = Array.isArray(tariffData) ? tariffData[0] : tariffData;
         const rates = row && typeof row === 'object' && 'rates' in row ? (row as { rates?: Record<string, number> }).rates : null;
         const base = rates ? Number(rates.base) : NaN;
@@ -500,6 +507,16 @@ export function OwnerUtilities({
       setSuccess(row);
       idempotencyKeyRef.current = null;
       setCurrentValue('');
+      void import('@/lib/email/eventProducers')
+        .then(({ notifyPropertyOwnersEvent }) =>
+          notifyPropertyOwnersEvent(supabase, {
+            eventKey: 'meters_reading_accepted',
+            propertyId,
+            entityId: `water_read:${propertyId}:${readingDate}`,
+            payload: { utility: 'water', reading_date: readingDate },
+          })
+        )
+        .catch(() => undefined);
       await Promise.all([loadWater(), variant === 'finance' ? loadCapital() : Promise.resolve()]);
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') console.error(err);

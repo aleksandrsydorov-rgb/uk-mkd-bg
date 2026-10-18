@@ -316,11 +316,54 @@ export function AdminWorkOrders({
     setError(null);
     setBusyId(id);
     try {
+      const prior = rows.find((r) => r.id === id);
+      const prevStaffId = prior?.assigned_staff_id ?? null;
+      const nextStaffId = staffId === '' ? null : Number(staffId);
       const { error: rpcErr } = await supabase.rpc('assign_work_order', {
         p_work_order_id: id,
-        p_assigned_staff_id: staffId === '' ? null : Number(staffId),
+        p_assigned_staff_id: nextStaffId,
       });
       if (rpcErr) throw rpcErr;
+
+      // Cleaning tasks only: notify old/new assignees on real reassignment.
+      const isCleaning =
+        Boolean(prior?.title?.toLowerCase().includes('уборк')) ||
+        Boolean(prior?.request_subject?.toLowerCase().includes('уборк')) ||
+        (await supabase
+          .from('cleaning_orders')
+          .select('id')
+          .eq('work_order_id', id)
+          .limit(1)
+          .maybeSingle()
+          .then((r) => Boolean(r.data)));
+
+      if (isCleaning && prevStaffId !== nextStaffId) {
+        const staffIds = [prevStaffId, nextStaffId].filter(
+          (x): x is number => x != null && Number.isFinite(x)
+        );
+        const emailById = new Map<number, string>();
+        if (staffIds.length > 0) {
+          const { data: staffRows } = await supabase
+            .from('staff')
+            .select('id, email')
+            .in('id', staffIds);
+          for (const s of staffRows ?? []) {
+            const email = String((s as { email?: string | null }).email ?? '').trim();
+            if (email) emailById.set(Number((s as { id: number }).id), email);
+          }
+        }
+        void import('@/lib/email/eventProducers')
+          .then(({ notifyCleaningAssignmentTransition }) =>
+            notifyCleaningAssignmentTransition(supabase, {
+              workOrderId: id,
+              newStaffEmail: nextStaffId != null ? emailById.get(nextStaffId) : null,
+              previousStaffEmail: prevStaffId != null ? emailById.get(prevStaffId) : null,
+              scheduledFor: prior?.scheduled_for ?? null,
+            })
+          )
+          .catch(() => undefined);
+      }
+
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));

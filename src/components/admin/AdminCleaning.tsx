@@ -67,6 +67,10 @@ export function AdminCleaning({
   const [preferredDate, setPreferredDate] = useState('');
   const [timeSlot, setTimeSlot] = useState<CleaningTimeSlot>('any');
   const [note, setNote] = useState('');
+  /** Inline schedule edits: orderId → { date, slot } */
+  const [scheduleDrafts, setScheduleDrafts] = useState<
+    Record<string, { date: string; slot: CleaningTimeSlot }>
+  >({});
 
   const kindLabel = useCallback(
     (k: string) => {
@@ -149,6 +153,77 @@ export function AdminCleaning({
       setSuccess(t('admin.cleanCreated'));
       setNote('');
       setPreferredDate('');
+      await load();
+    } catch (err: unknown) {
+      setError(ownerVisibleError(err, t('admin.errGeneric')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function draftFor(row: CleaningOrderAdminRow) {
+    return (
+      scheduleDrafts[row.id] ?? {
+        date: row.preferred_date ? String(row.preferred_date).slice(0, 10) : '',
+        slot: (CLEANING_TIME_SLOTS.includes(row.time_slot as CleaningTimeSlot)
+          ? row.time_slot
+          : 'any') as CleaningTimeSlot,
+      }
+    );
+  }
+
+  async function saveSchedule(row: CleaningOrderAdminRow) {
+    const draft = draftFor(row);
+    const prevDate = row.preferred_date ? String(row.preferred_date).slice(0, 10) : '';
+    const prevSlot = String(row.time_slot ?? '');
+    if (draft.date === prevDate && draft.slot === prevSlot) {
+      setSuccess(t('admin.cleanScheduleUnchanged'));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc(
+        'admin_update_cleaning_order_schedule' as never,
+        {
+          p_order_id: row.id,
+          p_preferred_date: draft.date || null,
+          p_time_slot: draft.slot,
+        } as never,
+      );
+      if (rpcErr) throw rpcErr;
+      const result = (Array.isArray(data) ? data[0] : data) as {
+        changed?: boolean;
+        preferred_date?: string | null;
+        time_slot?: string | null;
+        work_order_id?: string | null;
+        assignee_email?: string | null;
+        order_id?: string;
+      } | null;
+      if (result?.changed) {
+        const fingerprint = `${result.preferred_date ?? ''}:${result.time_slot ?? ''}`;
+        void import('@/lib/email/eventProducers')
+          .then(({ notifyCleaningScheduleChanged }) =>
+            notifyCleaningScheduleChanged(supabase, {
+              orderId: String(result.order_id ?? row.id),
+              assigneeEmail: result.assignee_email,
+              preferredDate: result.preferred_date ?? null,
+              timeSlot: result.time_slot ?? null,
+              workOrderId: result.work_order_id ?? null,
+              scheduleFingerprint: fingerprint,
+            })
+          )
+          .catch(() => undefined);
+        setSuccess(t('admin.cleanScheduleUpdated'));
+      } else {
+        setSuccess(t('admin.cleanScheduleUnchanged'));
+      }
+      setScheduleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));
@@ -306,9 +381,54 @@ export function AdminCleaning({
                       <div className="text-xs text-muted">{slotLabel(row.time_slot)}</div>
                     </td>
                     <td className={adminTableCellClass}>
-                      {row.preferred_date
-                        ? formatOwnerDate(row.preferred_date, locale)
-                        : '—'}
+                      {row.status === 'pending' || row.status === 'confirmed' ? (
+                        <div className="flex flex-col gap-1">
+                          <input
+                            type="date"
+                            className={adminFieldClass}
+                            value={draftFor(row).date}
+                            disabled={busy}
+                            onChange={(e) =>
+                              setScheduleDrafts((prev) => ({
+                                ...prev,
+                                [row.id]: { ...draftFor(row), date: e.target.value },
+                              }))
+                            }
+                          />
+                          <select
+                            className={adminFieldClass}
+                            value={draftFor(row).slot}
+                            disabled={busy}
+                            onChange={(e) =>
+                              setScheduleDrafts((prev) => ({
+                                ...prev,
+                                [row.id]: {
+                                  ...draftFor(row),
+                                  slot: e.target.value as CleaningTimeSlot,
+                                },
+                              }))
+                            }
+                          >
+                            {CLEANING_TIME_SLOTS.map((s) => (
+                              <option key={s} value={s}>
+                                {slotLabel(s)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="text-xs text-accent hover:underline text-left"
+                            disabled={busy}
+                            onClick={() => void saveSchedule(row)}
+                          >
+                            {t('admin.cleanSaveSchedule')}
+                          </button>
+                        </div>
+                      ) : row.preferred_date ? (
+                        formatOwnerDate(row.preferred_date, locale)
+                      ) : (
+                        '—'
+                      )}
                       {row.note ? (
                         <div className="text-xs text-muted">{row.note}</div>
                       ) : null}

@@ -30,9 +30,25 @@ export const BUILDING_MODULE_KEYS = [
   'common_areas',
   'commercial_rentals',
   'guest_mode',
+  'residence_status',
 ] as const;
 
 export type BuildingModuleKey = (typeof BUILDING_MODULE_KEYS)[number];
+
+/**
+ * Distribution Release 1.0 exclusions (canonical catalog: implemented=false).
+ * Rental + Meetings — not activatable; schema retained for later upgrades.
+ */
+export const RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS = [
+  'general_meeting',
+  'rental',
+] as const;
+
+export function isRelease1DistributionExcluded(moduleKey: string): boolean {
+  return (RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS as readonly string[]).includes(
+    String(moduleKey ?? ''),
+  );
+}
 
 /** Catalog keys that have product surfaces (must match seeded implemented=true). */
 export const IMPLEMENTED_MODULE_KEYS = [
@@ -48,11 +64,13 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'chat',
   'polls',
   'announcements',
-  'general_meeting',
+  // general_meeting excluded from R1.0 (R1-MT-HIDE)
   'building_documents',
   'guest_mode',
+  'residence_status',
   'cleaning',
   'budget',
+  'inventory',
   'platform_support',
   'user_activation',
 ] as const;
@@ -63,7 +81,12 @@ export type ImplementedModuleKey = (typeof IMPLEMENTED_MODULE_KEYS)[number];
  * Platform-core keys stay in Module Core for identity/catalog, but are NOT
  * optional business toggles. Complex admins cannot disable them.
  */
-export const PLATFORM_CORE_MODULE_KEYS = ['platform_support', 'user_activation'] as const;
+/** Platform-adjacent: catalog identity only — not optional business toggles. */
+export const PLATFORM_CORE_MODULE_KEYS = [
+  'platform_support',
+  'user_activation',
+  'residence_status',
+] as const;
 
 export type PlatformCoreModuleKey = (typeof PLATFORM_CORE_MODULE_KEYS)[number];
 
@@ -71,8 +94,9 @@ export function isPlatformCoreModuleKey(value: unknown): value is PlatformCoreMo
   return (PLATFORM_CORE_MODULE_KEYS as readonly string[]).includes(String(value ?? ''));
 }
 
-/** Settings toggle: implemented business modules only — never platform-core. */
+/** Settings toggle: implemented business modules only — never platform-core or R1 exclusions. */
 export function isModuleToggleable(moduleKey: string, implemented: boolean): boolean {
+  if (isRelease1DistributionExcluded(moduleKey)) return false;
   return implemented === true && !isPlatformCoreModuleKey(moduleKey);
 }
 
@@ -132,6 +156,7 @@ export function emptyBuildingModulesState(): BuildingModulesState {
     common_areas: false,
     commercial_rentals: false,
     guest_mode: false,
+    residence_status: false,
   };
 }
 
@@ -174,11 +199,14 @@ export function buildingModulesFromV2Rows(
   return { state, catalog };
 }
 
-/** Deterministic: only explicit true counts as enabled. Missing / unknown = disabled. */
+/** Deterministic: only explicit true counts as enabled. Missing / unknown = disabled.
+ *  Release 1.0 exclusions (Meetings, Rental) always fail closed client-side.
+ */
 export function isBuildingModuleEnabled(
   state: BuildingModulesState | null | undefined,
   key: BuildingModuleKey,
 ): boolean {
+  if (isRelease1DistributionExcluded(key)) return false;
   if (!state) return false;
   return state[key] === true;
 }
@@ -238,6 +266,7 @@ export function moduleLabelMessageKey(key: string): string | null {
     common_areas: 'moduleCommonAreas',
     commercial_rentals: 'moduleCommercialRentals',
     guest_mode: 'moduleGuestMode',
+    residence_status: 'moduleResidenceStatus',
   };
   return map[key] ?? null;
 }

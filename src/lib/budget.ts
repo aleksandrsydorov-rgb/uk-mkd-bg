@@ -117,3 +117,71 @@ export function moneyEur(n: number | null | undefined) {
   const v = Number(n ?? 0);
   return `${v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
+
+/** Soft overspend: remaining can go negative; no hard RPC block in R1.0. */
+export function isBudgetOverspent(remainingAmountEur: number | null | undefined): boolean {
+  return Number(remainingAmountEur ?? 0) < -1e-9;
+}
+
+/** Deterministic planned / actual / remaining from execution rows (admin_budget_execution shape). */
+export function sumBudgetExecutionTotals(
+  rows: Array<Pick<BudgetExecutionRow, 'planned_amount_eur' | 'actual_amount_eur'>>,
+): { planned: number; actual: number; remaining: number; overspent: boolean } {
+  const planned = rows.reduce((s, r) => s + Number(r.planned_amount_eur ?? 0), 0);
+  const actual = rows.reduce((s, r) => s + Number(r.actual_amount_eur ?? 0), 0);
+  const remaining = planned - actual;
+  return { planned, actual, remaining, overspent: isBudgetOverspent(remaining) };
+}
+
+export function budgetExecutionOverspendCategories(
+  rows: Array<Pick<BudgetExecutionRow, 'category_id' | 'category_name_ru' | 'remaining_amount_eur'>>,
+): Array<{ category_id: string; category_name_ru: string; remaining_amount_eur: number }> {
+  return rows
+    .filter((r) => isBudgetOverspent(r.remaining_amount_eur))
+    .map((r) => ({
+      category_id: r.category_id,
+      category_name_ru: r.category_name_ru,
+      remaining_amount_eur: Number(r.remaining_amount_eur),
+    }));
+}
+
+/** Operational uk_expenses soft duplicate key (P1-UK). Opening path uses source_ref separately. */
+export type UkExpenseDuplicateCandidate = {
+  id?: number | null;
+  expense_date: string;
+  title: string;
+  amount: number;
+};
+
+function normalizeExpenseTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizeExpenseAmount(amount: number): number {
+  return Math.round(Number(amount) * 100) / 100;
+}
+
+/**
+ * Soft business-key match for manual expense inserts.
+ * Does not enforce DB uniqueness — UI confirm only (hard unique = financial NEEDS_DECISION).
+ */
+export function findOperationalExpenseDuplicate(
+  existing: UkExpenseDuplicateCandidate[],
+  candidate: UkExpenseDuplicateCandidate,
+): UkExpenseDuplicateCandidate | null {
+  const date = (candidate.expense_date ?? '').trim();
+  const title = normalizeExpenseTitle(candidate.title ?? '');
+  const amount = normalizeExpenseAmount(candidate.amount);
+  if (!date || !title || !(amount > 0)) return null;
+  const hit = existing.find((row) => {
+    if (candidate.id != null && row.id != null && Number(row.id) === Number(candidate.id)) {
+      return false;
+    }
+    return (
+      (row.expense_date ?? '').trim() === date &&
+      normalizeExpenseTitle(row.title ?? '') === title &&
+      normalizeExpenseAmount(Number(row.amount)) === amount
+    );
+  });
+  return hit ?? null;
+}

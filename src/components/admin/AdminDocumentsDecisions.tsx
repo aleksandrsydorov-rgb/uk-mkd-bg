@@ -958,7 +958,16 @@ export function AdminDocumentsDecisions({
     const { error: rpcErr } = await supabase.rpc(name, { p_meeting_id: id });
     setBusy(false);
     if (rpcErr) setError(rpcErr.message);
-    else await load();
+    else {
+      if (name === 'publish_general_meeting') {
+        void import('@/lib/email/eventProducers')
+          .then(({ notifyMeetingInformational }) =>
+            notifyMeetingInformational(supabase, { meetingId: id, kind: 'published' })
+          )
+          .catch(() => undefined);
+      }
+      await load();
+    }
   }
 
   async function lockInvitationFromAgenda() {

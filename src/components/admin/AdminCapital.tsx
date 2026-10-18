@@ -266,6 +266,20 @@ export function AdminCapital({
     setError(null);
     setBulkResult(t('admin.bulkResult', { created: summary.created, skipped: summary.skipped_existing }));
     setSuccess(null);
+    if (summary.created > 0) {
+      void import('@/lib/email/eventProducers')
+        .then(async ({ notifyPropertyOwnersEvent }) => {
+          for (const p of sorted) {
+            await notifyPropertyOwnersEvent(supabase, {
+              eventKey: 'capital_repair_assessment_posted',
+              propertyId: Number(p.id),
+              entityId: `cr_assess:${p.id}:${billingYear}`,
+              payload: { billing_year: billingYear },
+            });
+          }
+        })
+        .catch(() => undefined);
+    }
     await Promise.all([loadFund(), loadPropertyCapital()]);
   }
 
@@ -294,6 +308,16 @@ export function AdminCapital({
     setPayNote('');
     setError(null);
     setSuccess(t('admin.okCapitalPay'));
+    void import('@/lib/email/eventProducers')
+      .then(({ notifyPropertyOwnersEvent }) =>
+        notifyPropertyOwnersEvent(supabase, {
+          eventKey: 'capital_repair_payment_recorded',
+          propertyId: Number(propertyId),
+          entityId: `cr_pay:${propertyId}:${amount}`,
+          payload: { amount_eur: amount },
+        })
+      )
+      .catch(() => undefined);
     await Promise.all([loadPropertyCapital(), loadFund()]);
   }
 

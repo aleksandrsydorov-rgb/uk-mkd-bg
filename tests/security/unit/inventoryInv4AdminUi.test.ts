@@ -51,12 +51,14 @@ function asset(partial: Partial<InventoryAssetRow> & Pick<InventoryAssetRow, 'id
 describe('INV-4 · navigation & module gating', () => {
   it('wires inventory section into admin page behind shouldShowInventoryAdmin', () => {
     const page = read('src/app/admin/page.tsx');
+    const nav = read('src/lib/adminNav.ts');
     expect(page).toContain("import { AdminInventory }");
     expect(page).toContain('shouldShowInventoryAdmin');
     expect(page).toContain("| 'инвентарь'");
-    expect(page).toContain("key: 'инвентарь'");
+    expect(page).toContain("['инвентарь', 'admin.inventory']");
     expect(page).toContain('showInventory = shouldShowInventoryAdmin');
-    expect(page).toContain("...(showInventory ? (['инвентарь'] as const) : [])");
+    expect(page).toContain('showInventory,');
+    expect(nav).toContain("...(f.showInventory ? (['инвентарь'] as const) : [])");
     expect(page).toContain("case 'инвентарь':");
     expect(page).toContain('<AdminInventory');
   });

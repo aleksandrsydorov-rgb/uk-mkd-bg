@@ -591,6 +591,20 @@ export function AdminInventory({
                               p_staff_id: Number(assignStaffId),
                             });
                             if (err) throw err;
+                            const assignee = staff.find((s) => String(s.id) === String(assignStaffId));
+                            const email = String(assignee?.email ?? '').trim();
+                            if (email) {
+                              void import('@/lib/email/eventProducers')
+                                .then(({ notifyStaffAssignee }) =>
+                                  notifyStaffAssignee(supabase, {
+                                    eventKey: 'inventory_assignment_changed',
+                                    staffEmail: email,
+                                    entityId: `inv_assign:${selectedAsset.id}:${assignStaffId}`,
+                                    payload: { asset_id: selectedAsset.id, staff_id: Number(assignStaffId) },
+                                  })
+                                )
+                                .catch(() => undefined);
+                            }
                           }, t('admin.invAssigned'))
                         }
                       >

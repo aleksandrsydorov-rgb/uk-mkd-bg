@@ -490,6 +490,82 @@ export function meetingCoreBlockers(m: MeetingCoreFlags): string[] {
   return out;
 }
 
+/**
+ * BG_ZUES_2026_09 ruleset mirrors (meeting_core_foundation).
+ * Pure arithmetic for regression tests — legal writes stay in RPCs.
+ */
+export const MEETING_QUORUM_RULES = {
+  quorum_initial_percent: 51,
+  quorum_dominant_initial_percent: 75,
+  dominant_owner_threshold_percent: 51,
+  quorum_after_one_hour_percent: 26,
+} as const;
+
+export type MeetingMajorityRule =
+  | 'more_than_50_all_ideal_parts'
+  | 'more_than_50_represented_ideal_parts'
+  | 'at_least_51_all_ideal_parts'
+  | 'at_least_75_all_ideal_parts'
+  | 'at_least_75_eligible_ideal_parts'
+  | 'unanimous_all_ideal_parts'
+  | 'more_than_half_independent_units';
+
+/** Quorum: present / total * 100 must be >= thresholdPercent (inclusive, matching SQL seed). */
+export function quorumMet(
+  presentIdealParts: number,
+  totalIdealParts: number,
+  thresholdPercent: number,
+): boolean {
+  if (!(totalIdealParts > 0) || !(thresholdPercent >= 0)) return false;
+  const pct = (presentIdealParts / totalIdealParts) * 100;
+  return pct + 1e-9 >= thresholdPercent;
+}
+
+/**
+ * Majority check against a coded rule.
+ * Yes weight is ideal parts that voted yes; denominator depends on the rule.
+ */
+export function majoritySatisfied(
+  rule: string,
+  yesIdealParts: number,
+  representedIdealParts: number,
+  allIdealParts: number,
+  eligibleIdealParts?: number,
+): boolean {
+  const yes = Number(yesIdealParts) || 0;
+  const represented = Number(representedIdealParts) || 0;
+  const all = Number(allIdealParts) || 0;
+  const eligible = eligibleIdealParts == null ? all : Number(eligibleIdealParts) || 0;
+
+  switch (rule) {
+    case 'more_than_50_all_ideal_parts':
+      return all > 0 && yes * 2 > all;
+    case 'more_than_50_represented_ideal_parts':
+      return represented > 0 && yes * 2 > represented;
+    case 'at_least_51_all_ideal_parts':
+      return all > 0 && (yes / all) * 100 + 1e-9 >= 51;
+    case 'at_least_75_all_ideal_parts':
+      return all > 0 && (yes / all) * 100 + 1e-9 >= 75;
+    case 'at_least_75_eligible_ideal_parts':
+      return eligible > 0 && (yes / eligible) * 100 + 1e-9 >= 75;
+    case 'unanimous_all_ideal_parts':
+      return all > 0 && yes + 1e-9 >= all;
+    case 'more_than_half_independent_units':
+      // Unit count is not ideal-parts weight; callers pass unit counts via the same args.
+      return all > 0 && yes * 2 > all;
+    default:
+      return false;
+  }
+}
+
+/** Agenda template majority codes used for budget approval vs procedural points. */
+export function majorityRuleForDecisionCategory(category: string | null | undefined): string | null {
+  const cat = (category ?? '').trim();
+  if (!cat) return null;
+  const row = MANDATORY_AGENDA_TEMPLATES.find((t) => t.decision_category === cat);
+  return row?.majority_rule ?? null;
+}
+
 export function nextSuggestedStates(from: string | null | undefined): MeetingLegalState[] {
   const f = (from ?? 'DRAFT').toUpperCase();
   const map: Record<string, MeetingLegalState[]> = {

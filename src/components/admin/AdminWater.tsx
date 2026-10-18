@@ -398,6 +398,16 @@ export function AdminWater({
     setPayAmount('');
     setPayNote('');
     flash(t('admin.okWaterPay'));
+    void import('@/lib/email/eventProducers')
+      .then(({ notifyPropertyOwnersEvent }) =>
+        notifyPropertyOwnersEvent(supabase, {
+          eventKey: 'meters_payment_recorded',
+          propertyId: Number(propertyId),
+          entityId: `water_pay:${propertyId}:${Date.now()}`,
+          payload: { utility: 'water', amount_eur: amount },
+        })
+      )
+      .catch(() => undefined);
     await loadPropertyWater();
   }
 
@@ -432,6 +442,16 @@ export function AdminWater({
     submitKeyRef.current = crypto.randomUUID();
     setSubmitValue('');
     flash(t('account.utilSubmitOk'));
+    void import('@/lib/email/eventProducers')
+      .then(({ notifyPropertyOwnersEvent }) =>
+        notifyPropertyOwnersEvent(supabase, {
+          eventKey: 'meters_reading_accepted',
+          propertyId: Number(propertyId),
+          entityId: `water_read:${propertyId}:${submitDate}`,
+          payload: { utility: 'water', reading_date: submitDate },
+        })
+      )
+      .catch(() => undefined);
     await loadPropertyWater();
   }
 

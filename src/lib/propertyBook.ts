@@ -99,6 +99,8 @@ export function registryPersonLabel(person: PropertyRegistryPerson): string {
   return registryPersonDisplayName(person) || '—';
 }
 
+export type OwnershipPresentationSource = 'book' | 'legacy_portal_fallback';
+
 export type DisplayedOwner = {
   key: string;
   name: string | null;
@@ -106,7 +108,64 @@ export type DisplayedOwner = {
   ownershipSharePercent: number | null;
   idealPartsPercent: number | null;
   entityKind: string;
+  /** Book rows are authoritative; legacy portal fields are display-only when Book is empty. */
+  source: OwnershipPresentationSource;
 };
+
+/** True when active Book owners exist — authorization and legal ownership must use Book only. */
+export function bookOwnershipIsAuthoritative(people: PropertyRegistryPerson[]): boolean {
+  return activeBookOwners(people).length > 0;
+}
+
+/**
+ * Detects stale portal mirror vs Book (display/ops risk only — does not grant access).
+ * Book mutation paths call property_book_sync_portal_owner_fields to refresh the mirror.
+ */
+export function legacyPortalOwnerEmailConflictsWithBook(
+  property: { owner_email: string | null },
+  people: PropertyRegistryPerson[],
+): boolean {
+  const portal = normalizeOwnerEmail(property.owner_email);
+  if (!portal) return false;
+  const owners = activeBookOwners(people);
+  if (owners.length === 0) return false;
+  return !owners.some((p) => normalizeOwnerEmail(p.email) === portal);
+}
+
+/**
+ * Pure mirror of property_book_sync_portal_owner_fields (first active Book owner).
+ * Display denormalization only — never use for authorization.
+ */
+export function computePortalOwnerMirrorFromBook(people: PropertyRegistryPerson[]): {
+  owner_email: string | null;
+  owner_name: string | null;
+  owner_type: string | null;
+  company_name: string | null;
+} {
+  const owners = activeBookOwners(people);
+  if (owners.length === 0) {
+    return { owner_email: null, owner_name: null, owner_type: null, company_name: null };
+  }
+  const v = owners[0];
+  const email = normalizeOwnerEmail(v.email) || null;
+  if (v.entity_kind === 'legal_entity' || v.entity_kind === 'sole_trader') {
+    const name = (v.entity_name ?? '').trim() || null;
+    return {
+      owner_email: email,
+      owner_name: name,
+      owner_type: v.entity_kind === 'legal_entity' ? 'юридическое лицо' : 'ЕТ',
+      company_name: name,
+    };
+  }
+  const name =
+    [v.first_name, v.middle_name, v.last_name].filter(Boolean).join(' ').trim() || null;
+  return {
+    owner_email: email,
+    owner_name: name,
+    owner_type: 'физическое лицо',
+    company_name: null,
+  };
+}
 
 /** Current Book owners only — historical deregistered rows never count. */
 export function isActiveBookOwner(person: PropertyRegistryPerson): boolean {
@@ -152,6 +211,7 @@ export function formatOwnershipSharePercent(
 /**
  * Current ownership presentation from Property Book.
  * Falls back to legacy properties.owner_* only when the Book has no active owners.
+ * Fallback is display-only — never use it for authorization (owns_property / access.ts).
  */
 export function displayedPropertyOwners(
   property: { owner_name: string | null; owner_email: string | null },
@@ -169,6 +229,7 @@ export function displayedPropertyOwners(
         ownershipSharePercent: idealPartsPercent(p.ownership_share_percent),
         idealPartsPercent: idealPartsPercent(p.ideal_parts_percent),
         entityKind: String(p.entity_kind ?? 'natural_person'),
+        source: 'book' as const,
       };
     });
   }
@@ -180,6 +241,7 @@ export function displayedPropertyOwners(
       ownershipSharePercent: null,
       idealPartsPercent: null,
       entityKind: 'natural_person',
+      source: 'legacy_portal_fallback',
     },
   ];
 }

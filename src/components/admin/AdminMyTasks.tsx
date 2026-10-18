@@ -191,12 +191,37 @@ export function AdminMyTasks({
     if (!completeId) return;
     setError(null);
     setBusyId(completeId);
+    const woId = completeId;
     try {
+      const { data: woMeta } = await supabase
+        .from('work_orders')
+        .select('target_property_id, internet_action')
+        .eq('id', woId)
+        .maybeSingle();
       const { error: rpcErr } = await supabase.rpc('complete_work_order', {
-        p_work_order_id: completeId,
+        p_work_order_id: woId,
         p_completion_note: completionNote.trim() || null,
       });
       if (rpcErr) throw rpcErr;
+      const propertyId = Number(
+        (woMeta as { target_property_id?: number | null } | null)?.target_property_id ?? 0
+      );
+      const internetAction = String(
+        (woMeta as { internet_action?: string | null } | null)?.internet_action ?? ''
+      ).trim();
+      // Owner-scoped subscription change only (enable/disable WO). Not debt collection.
+      if (propertyId > 0 && (internetAction === 'enable' || internetAction === 'disable')) {
+        void import('@/lib/email/eventProducers')
+          .then(({ notifyPropertyOwnersEvent }) =>
+            notifyPropertyOwnersEvent(supabase, {
+              eventKey: 'internet_subscription_changed',
+              propertyId,
+              entityId: `inet_wo:${woId}:${internetAction}`,
+              payload: { work_order_id: woId, internet_action: internetAction },
+            })
+          )
+          .catch(() => undefined);
+      }
       setCompleteId(null);
       setCompletionNote('');
       await load();

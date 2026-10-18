@@ -234,6 +234,19 @@ export function AdminSupportFeeAnnual({
     try {
       const { error } = await supabase.rpc('finalize_support_fee_year', { p_billing_year: Number(year) });
       if (error) throw error;
+      const y = Number(year);
+      void import('@/lib/email/eventProducers')
+        .then(async ({ notifyPropertyOwnersEvent }) => {
+          for (const p of properties) {
+            await notifyPropertyOwnersEvent(supabase, {
+              eventKey: 'support_fee_assessment_posted',
+              propertyId: Number(p.id),
+              entityId: `sf_assess:${p.id}:${y}`,
+              payload: { billing_year: y },
+            });
+          }
+        })
+        .catch(() => undefined);
       await load();
       await onReload();
     } catch (e: unknown) {
@@ -253,6 +266,16 @@ export function AdminSupportFeeAnnual({
       };
       const { error } = await supabase.rpc('finalize_support_fee_assessment', args);
       if (error) throw error;
+      void import('@/lib/email/eventProducers')
+        .then(({ notifyPropertyOwnersEvent }) =>
+          notifyPropertyOwnersEvent(supabase, {
+            eventKey: 'support_fee_assessment_posted',
+            propertyId: Number(finalizePropertyId),
+            entityId: `sf_assess:${finalizePropertyId}:${year}`,
+            payload: { billing_year: Number(year) },
+          })
+        )
+        .catch(() => undefined);
       await load();
       await onReload();
     } catch (e: unknown) {

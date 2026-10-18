@@ -219,6 +219,16 @@ export function AdminElectricityFinance({
     setPayAmount('');
     setPayNote('');
     flash(t('admin.okElectricityPay'));
+    void import('@/lib/email/eventProducers')
+      .then(({ notifyPropertyOwnersEvent }) =>
+        notifyPropertyOwnersEvent(supabase, {
+          eventKey: 'meters_payment_recorded',
+          propertyId: Number(propertyId),
+          entityId: `el_pay:${propertyId}:${amount}`,
+          payload: { utility: 'electricity', amount },
+        })
+      )
+      .catch(() => undefined);
     await loadProperty();
   }
 

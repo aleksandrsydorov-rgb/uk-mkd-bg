@@ -525,15 +525,15 @@ describe('IS-8 · Capital Repair opening adapter', () => {
   });
 
   it('documents fresh-install Capital Repair DDL gaps without executing package', () => {
-    // IS-9b packaged assessments/ledger + charge/payment/balance; bulk/year helpers remain.
+    // IS-9b + R1-CR: assessments/ledger + charge/payment/balance + bulk/year-bulk packaged.
     expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain(
       'capital_repair_assessments_ledger_baseline',
     );
     expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain(
       'capital_repair_operational_rpcs_charge_payment_balance',
     );
-    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).toEqual(
-      expect.arrayContaining(['charge_capital_repair_bulk_and_year_bulk']),
+    expect(REMAINING_GREENFIELD_MIGRATION_GAPS).not.toContain(
+      'charge_capital_repair_bulk_and_year_bulk',
     );
   });
 

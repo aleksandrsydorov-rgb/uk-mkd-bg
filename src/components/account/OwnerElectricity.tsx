@@ -159,6 +159,16 @@ export function OwnerElectricity({
       setDayValue('');
       setNightValue('');
       idempotencyKeyRef.current = null;
+      void import('@/lib/email/eventProducers')
+        .then(({ notifyPropertyOwnersEvent }) =>
+          notifyPropertyOwnersEvent(supabase, {
+            eventKey: 'meters_reading_accepted',
+            propertyId,
+            entityId: `el_read:${propertyId}:${readingDate}`,
+            payload: { utility: 'electricity', reading_date: readingDate },
+          })
+        )
+        .catch(() => undefined);
       await onSubmitted();
       await loadBalance();
     } catch {

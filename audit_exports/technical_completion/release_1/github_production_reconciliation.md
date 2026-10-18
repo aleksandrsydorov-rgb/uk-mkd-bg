@@ -37,7 +37,7 @@
 | C | `f64f7d6` | First Boot Auth SMTP invite + OTP/JWT helpers |
 | D | `2db467d` | EML-3..5 + R1 UI grants + Auto Expose OFF SQL |
 | E | `773d96f` | Docker packaging + distribution runbooks |
-| F | `3e813bd` | Documentation + reconciliation evidence |
+| F | `3e813bd` (+ tip `41b233d` hash pin) | Documentation + reconciliation evidence |
 
 ---
 

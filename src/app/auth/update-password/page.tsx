@@ -29,9 +29,15 @@ export default function UpdatePasswordPage() {
     setError(null);
     try {
       const supabase = createClient();
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) {
+        throw new Error(t('authCallback.errMissing'));
+      }
       const { error: updErr } = await supabase.auth.updateUser({ password });
       if (updErr) throw updErr;
-      router.replace('/account');
+      // Recovery complete: force fresh login with the new password.
+      await supabase.auth.signOut();
+      router.replace('/?passwordUpdated=1#resident-login');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('authCallback.errGeneric'));
     } finally {

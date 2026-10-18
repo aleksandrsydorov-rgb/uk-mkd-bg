@@ -1,12 +1,16 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
-  normalizeAuthOtpType,
+  otpTypeForTokenHashVerify,
   safeNextPath,
 } from '@/lib/auth/emailConfirmation';
+import {
+  isJwtSignatureUnverifiableError,
+  readAuthRedirectError,
+} from '@/lib/auth/jwtAuthErrors';
 import { useI18n } from '@/i18n/I18nProvider';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -16,6 +20,8 @@ function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  /** One-time tokens must not be verified twice (remount / Strict Mode / back-nav). */
+  const consumedTokenHashRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,6 +30,18 @@ function AuthCallbackInner() {
       const next = safeNextPath(searchParams.get('next'), '/account');
 
       try {
+        const hash =
+          typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : '';
+
+        const redirectErr = readAuthRedirectError({
+          searchParams,
+          hash,
+        });
+        if (redirectErr) {
+          if (!cancelled) setError(redirectErr);
+          return;
+        }
+
         const code = searchParams.get('code');
         if (code) {
           const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
@@ -34,15 +52,57 @@ function AuthCallbackInner() {
 
         const tokenHash =
           searchParams.get('token_hash') ?? searchParams.get('tokenHash') ?? '';
-        const type = normalizeAuthOtpType(searchParams.get('type'));
+        const type = otpTypeForTokenHashVerify(searchParams.get('type'));
         if (tokenHash) {
+          if (consumedTokenHashRef.current === tokenHash) {
+            const { data } = await supabase.auth.getSession();
+            if (data.session) {
+              if (!cancelled) router.replace(next);
+              return;
+            }
+            if (!cancelled) {
+              setError(t('authCallback.errGeneric'));
+            }
+            return;
+          }
+          consumedTokenHashRef.current = tokenHash;
           const { error: otpErr } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
             type,
           });
           if (otpErr) throw otpErr;
+          // Drop one-time params so remount/back cannot re-verify.
+          if (typeof window !== 'undefined') {
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete('token_hash');
+            clean.searchParams.delete('tokenHash');
+            clean.searchParams.delete('type');
+            window.history.replaceState(null, '', `${clean.pathname}${clean.search}`);
+          }
           if (!cancelled) router.replace(next);
           return;
+        }
+
+        // Implicit grant / recovery links land with tokens in the URL hash.
+        // Prefer them over any stale browser session (e.g. another user still signed in).
+        if (hash.includes('access_token')) {
+          const params = new URLSearchParams(hash);
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token && refresh_token) {
+            const { error: sessErr } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+            if (sessErr) throw sessErr;
+            window.history.replaceState(
+              null,
+              '',
+              `${window.location.pathname}${window.location.search}`,
+            );
+            if (!cancelled) router.replace(next);
+            return;
+          }
         }
 
         // Already signed in (e.g. hash tokens processed by client library)
@@ -57,7 +117,15 @@ function AuthCallbackInner() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : t('authCallback.errGeneric'));
+          const msg =
+            err instanceof Error ? err.message : t('authCallback.errGeneric');
+          if (isJwtSignatureUnverifiableError(msg)) {
+            setError(
+              `${msg} — open the operator invite URL that uses token_hash (not an expired Auth action_link), with the SSH tunnel on localhost:3080.`,
+            );
+          } else {
+            setError(msg);
+          }
         }
       }
     })();

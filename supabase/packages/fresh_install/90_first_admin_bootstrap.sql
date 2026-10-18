@@ -69,7 +69,7 @@ begin
   end if;
 
   update public.install_bootstrap_state as b
-  set approval_token_hash = encode(digest(v_token, 'sha256'), 'hex'),
+  set approval_token_hash = encode(extensions.digest(convert_to(v_token, 'UTF8'), 'sha256'), 'hex'),
       approval_note = nullif(btrim(coalesce(p_note, '')), ''),
       approved_at = now(),
       updated_at = now()
@@ -127,7 +127,7 @@ begin
       using errcode = '42501';
   end if;
 
-  if encode(digest(v_token, 'sha256'), 'hex') is distinct from v_hash then
+  if encode(extensions.digest(convert_to(v_token, 'UTF8'), 'sha256'), 'hex') is distinct from v_hash then
     raise exception 'install_bootstrap_claim_first_admin: invalid approval token'
       using errcode = '42501';
   end if;

@@ -35,6 +35,13 @@ export function normalizeAuthOtpType(raw: string | null | undefined): AuthEmailO
   return 'email';
 }
 
+/**
+ * OTP type for verifyOtp({ token_hash }).
+ * Canonical mapping lives in otpTokenTypes (magiclink → recovery;
+ * signup → email; invite / recovery / email_change preserved).
+ */
+export { otpTypeForTokenHashVerify } from '@/lib/auth/otpTokenTypes';
+
 /** Preferred verify order for a typed 6-digit signup confirmation code. */
 export function signupOtpVerifyTypes(): AuthEmailOtpType[] {
   return ['email', 'signup'];

@@ -1,0 +1,6 @@
+services:
+  amadeus11-app:
+    image: amadeus11-app:1.0.0-rc2
+    container_name: amadeus11-app-r1dist1-rc
+    ports:
+      - '3080:3000'

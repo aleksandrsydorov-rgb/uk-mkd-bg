@@ -1,0 +1,46 @@
+# Dependencies & build
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+
+# Git / IDE
+.git
+.github
+.cursor
+.vscode
+.idea
+*.md
+!README.md
+
+# Env & secrets (never bake)
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# Local / cloud tooling
+.vercel
+supabase/.temp
+supabase/.branches
+
+# Tests & audits (not needed in image)
+tests
+test-fixtures
+audit_exports
+tmp
+docs
+scripts
+agent-transcripts
+
+# OS junk
+$null
+Thumbs.db
+Desktop.ini
+**/.DS_Store
+
+# Docker / compose self
+Dockerfile*
+docker-compose*.yml
+.dockerignore

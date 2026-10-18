@@ -1,0 +1,47 @@
+# AMADEUS 11 — VPS / first-test production-like Compose (R1-DEPLOY-PREPARE)
+# App only. Supabase is external (cloud test project).
+# Bind loopback only — access via SSH tunnel, never public :3080.
+#
+# Usage on VPS (future phase — do not run from this prepare phase):
+#   cd /opt/alsyd/amadeus11
+#   # Create /etc/amadeus11/env from .env.docker.r1-test.example (mode 0600)
+#   docker compose -f docker-compose.r1-vps.yml --env-file /etc/amadeus11/env up -d
+#
+# Image: load verified archive — no GitHub credentials required.
+#   docker load -i amadeus11-app-1.0.0-rc7.tar
+#   sha256sum -c amadeus11-app-1.0.0-rc7.tar.sha256
+#
+# Compatible with Debian 13.7 / Docker 29.9.1 / Compose 5.6.0
+
+services:
+  amadeus11-app:
+    image: amadeus11-app:1.0.0-rc7
+    container_name: amadeus11-app-r1-vps
+    restart: unless-stopped
+    # Image already runs as nextjs (uid 1001); pin explicitly for operators.
+    user: "1001:1001"
+    ports:
+      # Loopback-only host bind
+      - "127.0.0.1:${AMADEUS_HOST_PORT:-3080}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3080}
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
+      EMAIL_WORKER_SECRET: ${EMAIL_WORKER_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true

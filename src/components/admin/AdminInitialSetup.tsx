@@ -11,6 +11,7 @@ import {
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
+import { AdminEmailInitialSetupCard } from '@/components/admin/AdminEmailInitialSetupCard';
 import {
   CAPITAL_REPAIR_MODULE_KEY,
   CAPITAL_REPAIR_SETUP_SCHEMA_VERSION,
@@ -126,7 +127,7 @@ import {
   type TariffListSnapshot,
   type ModuleTariffReadiness,
 } from '@/lib/moduleCore';
-import { moduleLabelMessageKey } from '@/lib/modules';
+import { isRelease1DistributionExcluded, moduleLabelMessageKey } from '@/lib/modules';
 import {
   parsePropertyBookWorkbook,
   type PropertyBookWorkbookPayload,
@@ -151,6 +152,16 @@ type Props = {
   t: (key: string) => string;
 };
 
+const IS1_WIZARD_STEPS = ['complex', 'modules', 'finance', 'notify', 'ready'] as const;
+type Is1WizardStep = (typeof IS1_WIZARD_STEPS)[number];
+const IS1_WIZARD_STORAGE_KEY = 'amadeus.is1.wizardStep';
+
+function parseIs1WizardStep(raw: string | null | undefined): Is1WizardStep {
+  const v = String(raw ?? '').trim();
+  if ((IS1_WIZARD_STEPS as readonly string[]).includes(v)) return v as Is1WizardStep;
+  return 'complex';
+}
+
 function syntheticLifecycleRow(moduleKey: string): LifecycleRow {
   return {
     installation_key: 'default',
@@ -168,6 +179,14 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [rows, setRows] = useState<LifecycleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [wizardStep, setWizardStep] = useState<Is1WizardStep>(() => {
+    if (typeof window === 'undefined') return 'complex';
+    try {
+      return parseIs1WizardStep(window.sessionStorage.getItem(IS1_WIZARD_STORAGE_KEY));
+    } catch {
+      return 'complex';
+    }
+  });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftConfirmed, setDraftConfirmed] = useState(false);
@@ -245,13 +264,22 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(IS1_WIZARD_STORAGE_KEY, wizardStep);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [wizardStep]);
+
   const registeredExtra = listRegisteredModuleAdapters().filter(
     (a) => !rows.some((r) => r.module_key === a.registration.moduleKey),
   );
 
   const displayRows = useMemo(() => {
     const extras = registeredExtra.map((a) => syntheticLifecycleRow(a.registration.moduleKey));
-    return [...rows, ...extras];
+    // R1-MT-HIDE / Rental: Distribution exclusions never appear in Initial Setup.
+    return [...rows, ...extras].filter((r) => !isRelease1DistributionExcluded(r.module_key));
   }, [rows, registeredExtra]);
 
   const selected = useMemo(
@@ -282,6 +310,31 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     if (!pb) return false;
     return pb.state === 'READY' || pb.state === 'ACTIVE' || pb.state === 'SETUP_IN_PROGRESS';
   }, [displayRows]);
+
+  const wizardStepIndex = IS1_WIZARD_STEPS.indexOf(wizardStep);
+  const wizardStepMeta = useMemo(() => {
+    const pb = displayRows.find((r) => r.module_key === PROPERTY_BOOK_MODULE_KEY);
+    const pbDone =
+      pb != null && (pb.state === 'READY' || pb.state === 'ACTIVE');
+    const pbActive =
+      pb != null &&
+      (pb.state === 'SETUP_IN_PROGRESS' || pb.state === 'SETUP_REQUIRED' || pb.has_setup_draft);
+    const modulesInProgress = displayRows.some(
+      (r) =>
+        r.state === 'SETUP_IN_PROGRESS' ||
+        r.state === 'READY' ||
+        r.state === 'ACTIVE' ||
+        r.has_setup_draft,
+    );
+    const financeReady = tariffReadiness.some((r) => r.importReady || r.billingReady);
+    return {
+      complex: pbDone ? 'done' : pbActive ? 'active' : 'pending',
+      modules: modulesInProgress ? 'active' : 'pending',
+      finance: financeReady ? 'active' : 'pending',
+      notify: 'optional' as const,
+      ready: 'pending' as const,
+    } as const;
+  }, [displayRows, tariffReadiness]);
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -986,7 +1039,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             p_preview: {
               local: result,
               policy: { allowReplace: false },
-              opening_reading_row_commit: 'BLOCKED',
+              opening_reading_row_commit: 'ENABLED',
               note: 'inventory_assign_only_no_submit_reading',
             },
             p_row_count: result.rows.length,
@@ -1440,6 +1493,29 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             p_initial_day_reading: p.initialDayReading,
             p_initial_night_reading: p.initialNightReading,
             p_installed_at: p.installedAt,
+          });
+          if (rpcErr) return { ok: false, message: rpcErr.message };
+          return { ok: true };
+        },
+        registerWaterOpening: async (p) => {
+          const { error: rpcErr } = await supabase.rpc('register_water_opening_reading', {
+            p_property_id: p.propertyId,
+            p_current_value: p.initialReading,
+            p_reading_date: p.installedAt,
+            p_source_reference: `is3_xlsx:${p.meterNumber}`,
+            p_idempotency_key: crypto.randomUUID(),
+          });
+          if (rpcErr) return { ok: false, message: rpcErr.message };
+          return { ok: true };
+        },
+        registerElectricityOpening: async (p) => {
+          const { error: rpcErr } = await supabase.rpc('register_electricity_opening_reading', {
+            p_property_id: p.propertyId,
+            p_day_reading: p.initialDayReading,
+            p_night_reading: p.initialNightReading,
+            p_reading_date: p.installedAt,
+            p_source_reference: `is3_xlsx:${p.meterNumber}`,
+            p_idempotency_key: crypto.randomUUID(),
           });
           if (rpcErr) return { ok: false, message: rpcErr.message };
           return { ok: true };
@@ -2362,6 +2438,48 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     downloadModuleXlsxTemplate(schema, labels, `${selectedKey ?? 'module'}-template.xlsx`);
   }
 
+  const wizardLabels: Record<Is1WizardStep, string> = {
+    complex: t('admin.settingsWizardStepComplex'),
+    modules: t('admin.settingsWizardStepModules'),
+    finance: t('admin.settingsWizardStepFinance'),
+    notify: t('admin.settingsWizardStepNotify'),
+    ready: t('admin.settingsWizardStepReady'),
+  };
+
+  const tariffPanel = (
+    <AdminCard>
+      <h3 className="mb-2 text-sm font-semibold text-foreground">{t('admin.is7aTariffPanelTitle')}</h3>
+      <p className="mb-3 text-xs text-secondary">{t('admin.is7aTariffPanelLead')}</p>
+      <ul className="space-y-2 text-xs">
+        {tariffReadiness.map((r: ModuleTariffReadiness) => (
+          <li key={r.moduleKey} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <code className="text-foreground">{r.moduleKey}</code>
+            <span className="text-muted">
+              {t('admin.is7aImportReady')}:{' '}
+              {r.importReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
+            </span>
+            <span className="text-muted">
+              {t('admin.is7aBillingReady')}:{' '}
+              {r.billingReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
+            </span>
+            {r.importBlockedByMissingTariff && r.missingMessageKey ? (
+              <span className="text-danger">{t(`admin.${r.missingMessageKey}`)}</span>
+            ) : null}
+            {!r.importBlockedByMissingTariff &&
+            r.billingBlockedByMissingTariff &&
+            r.billingMissingMessageKey ? (
+              <span className="text-secondary">{t(`admin.${r.billingMissingMessageKey}`)}</span>
+            ) : null}
+            {!r.billingBlockedByMissingTariff && r.hasPublishedApplicable ? (
+              <span className="text-secondary">{t('admin.is7aTariffPublishedOk')}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-muted">{t('admin.is7aTariffNoAutoPublish')}</p>
+    </AdminCard>
+  );
+
   return (
     <div className="space-y-4">
       <AdminPageHeader
@@ -2380,38 +2498,139 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
       <p className="text-sm text-secondary">{t('admin.is1CompatibilityNote')}</p>
 
-      <AdminCard>
-        <h3 className="mb-2 text-sm font-semibold text-foreground">{t('admin.is7aTariffPanelTitle')}</h3>
-        <p className="mb-3 text-xs text-secondary">{t('admin.is7aTariffPanelLead')}</p>
-        <ul className="space-y-2 text-xs">
-          {tariffReadiness.map((r: ModuleTariffReadiness) => (
-            <li key={r.moduleKey} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <code className="text-foreground">{r.moduleKey}</code>
-              <span className="text-muted">
-                {t('admin.is7aImportReady')}:{' '}
-                {r.importReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
-              </span>
-              <span className="text-muted">
-                {t('admin.is7aBillingReady')}:{' '}
-                {r.billingReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
-              </span>
-              {r.importBlockedByMissingTariff && r.missingMessageKey ? (
-                <span className="text-danger">{t(`admin.${r.missingMessageKey}`)}</span>
-              ) : null}
-              {!r.importBlockedByMissingTariff &&
-              r.billingBlockedByMissingTariff &&
-              r.billingMissingMessageKey ? (
-                <span className="text-secondary">{t(`admin.${r.billingMissingMessageKey}`)}</span>
-              ) : null}
-              {!r.billingBlockedByMissingTariff && r.hasPublishedApplicable ? (
-                <span className="text-secondary">{t('admin.is7aTariffPublishedOk')}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 text-xs text-muted">{t('admin.is7aTariffNoAutoPublish')}</p>
-      </AdminCard>
+      <nav
+        className="overflow-x-auto rounded-[14px] border border-border bg-surface px-2 py-2 sm:px-3"
+        aria-label={t('admin.is1Title')}
+      >
+        <ol className="flex min-w-max items-stretch gap-1 sm:gap-2">
+          {IS1_WIZARD_STEPS.map((stepId, idx) => {
+            const on = wizardStep === stepId;
+            const status = wizardStepMeta[stepId];
+            return (
+              <li key={stepId} className="flex items-center gap-1 sm:gap-2">
+                {idx > 0 ? (
+                  <span className="hidden h-px w-4 bg-border sm:block" aria-hidden />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setWizardStep(stepId)}
+                  className={`flex min-w-[7.5rem] flex-col rounded-xl px-3 py-2 text-left transition ${
+                    on
+                      ? 'bg-accent/10 ring-1 ring-accent/30'
+                      : 'hover:bg-hover/60'
+                  }`}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
+                    {t('admin.settingsWizardStepOf')
+                      .replace('{n}', String(idx + 1))
+                      .replace('{total}', String(IS1_WIZARD_STEPS.length))}
+                  </span>
+                  <span
+                    className={`mt-0.5 text-sm font-semibold ${
+                      on ? 'text-accent' : 'text-foreground'
+                    }`}
+                  >
+                    {wizardLabels[stepId]}
+                  </span>
+                  <span className="mt-0.5 text-[11px] text-muted">
+                    {status === 'done'
+                      ? t('admin.is7aReadyYes')
+                      : status === 'optional'
+                        ? t('admin.is1SetupOptional')
+                        : status === 'active'
+                          ? t('admin.is1SetupRequired')
+                          : '·'}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          className={adminBtnSecondaryClass}
+          disabled={wizardStepIndex <= 0}
+          onClick={() => setWizardStep(IS1_WIZARD_STEPS[Math.max(0, wizardStepIndex - 1)])}
+        >
+          {t('admin.settingsWizardPrev')}
+        </button>
+        <button
+          type="button"
+          className={adminBtnPrimaryClass}
+          disabled={wizardStepIndex >= IS1_WIZARD_STEPS.length - 1}
+          onClick={() =>
+            setWizardStep(
+              IS1_WIZARD_STEPS[Math.min(IS1_WIZARD_STEPS.length - 1, wizardStepIndex + 1)],
+            )
+          }
+        >
+          {t('admin.settingsWizardNext')}
+        </button>
+      </div>
+
+      {wizardStep === 'complex' ? (
+        <AdminCard>
+          <h3 className="mb-2 text-sm font-semibold text-foreground">
+            {t('admin.settingsWizardStepComplex')}
+          </h3>
+          <p className="mb-3 text-sm text-secondary">{t('admin.settingsWizardComplexNote')}</p>
+          <p className="mb-3 text-xs text-muted">
+            {PROPERTY_BOOK_MODULE_KEY}:{' '}
+            <code>
+              {displayRows.find((r) => r.module_key === PROPERTY_BOOK_MODULE_KEY)?.state ?? '—'}
+            </code>
+          </p>
+          <button
+            type="button"
+            className={adminBtnSecondaryClass}
+            onClick={() => {
+              setSelectedKey(PROPERTY_BOOK_MODULE_KEY);
+              resetImportUi();
+              setWizardStep('modules');
+            }}
+          >
+            {labelFor(PROPERTY_BOOK_MODULE_KEY)} →
+          </button>
+        </AdminCard>
+      ) : null}
+
+      {wizardStep === 'finance' ? tariffPanel : null}
+
+      {wizardStep === 'notify' ? (
+        <AdminEmailInitialSetupCard supabase={supabase} t={t} canManage={!busy} />
+      ) : null}
+
+      {wizardStep === 'ready' ? (
+        <div className="space-y-4">
+          <AdminCard>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">
+              {t('admin.settingsWizardStepReady')}
+            </h3>
+            <p className="mb-3 text-sm text-secondary">{t('admin.settingsWizardReadyLead')}</p>
+            <ul className="space-y-1.5 text-sm">
+              {displayRows.map((row) => (
+                <li
+                  key={row.module_key}
+                  className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/60 py-1.5 last:border-0"
+                >
+                  <span className="font-medium text-foreground">{labelFor(row.module_key)}</span>
+                  <span className="text-xs text-muted">
+                    <code>{row.state}</code>
+                    {' · '}
+                    {row.building_enabled ? t('admin.is1Yes') : t('admin.is1No')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </AdminCard>
+          {tariffPanel}
+        </div>
+      ) : null}
+
+      {wizardStep === 'modules' ? (
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <AdminCard>
           <h3 className="mb-3 text-sm font-semibold text-foreground">{t('admin.is1ModuleList')}</h3>
@@ -3079,6 +3298,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
           )}
         </AdminCard>
       </div>
+      ) : null}
     </div>
   );
 }

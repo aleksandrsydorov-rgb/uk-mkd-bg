@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { signOutFully } from '@/lib/authSession';
 import type { Database } from '@/lib/database.types';
 import Link from 'next/link';
+import { navLogoutIcon, navSectionIcon } from '@/components/nav/NavIcons';
 import {
   accountVoteWeight,
   isMissingRelation,
@@ -37,6 +38,7 @@ import {
   type GuestAccessContext,
 } from '@/lib/guestMode';
 import { OwnerGuestMode } from '@/components/account/OwnerGuestMode';
+import { NotificationPreferencesPanel } from '@/components/notifications/NotificationPreferencesPanel';
 import { normalizeEmail } from '@/lib/email';
 import { annualSupportFee, monthlySupportFee, type SupportFeeEntry } from '@/lib/finance';
 import {
@@ -72,7 +74,13 @@ import { OwnerDocumentsDecisions } from '@/components/account/OwnerDocumentsDeci
 import { PillTabs } from '@/components/account/ownerUi';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterMode, CurrentWaterTariffView } from '@/lib/utilities';
-import { DEFAULT_WATER_MODE, parseWaterMode, isOwnerModuleEnabled, currentWaterTariffViewFromCore } from '@/lib/utilities';
+import {
+  DEFAULT_WATER_MODE,
+  parseWaterMode,
+  isOwnerModuleEnabled,
+  currentWaterTariffViewFromCore,
+  isUtilityTariffUnavailableMessage,
+} from '@/lib/utilities';
 import {
   buildingModulesFromV2Rows,
   emptyBuildingModulesState,
@@ -177,7 +185,8 @@ type MenuSection =
   | 'ук'
   | 'счётчики'
   | 'документы'
-  | 'опросы';
+  | 'опросы'
+  | 'настройки';
 
 function expenseYearOf(dateStr: string) {
   const y = Number(dateStr.slice(0, 4));
@@ -244,45 +253,46 @@ export default function AccountPage() {
   // Module Core disabled always wins; information modes apply only when module is on.
   const waterEnabled = waterModuleOn && isOwnerModuleEnabled(waterMode);
   const electricityEnabled = electricityModuleOn && isOwnerModuleEnabled(electricityMode);
-  const MENU_ITEMS: { key: MenuSection; label: string; icon: string }[] = useMemo(() => {
+  const servicesNavEnabled =
+    managementNavEnabled ||
+    securityEnabled ||
+    cleaningEnabled ||
+    budgetEnabled ||
+    internetEnabled ||
+    requestsEnabled ||
+    chatEnabled;
+  const docsInfoEnabled = buildingDocumentsEnabled || pollsEnabled;
+
+  const MENU_ITEMS: { key: MenuSection; label: string; icon: React.ReactNode }[] = useMemo(() => {
+    // R1-UX: guest ≤4 · owner ≤7 top-level sections (Meetings excluded).
     if (guestContext) {
       return [
-        { key: 'обзор', label: t('account.overview'), icon: '▦' },
-        ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
+        { key: 'обзор', label: t('account.navHome'), icon: navSectionIcon('обзор') },
         ...(requestsEnabled || chatEnabled
-          ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
+          ? [{ key: 'ук' as const, label: t('account.navServices'), icon: navSectionIcon('ук') }]
           : []),
+        ...(securityEnabled
+          ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: navSectionIcon('охрана') }]
+          : []),
+        { key: 'настройки' as const, label: t('account.navSettings'), icon: navSectionIcon('настройки') },
       ];
     }
     return [
-      { key: 'обзор', label: t('account.overview'), icon: '▦' },
-      { key: 'квартира', label: t('account.apt'), icon: '🏠' },
-      { key: 'жильцы', label: t('account.occupancy'), icon: '👥' },
+      { key: 'обзор', label: t('account.navHome'), icon: navSectionIcon('обзор') },
+      { key: 'квартира', label: t('account.navMyApartment'), icon: navSectionIcon('квартира') },
       ...(supportFeeEnabled || waterEnabled || electricityEnabled || capitalEnabled || internetEnabled
-        ? [{ key: 'финансы' as const, label: t('account.finance'), icon: '💰' }]
-        : []),
-      ...(internetEnabled ? [{ key: 'интернет' as const, label: t('account.navInternet'), icon: '🌐' }] : []),
-      ...(securityEnabled ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: '🛡️' }] : []),
-      ...(cleaningEnabled ? [{ key: 'уборка' as const, label: t('account.navCleaning'), icon: '🧹' }] : []),
-      ...(budgetEnabled ? [{ key: 'бюджет' as const, label: t('account.navBudget'), icon: '📈' }] : []),
-      ...(generalMeetingEnabled
-        ? [
-            { key: 'собрания' as const, label: t('account.navMeetings'), icon: '🏛️' },
-            { key: 'решения' as const, label: t('account.navDecisions'), icon: '📜' },
-          ]
-        : []),
-      ...(buildingDocumentsEnabled
-        ? [{ key: 'документы' as const, label: t('account.navDocuments'), icon: '📁' }]
+        ? [{ key: 'финансы' as const, label: t('account.finance'), icon: navSectionIcon('финансы') }]
         : []),
       ...(waterEnabled || electricityEnabled
-        ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: '⚡' }]
+        ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: navSectionIcon('счётчики') }]
         : []),
-      ...(pollsEnabled
-        ? [{ key: 'опросы' as const, label: t('account.polls'), icon: '🗳️' }]
+      ...(servicesNavEnabled
+        ? [{ key: 'ук' as const, label: t('account.navServices'), icon: navSectionIcon('ук') }]
         : []),
-      ...(managementNavEnabled
-        ? [{ key: 'ук' as const, label: t('account.mgmtTitle'), icon: '🏢' }]
+      ...(docsInfoEnabled
+        ? [{ key: 'документы' as const, label: t('account.navDocsInfo'), icon: navSectionIcon('документы') }]
         : []),
+      { key: 'настройки' as const, label: t('account.navSettings'), icon: navSectionIcon('настройки') },
     ];
   }, [
     guestContext,
@@ -295,12 +305,13 @@ export default function AccountPage() {
     securityEnabled,
     cleaningEnabled,
     budgetEnabled,
-    generalMeetingEnabled,
     buildingDocumentsEnabled,
     pollsEnabled,
     managementNavEnabled,
     requestsEnabled,
     chatEnabled,
+    servicesNavEnabled,
+    docsInfoEnabled,
   ]);
   const [waterTariff, setWaterTariff] = useState<CurrentWaterTariffView | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<CurrentElectricityTariffView | null>(null);
@@ -636,7 +647,13 @@ export default function AccountPage() {
           p_on_date: null,
         });
         if (waterTariffRes.error) {
-          if (!isMissingRelation(waterTariffRes.error, 'get_applicable_utility_tariff')) throw waterTariffRes.error;
+          const msg = String(waterTariffRes.error.message ?? '');
+          if (
+            !isMissingRelation(waterTariffRes.error, 'get_applicable_utility_tariff') &&
+            !isUtilityTariffUnavailableMessage(msg)
+          ) {
+            throw waterTariffRes.error;
+          }
           setWaterTariff(null);
         } else {
           const row = Array.isArray(waterTariffRes.data) ? waterTariffRes.data[0] : waterTariffRes.data;
@@ -658,7 +675,13 @@ export default function AccountPage() {
           p_on_date: null,
         });
         if (elTariffRes.error) {
-          if (!isMissingRelation(elTariffRes.error, 'get_applicable_utility_tariff')) throw elTariffRes.error;
+          const msg = String(elTariffRes.error.message ?? '');
+          if (
+            !isMissingRelation(elTariffRes.error, 'get_applicable_utility_tariff') &&
+            !isUtilityTariffUnavailableMessage(msg)
+          ) {
+            throw elTariffRes.error;
+          }
           setElectricityTariff(null);
         } else {
           const row = Array.isArray(elTariffRes.data) ? elTariffRes.data[0] : elTariffRes.data;
@@ -981,10 +1004,41 @@ export default function AccountPage() {
     }
   }, [waterEnabled, electricityEnabled, capitalEnabled, internetEnabled, supportFeeEnabled, financeTab]);
 
+  const [aptSubTab, setAptSubTab] = useState<'details' | 'occupancy'>('details');
+  const [docsSubTab, setDocsSubTab] = useState<'documents' | 'polls'>('documents');
+  const [servicesSubTab, setServicesSubTab] = useState<
+    'ук' | 'охрана' | 'уборка' | 'бюджет' | 'интернет'
+  >('ук');
+
   useEffect(() => {
     const allowed = new Set(MENU_ITEMS.map((item) => item.key));
+    if (activeMenu === 'жильцы') {
+      setActiveMenu('квартира');
+      setAptSubTab('occupancy');
+      return;
+    }
+    if (
+      !guestContext &&
+      (activeMenu === 'охрана' ||
+        activeMenu === 'уборка' ||
+        activeMenu === 'бюджет' ||
+        activeMenu === 'интернет')
+    ) {
+      setServicesSubTab(activeMenu);
+      setActiveMenu('ук');
+      return;
+    }
+    if (activeMenu === 'опросы') {
+      setDocsSubTab('polls');
+      setActiveMenu(docsInfoEnabled ? 'документы' : 'обзор');
+      return;
+    }
+    if (activeMenu === 'собрания' || activeMenu === 'решения') {
+      setActiveMenu('обзор');
+      return;
+    }
     if (!allowed.has(activeMenu)) setActiveMenu('обзор');
-  }, [MENU_ITEMS, activeMenu]);
+  }, [MENU_ITEMS, activeMenu, guestContext, docsInfoEnabled]);
 
   useEffect(() => {
     // Guests cannot use announcements/expenses. Keep a single fallback path so
@@ -1123,10 +1177,23 @@ export default function AccountPage() {
           : insertErr.message;
         throw new Error(hint);
       }
-      setChatMessages((prev) => [...prev, inserted as ChatMessage]);
+      const row = inserted as ChatMessage;
+      setChatMessages((prev) => [...prev, row]);
       setChatInput('');
       setChatFile(null);
       if (chatFileRef.current) chatFileRef.current.value = '';
+      void import('@/lib/email/eventProducers')
+        .then(({ notifyTicketNewMessage }) =>
+          notifyTicketNewMessage(supabase, {
+            propertyId: property.id,
+            messageId: row.id,
+            sender: guestContext ? 'guest' : 'owner',
+            senderEmail: guestContext
+              ? (activeGuestAccess?.email ?? devEmail ?? null)
+              : (devEmail ?? null),
+          })
+        )
+        .catch(() => undefined);
     } catch (e: any) {
       setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? ownerVisibleError(e, t('err.send')));
     } finally {
@@ -1229,6 +1296,7 @@ export default function AccountPage() {
     if (scopeLocked('occupancy')) throw new Error(t('account.serviceLockBanner'));
     setOccupancySaving(true);
     try {
+      const prevStatus = property.occupancy_status;
       const { error: updErr } = await supabase
         .from('properties')
         .update({
@@ -1265,6 +1333,21 @@ export default function AccountPage() {
         email: payload.occupant_email ?? '',
         until: payload.occupant_until ? String(payload.occupant_until).slice(0, 10) : '',
       });
+      if (prevStatus !== payload.occupancy_status) {
+        void import('@/lib/email/eventProducers')
+          .then(({ notifyPropertyOwnersEvent }) =>
+            notifyPropertyOwnersEvent(supabase, {
+              eventKey: 'residence_status_changed',
+              propertyId: property.id,
+              entityId: `residence:${property.id}:${payload.occupancy_status}`,
+              payload: {
+                occupancy_status: payload.occupancy_status,
+                previous_status: prevStatus,
+              },
+            })
+          )
+          .catch(() => undefined);
+      }
     } finally {
       setOccupancySaving(false);
     }
@@ -1641,7 +1724,28 @@ export default function AccountPage() {
         p_option_id: optionId,
       });
       if (error) throw error;
+      // Refresh votes so overview attention / unanswered counts drop immediately.
+      // Owner SELECT on poll_votes is required; also merge locally if the round-trip lags.
       await refreshPolls();
+      setPollVotes((prev) => {
+        const ownedIds = properties.map((p) => p.id);
+        const missing = ownedIds.filter(
+          (pid) => !prev.some((v) => v.poll_id === poll.id && v.property_id === pid),
+        );
+        if (missing.length === 0) return prev;
+        const now = new Date().toISOString();
+        return [
+          ...prev,
+          ...missing.map((property_id, i) => ({
+            id: -1 * (poll.id * 1000 + property_id + i),
+            created_at: now,
+            poll_id: poll.id,
+            option_id: optionId,
+            property_id,
+            weight: null,
+          })),
+        ];
+      });
     } catch (e: unknown) {
       const message =
         e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
@@ -1654,6 +1758,8 @@ export default function AccountPage() {
         || lower.includes('poll_votes_poll_id_property_id')
       ) {
         setError(t('err.voteAlready'));
+        // Votes already exist server-side — pull them so attention UI clears.
+        await refreshPolls();
       } else {
         setError(ownerVisibleError(e, t('err.vote')));
       }
@@ -1881,108 +1987,110 @@ export default function AccountPage() {
             r.status !== 'отклонена',
         );
         return (
-          <OwnerApartment
-            property={property!}
-            properties={properties}
-            occupancyStatus={occupancyStatus}
-            guests={guests}
-            pets={pets}
-            people={registryPeople}
-            absences={absences}
-            sessionEmail={devEmail}
-            bookRequestOpen={bookRequestOpen}
-            onSelectProperty={setSelectedPropertyId}
-            onOpenOccupancy={() => setActiveMenu('жильцы')}
-            onReportChange={handleReportBookChange}
-            listingSaving={listingSaving}
-            onUpdateListing={handleUpdateListing}
-            extra={(
-              <>
-              {guestModeEnabled && property && !guestContext ? (
-                <OwnerGuestMode supabase={supabase} propertyId={property.id} />
-              ) : null}
-              {property ? (
-                <OwnerOwnershipPanel
-                  supabase={supabase}
-                  propertyId={property.id}
-                  idealPartsPercent={Number(property.ideal_parts_percent ?? 0)}
-                  transfers={transfers}
-                  pendingTransfer={pendingTransfer ?? null}
-                  sessionEmail={devEmail}
-                  scopeLocked={scopeLocked('occupancy')}
-                  onTransfersChanged={(rows) => {
-                    setTransfers((prev) => {
-                      const others = prev.filter((tr) => tr.property_id !== property.id);
-                      return [...rows, ...others].sort(
-                        (a, b) =>
-                          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-                      );
-                    });
-                  }}
-                  onError={setError}
-                />
-              ) : null}
-              </>
+          <div className="space-y-4">
+            <PillTabs
+              items={[
+                { id: 'details', label: t('account.aptTabDetails') },
+                { id: 'occupancy', label: t('account.aptTabOccupancy') },
+              ]}
+              value={aptSubTab}
+              onChange={(id) => setAptSubTab(id as 'details' | 'occupancy')}
+            />
+            {aptSubTab === 'occupancy' ? (
+              <OwnerOccupancy
+                apartmentNumber={String(property?.apartment_number ?? '')}
+                properties={properties}
+                selectedId={property?.id ?? null}
+                occupancyStatus={occupancyStatus}
+                occupantKind={occupantKind}
+                occupantName={property?.occupant_name ?? null}
+                occupantPhone={property?.occupant_phone ?? null}
+                occupantEmail={property?.occupant_email ?? null}
+                occupantUntil={property?.occupant_until ? String(property.occupant_until).slice(0, 10) : null}
+                ownerName={property?.owner_name ?? null}
+                ownerEmail={property?.owner_email ?? null}
+                sessionEmail={devEmail}
+                registryPeople={registryPeople}
+                bookRequestOpen={bookRequestOpen}
+                guests={guests}
+                pets={pets}
+                occupancySaving={occupancySaving}
+                guestAdding={guestAdding}
+                petSaving={petSaving}
+                petsLoadFailed={petsLoadFailed}
+                onSelectProperty={setSelectedPropertyId}
+                onSaveStatus={handleSaveOccupancy}
+                onAddGuest={handleAddGuest}
+                onUpdateGuest={handleUpdateGuest}
+                onRemoveGuest={handleRemoveGuest}
+                onAddPet={handleAddPet}
+                onRemovePet={handleRemovePet}
+                onReportChange={handleReportBookChange}
+              />
+            ) : (
+              <OwnerApartment
+                property={property!}
+                properties={properties}
+                occupancyStatus={occupancyStatus}
+                guests={guests}
+                pets={pets}
+                people={registryPeople}
+                absences={absences}
+                sessionEmail={devEmail}
+                bookRequestOpen={bookRequestOpen}
+                onSelectProperty={setSelectedPropertyId}
+                onOpenOccupancy={() => setAptSubTab('occupancy')}
+                onReportChange={handleReportBookChange}
+                listingSaving={listingSaving}
+                onUpdateListing={handleUpdateListing}
+                extra={(
+                  <>
+                  {guestModeEnabled && property && !guestContext ? (
+                    <OwnerGuestMode supabase={supabase} propertyId={property.id} />
+                  ) : null}
+                  {property ? (
+                    <OwnerOwnershipPanel
+                      supabase={supabase}
+                      propertyId={property.id}
+                      idealPartsPercent={Number(property.ideal_parts_percent ?? 0)}
+                      transfers={transfers}
+                      pendingTransfer={pendingTransfer ?? null}
+                      sessionEmail={devEmail}
+                      scopeLocked={scopeLocked('occupancy')}
+                      onTransfersChanged={(rows) => {
+                        setTransfers((prev) => {
+                          const others = prev.filter((tr) => tr.property_id !== property.id);
+                          return [...rows, ...others].sort(
+                            (a, b) =>
+                              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                          );
+                        });
+                      }}
+                      onError={setError}
+                    />
+                  ) : null}
+                  </>
+                )}
+              />
             )}
-          />
+          </div>
         );
       }
 
 
       case 'жильцы':
-        return (
-          <OwnerOccupancy
-            apartmentNumber={String(property?.apartment_number ?? '')}
-            properties={properties}
-            selectedId={property?.id ?? null}
-            occupancyStatus={occupancyStatus}
-            occupantKind={occupantKind}
-            occupantName={property?.occupant_name ?? null}
-            occupantPhone={property?.occupant_phone ?? null}
-            occupantEmail={property?.occupant_email ?? null}
-            occupantUntil={property?.occupant_until ? String(property.occupant_until).slice(0, 10) : null}
-            ownerName={property?.owner_name ?? null}
-            ownerEmail={property?.owner_email ?? null}
-            sessionEmail={devEmail}
-            registryPeople={registryPeople}
-            bookRequestOpen={requests.some(
-              (r) =>
-                r.property_id === property?.id &&
-                r.category === 'книга' &&
-                r.status !== 'выполнена' &&
-                r.status !== 'отклонена',
-            )}
-            guests={guests}
-            pets={pets}
-            occupancySaving={occupancySaving}
-            guestAdding={guestAdding}
-            petSaving={petSaving}
-            petsLoadFailed={petsLoadFailed}
-            onSelectProperty={setSelectedPropertyId}
-            onSaveStatus={handleSaveOccupancy}
-            onAddGuest={handleAddGuest}
-            onUpdateGuest={handleUpdateGuest}
-            onRemoveGuest={handleRemoveGuest}
-            onAddPet={handleAddPet}
-            onRemovePet={handleRemovePet}
-            onReportChange={handleReportBookChange}
-          />
-        );
-
+        // Deep-link alias → квартира/occupancy (handled by menu effect).
+        return null;
 
       case 'интернет':
-        if (!property || !internetEnabled) {
-          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
-        }
-        return (
-          <OwnerInternet
-            supabase={supabase}
-            propertyId={property.id}
-            serviceLocked={scopeLocked('internet')}
-          />
-        );
+      case 'уборка':
+      case 'бюджет':
+        // Owner deep-link aliases → ук composite (handled by menu effect).
+        return null;
 
       case 'охрана':
+        // Guest keeps top-level Security; owners are redirected to ук composite.
+        if (!guestContext) return null;
         if (!property || !securityEnabled) {
           return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
         }
@@ -1994,51 +2102,10 @@ export default function AccountPage() {
           />
         );
 
-      case 'уборка':
-        if (!property || !cleaningEnabled) {
-          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
-        }
-        return (
-          <OwnerCleaning
-            supabase={supabase}
-            propertyId={property.id}
-            serviceLocked={scopeLocked('cleaning')}
-          />
-        );
-
-      case 'бюджет':
-        if (!budgetEnabled) {
-          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
-        }
-        return <OwnerBudget supabase={supabase} />;
-
       case 'собрания':
-        if (!generalMeetingEnabled) {
-          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
-        }
-        return (
-          <OwnerDocumentsDecisions
-            supabase={supabase}
-            mode="meetings"
-            meetingsEnabled
-            decisionsEnabled={false}
-            documentsEnabled={false}
-          />
-        );
-
       case 'решения':
-        if (!generalMeetingEnabled) {
-          return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
-        }
-        return (
-          <OwnerDocumentsDecisions
-            supabase={supabase}
-            mode="decisions"
-            meetingsEnabled={false}
-            decisionsEnabled
-            documentsEnabled={false}
-          />
-        );
+        // Meetings excluded from R1 — redirect via menu effect.
+        return null;
 
       case 'финансы': {
         const totalDebt = property
@@ -2330,10 +2397,33 @@ export default function AccountPage() {
       }
 
       // ===========================================================
-      // УК
+      // УК / Обращения и услуги (owner composite)
       // ===========================================================
-      case 'ук':
-        return (
+      case 'ук': {
+        const serviceTabs = guestContext
+          ? ([{ id: 'ук' as const, label: t('account.servicesTabUk') }] as const)
+          : ([
+              ...(managementNavEnabled || requestsEnabled || chatEnabled
+                ? ([{ id: 'ук' as const, label: t('account.servicesTabUk') }] as const)
+                : []),
+              ...(securityEnabled
+                ? ([{ id: 'охрана' as const, label: t('account.navSecurity') }] as const)
+                : []),
+              ...(cleaningEnabled
+                ? ([{ id: 'уборка' as const, label: t('account.navCleaning') }] as const)
+                : []),
+              ...(budgetEnabled
+                ? ([{ id: 'бюджет' as const, label: t('account.navBudget') }] as const)
+                : []),
+              ...(internetEnabled
+                ? ([{ id: 'интернет' as const, label: t('account.navInternet') }] as const)
+                : []),
+            ] as const);
+        const shownService =
+          serviceTabs.some((tab) => tab.id === servicesSubTab)
+            ? servicesSubTab
+            : (serviceTabs[0]?.id ?? 'ук');
+        const managementBlock = (
           <OwnerManagement
             tab={managementTab}
             onTab={setManagementTab}
@@ -2440,6 +2530,45 @@ export default function AccountPage() {
             }}
           />
         );
+        return (
+          <div className="space-y-4">
+            {serviceTabs.length > 1 && (
+              <PillTabs
+                items={serviceTabs.map((tab) => ({ id: tab.id, label: tab.label }))}
+                value={shownService}
+                onChange={(id) =>
+                  setServicesSubTab(id as 'ук' | 'охрана' | 'уборка' | 'бюджет' | 'интернет')
+                }
+              />
+            )}
+            {shownService === 'охрана' && property && securityEnabled ? (
+              <OwnerSecurity
+                supabase={supabase}
+                propertyId={property.id}
+                serviceLocked={scopeLocked('security')}
+              />
+            ) : null}
+            {shownService === 'уборка' && property && cleaningEnabled ? (
+              <OwnerCleaning
+                supabase={supabase}
+                propertyId={property.id}
+                serviceLocked={scopeLocked('cleaning')}
+              />
+            ) : null}
+            {shownService === 'бюджет' && budgetEnabled ? (
+              <OwnerBudget supabase={supabase} />
+            ) : null}
+            {shownService === 'интернет' && property && internetEnabled ? (
+              <OwnerInternet
+                supabase={supabase}
+                propertyId={property.id}
+                serviceLocked={scopeLocked('internet')}
+              />
+            ) : null}
+            {shownService === 'ук' ? managementBlock : null}
+          </div>
+        );
+      }
 
       // ===========================================================
       // СЧЁТЧИКИ
@@ -2508,34 +2637,65 @@ export default function AccountPage() {
       }
 
       // ===========================================================
-      // ЗАЯВКИ
+      // ДОКУМЕНТЫ И ИНФОРМАЦИЯ
       // ===========================================================
-      case 'документы':
-        if (!buildingDocumentsEnabled) {
+      case 'документы': {
+        const docTabs = [
+          ...(buildingDocumentsEnabled
+            ? [{ id: 'documents' as const, label: t('account.docsTabDocuments') }]
+            : []),
+          ...(pollsEnabled ? [{ id: 'polls' as const, label: t('account.docsTabPolls') }] : []),
+        ];
+        const shownDocs =
+          docTabs.some((tab) => tab.id === docsSubTab)
+            ? docsSubTab
+            : (docTabs[0]?.id ?? 'documents');
+        if (docTabs.length === 0) {
           return <p className="text-sm text-muted">{t('account.aptNotFound')}</p>;
         }
         return (
-          <OwnerDocumentsDecisions
-            supabase={supabase}
-            mode="documents"
-            meetingsEnabled={false}
-            decisionsEnabled={false}
-            documentsEnabled
-          />
+          <div className="space-y-4">
+            {docTabs.length > 1 && (
+              <PillTabs
+                items={docTabs}
+                value={shownDocs}
+                onChange={(id) => setDocsSubTab(id as 'documents' | 'polls')}
+              />
+            )}
+            {shownDocs === 'documents' && buildingDocumentsEnabled ? (
+              <OwnerDocumentsDecisions
+                supabase={supabase}
+                mode="documents"
+                meetingsEnabled={false}
+                decisionsEnabled={false}
+                documentsEnabled
+              />
+            ) : null}
+            {shownDocs === 'polls' && pollsEnabled ? (
+              <OwnerPolls
+                polls={polls}
+                pollOptions={pollOptions}
+                pollVotes={pollVotes}
+                pollTallies={pollTallies}
+                myPropertyIds={properties.map((p) => p.id)}
+                myVoteWeight={myVoteWeight}
+                votingPollId={votingPollId}
+                onVote={handleVote}
+              />
+            ) : null}
+          </div>
         );
+      }
 
       case 'опросы':
+        // Deep-link alias → документы/polls (handled by menu effect).
+        return null;
+
+      case 'настройки':
         return (
-          <OwnerPolls
-            polls={polls}
-            pollOptions={pollOptions}
-            pollVotes={pollVotes}
-            pollTallies={pollTallies}
-            myPropertyIds={properties.map((p) => p.id)}
-            myVoteWeight={myVoteWeight}
-            votingPollId={votingPollId}
-            onVote={handleVote}
-          />
+          <div className="mx-auto max-w-lg space-y-4 rounded-[14px] border border-border bg-surface p-4 shadow-card">
+            <NotificationPreferencesPanel supabase={supabase} t={t} roleHint="owner" />
+          </div>
         );
 
       default:
@@ -2559,8 +2719,8 @@ export default function AccountPage() {
   // Bottom primary slots always derive from MENU_ITEMS so guestContext and
   // module flags stay a single authorization policy (sidebar + mobile).
   const bottomNavKeys: MenuSection[] = guestContext
-    ? ['обзор', 'охрана', 'ук']
-    : ['обзор', 'финансы', 'ук', 'опросы'];
+    ? ['обзор', 'ук', 'охрана']
+    : ['обзор', 'финансы', 'ук', 'документы'];
   const bottomNavItems = bottomNavKeys
     .map((key) => MENU_ITEMS.find((item) => item.key === key))
     .filter((item): item is (typeof MENU_ITEMS)[number] => Boolean(item))
@@ -2571,7 +2731,7 @@ export default function AccountPage() {
       badge:
         item.key === 'ук' && chatEnabled
           ? unreadChatCount || undefined
-          : item.key === 'опросы'
+          : item.key === 'документы'
             ? unansweredPollsCount || undefined
             : undefined,
     }));
@@ -2681,18 +2841,18 @@ export default function AccountPage() {
               {isStaff && (
                 <Link
                   href="/admin"
-                  className="p-1.5 rounded-lg bg-accent-bg text-xs"
+                  className="rounded-lg bg-accent-bg p-1.5 text-accent"
                   title={t('account.ukManage')}
                 >
-                  ⚙
+                  {navSectionIcon('настройки')}
                 </Link>
               )}
               <button
                 onClick={handleLogout}
-                className="p-1.5 rounded-lg bg-hover hover:bg-hover text-xs"
+                className="rounded-lg bg-hover p-1.5 text-secondary hover:text-foreground"
                 title={t('common.logout')}
               >
-                🚪
+                {navLogoutIcon()}
               </button>
             </div>
           )}
@@ -2705,29 +2865,45 @@ export default function AccountPage() {
           ? 'flex h-dvh flex-col overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
       }`}>
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2.5 md:px-6 md:py-4">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-bold tracking-[0.02em] text-foreground">{t('brand.name')}</p>
-            <h1 className="truncate text-base font-semibold md:text-lg">
-              {property ? `№ ${property.apartment_number}` : MENU_ITEMS.find((m) => m.key === activeMenu)?.label}
-              {cabinetOwnerName ? ` · ${cabinetOwnerName}` : ''}
-            </h1>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="min-h-10 rounded-lg border border-border px-3 text-sm text-secondary md:hidden"
-            >
-              {t('common.logout')}
-            </button>
-            <div className="hidden shrink-0 items-center gap-3 md:flex">
-              <LanguageSwitcher compact />
-              <Link href="/" className="text-sm text-secondary hover:text-foreground">
-                {t('common.backHome')}
-              </Link>
+        <div className="sticky top-0 z-10 shrink-0 border-b border-border bg-surface">
+          <div className="flex items-center justify-between gap-3 px-3 py-2.5 md:px-6 md:py-3">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-bold tracking-[0.02em] text-foreground">{t('brand.name')}</p>
+              <h1 className="truncate text-base font-semibold md:text-lg">
+                {MENU_ITEMS.find((m) => m.key === activeMenu)?.label
+                  ?? (property ? `№ ${property.apartment_number}` : t('account.navHome'))}
+                {cabinetOwnerName ? ` · ${cabinetOwnerName}` : ''}
+              </h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="min-h-10 rounded-lg border border-border px-3 text-sm text-secondary md:hidden"
+              >
+                {t('common.logout')}
+              </button>
+              <div className="hidden shrink-0 items-center gap-3 md:flex">
+                <LanguageSwitcher compact />
+                <Link href="/" className="text-sm text-secondary hover:text-foreground">
+                  {t('common.backHome')}
+                </Link>
+              </div>
             </div>
           </div>
+          {properties.length > 1 ? (
+            <div className="border-t border-border px-3 py-2 md:px-6">
+              <label className="mb-1 block text-xs font-medium text-secondary">
+                {t('account.switchApartment')}
+              </label>
+              <ApartmentPicker
+                properties={properties}
+                selectedId={property?.id ?? null}
+                onSelect={setSelectedPropertyId}
+              />
+              <p className="mt-1 text-[11px] text-muted">{t('account.switchApartmentHint')}</p>
+            </div>
+          ) : null}
         </div>
 
         <div className={
@@ -2735,19 +2911,6 @@ export default function AccountPage() {
             ? 'mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden p-3 md:px-6'
             : 'mx-auto w-full max-w-6xl p-3 md:px-6 md:py-5'
         }>
-          {properties.length > 1 &&
-            activeMenu !== 'обзор' &&
-            activeMenu !== 'квартира' &&
-            activeMenu !== 'жильцы' &&
-            activeMenu !== 'финансы' && (
-            <div className={inMgmtChat ? 'shrink-0' : undefined}>
-            <ApartmentPicker
-              properties={properties}
-              selectedId={property?.id ?? null}
-              onSelect={setSelectedPropertyId}
-            />
-            </div>
-          )}
           {loading && (
             <div className="rounded-[14px] border border-border bg-surface shadow-card p-6 text-center text-secondary">
               {t('common.loading')}

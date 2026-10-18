@@ -9,6 +9,7 @@ import { LoginScreen } from '@/components/LoginScreen';
 import { LocationDiagram } from '@/components/home/ComplexVisuals';
 import { useI18n } from '@/i18n/I18nProvider';
 import { resolveAccess, resolveStaffHome } from '@/lib/access';
+import { resolveAdminEntryPath } from '@/lib/firstBoot';
 import { normalizeEmail } from '@/lib/email';
 import { createClient } from '@/lib/supabase/client';
 
@@ -378,7 +379,11 @@ export default function HomePage() {
         return;
       }
       const access = await resolveAccess(authenticatedEmail, supabase);
-      router.replace(resolveStaffHome(access));
+      if (access.isStaff) {
+        router.replace(await resolveAdminEntryPath(access, supabase));
+      } else {
+        router.replace(resolveStaffHome(access));
+      }
     } catch (err: unknown) {
       const msg =
         err instanceof Error

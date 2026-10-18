@@ -21,11 +21,19 @@ import {
   type EmailQueueSummary,
   type EmailTemplateLocale,
 } from '@/lib/emailCore';
+import { previewTransactionalEmail } from '@/lib/email/templates';
+import {
+  EMAIL_PREVIEW_TEMPLATE_KEYS,
+  type EmailPreviewTemplateKey,
+} from '@/lib/email/setupValidation';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { NotificationPreferencesPanel } from '@/components/notifications/NotificationPreferencesPanel';
 
 type Props = {
   supabase: SupabaseClient<Database>;
   canManage: boolean;
+  /** Personal prefs role hint for staff vs admin. */
+  personalRoleHint?: 'admin' | 'staff';
 };
 
 function statusLabel(
@@ -43,7 +51,11 @@ function statusLabel(
   return map[status] ?? status;
 }
 
-export function AdminEmailSettings({ supabase, canManage }: Props) {
+export function AdminEmailSettings({
+  supabase,
+  canManage,
+  personalRoleHint = 'admin',
+}: Props) {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,6 +75,9 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
   const [locale, setLocale] = useState<EmailTemplateLocale>('bg');
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [testTo, setTestTo] = useState('');
+  const [previewKey, setPreviewKey] = useState<EmailPreviewTemplateKey>('pb1_property_invite');
+  const [previewLocale, setPreviewLocale] = useState<EmailTemplateLocale>('bg');
+  const [previewMode, setPreviewMode] = useState<'html' | 'text'>('html');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +125,20 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
     const set = new Set(diagnostics.map((d) => d.module_key).filter(Boolean));
     return Array.from(set).sort();
   }, [diagnostics]);
+
+  const preview = useMemo(() => {
+    return previewTransactionalEmail({
+      templateKey: previewKey,
+      locale: previewLocale,
+      complexName: senderName || settings?.sender_name || null,
+      payload: {
+        invite_link: 'https://example.invalid/auth/invite?token=preview',
+        apartment: '12',
+        event_kind: 'approved',
+        reminderType: 'nudge',
+      },
+    });
+  }, [previewKey, previewLocale, senderName, settings?.sender_name]);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
@@ -314,6 +343,65 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
       </AdminCard>
 
       <AdminCard>
+        <h4 className="text-sm font-semibold text-foreground">{t('admin.emailPreviewTitle')}</h4>
+        <p className="mt-1 text-xs text-secondary">{t('admin.emailPreviewHint')}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <label className="space-y-1 text-xs text-muted">
+            <span>{t('admin.emailPreviewTemplate')}</span>
+            <select
+              className={adminFieldClass}
+              value={previewKey}
+              onChange={(e) => setPreviewKey(e.target.value as EmailPreviewTemplateKey)}
+            >
+              {EMAIL_PREVIEW_TEMPLATE_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {key}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-muted">
+            <span>{t('admin.emailLocale')}</span>
+            <select
+              className={adminFieldClass}
+              value={previewLocale}
+              onChange={(e) => setPreviewLocale(e.target.value as EmailTemplateLocale)}
+            >
+              <option value="bg">BG</option>
+              <option value="ru">RU</option>
+              <option value="en">EN</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-muted">
+            <span>{t('admin.emailPreviewMode')}</span>
+            <select
+              className={adminFieldClass}
+              value={previewMode}
+              onChange={(e) => setPreviewMode(e.target.value as 'html' | 'text')}
+            >
+              <option value="html">HTML</option>
+              <option value="text">Text</option>
+            </select>
+          </label>
+        </div>
+        <p className="mt-3 text-xs font-medium text-foreground">
+          {t('admin.emailPreviewSubject')}: {preview.subject}
+        </p>
+        {previewMode === 'html' ? (
+          <iframe
+            title={t('admin.emailPreviewTitle')}
+            className="mt-2 h-64 w-full rounded-lg border border-border bg-white"
+            sandbox=""
+            srcDoc={preview.html}
+          />
+        ) : (
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-surface-secondary/40 p-3 text-xs text-foreground">
+            {preview.text}
+          </pre>
+        )}
+      </AdminCard>
+
+      <AdminCard>
         <h4 className="text-sm font-semibold text-foreground">{t('admin.emailTestTitle')}</h4>
         <p className="mt-1 text-xs text-secondary">{t('admin.emailTestHint')}</p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -336,6 +424,15 @@ export function AdminEmailSettings({ supabase, canManage }: Props) {
             {queuingTest ? t('admin.emailTestQueuing') : t('admin.emailTestQueue')}
           </AdminPrimaryButton>
         </div>
+      </AdminCard>
+
+      <AdminCard>
+        <NotificationPreferencesPanel
+          supabase={supabase}
+          t={t}
+          roleHint={personalRoleHint}
+          compact
+        />
       </AdminCard>
 
       <AdminCard>

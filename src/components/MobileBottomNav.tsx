@@ -1,11 +1,13 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import { Menu } from 'lucide-react';
 import { useI18n } from '@/i18n/I18nProvider';
 
 export type MobileNavItem = {
   key: string;
   label: string;
-  icon: string;
+  icon: ReactNode;
   badge?: number;
 };
 
@@ -44,7 +46,9 @@ export function MobileBottomNav({
                 active ? 'text-accent' : 'text-muted'
               }`}
             >
-              <span className="text-lg leading-none">{item.icon}</span>
+              <span className="flex h-5 items-center justify-center leading-none [&>svg]:h-4 [&>svg]:w-4">
+                {item.icon}
+              </span>
               <span className="max-w-full truncate">{item.label}</span>
               {item.badge ? (
                 <span className="absolute right-2 top-1 min-w-[16px] rounded-full bg-danger px-1 text-[9px] leading-4 text-white">
@@ -61,7 +65,9 @@ export function MobileBottomNav({
             moreActive ? 'text-accent' : 'text-muted'
           }`}
         >
-          <span className="text-lg leading-none">☰</span>
+          <span className="flex h-5 items-center justify-center leading-none">
+            <Menu className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+          </span>
           <span>{t('common.more')}</span>
         </button>
       </div>

@@ -18,30 +18,73 @@ import { catalogModuleKeys } from '@/lib/email/eventCatalog';
 import { EMAIL_MODULE_INTEGRATIONS } from '@/lib/email/moduleIntegrations';
 import { canEnqueueEmail } from '@/lib/securityRpcPolicy';
 
-describe('R1-MT-HIDE · Meetings excluded from Distribution Release 1.0', () => {
-  it('release composition excludes general_meeting and rental', () => {
-    expect(RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS).toEqual(
-      expect.arrayContaining(['general_meeting', 'rental']),
+const HIDE_MIG = 'supabase/migrations/20261117130000_r1_mt_hide_general_meeting.sql';
+const RESTORE_MIG = 'supabase/migrations/20261121120000_r1_rc8_restore_general_meeting.sql';
+const RESTORE_PKG = '97_r1_rc8_restore_general_meeting.sql';
+
+describe('R1-MT-HIDE history · Meetings hide migration retained', () => {
+  it('RC7 hide migration remains in tree and is not rewritten', () => {
+    const mig = readFileSync(path.join(process.cwd(), HIDE_MIG), 'utf8');
+    expect(mig).toMatch(/R1-MT-HIDE/);
+    expect(mig).toMatch(/general_meeting_module_available/);
+    expect(mig).toMatch(/general_meeting_assert_available/);
+    expect(mig).toMatch(/general_meeting_block_mutate_when_unavailable/);
+    expect(mig).toMatch(/module_lifecycle_block_unimplemented/);
+    expect(mig).toMatch(/state = 'DISABLED'/);
+    expect(mig).toMatch(/meetings not available in this release/);
+    expect(mig).toMatch(/implemented = false/);
+    expect(mig).toMatch(/Schema \/ historical migrations retained for future upgrade/);
+    expect(mig).not.toMatch(/drop table.*general_meetings/i);
+    expect(mig).toMatch(/general_meeting\.allow_mutate/);
+  });
+
+  it('fresh-install still packages hide gate after email core (before RC8 restore)', () => {
+    const idx88 = FRESH_INSTALL_ORDERED_FILES.indexOf('88_email_core_baseline.sql');
+    const idx88b = FRESH_INSTALL_ORDERED_FILES.indexOf('88b_r1_mt_hide_general_meeting.sql');
+    const idx97 = FRESH_INSTALL_ORDERED_FILES.indexOf(RESTORE_PKG);
+    expect(idx88).toBeGreaterThanOrEqual(0);
+    expect(idx88b).toBeGreaterThan(idx88);
+    expect(idx97).toBeGreaterThan(idx88b);
+
+    const gate = readFileSync(
+      path.join(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, '88b_r1_mt_hide_general_meeting.sql'),
+      'utf8',
     );
-    expect(isRelease1DistributionExcluded('general_meeting')).toBe(true);
-    expect(isImplementedModuleKey('general_meeting')).toBe(false);
-    expect(IMPLEMENTED_MODULE_KEYS).not.toContain('general_meeting');
+    expect(gate).toMatch(/general_meeting_module_available/);
+    expect(gate).toMatch(/implemented = false/);
+  });
+});
+
+describe('R1-RC8 · Meetings restored; Rental stays excluded', () => {
+  it('release composition excludes rental only', () => {
+    expect(RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS).toEqual(['rental']);
+    expect(isRelease1DistributionExcluded('general_meeting')).toBe(false);
+    expect(isRelease1DistributionExcluded('rental')).toBe(true);
+    expect(isImplementedModuleKey('general_meeting')).toBe(true);
+    expect(IMPLEMENTED_MODULE_KEYS).toContain('general_meeting');
+    expect(IMPLEMENTED_MODULE_KEYS).not.toContain('rental');
   });
 
-  it('client fail-closed: Meetings never enabled / never toggleable', () => {
-    const state = emptyBuildingModulesState();
-    state.general_meeting = true; // even if stale row says enabled
-    expect(isBuildingModuleEnabled(state, 'general_meeting')).toBe(false);
-    expect(isModuleToggleable('general_meeting', true)).toBe(false);
-    expect(isModuleToggleable('general_meeting', false)).toBe(false);
+  it('client: Meetings toggleable when implemented; disabled stays fail-closed; enabled works', () => {
+    const off = emptyBuildingModulesState();
+    expect(isBuildingModuleEnabled(off, 'general_meeting')).toBe(false);
+    expect(isModuleToggleable('general_meeting', true)).toBe(true);
+
+    const on = emptyBuildingModulesState();
+    on.general_meeting = true;
+    expect(isBuildingModuleEnabled(on, 'general_meeting')).toBe(true);
+
+    const rentalOn = emptyBuildingModulesState();
+    rentalOn.rental = true;
+    expect(isBuildingModuleEnabled(rentalOn, 'rental')).toBe(false);
+    expect(isModuleToggleable('rental', true)).toBe(false);
   });
 
-  it('notification catalog and email matrix hide Meetings', () => {
-    expect(catalogModuleKeys()).not.toContain('meetings');
-    expect(catalogModuleKeys()).not.toContain('meeting');
+  it('notification catalog offers Meetings; email matrix INFORMATIONAL; admin enqueue allowed', () => {
+    expect(catalogModuleKeys()).toContain('meetings');
     expect(
       EMAIL_MODULE_INTEGRATIONS.find((m) => m.moduleKey === 'meetings')?.status,
-    ).toBe('EXCLUDED');
+    ).toBe('INFORMATIONAL');
     expect(
       canEnqueueEmail({
         role: 'authenticated',
@@ -50,54 +93,49 @@ describe('R1-MT-HIDE · Meetings excluded from Distribution Release 1.0', () => 
         moduleKey: 'meeting',
         templateKey: 'meeting_published',
       }),
+    ).toBe(true);
+    expect(
+      canEnqueueEmail({
+        role: 'authenticated',
+        isBookAdmin: false,
+        ownsPayloadProperty: false,
+        moduleKey: 'meeting',
+        templateKey: 'meeting_published',
+      }),
     ).toBe(false);
   });
 
-  it('fresh-install packages R1 meetings hide gate after email core', () => {
-    const idx88 = FRESH_INSTALL_ORDERED_FILES.indexOf('88_email_core_baseline.sql');
-    const idx88b = FRESH_INSTALL_ORDERED_FILES.indexOf('88b_r1_mt_hide_general_meeting.sql');
-    expect(idx88).toBeGreaterThanOrEqual(0);
-    expect(idx88b).toBeGreaterThan(idx88);
+  it('RC8 restore migration supersedes hide for general_meeting only', () => {
+    const restore = readFileSync(path.join(process.cwd(), RESTORE_MIG), 'utf8');
+    expect(restore).toMatch(/R1-RC8/);
+    expect(restore).toMatch(/implemented = true/);
+    expect(restore).toMatch(/general_meeting/);
+    expect(restore).toMatch(/module_key = 'rental'/);
+    expect(restore).toMatch(/implemented = false/);
+    expect(restore).not.toMatch(/email_enabled\s*=\s*true/i);
+    expect(restore).not.toMatch(/ordinary_debt_gate_enabled\s*=\s*true/i);
+    expect(restore).not.toMatch(/\bset\s+enabled\s*=\s*true\b/i);
+    expect(restore).not.toMatch(/values\s*\(\s*'general_meeting'\s*,\s*true/i);
+    expect(restore).toMatch(/do nothing/);
 
-    const catalog = readFileSync(
-      path.join(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, '60_module_catalog_baseline.sql'),
+    const pkg = readFileSync(
+      path.join(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, RESTORE_PKG),
       'utf8',
     );
-    expect(catalog).toMatch(/'general_meeting'[\s\S]*?false/);
+    expect(pkg).toMatch(/implemented = true/);
+    expect(pkg).toMatch(/module_key = 'rental'/);
 
-    const gate = readFileSync(
-      path.join(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, '88b_r1_mt_hide_general_meeting.sql'),
-      'utf8',
+    expect(FRESH_INSTALL_ORDERED_FILES.indexOf(RESTORE_PKG)).toBeGreaterThan(
+      FRESH_INSTALL_ORDERED_FILES.indexOf('96_r1_module_catalog_implemented_parity.sql'),
     );
-    expect(gate).toMatch(/general_meeting_module_available/);
-    expect(gate).toMatch(/general_meeting_assert_available/);
-    expect(gate).toMatch(/general_meeting_block_mutate_when_unavailable/);
-    expect(gate).toMatch(/module_lifecycle_block_unimplemented/);
-    expect(gate).toMatch(/state = 'DISABLED'/);
-    expect(gate).toMatch(/meetings not available in this release/);
-    expect(gate).toMatch(/implemented = false/);
-
-    const mig = readFileSync(
-      path.join(
-        process.cwd(),
-        'supabase/migrations/20261117130000_r1_mt_hide_general_meeting.sql',
-      ),
-      'utf8',
-    );
-    expect(mig).toMatch(/R1-MT-HIDE/);
-    expect(mig).toMatch(/general_meeting_module_available/);
   });
 
-  it('future upgrade path documented: flip implemented without dropping schema', () => {
-    const mig = readFileSync(
-      path.join(
-        process.cwd(),
-        'supabase/migrations/20261117130000_r1_mt_hide_general_meeting.sql',
-      ),
+  it('Initial Setup filter no longer excludes Meetings', () => {
+    const setup = readFileSync(
+      path.join(process.cwd(), 'src/components/admin/AdminInitialSetup.tsx'),
       'utf8',
     );
-    expect(mig).toMatch(/Schema \/ historical migrations retained for future upgrade/);
-    expect(mig).not.toMatch(/drop table.*general_meetings/i);
-    expect(mig).toMatch(/general_meeting\.allow_mutate/);
+    expect(setup).toMatch(/isRelease1DistributionExcluded/);
+    expect(isRelease1DistributionExcluded('general_meeting')).toBe(false);
   });
 });

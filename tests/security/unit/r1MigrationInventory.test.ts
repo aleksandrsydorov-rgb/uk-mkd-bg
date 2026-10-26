@@ -13,6 +13,7 @@ const REQUIRED_PACKAGED = [
   'supabase/migrations/20261118120000_r1_first_boot_bootstrap_invite.sql',
   'supabase/migrations/20261119120000_r1_auto_expose_off_api_grants.sql',
   'supabase/migrations/20261120120000_r1_module_catalog_implemented_parity.sql',
+  'supabase/migrations/20261121120000_r1_rc8_restore_general_meeting.sql',
 ] as const;
 
 describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
@@ -56,7 +57,7 @@ describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
     expect(manifest.orderedFiles).toEqual([...FRESH_INSTALL_ORDERED_FILES]);
   });
 
-  it('release tag is 1.0.0-rc7', () => {
-    expect(manifest.release).toBe('1.0.0-rc7');
+  it('release tag is 1.0.0-rc8', () => {
+    expect(manifest.release).toBe('1.0.0-rc8');
   });
 });

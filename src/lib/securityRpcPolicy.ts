@@ -98,15 +98,13 @@ export function canEnqueueEmail(ctx: EmailEnqueueAuthzContext): boolean {
     return true;
   }
 
-  // R1-MT-HIDE: meeting enqueue denied while Meetings excluded from Distribution R1.0.
-  if (ctx.moduleKey === 'meeting') {
-    return false;
-  }
-
+  // Meetings informational enqueue: admin-only; SQL still fail-closes when module disabled.
+  // Email sending remains OFF by default (complex_email_settings.email_enabled).
   if (
     ctx.moduleKey === 'pb1_invite' ||
     ctx.moduleKey === 'user_activation' ||
-    ctx.moduleKey === 'email_test'
+    ctx.moduleKey === 'email_test' ||
+    ctx.moduleKey === 'meeting'
   ) {
     return ctx.isBookAdmin === true;
   }

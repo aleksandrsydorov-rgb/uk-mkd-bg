@@ -62,6 +62,7 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '94_r1_ui_poll_votes_owner_select.sql',
   '95_r1_first_boot_invite.sql',
   '96_r1_module_catalog_implemented_parity.sql',
+  '97_r1_rc8_restore_general_meeting.sql',
 ] as const;
 
 export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;

@@ -27,14 +27,21 @@ describe('moduleCatalogStatusKind', () => {
     ).toBe('enabled');
   });
 
-  it('marks R1 exclusions as r1_unavailable (not not_implemented / disabled)', () => {
+  it('marks Rental as r1_unavailable; Meetings follows implemented/enabled (RC8)', () => {
     expect(
       moduleCatalogStatusKind({
         implemented: true,
         enabled: true,
         moduleKey: 'general_meeting',
       }),
-    ).toBe('r1_unavailable');
+    ).toBe('enabled');
+    expect(
+      moduleCatalogStatusKind({
+        implemented: true,
+        enabled: false,
+        moduleKey: 'general_meeting',
+      }),
+    ).toBe('disabled');
     expect(
       moduleCatalogStatusKind({
         implemented: false,

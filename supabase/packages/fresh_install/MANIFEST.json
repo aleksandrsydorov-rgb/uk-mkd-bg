@@ -39,7 +39,8 @@
         "93_r1_ui_admin_list_property_book_floor_cast.sql",
         "94_r1_ui_poll_votes_owner_select.sql",
         "95_r1_first_boot_invite.sql",
-        "96_r1_module_catalog_implemented_parity.sql"
+        "96_r1_module_catalog_implemented_parity.sql",
+        "97_r1_rc8_restore_general_meeting.sql"
     ],
     "companionMigrations": [
         "supabase/migrations/20261026120000_is7a_fresh_install_meter_baseline_ddl.sql",
@@ -76,7 +77,8 @@
         "supabase/migrations/20261117180000_r1_dist_bootstrap_digest_extensions.sql",
         "supabase/migrations/20261118120000_r1_first_boot_bootstrap_invite.sql",
         "supabase/migrations/20261119120000_r1_auto_expose_off_api_grants.sql",
-        "supabase/migrations/20261120120000_r1_module_catalog_implemented_parity.sql"
+        "supabase/migrations/20261120120000_r1_module_catalog_implemented_parity.sql",
+        "supabase/migrations/20261121120000_r1_rc8_restore_general_meeting.sql"
     ],
     "companionMigration": "supabase/migrations/20261030120000_is10d_distributive_neutralize_amadeus11_sf_cutover.sql",
     "requiredExtensions": [
@@ -224,7 +226,7 @@
     "excludeFromCompanion": [
         "00_preflight_refuse_populated.sql"
     ],
-    "expectedChronologicalMigrationCount": 138,
+    "expectedChronologicalMigrationCount": 139,
     "chronologicalMigrationTree": [
         "supabase/migrations/20260924160000_bulk_accrual_hotfix.sql",
         "supabase/migrations/20260924171500_general_meetings_rescheduled_from_meeting_id.sql",
@@ -363,13 +365,16 @@
         "supabase/migrations/20261117180000_r1_dist_bootstrap_digest_extensions.sql",
         "supabase/migrations/20261118120000_r1_first_boot_bootstrap_invite.sql",
         "supabase/migrations/20261119120000_r1_auto_expose_off_api_grants.sql",
-        "supabase/migrations/20261120120000_r1_module_catalog_implemented_parity.sql"
+        "supabase/migrations/20261120120000_r1_module_catalog_implemented_parity.sql",
+        "supabase/migrations/20261121120000_r1_rc8_restore_general_meeting.sql"
     ],
-    "release": "1.0.0-rc7",
+    "release": "1.0.0-rc8",
     "notes": [
         "Apply ALL supabase/migrations/*.sql in filename order after the package (or supabase migration up).",
         "Do NOT insert into schema_migrations unless the matching SQL file was actually applied successfully.",
-        "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (138 for RC7).",
-        "chronologicalMigrationsPackaged lists release-critical files that must be present in the tree; chronologicalMigrationTree is the full ordered inventory."
+        "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (139 for RC8).",
+        "chronologicalMigrationsPackaged lists release-critical files that must be present in the tree; chronologicalMigrationTree is the full ordered inventory.",
+        "RC8 additive: 97_r1_rc8_restore_general_meeting.sql / 20261121120000 supersedes R1-MT-HIDE for general_meeting only; Rental stays excluded.",
+        "RC7 image/tag/archive remain historical; this manifest tracks RC8 packaging."
     ]
 }

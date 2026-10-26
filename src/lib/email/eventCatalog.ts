@@ -425,11 +425,11 @@ export function listEventsForModule(moduleKey: string): EmailEventDefinition[] {
 }
 
 export function catalogModuleKeys(): string[] {
-  // R1-MT-HIDE: Meetings not offered in notification preference / policy UI.
+  // Rental stays out of the catalog; Meetings informational events are offered (RC8+).
   return [
     ...new Set(
       EMAIL_EVENT_CATALOG.map((e) => e.moduleKey).filter(
-        (k) => k !== 'meetings' && k !== 'meeting',
+        (k) => k !== 'rental' && k !== 'rental_management',
       ),
     ),
   ];

@@ -89,18 +89,18 @@ describe('EML-2 · fresh-install Email Core packaging', () => {
 });
 
 describe('EML-2 · module integration matrix', () => {
-  it('preserves PB1 and Ownership Transfer; Meetings EXCLUDED in R1.0; undecided not invented', () => {
+  it('preserves PB1 and Ownership Transfer; Meetings INFORMATIONAL (RC8); Rental EXCLUDED', () => {
     const byKey = Object.fromEntries(EMAIL_MODULE_INTEGRATIONS.map((m) => [m.moduleKey, m]));
     expect(byKey.property_book.status).toBe('PASS');
     expect(byKey.ownership_transfer.status).toBe('PASS');
-    expect(byKey.meetings.status).toBe('EXCLUDED');
+    expect(byKey.meetings.status).toBe('INFORMATIONAL');
     expect(byKey.rental_management.status).toBe('EXCLUDED');
-    // EML-5 completes remaining module producers; rental + meetings stay excluded.
     expect(emailIntegrationsNeedingDecision()).toEqual([]);
     expect(byKey.meters.status).toBe('PASS');
     expect(byKey.cleaning.status).toBe('PASS');
     expect(byKey.inventory.status).toBe('PASS');
     expect(emailIntegrationsReady().some((m) => m.moduleKey === 'property_book')).toBe(true);
+    expect(emailIntegrationsReady().some((m) => m.moduleKey === 'meetings')).toBe(true);
     expect(EMAIL_CROSS_CUTTING_INTEGRATIONS.some((m) => m.moduleKey === 'user_activation')).toBe(
       true
     );

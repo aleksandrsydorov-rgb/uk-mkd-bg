@@ -36,11 +36,11 @@ export const BUILDING_MODULE_KEYS = [
 export type BuildingModuleKey = (typeof BUILDING_MODULE_KEYS)[number];
 
 /**
- * Distribution Release 1.0 exclusions (canonical catalog: implemented=false).
- * Rental + Meetings — not activatable; schema retained for later upgrades.
+ * Distribution exclusions (canonical catalog: implemented=false).
+ * RC7 hid Meetings + Rental; RC8 restores Meetings (see r1_rc8_restore_general_meeting).
+ * Rental remains not activatable; schema retained for later upgrades.
  */
 export const RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS = [
-  'general_meeting',
   'rental',
 ] as const;
 
@@ -64,7 +64,7 @@ export const IMPLEMENTED_MODULE_KEYS = [
   'chat',
   'polls',
   'announcements',
-  // general_meeting excluded from R1.0 (R1-MT-HIDE)
+  'general_meeting',
   'building_documents',
   'guest_mode',
   'residence_status',
@@ -200,7 +200,8 @@ export function buildingModulesFromV2Rows(
 }
 
 /** Deterministic: only explicit true counts as enabled. Missing / unknown = disabled.
- *  Release 1.0 exclusions (Meetings, Rental) always fail closed client-side.
+ *  Distribution exclusions (Rental) always fail closed client-side.
+ *  Meetings follow building_modules.enabled once implemented (RC8+).
  */
 export function isBuildingModuleEnabled(
   state: BuildingModulesState | null | undefined,

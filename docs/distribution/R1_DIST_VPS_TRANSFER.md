@@ -4,6 +4,8 @@ Transfer an **immutable** local image to the VPS without GitHub credentials on t
 
 ## Verified artifacts (ops workstation)
 
+### RC7 (historical — do not overwrite)
+
 | Artifact | Purpose |
 |----------|---------|
 | `amadeus11-app:1.0.0-rc7` | Local tag (Release 1.0 RC7) |
@@ -12,6 +14,18 @@ Transfer an **immutable** local image to the VPS without GitHub credentials on t
 | `amadeus11-app-1.0.0-rc7.tar.sha256` | SHA-256 of the archive |
 
 Local prepare path: `tmp/r1_rc7_transfer/` (gitignored via `tmp/`).
+
+### RC8 (Meetings restored for Initial Setup; Rental still excluded)
+
+| Artifact | Purpose |
+|----------|---------|
+| `amadeus11-app:1.0.0-rc8` | Local tag (Release 1.0 RC8) |
+| Digest (see `r1_distribution_rc8.md`) | Immutable identity |
+| `amadeus11-app-1.0.0-rc8.tar` | `docker save` archive |
+| `amadeus11-app-1.0.0-rc8.tar.sha256` | SHA-256 of the archive |
+| `docker-compose.r1-rc8-local.yml` | Local smoke Compose (RC7 VPS compose unchanged) |
+
+Local prepare path: `tmp/r1_rc8_transfer/` (gitignored via `tmp/`).
 
 **Packaging note:** `NEXT_PUBLIC_*` are baked at **image build** time. One image targets one Supabase project. Rebuild for each independent complex.
 

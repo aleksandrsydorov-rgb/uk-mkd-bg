@@ -75,11 +75,11 @@ Finance category in Settings has `tariffs` and `budget`. Fee, capital and intern
 
 (`inventory` is live for Distribution R1.0 — see table above.)
 
-**Distribution Release 1.0 also excludes** `general_meeting` (Meetings) via `implemented=false`
-(R1-MT-HIDE). Schema and Meeting Core code remain for a later upgrade that sets
-`implemented=true` and enables the module — no reinstall required.
+**Distribution RC7** hid `general_meeting` via R1-MT-HIDE (`implemented=false`).
+**RC8+** restores Meetings as `implemented=true` (additive supersede migration); the module
+stays `enabled=false` until Initial Setup / Settings. **Rental** remains excluded.
 
-Visible in Settings catalog as non-toggleable stubs. No product surface. No tariffs.
+Visible in Settings catalog as non-toggleable stubs when `implemented=false`. No product surface. No tariffs.
 Use [`docs/module-template.md`](module-template.md) when promoting one to live.
 
 ## Platform services (not building modules)

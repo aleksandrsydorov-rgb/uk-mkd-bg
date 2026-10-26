@@ -36,14 +36,16 @@ describe('SEC-P1-2 · email_core_enqueue authz', () => {
     ).toBe(true);
   });
 
-  it('allows admin for PB1 / UA / email_test; denies meeting (R1-MT-HIDE) and random user', () => {
-    for (const moduleKey of ['pb1_invite', 'user_activation', 'email_test'] as const) {
+  it('allows admin for PB1 / UA / email_test / meeting (RC8+); denies non-admin', () => {
+    for (const moduleKey of ['pb1_invite', 'user_activation', 'email_test', 'meeting'] as const) {
       const templateKey =
         moduleKey === 'pb1_invite'
           ? 'pb1_property_invite'
           : moduleKey === 'user_activation'
             ? 'ua_reminder'
-            : 'email_test';
+            : moduleKey === 'meeting'
+              ? 'meeting_published'
+              : 'email_test';
       expect(
         canEnqueueEmail({
           role: 'authenticated',
@@ -63,15 +65,6 @@ describe('SEC-P1-2 · email_core_enqueue authz', () => {
         })
       ).toBe(false);
     }
-    expect(
-      canEnqueueEmail({
-        role: 'authenticated',
-        isBookAdmin: true,
-        ownsPayloadProperty: false,
-        moduleKey: 'meeting',
-        templateKey: 'meeting_notice',
-      })
-    ).toBe(false);
   });
 
   it('allows pkg_xfer for admin or owner of payload property; denies unrelated', () => {

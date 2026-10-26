@@ -66,7 +66,7 @@ export async function GET() {
       ok,
       status: ok ? 'ok' : 'degraded',
       service: 'amadeus11-app',
-      release: '1.0.0-rc7',
+      release: '1.0.0-rc8',
       email_sending_enabled: emailSending,
       supabase_reachable: supabaseReachable,
       // Host only (no secrets) — First Boot installer compares this to SUPABASE_URL.

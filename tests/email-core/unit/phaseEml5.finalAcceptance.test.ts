@@ -145,18 +145,15 @@ describe('EML-5 · cleaning + ticket chat producers', () => {
 });
 
 describe('EML-5 · 12-module matrix + packaging', () => {
-  it('R1.0 email matrix: 11 modules ready; Meetings + Rental EXCLUDED', () => {
+  it('RC8 email matrix: Meetings INFORMATIONAL; Rental EXCLUDED', () => {
     const byKey = Object.fromEntries(EMAIL_MODULE_INTEGRATIONS.map((m) => [m.moduleKey, m]));
     for (const k of BUSINESS_12) {
-      if (k === 'meetings') {
-        expect(byKey[k].status).toBe('EXCLUDED');
-        continue;
-      }
       expect(['PASS', 'INFORMATIONAL', 'IN_APP_ONLY']).toContain(byKey[k].status);
     }
+    expect(byKey.meetings.status).toBe('INFORMATIONAL');
     expect(byKey.rental_management.status).toBe('EXCLUDED');
-    expect(emailIntegrationsReady().map((m) => m.moduleKey)).not.toContain('meetings');
-    expect(emailIntegrationsReady().length).toBeGreaterThanOrEqual(11);
+    expect(emailIntegrationsReady().map((m) => m.moduleKey)).toContain('meetings');
+    expect(emailIntegrationsReady().length).toBeGreaterThanOrEqual(12);
     expect(EMAIL_EVENT_CATALOG.some((e) => e.moduleKey === 'rental_management')).toBe(false);
   });
 

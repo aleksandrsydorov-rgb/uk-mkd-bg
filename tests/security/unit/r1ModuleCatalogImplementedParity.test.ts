@@ -53,14 +53,13 @@ describe('R1 module catalog implemented parity', () => {
     expect(isModuleToggleable('cleaning', true)).toBe(true);
   });
 
-  it('Meetings and Rental stay excluded / non-toggleable', () => {
-    expect(RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS).toEqual(
-      expect.arrayContaining(['general_meeting', 'rental']),
-    );
-    expect(IMPLEMENTED_MODULE_KEYS).not.toContain('general_meeting');
+  it('RC8: Meetings implemented/toggleable; Rental stays excluded', () => {
+    expect(RELEASE_1_DISTRIBUTION_EXCLUDED_MODULE_KEYS).toEqual(['rental']);
+    expect(IMPLEMENTED_MODULE_KEYS).toContain('general_meeting');
     expect(IMPLEMENTED_MODULE_KEYS).not.toContain('rental');
-    expect(isRelease1DistributionExcluded('general_meeting')).toBe(true);
-    expect(isModuleToggleable('general_meeting', true)).toBe(false);
+    expect(isRelease1DistributionExcluded('general_meeting')).toBe(false);
+    expect(isRelease1DistributionExcluded('rental')).toBe(true);
+    expect(isModuleToggleable('general_meeting', true)).toBe(true);
     expect(isModuleToggleable('rental', true)).toBe(false);
   });
 
@@ -105,6 +104,15 @@ describe('R1 module catalog implemented parity', () => {
     expect(sql).not.toMatch(/email_enabled\s*=\s*true/i);
     expect(sql).not.toMatch(/ordinary_debt_gate_enabled\s*=\s*true/i);
     expect(sql).not.toMatch(/building_modules[\s\S]*enabled\s*=\s*true/i);
+
+    // RC8 restore package supersedes Meetings hide after parity
+    const restorePkg = '97_r1_rc8_restore_general_meeting.sql';
+    expect(FRESH_INSTALL_ORDERED_FILES.indexOf(restorePkg)).toBeGreaterThan(
+      FRESH_INSTALL_ORDERED_FILES.indexOf(PARITY_PKG),
+    );
+    const restoreSql = readFileSync(path.join(PKG, restorePkg), 'utf8');
+    expect(restoreSql).toMatch(/'general_meeting'[\s\S]*?true/);
+    expect(restoreSql).toMatch(/module_key = 'rental'/);
   });
 
   it('chronological migration repairs IS-9a overwrite after 20261028', () => {
@@ -116,6 +124,15 @@ describe('R1 module catalog implemented parity', () => {
     assertImplementedTrue(mig, 'inventory');
     expect(mig).toMatch(/general_meeting/);
     expect(mig).toMatch(/implemented = false/);
+
+    const restore = readFileSync(
+      path.join(
+        process.cwd(),
+        'supabase/migrations/20261121120000_r1_rc8_restore_general_meeting.sql',
+      ),
+      'utf8',
+    );
+    expect(restore).toMatch(/implemented = true/);
   });
 
   it('Settings cleaning deep-link uses уборка not клиник', () => {

@@ -70,12 +70,12 @@ describe('EML-4 · event integration matrix', () => {
 
     const ready = emailIntegrationsReady().map((m) => m.moduleKey);
     expect(ready).toContain('meters');
-    expect(ready).not.toContain('meetings'); // R1-MT-HIDE
+    expect(ready).toContain('meetings'); // RC8+ informational
     expect(ready).toContain('cleaning');
     expect(ready).not.toContain('rental_management');
     expect(
       EMAIL_MODULE_INTEGRATIONS.find((m) => m.moduleKey === 'meetings')?.status,
-    ).toBe('EXCLUDED');
+    ).toBe('INFORMATIONAL');
   });
 
   it('keeps financial events owner-scoped / informational (not security or debt)', () => {

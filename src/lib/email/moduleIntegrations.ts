@@ -32,11 +32,11 @@ export const EMAIL_MODULE_INTEGRATIONS: readonly EmailModuleIntegration[] = [
   {
     moduleKey: 'meetings',
     label: 'Meetings',
-    status: 'EXCLUDED',
+    status: 'INFORMATIONAL',
     events: ['meeting_published', 'meeting_registration_open'],
     templates: ['meeting_published', 'meeting_registration_open'],
     notes:
-      'R1-MT-HIDE: Meetings excluded from Distribution R1.0. Enqueue blocked while general_meeting unavailable.',
+      'RC8+: informational enqueue when general_meeting enabled. Not ZUES legal notice. Sending remains OFF by default.',
   },
   {
     moduleKey: 'meters',

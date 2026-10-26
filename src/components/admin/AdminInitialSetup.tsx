@@ -278,7 +278,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
   const displayRows = useMemo(() => {
     const extras = registeredExtra.map((a) => syntheticLifecycleRow(a.registration.moduleKey));
-    // R1-MT-HIDE / Rental: Distribution exclusions never appear in Initial Setup.
+    // Rental (and any other distribution exclusions) never appear in Initial Setup.
     return [...rows, ...extras].filter((r) => !isRelease1DistributionExcluded(r.module_key));
   }, [rows, registeredExtra]);
 

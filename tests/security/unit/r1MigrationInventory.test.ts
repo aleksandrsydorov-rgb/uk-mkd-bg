@@ -14,6 +14,7 @@ const REQUIRED_PACKAGED = [
   'supabase/migrations/20261119120000_r1_auto_expose_off_api_grants.sql',
   'supabase/migrations/20261120120000_r1_module_catalog_implemented_parity.sql',
   'supabase/migrations/20261121120000_r1_rc8_restore_general_meeting.sql',
+  'supabase/migrations/20261122120000_r1_rc8_storage_buckets_baseline.sql',
 ] as const;
 
 describe('R1 RC7 migration inventory / MANIFEST integrity', () => {

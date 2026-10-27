@@ -160,23 +160,48 @@ export function classifyPropertyBookOpeningRows(
       errors.push('owner_without_object_row');
     }
 
-    // Soft share-sum check per apartment (owners sheet only).
+    // Soft share / ideal / ownership-type checks per apartment (owners sheet).
+    // Shared natural_person + legal_entity is allowed; multiple legal entities are not.
     if (apt && ownersByApt.has(apt)) {
       const group = ownersByApt.get(apt)!;
+      const first = group[0] === raw;
       const sum = group.reduce((acc, r) => acc + (Number(r.ownership_share_percent) || 0), 0);
-      if (Math.abs(sum - 100) > 0.01) {
-        // Attach once on first owner row of the group
-        const first = group[0] === raw;
-        if (first) errors.push('ownership_share_sum_not_100');
+      if (first && Math.abs(sum - 100) > 0.01) {
+        errors.push('shares_must_sum_100');
       }
       const soleOwners = group.length === 1;
       const objOp = rows.find((r) => r.matchKey === apt && r.data.sheet === BOOK_OBJECTS_SHEET);
-      const ownershipType = (objOp?.data.ownership_type ?? '').toLowerCase();
-      if (ownershipType === 'sole' && !soleOwners) {
-        if (group[0] === raw) errors.push('sole_requires_one_owner');
+      const ownershipType = String(objOp?.data.ownership_type ?? '')
+        .trim()
+        .toLowerCase();
+      const objectIdeal = Number(objOp?.data.ideal_parts_percent);
+      const idealSum = group.reduce((acc, r) => acc + (Number(r.ideal_parts_percent) || 0), 0);
+      const legalN = group.filter(
+        (r) => String(r.entity_kind ?? '').trim().toLowerCase() === 'legal_entity',
+      ).length;
+      if (first && legalN > 1) errors.push('multiple_legal_forbidden');
+      if (ownershipType === 'sole' && !soleOwners && first) {
+        errors.push('sole_requires_one_owner');
       }
-      if (ownershipType === 'shared' && soleOwners) {
-        if (group[0] === raw) errors.push('shared_requires_multiple_owners');
+      if (ownershipType === 'shared' && soleOwners && first) {
+        errors.push('shared_requires_two_owners');
+      }
+      if (
+        first &&
+        ownershipType === 'shared' &&
+        Number.isFinite(objectIdeal) &&
+        Math.abs(idealSum - objectIdeal) > 0.01
+      ) {
+        errors.push('owner_ideal_parts_sum_mismatch');
+      }
+      if (
+        first &&
+        ownershipType === 'sole' &&
+        soleOwners &&
+        Number.isFinite(objectIdeal) &&
+        Math.abs(idealSum - objectIdeal) > 0.01
+      ) {
+        errors.push('sole_ideal_parts_mismatch');
       }
     }
 
@@ -212,6 +237,25 @@ export function classifyPropertyBookOpeningRows(
   };
 }
 
+function rpcErrorCodes(entry: unknown): string[] {
+  if (entry == null) return ['rpc_error'];
+  if (typeof entry === 'string') return [entry];
+  if (typeof entry !== 'object') return ['rpc_error'];
+  const obj = entry as Record<string, unknown>;
+  const codes = obj.codes;
+  if (Array.isArray(codes)) {
+    return codes.map((c) => String(c)).filter(Boolean);
+  }
+  if (typeof obj.code === 'string' && obj.code.trim()) return [obj.code.trim()];
+  return [JSON.stringify(entry)];
+}
+
+function rpcApartmentKey(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== 'object') return undefined;
+  const apt = (entry as Record<string, unknown>).apartment_number;
+  return apt == null ? undefined : normApt(String(apt));
+}
+
 /** Map canonical dry-run RPC payload into Core preview counters (audit-friendly). */
 export function previewFromPropertyBookDryRun(result: {
   ok?: boolean;
@@ -234,16 +278,23 @@ export function previewFromPropertyBookDryRun(result: {
     rows.push({
       rowNumber: rowNumber++,
       operation: 'error',
-      data: { detail: JSON.stringify(d) },
+      data: { detail: JSON.stringify(d), sheet: 'validation' },
       errors: ['duplicate'],
+      matchKey: rpcApartmentKey(d),
     });
   }
   for (const e of errors) {
+    const codes = rpcErrorCodes(e);
     rows.push({
       rowNumber: rowNumber++,
       operation: 'error',
-      data: { detail: JSON.stringify(e) },
-      errors: ['rpc_error'],
+      data: {
+        sheet: 'validation',
+        detail: JSON.stringify(e),
+        apartment_number: rpcApartmentKey(e) ?? '',
+      },
+      errors: codes,
+      matchKey: rpcApartmentKey(e),
     });
   }
   for (const item of created) {
@@ -252,6 +303,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'create',
       data: { detail: JSON.stringify(item) },
       errors: [],
+      matchKey: rpcApartmentKey(item),
     });
   }
   for (const item of changes) {
@@ -260,6 +312,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'update',
       data: { detail: JSON.stringify(item) },
       errors: [],
+      matchKey: rpcApartmentKey(item),
     });
   }
   for (const item of existing) {
@@ -268,6 +321,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'skip',
       data: { detail: JSON.stringify(item) },
       errors: [],
+      matchKey: rpcApartmentKey(item),
     });
   }
 
@@ -278,6 +332,62 @@ export function previewFromPropertyBookDryRun(result: {
     updateCount: changes.length,
     skipCount: existing.length,
     errorCount: errors.length + duplicates.length,
+  };
+}
+
+/**
+ * Merge local classify + server dry-run so preview surfaces the same ownership
+ * codes commit would raise (and blocks confirm when RPC found validation errors).
+ */
+export function mergePropertyBookLocalAndRpcPreview(
+  local: ImportPreviewResult,
+  rpc: ImportPreviewResult,
+): ImportPreviewResult {
+  const rows = local.rows.map((row) => ({ ...row, errors: [...row.errors] }));
+  let createCount = local.createCount;
+  let updateCount = local.updateCount;
+  let skipCount = local.skipCount;
+  let errorCount = local.errorCount;
+
+  const markError = (row: ImportPreviewRow, codes: string[]) => {
+    const was = row.operation;
+    for (const c of codes) {
+      if (!row.errors.includes(c)) row.errors.push(c);
+    }
+    if (row.operation !== 'error') {
+      if (was === 'create') createCount -= 1;
+      else if (was === 'update') updateCount -= 1;
+      else if (was === 'skip') skipCount -= 1;
+      row.operation = 'error';
+      errorCount += 1;
+    }
+  };
+
+  for (const rpcRow of rpc.rows.filter((r) => r.operation === 'error')) {
+    const apt = rpcRow.matchKey;
+    const codes = rpcRow.errors.length ? rpcRow.errors : ['rpc_error'];
+    if (apt) {
+      const targets = rows.filter((r) => r.matchKey === apt);
+      if (targets.length) {
+        for (const t of targets) markError(t, codes);
+        continue;
+      }
+    }
+    rows.push({
+      ...rpcRow,
+      rowNumber: rows.length + 2,
+      errors: codes,
+    });
+    errorCount += 1;
+  }
+
+  return {
+    schemaVersion: PROPERTY_BOOK_SETUP_SCHEMA_VERSION,
+    rows,
+    createCount: Math.max(0, createCount),
+    updateCount: Math.max(0, updateCount),
+    skipCount: Math.max(0, skipCount),
+    errorCount,
   };
 }
 

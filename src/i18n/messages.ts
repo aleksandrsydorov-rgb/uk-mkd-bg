@@ -1405,6 +1405,8 @@ export const ru = {
       'Подтвердить импорт в Книгу? Существующие ownership/доли/идеални части не будут перезаписаны.',
     is2PropertyBookFixErrors: 'Исправьте ошибки перед импортом.',
     is2PropertyBookImportFailed: 'Импорт отклонён сервером.',
+    is2PropertyBookEmptyBlocksReady:
+      'Книга пуста: нельзя перевести в READY/ACTIVE без хотя бы одного объекта.',
     is2PropertyBookImportCommitted: 'Импорт применён; batch отмечен committed.',
     is2PropertyBookNoOverwrite:
       'IS-2: allow_overwrite=false. Preview не пишет. Commit только после явного подтверждения.',
@@ -4958,6 +4960,8 @@ export const en: Messages = {
       'Confirm import into the Property Book? Existing ownership/shares/ideal parts will not be overwritten.',
     is2PropertyBookFixErrors: 'Fix errors before importing.',
     is2PropertyBookImportFailed: 'Import rejected by the server.',
+    is2PropertyBookEmptyBlocksReady:
+      'Property Book is empty: cannot move to READY/ACTIVE without at least one object.',
     is2PropertyBookImportCommitted: 'Import applied; batch marked committed.',
     is2PropertyBookNoOverwrite:
       'IS-2: allow_overwrite=false. Preview does not write. Commit only after explicit confirmation.',
@@ -8512,6 +8516,8 @@ export const bg: Messages = {
       'Потвърдете импорт в Книгата? Съществуващите ownership/дялове/идеални части няма да бъдат презаписани.',
     is2PropertyBookFixErrors: 'Поправете грешките преди импорт.',
     is2PropertyBookImportFailed: 'Импортът е отхвърлен от сървъра.',
+    is2PropertyBookEmptyBlocksReady:
+      'Книгата е празна: не може READY/ACTIVE без поне един обект.',
     is2PropertyBookImportCommitted: 'Импортът е приложен; batch е committed.',
     is2PropertyBookNoOverwrite:
       'IS-2: allow_overwrite=false. Preview не пише. Commit само след изрично потвърждение.',

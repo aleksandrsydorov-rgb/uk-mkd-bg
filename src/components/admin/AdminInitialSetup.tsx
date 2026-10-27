@@ -92,6 +92,7 @@ import {
   mergeUkExpenseCommitBatches,
   meterCommitAuditPayload,
   parseModuleXlsxBuffer,
+  mergePropertyBookLocalAndRpcPreview,
   previewFromPropertyBookDryRun,
   reconcileCrCommitWithDb,
   reconcileInternetCommitWithDb,
@@ -680,6 +681,22 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
   async function transition(to: ModuleLifecycleState, reason?: string) {
     if (!selectedKey) return;
+    if (
+      selectedKey === PROPERTY_BOOK_MODULE_KEY &&
+      (to === 'READY' || to === 'ACTIVE')
+    ) {
+      const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+        p_limit: 1,
+      });
+      if (listErr) {
+        setError(listErr.message);
+        return;
+      }
+      if (!Array.isArray(bookRows) || bookRows.length === 0) {
+        setError(t('admin.is2PropertyBookEmptyBlocksReady'));
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     const { error: err } = await supabase.rpc('admin_transition_module_lifecycle', {
@@ -954,13 +971,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
           },
         );
 
-        // Prefer local row-level ops; merge RPC errors into summary note.
-        const result: ImportPreviewResult = {
-          ...localPreview,
-          // If RPC found hard errors beyond local, surface via errorCount bump in note.
-        };
+        // Local classify + server dry-run ownership checks (same codes as commit).
+        const result = mergePropertyBookLocalAndRpcPreview(localPreview, rpcPreview);
         setPreview(result);
-        setPendingPayload(payload);
+        setPendingPayload(result.errorCount === 0 ? payload : null);
 
         const { data: batch, error: batchErr } = await supabase.rpc(
           'admin_create_module_import_batch',
@@ -990,11 +1004,18 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         );
         if (batchErr) throw batchErr;
         const id = String((batch as { id?: string })?.id ?? '');
-        setBatchId(id || null);
+        setBatchId(result.errorCount === 0 ? id || null : null);
+        const rpcCodes = rpcPreview.rows
+          .filter((r) => r.operation === 'error')
+          .flatMap((r) => r.errors)
+          .filter(Boolean);
         setPreviewNote(
           t('admin.is1PreviewSaved').replace('{id}', id) +
-            (rpcPreview.errorCount
-              ? ` · ${t('admin.is2PropertyBookRpcErrors').replace('{n}', String(rpcPreview.errorCount))}`
+            (result.errorCount
+              ? ` · ${t('admin.is2PropertyBookRpcErrors').replace('{n}', String(result.errorCount))}` +
+                (rpcCodes.length
+                  ? ` · ${Array.from(new Set(rpcCodes)).slice(0, 8).join(', ')}`
+                  : '')
               : ''),
         );
       } catch (e: unknown) {
@@ -1614,10 +1635,38 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         p_allow_create_missing: allowCreateMissing,
         p_allow_overwrite: false,
       });
-      if (rpcErr) throw rpcErr;
+      if (rpcErr) {
+        const detail =
+          typeof rpcErr === 'object' && rpcErr && 'details' in rpcErr
+            ? String((rpcErr as { details?: string }).details ?? '')
+            : '';
+        setError(
+          detail
+            ? `${t('admin.is2PropertyBookImportFailed')} ${detail.slice(0, 500)}`
+            : rpcErr.message || t('admin.is2PropertyBookImportFailed'),
+        );
+        return;
+      }
       const result = data as { ok?: boolean; errors?: unknown[] };
       if (!result.ok) {
-        setError(t('admin.is2PropertyBookImportFailed'));
+        const codes = Array.isArray(result.errors)
+          ? result.errors
+              .flatMap((e) => {
+                if (e && typeof e === 'object' && Array.isArray((e as { codes?: unknown }).codes)) {
+                  return ((e as { codes: unknown[] }).codes).map(String);
+                }
+                if (e && typeof e === 'object' && typeof (e as { code?: unknown }).code === 'string') {
+                  return [String((e as { code: string }).code)];
+                }
+                return [JSON.stringify(e)];
+              })
+              .filter(Boolean)
+          : [];
+        setError(
+          codes.length
+            ? `${t('admin.is2PropertyBookImportFailed')} ${Array.from(new Set(codes)).join(', ')}`
+            : t('admin.is2PropertyBookImportFailed'),
+        );
         return;
       }
       const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {

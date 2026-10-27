@@ -18,7 +18,7 @@
 2. **Apply package** — every file in `MANIFEST.json` → `orderedFiles`, in order, via `psql -v ON_ERROR_STOP=1`.
 3. **Apply migrations** — apply **all** `supabase/migrations/*.sql` in **filename order** with `ON_ERROR_STOP=1` **or** `npx supabase migration up` against that empty DB.
    - Operator inventory (local, no DB writes): `node scripts/r1-migration-inventory.mjs`
-   - RC8 expected count: `MANIFEST.expectedChronologicalMigrationCount` (**140**; must equal disk file count).
+   - RC8 expected count: `MANIFEST.expectedChronologicalMigrationCount` (**142**; must equal disk file count).
    - Portable VPS/empty-project installer: `docs/distribution/R1_DIST_RC8_DB_INSTALL.md` / `scripts/r1-rc8-db-install.mjs`.
 4. **Verify migration history** — after a successful apply only:
    - `schema_migrations` row count **must equal** `expectedChronologicalMigrationCount`.

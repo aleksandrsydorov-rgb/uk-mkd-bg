@@ -12,7 +12,7 @@ Secrets only in host closed files — never git, never image layers.
 | `env.docker.r1-rc8-test.example` | Closed VPS app env template |
 | `docker-compose.r1-rc8-vps.yml` | RC8 Compose bind `127.0.0.1:3080` (not RC7 compose) |
 | `supabase/packages/fresh_install/` | MANIFEST + 37 SQL |
-| `supabase/migrations/` | 140 chronological SQL |
+| `supabase/migrations/` | 142 chronological SQL |
 | `R1_DIST_*.md` | DB install + First Boot / SMTP docs |
 
 ## DB install (empty project)
@@ -28,7 +28,7 @@ node bin/r1-rc8-db-install.mjs \
   --require-path-psql
 ```
 
-Guards: project ref must match `SUPABASE_URL` host **and** DB user/host; password via `PGPASSWORD` only; refuse non-empty / partial DB; stop on first SQL error; `schema_migrations` = 140 Supabase-format rows; 6 private buckets; Meetings `implemented=true` / `enabled=false`; Rental false; Email OFF.
+Guards: project ref must match `SUPABASE_URL` host **and** DB user/host; password via `PGPASSWORD` only; refuse non-empty / partial DB; stop on first SQL error; `schema_migrations` = 142 Supabase-format rows; 6 private buckets; Meetings `implemented=true` / `enabled=false`; Rental false; Email OFF; setup adapters `property_book`/`uk_expenses` implemented; shared NP+LE Book ownership allowed.
 
 ## App image + Compose
 
@@ -72,7 +72,7 @@ See `R1_DIST_FIRST_BOOT.md`. Cloud Auth SMTP must be configured before invite; m
 
 ```bash
 # DB
-psql "$DATABASE_URL" -c "select count(*) from supabase_migrations.schema_migrations;"   # 140
+psql "$DATABASE_URL" -c "select count(*) from supabase_migrations.schema_migrations;"   # 142
 psql "$DATABASE_URL" -c "select count(*) from storage.buckets where public=false and id in ('request-photos','chat-files','uk-expense-receipts','poll-images','building-documents','inventory-documents');"  # 6
 
 # App

@@ -15,6 +15,7 @@ export {
   validatePropertyBookObjectProps,
   validatePropertyBookOwnerRow,
   previewFromPropertyBookDryRun,
+  mergePropertyBookLocalAndRpcPreview,
   buildPropertyBookIs2TemplateBuffer,
   downloadPropertyBookIs2Template,
   buildPropertyBookErrorReportXlsx,

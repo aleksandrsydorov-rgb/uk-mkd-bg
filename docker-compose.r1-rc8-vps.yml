@@ -1,0 +1,38 @@
+# AMADEUS 11 — RC8 VPS Compose for TEST complex check.amadeus11.online
+# Image: amadeus11-app:1.0.0-rc8 (built for rkiahcmemyocoyznfohc — NOT localhost, NOT RC7).
+# Bind loopback only — access via SSH tunnel / reverse proxy on the host.
+#
+#   docker compose -f docker-compose.r1-rc8-vps.yml --env-file /etc/amadeus11/env up -d
+#
+# Do NOT use docker-compose.r1-vps.yml (RC7) for this release.
+
+services:
+  amadeus11-app:
+    image: amadeus11-app:1.0.0-rc8
+    container_name: amadeus11-app-r1-rc8-vps
+    restart: unless-stopped
+    user: "1001:1001"
+    ports:
+      - "127.0.0.1:${AMADEUS_HOST_PORT:-3080}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://check.amadeus11.online}
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
+      EMAIL_WORKER_SECRET: ${EMAIL_WORKER_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true

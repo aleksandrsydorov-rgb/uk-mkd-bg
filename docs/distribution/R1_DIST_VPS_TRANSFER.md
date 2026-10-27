@@ -23,11 +23,16 @@ Local prepare path: `tmp/r1_rc7_transfer/` (gitignored via `tmp/`).
 | Digest (see `r1_distribution_rc8.md`) | Immutable identity |
 | `amadeus11-app-1.0.0-rc8.tar` | `docker save` archive |
 | `amadeus11-app-1.0.0-rc8.tar.sha256` | SHA-256 of the archive |
-| `docker-compose.r1-rc8-local.yml` | Local smoke Compose (RC7 VPS compose unchanged) |
+| `docker-compose.r1-rc8-local.yml` | Local smoke Compose (is10a) |
+| `docker-compose.r1-rc8-vps.yml` | **TEST VPS** Compose bind `127.0.0.1:3080` (do not use RC7 `docker-compose.r1-vps.yml`) |
+| `distribution/rc8-db-install/` + zip | Portable DB install (MANIFEST + 140 migrations) |
 
 Local prepare path: `tmp/r1_rc8_transfer/` (gitignored via `tmp/`).
 
-**Packaging note:** `NEXT_PUBLIC_*` are baked at **image build** time. One image targets one Supabase project. Rebuild for each independent complex.
+**TEST complex:** Supabase `rkiahcmemyocoyznfohc`, site `https://check.amadeus11.online`.
+Build image with `scripts/r1-rc8-build-test-image.ps1` from closed `%USERPROFILE%\.amadeus11\rc8-test-build.env` (anon + URLs only).
+
+**Packaging note:** `NEXT_PUBLIC_*` are baked at **image build** time. One image targets one Supabase project. Rebuild for each independent complex. Old localhost-baked images are not valid for this TEST.
 
 ## Build (ops workstation only)
 
@@ -87,7 +92,7 @@ Confirm publish is **127.0.0.1:3080** only (`ss -lntp | grep 3080`).
 ssh -N -L 3080:127.0.0.1:3080 -i "$env:USERPROFILE\.ssh\alsyd_vps_ed25519" alsyd@37.120.174.103
 ```
 
-Browser: `http://localhost:3080`  
+Browser: `http://localhost:3080`
 This origin must match Supabase Auth **Site URL** `http://localhost:3080` and redirect allowlist paths under that origin.
 
 ## Compatibility

@@ -26,7 +26,8 @@ import {
   INVENTORY_MODULE_KEY,
   INVENTORY_SETUP_SCHEMA_VERSION,
   WATER_MODULE_KEY,
-  activePropertyIdsFromMeters,
+  existingActiveSerialsFromMeters,
+  existingMetersBySerialFromMeters,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
   buildCapitalAssessmentsMaps,
@@ -104,7 +105,6 @@ import {
   retryCandidatesFromInternetBatch,
   retryCandidatesFromSfBatch,
   retryCandidatesFromUkExpenseBatch,
-  serialSetFromMeters,
   setupCompleteFromDraft,
   setupSupportsManual,
   setupSupportsXlsx,
@@ -153,14 +153,16 @@ type Props = {
   t: (key: string) => string;
 };
 
-const IS1_WIZARD_STEPS = ['complex', 'modules', 'finance', 'notify', 'ready'] as const;
+// R1-RC8: complex card + Property Book + meters live in the mandatory first-run wizard.
+// This hub is for module activation after first-run completes.
+const IS1_WIZARD_STEPS = ['modules', 'finance', 'notify', 'ready'] as const;
 type Is1WizardStep = (typeof IS1_WIZARD_STEPS)[number];
 const IS1_WIZARD_STORAGE_KEY = 'amadeus.is1.wizardStep';
 
 function parseIs1WizardStep(raw: string | null | undefined): Is1WizardStep {
   const v = String(raw ?? '').trim();
   if ((IS1_WIZARD_STEPS as readonly string[]).includes(v)) return v as Is1WizardStep;
-  return 'complex';
+  return 'modules';
 }
 
 function syntheticLifecycleRow(moduleKey: string): LifecycleRow {
@@ -181,11 +183,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState<Is1WizardStep>(() => {
-    if (typeof window === 'undefined') return 'complex';
+    if (typeof window === 'undefined') return 'modules';
     try {
       return parseIs1WizardStep(window.sessionStorage.getItem(IS1_WIZARD_STORAGE_KEY));
     } catch {
-      return 'complex';
+      return 'modules';
     }
   });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -314,12 +316,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
   const wizardStepIndex = IS1_WIZARD_STEPS.indexOf(wizardStep);
   const wizardStepMeta = useMemo(() => {
-    const pb = displayRows.find((r) => r.module_key === PROPERTY_BOOK_MODULE_KEY);
-    const pbDone =
-      pb != null && (pb.state === 'READY' || pb.state === 'ACTIVE');
-    const pbActive =
-      pb != null &&
-      (pb.state === 'SETUP_IN_PROGRESS' || pb.state === 'SETUP_REQUIRED' || pb.has_setup_draft);
     const modulesInProgress = displayRows.some(
       (r) =>
         r.state === 'SETUP_IN_PROGRESS' ||
@@ -329,7 +325,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     );
     const financeReady = tariffReadiness.some((r) => r.importReady || r.billingReady);
     return {
-      complex: pbDone ? 'done' : pbActive ? 'active' : 'pending',
       modules: modulesInProgress ? 'active' : 'pending',
       finance: financeReady ? 'active' : 'pending',
       notify: 'optional' as const,
@@ -673,8 +668,8 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     );
     return {
       apartmentsByNumber,
-      activePropertyIds: activePropertyIdsFromMeters(meters),
-      existingSerials: serialSetFromMeters(meters),
+      existingActiveSerials: existingActiveSerialsFromMeters(meters),
+      existingMetersBySerial: existingMetersBySerialFromMeters(meters),
       policy: { allowReplace: false as const },
     };
   }
@@ -1466,13 +1461,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       const utility = isWater ? 'water' : 'electricity';
       let workPreview = pendingMeterPreview;
       if (opts?.retryOnly && meterCommitResult) {
-        const ctx = await loadMeterClassifyContext(utility);
-        const meters = [...ctx.activePropertyIds].map((propertyId) => ({
-          propertyId,
-          meterNumber: '',
-          retiredAt: null as string | null,
-        }));
-        // Prefer live meter list for retry filtering.
         const table = utility === 'water' ? 'water_meters' : 'electricity_meters';
         const { data: meterRows, error: meterErr } = await supabase
           .from(table)
@@ -1485,7 +1473,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             retiredAt: m.retired_at,
           }),
         );
-        const candidates = retryCandidatesFromBatch(meterCommitResult, live.length ? live : meters);
+        const candidates = retryCandidatesFromBatch(meterCommitResult, live);
         const retryNums = new Set(candidates.map((c) => c.rowNumber));
         workPreview = filterPreviewForRetry(pendingMeterPreview, retryNums);
         if (workPreview.rows.length === 0) {
@@ -2488,7 +2476,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   }
 
   const wizardLabels: Record<Is1WizardStep, string> = {
-    complex: t('admin.settingsWizardStepComplex'),
     modules: t('admin.settingsWizardStepModules'),
     finance: t('admin.settingsWizardStepFinance'),
     notify: t('admin.settingsWizardStepNotify'),
@@ -2582,13 +2569,11 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                     {wizardLabels[stepId]}
                   </span>
                   <span className="mt-0.5 text-[11px] text-muted">
-                    {status === 'done'
-                      ? t('admin.is7aReadyYes')
-                      : status === 'optional'
-                        ? t('admin.is1SetupOptional')
-                        : status === 'active'
-                          ? t('admin.is1SetupRequired')
-                          : '·'}
+                    {status === 'optional'
+                      ? t('admin.is1SetupOptional')
+                      : status === 'active'
+                        ? t('admin.is1SetupRequired')
+                        : '·'}
                   </span>
                 </button>
               </li>
@@ -2619,32 +2604,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
           {t('admin.settingsWizardNext')}
         </button>
       </div>
-
-      {wizardStep === 'complex' ? (
-        <AdminCard>
-          <h3 className="mb-2 text-sm font-semibold text-foreground">
-            {t('admin.settingsWizardStepComplex')}
-          </h3>
-          <p className="mb-3 text-sm text-secondary">{t('admin.settingsWizardComplexNote')}</p>
-          <p className="mb-3 text-xs text-muted">
-            {PROPERTY_BOOK_MODULE_KEY}:{' '}
-            <code>
-              {displayRows.find((r) => r.module_key === PROPERTY_BOOK_MODULE_KEY)?.state ?? '—'}
-            </code>
-          </p>
-          <button
-            type="button"
-            className={adminBtnSecondaryClass}
-            onClick={() => {
-              setSelectedKey(PROPERTY_BOOK_MODULE_KEY);
-              resetImportUi();
-              setWizardStep('modules');
-            }}
-          >
-            {labelFor(PROPERTY_BOOK_MODULE_KEY)} →
-          </button>
-        </AdminCard>
-      ) : null}
 
       {wizardStep === 'finance' ? tariffPanel : null}
 
@@ -2779,7 +2738,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                 <p className="text-xs text-danger">{t('admin.is7aPropertyBookRequired')}</p>
               ) : null}
               {isSupportFee && selectedTariffReady?.importBlockedByMissingTariff ? (
-                <p className="text-xs text-danger">{t('admin.is7aTariffMissingSupportFee')}</p>
+                <p className="text-xs text-secondary">{t('admin.is7aTariffOptionalSupportFeeOpening')}</p>
               ) : null}
               {isInternet && selectedTariffReady?.importBlockedByMissingTariff ? (
                 <p className="text-xs text-danger">{t('admin.is7aTariffMissingInternet')}</p>

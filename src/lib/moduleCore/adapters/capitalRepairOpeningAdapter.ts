@@ -136,7 +136,7 @@ export const capitalRepairOpeningAdapter: ModuleSetupAdapter = {
           },
           {
             key: 'source_reference',
-            required: false,
+            required: true,
             example: 'CR-OPENING-2026',
             labelKey: 'is8ColSourceRef',
           },

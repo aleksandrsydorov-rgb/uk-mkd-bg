@@ -125,6 +125,14 @@ import {
   type SettingsTabId,
 } from '@/components/admin/AdminSettingsHub';
 import { AdminInitialSetup } from '@/components/admin/AdminInitialSetup';
+import { AdminFirstRunWizard } from '@/components/admin/AdminFirstRunWizard';
+import {
+  FIRST_RUN_SECTION,
+  fetchFirstRunState,
+  isFirstRunGateRequired,
+  type FirstRunState,
+} from '@/lib/firstRun';
+// firstRunLoadError blocks admin until RPC succeeds (no fail-open).
 import { sofiaCalendarYear } from '@/lib/supportFeeAnnual';
 import { AdminWorkOrders } from '@/components/admin/AdminWorkOrders';
 import { AdminMyTasks } from '@/components/admin/AdminMyTasks';
@@ -617,6 +625,11 @@ function AdminPortal() {
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  /** R1-RC8 mandatory first-run gate (server: admin_get_first_run_state.gate_required). */
+  const [firstRunState, setFirstRunState] = useState<FirstRunState | null>(null);
+  const [firstRunChecked, setFirstRunChecked] = useState(false);
+  const [firstRunLoadError, setFirstRunLoadError] = useState<string | null>(null);
+  const [firstRunRetryNonce, setFirstRunRetryNonce] = useState(0);
   const [supportRate, setSupportRate] = useState<number | null>(null);
   const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
   const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
@@ -1110,6 +1123,9 @@ function AdminPortal() {
     setWorkClaimProfile(null);
     setHasCabinet(false);
     setAllowed(false);
+    setFirstRunState(null);
+    setFirstRunChecked(false);
+    setFirstRunLoadError(null);
     setBuildingModules(emptyBuildingModulesState());
   }
 
@@ -1183,6 +1199,35 @@ function AdminPortal() {
   useEffect(() => {
     if (allowed) loadAll();
   }, [allowed]);
+
+  // R1-RC8: gate re-evaluated on every admin entry (persists across re-login / any ?section=).
+  // RPC failure ⇒ error/retry screen; never open the admin shell.
+  useEffect(() => {
+    if (!allowed || !authReady) return;
+    if (!staffActive || !canSeeSecurityAdmin(staffRole)) {
+      setFirstRunState(null);
+      setFirstRunLoadError(null);
+      setFirstRunChecked(true);
+      return;
+    }
+    let cancelled = false;
+    setFirstRunChecked(false);
+    void fetchFirstRunState(supabase).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setFirstRunState(null);
+        setFirstRunLoadError(result.error);
+        setFirstRunChecked(true);
+        return;
+      }
+      setFirstRunLoadError(null);
+      setFirstRunState(result.state);
+      setFirstRunChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [allowed, authReady, staffActive, staffRole, supabase, firstRunRetryNonce]);
 
   useEffect(() => {
     setOverviewCardPrefs(loadOverviewCardPrefs());
@@ -1350,12 +1395,13 @@ function AdminPortal() {
       return;
     }
     if (sectionQuery == null || sectionQuery === '') return;
+    if (sectionQuery === FIRST_RUN_SECTION && !firstRunChecked) return;
     if (isAdminSection(sectionQuery) && visibleSectionSet.has(sectionQuery)) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete('section');
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [allowed, authReady, pathname, router, searchParams, sectionQuery, visibleSectionSet]);
+  }, [allowed, authReady, firstRunChecked, pathname, router, searchParams, sectionQuery, visibleSectionSet]);
 
   useEffect(() => {
     if (!allowed || !authReady || !staffRole || sectionQuery !== 'электроэнергия') return;
@@ -6386,7 +6432,89 @@ function AdminPortal() {
     );
   }
 
-  if (!allowed || loading) {
+  if (!allowed || !firstRunChecked) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="text-lg text-secondary">{t('admin.loading')}</div>
+      </div>
+    );
+  }
+
+  // R1-RC8: first-run RPC failure — block admin, offer retry (no fail-open).
+  if (firstRunLoadError) {
+    return (
+      <div className="min-h-dvh bg-background text-foreground">
+        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2.5 md:px-6 md:py-4">
+          <BrandMark compact />
+          <div className="flex shrink-0 items-center gap-2">
+            <LanguageSwitcher compact />
+            <button
+              type="button"
+              onClick={() => {
+                void handleLogout();
+              }}
+              className="min-h-10 rounded-lg border border-border px-3 text-sm text-secondary"
+            >
+              {t('common.logout')}
+            </button>
+          </div>
+        </header>
+        <main className="mx-auto flex w-full max-w-lg flex-col gap-4 p-6">
+          <h1 className="text-xl font-semibold">{t('admin.firstRunErrLoadTitle')}</h1>
+          <p className="text-sm text-secondary">{t('admin.firstRunErrLoad')}</p>
+          <p className="rounded-lg border border-border bg-surface p-3 text-xs text-secondary break-all">
+            {firstRunLoadError}
+          </p>
+          <button
+            type="button"
+            className="min-h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground"
+            onClick={() => {
+              setFirstRunChecked(false);
+              setFirstRunLoadError(null);
+              setFirstRunRetryNonce((n) => n + 1);
+            }}
+          >
+            {t('admin.firstRunRetry')}
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  // R1-RC8: mandatory first-run wizard — no sidebar / other sections until complete.
+  if (isFirstRunGateRequired(firstRunState)) {
+    return (
+      <div className="min-h-dvh bg-background text-foreground">
+        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2.5 md:px-6 md:py-4">
+          <BrandMark compact />
+          <div className="flex shrink-0 items-center gap-2">
+            <LanguageSwitcher compact />
+            <button
+              type="button"
+              onClick={() => {
+                void handleLogout();
+              }}
+              className="min-h-10 rounded-lg border border-border px-3 text-sm text-secondary"
+            >
+              {t('common.logout')}
+            </button>
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-7xl p-3 md:px-6 md:py-5">
+          <AdminFirstRunWizard
+            supabase={supabase}
+            t={t}
+            onDone={() => {
+              // Full reload so admin data (Book, meters, lifecycle) is fetched fresh.
+              window.location.assign('/admin');
+            }}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="text-lg text-secondary">{t('admin.loading')}</div>

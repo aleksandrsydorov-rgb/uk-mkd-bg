@@ -44,9 +44,11 @@ export const TARIFF_SETUP_GATE_RULES: readonly TariffGateRule[] = [
   {
     moduleKey: 'support_fee',
     tariffKey: 'support_fee',
-    requiresPublishedForImport: true,
+    // R1-RC8: historical opening inventarisation does not need a published tariff;
+    // billing/future charges still do.
+    requiresPublishedForImport: false,
     requiresPublishedForBilling: true,
-    missingMessageKey: 'is7aTariffMissingSupportFee',
+    missingMessageKey: 'is7aTariffOptionalSupportFeeOpening',
     billingMissingMessageKey: 'is7aTariffMissingSupportFee',
   },
   {

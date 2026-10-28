@@ -21,7 +21,7 @@ export const supportFeeOpeningAdapter: ModuleSetupAdapter = {
     requiresInitialSetup: true,
     activationPrerequisites: [
       'property_book_ready_or_verified',
-      'tariff_core_support_fee_configured',
+      // R1-RC8: historical opening inventarisation does not require a published SF tariff.
       'finance_authz_ok',
     ],
     legalOrOperationalGates: [
@@ -118,7 +118,7 @@ export const supportFeeOpeningAdapter: ModuleSetupAdapter = {
           },
           {
             key: 'source_reference',
-            required: false,
+            required: true,
             example: 'OPENING-LEDGER-2026',
             labelKey: 'is4ColSourceRef',
           },

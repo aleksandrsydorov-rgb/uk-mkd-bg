@@ -66,6 +66,9 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '98_storage_buckets_baseline.sql',
   '99_r1_rc8_setup_adapter_catalog_parity.sql',
   '100_r1_rc8_property_book_shared_mixed_owners.sql',
+  '101_r1_rc8_first_run_wizard.sql',
+  '102_r1_rc8_meters_multi_opening_balance.sql',
+  '103_r1_rc8_first_run_support_fee_opening.sql',
 ] as const;
 
 export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;
@@ -343,8 +346,9 @@ export function assertCanonicalIs9aSchemaSql(sql: string): {
     )?.[0] ?? '',
   );
   // IS-10d may insert a CANCELLED distributive sentinel; published status is forbidden.
+  // Bound to the insert statement ([^;]*) so later RLS checks for status='published' do not false-positive.
   const noPublishedTariffVersions =
-    !/\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[\s\S]*?'published'/i.test(
+    !/\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[^;]*?'published'/i.test(
       sql,
     );
   return {
@@ -445,8 +449,9 @@ export function assertCanonicalIs9bSchemaSql(sql: string): {
     /install_bootstrap_set_approval/i.test(sql) &&
     /service_role required/i.test(sql);
   // Allow cancelled distributive sentinels (IS-10d); forbid publishing prices.
+  // Bound to the insert statement ([^;]*) so later RLS checks for status='published' do not false-positive.
   const noPublishedPrices =
-    !/\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[\s\S]*?'published'/i.test(
+    !/\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[^;]*?'published'/i.test(
       sql,
     ) &&
     !/\binsert\s+into\s+public\.tariff_rate_items\b/i.test(sql) &&
@@ -572,8 +577,9 @@ export function assertNoAmadeus11ProductionData(sql: string): {
   noApartmentSeed: boolean;
   noOwnerEmailSeed: boolean;
 } {
+  // Literal seed rows only — PL/pgSQL inserts with bound variables (RC8 Book import) are allowed.
   const noApartmentSeed =
-    !/\binsert\s+into\s+public\.properties\b/i.test(sql) &&
+    !/\binsert\s+into\s+public\.properties\s*\([^)]*\)\s*values\s*\(\s*'/i.test(sql) &&
     !/\bapartment_number\s*=\s*'[^']+'/i.test(sql);
   const noOwnerEmailSeed = !/\binsert\s+into\s+public\.property_registry_people\b/i.test(sql);
   return {
@@ -668,9 +674,12 @@ export function assertPackageObjectCoverage(
   missingFunctions: string[];
 } {
   const missingRelations = requiredRelations.filter((rel) => {
-    const name = rel.replace(/^public\./, '');
+    // Support public.foo and storage.buckets (non-public schemas).
+    const parts = rel.split('.');
+    const schema = parts.length > 1 ? parts[0] : 'public';
+    const name = parts.length > 1 ? parts.slice(1).join('.') : parts[0];
     return !new RegExp(
-      `create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${name}\\b`,
+      `create\\s+table\\s+if\\s+not\\s+exists\\s+${schema}\\.${name}\\b`,
       'i',
     ).test(sql);
   });

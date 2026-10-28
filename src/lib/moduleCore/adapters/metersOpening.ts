@@ -43,6 +43,8 @@ export const WATER_METER_HEADERS = [
   'meter_number',
   'initial_reading',
   'installed_at',
+  'opening_balance_kind',
+  'opening_balance_eur',
 ] as const;
 
 export const ELECTRICITY_METER_HEADERS = [
@@ -51,6 +53,8 @@ export const ELECTRICITY_METER_HEADERS = [
   'initial_day_reading',
   'initial_night_reading',
   'installed_at',
+  'opening_balance_kind',
+  'opening_balance_eur',
 ] as const;
 
 function normApt(value: string | undefined | null): string {
@@ -84,6 +88,28 @@ export function parseInstalledAtDate(raw: string | undefined): { ok: true; iso: 
   return { ok: true, iso: t };
 }
 
+export const OPENING_BALANCE_KINDS = ['zero', 'debt', 'overpayment'] as const;
+export type OpeningBalanceKind = (typeof OPENING_BALANCE_KINDS)[number];
+
+/** Empty kind ⇒ zero (RC8 first-run). debt/overpayment require amount > 0. */
+export function validateOpeningBalanceFields(row: Record<string, string>): string[] {
+  const kind = String(row.opening_balance_kind ?? '')
+    .trim()
+    .toLowerCase();
+  const effectiveKind = kind || 'zero';
+  if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(effectiveKind)) {
+    return ['invalid:opening_balance_kind'];
+  }
+  const rawAmount = String(row.opening_balance_eur ?? '').trim();
+  if (effectiveKind === 'zero') {
+    if (rawAmount && parseNonNegNumber(rawAmount) == null) return ['invalid:opening_balance_eur'];
+    return [];
+  }
+  const amount = parseNonNegNumber(rawAmount);
+  if (amount == null || amount <= 0) return ['required:opening_balance_eur'];
+  return [];
+}
+
 export function validateWaterMeterRow(row: Record<string, string>): string[] {
   const errors: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
@@ -91,6 +117,7 @@ export function validateWaterMeterRow(row: Record<string, string>): string[] {
   if (parseNonNegNumber(row.initial_reading) == null) errors.push('invalid:initial_reading');
   const date = parseInstalledAtDate(row.installed_at);
   if (!date.ok) errors.push(date.error);
+  errors.push(...validateOpeningBalanceFields(row));
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
   }
@@ -107,6 +134,7 @@ export function validateElectricityMeterRow(row: Record<string, string>): string
   }
   const date = parseInstalledAtDate(row.installed_at);
   if (!date.ok) errors.push(date.error);
+  errors.push(...validateOpeningBalanceFields(row));
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
   }
@@ -130,8 +158,10 @@ export function validateOpeningReadingPreviewFields(
 
 export type MeterClassifyContext = {
   apartmentsByNumber: Map<string, number>; // normApt → propertyId
-  activePropertyIds: Set<number>;
-  existingSerials: Set<string>; // normSerial of all meters (active+retired) for unique constraint
+  /** normSerial of ACTIVE meters (retired_at is null). */
+  existingActiveSerials: Set<string>;
+  /** normSerial → propertyId for ALL meters (active+retired) — serial is globally unique. */
+  existingMetersBySerial: Map<string, number>;
   policy?: MeterOpeningPolicy;
 };
 
@@ -145,19 +175,25 @@ function bump(
   else counters.errorCount += 1;
 }
 
-export function classifyWaterMeterOpeningRows(
+/**
+ * R1-RC8: multi-meter per apartment. Classification is by meter_number:
+ * existing serial on same apartment → skip; unknown serial → create (even if apartment
+ * already has an active meter); serial owned by another apartment → error.
+ */
+function classifyMeterOpeningRows(
+  utility: MeterUtility,
   rows: Record<string, string>[],
   ctx: MeterClassifyContext,
+  validate: (row: Record<string, string>) => string[],
 ): ImportPreviewResult {
   const policy = ctx.policy ?? DEFAULT_METER_OPENING_POLICY;
   const counters = { createCount: 0, updateCount: 0, skipCount: 0, errorCount: 0 };
   const previewRows: ImportPreviewRow[] = [];
   const serialsInFile = new Map<string, number>();
-  const aptInFile = new Map<string, number>();
 
   rows.forEach((raw, idx) => {
     const rowNumber = idx + 2;
-    const errors = validateWaterMeterRow(raw);
+    const errors = validate(raw);
     const apt = normApt(raw.apartment_number);
     const serial = normSerial(raw.meter_number);
     const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
@@ -166,16 +202,15 @@ export function classifyWaterMeterOpeningRows(
     if (serial) {
       if (serialsInFile.has(serial)) errors.push('duplicate_in_file:meter_number');
       else serialsInFile.set(serial, rowNumber);
-      if (ctx.existingSerials.has(serial)) errors.push('duplicate_serial:meter_number');
     }
-    if (apt) {
-      if (aptInFile.has(apt)) errors.push('duplicate_in_file:apartment_number');
-      else aptInFile.set(apt, rowNumber);
+    const serialOwner = serial ? ctx.existingMetersBySerial.get(serial) : undefined;
+    if (serialOwner != null && propertyId != null && serialOwner !== propertyId) {
+      errors.push('duplicate_serial:meter_number');
     }
 
     let operation: ImportRowOperation = 'error';
     if (errors.length === 0 && propertyId != null) {
-      if (ctx.activePropertyIds.has(propertyId)) {
+      if (serialOwner != null || ctx.existingActiveSerials.has(serial)) {
         operation = policy.allowReplace ? 'update' : 'skip';
       } else {
         operation = 'create';
@@ -183,10 +218,9 @@ export function classifyWaterMeterOpeningRows(
     }
     if (errors.length) operation = 'error';
 
-    // Annotate blocked reading-row commit (inventarisation still may CREATE).
     const data: Record<string, string> = {
       ...raw,
-      utility: 'water',
+      utility,
       opening_reading_row_commit: OPENING_READING_ROW_COMMIT,
       resolved_property_id: propertyId != null ? String(propertyId) : '',
     };
@@ -197,7 +231,7 @@ export function classifyWaterMeterOpeningRows(
       operation,
       data,
       errors,
-      matchKey: apt || undefined,
+      matchKey: serial || apt || undefined,
     });
   });
 
@@ -208,66 +242,18 @@ export function classifyWaterMeterOpeningRows(
   };
 }
 
+export function classifyWaterMeterOpeningRows(
+  rows: Record<string, string>[],
+  ctx: MeterClassifyContext,
+): ImportPreviewResult {
+  return classifyMeterOpeningRows('water', rows, ctx, validateWaterMeterRow);
+}
+
 export function classifyElectricityMeterOpeningRows(
   rows: Record<string, string>[],
   ctx: MeterClassifyContext,
 ): ImportPreviewResult {
-  const policy = ctx.policy ?? DEFAULT_METER_OPENING_POLICY;
-  const counters = { createCount: 0, updateCount: 0, skipCount: 0, errorCount: 0 };
-  const previewRows: ImportPreviewRow[] = [];
-  const serialsInFile = new Map<string, number>();
-  const aptInFile = new Map<string, number>();
-
-  rows.forEach((raw, idx) => {
-    const rowNumber = idx + 2;
-    const errors = validateElectricityMeterRow(raw);
-    const apt = normApt(raw.apartment_number);
-    const serial = normSerial(raw.meter_number);
-    const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
-
-    if (apt && !propertyId) errors.push('unknown_apartment');
-    if (serial) {
-      if (serialsInFile.has(serial)) errors.push('duplicate_in_file:meter_number');
-      else serialsInFile.set(serial, rowNumber);
-      if (ctx.existingSerials.has(serial)) errors.push('duplicate_serial:meter_number');
-    }
-    if (apt) {
-      if (aptInFile.has(apt)) errors.push('duplicate_in_file:apartment_number');
-      else aptInFile.set(apt, rowNumber);
-    }
-
-    let operation: ImportRowOperation = 'error';
-    if (errors.length === 0 && propertyId != null) {
-      if (ctx.activePropertyIds.has(propertyId)) {
-        operation = policy.allowReplace ? 'update' : 'skip';
-      } else {
-        operation = 'create';
-      }
-    }
-    if (errors.length) operation = 'error';
-
-    const data: Record<string, string> = {
-      ...raw,
-      utility: 'electricity',
-      opening_reading_row_commit: OPENING_READING_ROW_COMMIT,
-      resolved_property_id: propertyId != null ? String(propertyId) : '',
-    };
-
-    bump(counters, operation);
-    previewRows.push({
-      rowNumber,
-      operation,
-      data,
-      errors,
-      matchKey: apt || undefined,
-    });
-  });
-
-  return {
-    schemaVersion: METERS_SETUP_SCHEMA_VERSION,
-    rows: previewRows,
-    ...counters,
-  };
+  return classifyMeterOpeningRows('electricity', rows, ctx, validateElectricityMeterRow);
 }
 
 export function buildApartmentLookup(
@@ -289,6 +275,26 @@ export function activePropertyIdsFromMeters(meters: ExistingMeterRef[]): Set<num
   return set;
 }
 
+export function existingActiveSerialsFromMeters(meters: ExistingMeterRef[]): Set<string> {
+  const set = new Set<string>();
+  for (const m of meters) {
+    if (m.retiredAt == null || m.retiredAt === '') {
+      const s = normSerial(m.meterNumber);
+      if (s) set.add(s);
+    }
+  }
+  return set;
+}
+
+export function existingMetersBySerialFromMeters(meters: ExistingMeterRef[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const m of meters) {
+    const s = normSerial(m.meterNumber);
+    if (s) map.set(s, m.propertyId);
+  }
+  return map;
+}
+
 export function serialSetFromMeters(meters: ExistingMeterRef[]): Set<string> {
   return new Set(meters.map((m) => normSerial(m.meterNumber)).filter(Boolean));
 }
@@ -299,6 +305,8 @@ export type WaterAssignPayload = {
   meterNumber: string;
   initialReading: number;
   installedAt: string;
+  openingBalanceKind?: OpeningBalanceKind;
+  openingBalanceEur?: number;
 };
 
 export type ElectricityAssignPayload = {
@@ -307,6 +315,8 @@ export type ElectricityAssignPayload = {
   initialDayReading: number;
   initialNightReading: number;
   installedAt: string;
+  openingBalanceKind?: OpeningBalanceKind;
+  openingBalanceEur?: number;
 };
 
 export function waterAssignPayloadsFromPreview(preview: ImportPreviewResult): WaterAssignPayload[] {
@@ -354,30 +364,33 @@ const WATER_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
     'Водомери — начален импорт (IS-3)',
     `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
     'Ключ апартамент: apartment_number (от Книгата). property_id е забранен.',
-    'Полета: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD).',
+    'Полета: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD), opening_balance_kind (zero|debt|overpayment), opening_balance_eur.',
+    'Няколко водомера на апартамент: отделен ред за всеки meter_number. Начално салдо — веднъж на апартамент.',
     'initial_reading + installed_at → assign_water_meter (инвентар).',
     'ЗАБРАНЕНО: submit_water_reading / редове във water_readings (създават такси).',
-    'Съществуващ активен водомер → SKIP. Без replace/overwrite.',
+    'Съществуващ meter_number → SKIP. Без replace/overwrite.',
     `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
   ],
   ru: [
     'Водомеры — начальный импорт (IS-3)',
     `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
     'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
-    'Поля: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD).',
+    'Поля: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD), opening_balance_kind (zero|debt|overpayment), opening_balance_eur.',
+    'Несколько счётчиков на квартиру: отдельная строка на каждый meter_number. Начальное сальдо — один раз на квартиру.',
     'initial_reading + installed_at → assign_water_meter (инвентаризация).',
     'ЗАПРЕЩЕНО: submit_water_reading / строки water_readings (создают начисления).',
-    'Существующий активный водомер → SKIP. Без replace/overwrite.',
+    'Существующий meter_number → SKIP. Без replace/overwrite.',
     `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
   ],
   en: [
     'Water meters — opening import (IS-3)',
     `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Sheet: meters.`,
     'Apartment key: apartment_number (from Property Book). property_id forbidden.',
-    'Columns: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD).',
+    'Columns: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD), opening_balance_kind (zero|debt|overpayment), opening_balance_eur.',
+    'Multiple meters per apartment: one row per meter_number. Opening balance applies once per apartment.',
     'initial_reading + installed_at map to assign_water_meter (inventory only).',
     'FORBIDDEN: submit_water_reading / water_readings rows (they create charges).',
-    'Existing active water meter → SKIP. No replace/overwrite.',
+    'Existing meter_number → SKIP. No replace/overwrite.',
     `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
   ],
 };
@@ -387,30 +400,30 @@ const ELECTRICITY_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
     'Електромери — начален импорт (IS-3)',
     `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
     'Ключ апартамент: apartment_number (от Книгата). property_id е забранен.',
-    'Полета: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at.',
+    'Полета: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at, opening_balance_kind, opening_balance_eur.',
     'Базови показания ден/нощ → assign_electricity_meter (инвентар).',
     'ЗАБРАНЕНО: submit_electricity_reading / meter_readings (създават такси).',
-    'Съществуващ активен електромер → SKIP. Без replace/overwrite.',
+    'Съществуващ meter_number → SKIP. Без replace/overwrite.',
     `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
   ],
   ru: [
     'Электросчётчики — начальный импорт (IS-3)',
     `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
     'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
-    'Поля: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at.',
+    'Поля: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at, opening_balance_kind, opening_balance_eur.',
     'Базовые день/ночь → assign_electricity_meter (инвентаризация).',
     'ЗАПРЕЩЕНО: submit_electricity_reading / meter_readings (создают начисления).',
-    'Существующий активный счётчик → SKIP. Без replace/overwrite.',
+    'Существующий meter_number → SKIP. Без replace/overwrite.',
     `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
   ],
   en: [
     'Electricity meters — opening import (IS-3)',
     `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Sheet: meters.`,
     'Apartment key: apartment_number (from Property Book). property_id forbidden.',
-    'Columns: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at.',
+    'Columns: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at, opening_balance_kind, opening_balance_eur.',
     'Day/night baselines map to assign_electricity_meter (inventory only).',
     'FORBIDDEN: submit_electricity_reading / meter_readings rows (they create charges).',
-    'Existing active electricity meter → SKIP. No replace/overwrite.',
+    'Existing meter_number → SKIP. No replace/overwrite.',
     `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
   ],
 };
@@ -436,12 +449,16 @@ export function buildWaterMeterIs3TemplateBuffer(): ArrayBuffer {
       meter_number: 'W-12-001',
       initial_reading: '0',
       installed_at: '2026-01-15',
+      opening_balance_kind: 'zero',
+      opening_balance_eur: '',
     },
     {
       apartment_number: '14',
       meter_number: 'W-14-001',
       initial_reading: '12.5',
       installed_at: '2026-01-15',
+      opening_balance_kind: 'debt',
+      opening_balance_eur: '25.00',
     },
   ].map((row) =>
     Object.fromEntries(
@@ -466,6 +483,8 @@ export function buildElectricityMeterIs3TemplateBuffer(): ArrayBuffer {
       initial_day_reading: '0',
       initial_night_reading: '0',
       installed_at: '2026-01-15',
+      opening_balance_kind: 'zero',
+      opening_balance_eur: '',
     },
     {
       apartment_number: '14',
@@ -473,6 +492,8 @@ export function buildElectricityMeterIs3TemplateBuffer(): ArrayBuffer {
       initial_day_reading: '100.5',
       initial_night_reading: '40.2',
       installed_at: '2026-01-15',
+      opening_balance_kind: 'overpayment',
+      opening_balance_eur: '10.00',
     },
   ].map((row) =>
     Object.fromEntries(

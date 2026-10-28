@@ -41,8 +41,10 @@ export type SfOpeningClassifyContext = {
   /** Prior IS-4 opening imports by property|year */
   openingImportsByScope: Map<string, { assessed: number; paid: number; remaining: number; over: number }>;
   /**
-   * IS-7a: published applicable support_fee tariff (Tariff Core).
-   * Omit/undefined = treat as configured (legacy callers); explicit false blocks import.
+   * Historical SF opening inventarisation does NOT require a published tariff
+   * (R1-RC8 first-run order: Book → meters → SF → CR → tariffs).
+   * Kept optional for legacy callers; ignored by classify (never blocks).
+   * @deprecated No longer gates opening import.
    */
   supportFeeTariffConfigured?: boolean;
 };
@@ -177,7 +179,15 @@ export function classifySupportFeeOpeningRows(
     const over = parseNonNegMoney(String(raw.opening_overpayment ?? '').trim() || '0') ?? 0;
 
     if (apt && propertyId == null) errors.push('unknown_apartment');
-    if (ctx.supportFeeTariffConfigured === false) errors.push('tariff_not_configured');
+    // R1-RC8: do not require published SF tariff for historical opening inventarisation.
+
+    if (remaining != null && over > 0 && remaining > 0) {
+      errors.push('mutually_exclusive:debt_and_overpayment');
+    }
+
+    if (!String(raw.source_reference ?? '').trim()) {
+      errors.push('required:source_reference');
+    }
 
     if (propertyId != null && year != null) {
       const sk = scopeKey(propertyId, year);
@@ -378,35 +388,36 @@ const SF_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
     'transition_date, source_reference, notes.',
     'Правило: assessed = historically_paid + remaining_debt.',
     'historically_paid НЕ създава payment / allocation.',
-    'Без early/late преизчисление. Без фиктивни плащания.',
+    'Без early/late преизчисление. Без фиктивни плащания и без бъдещ тариф.',
+    'Дълг XOR преплата; двете 0 = потвърден нулев остатък. source_reference е задължителен.',
     'Съществуващо задължение → CONFLICT (без overwrite). Повторен идентичен импорт → SKIP.',
-    'opening_overpayment: най-много един ненулев ред на апартамент в файла.',
+    'Всяка квартира от Книгата трябва да има ред за периода. opening_overpayment: ≤1 ненулев ред/ап.',
   ],
   ru: [
-    'Плата за содержание — начальный импорт (IS-4)',
+    'Такса поддержки — начальный импорт (IS-4 / first-run)',
     `schema_version: ${SUPPORT_FEE_SETUP_SCHEMA_VERSION}. Лист: opening_balances.`,
     'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
     'Поля: apartment_number, billing_year, obligation_type=support_fee,',
     'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference, notes.',
+    'transition_date, source_reference (основание), notes.',
     'Правило: assessed = historically_paid + remaining_debt.',
-    'historically_paid НЕ создаёт payment / allocation.',
-    'Без early/late пересчёта. Без фиктивных платежей.',
-    'Существующее обязательство → CONFLICT (без overwrite). Повтор идентичного → SKIP.',
-    'opening_overpayment: не более одной ненулевой строки на квартиру в файле.',
+    'historically_paid НЕ создаёт payment / allocation. Тариф не требуется.',
+    'Долг XOR переплата; оба 0 = подтверждённый ноль. source_reference обязателен.',
+    'Существующее обязательство → CONFLICT. Повтор идентичного → SKIP.',
+    'Каждая квартира Книги должна иметь строку за период. opening_overpayment: ≤1 ненулевая/кв.',
   ],
   en: [
-    'Support Fee — opening import (IS-4)',
+    'Support Fee — opening import (IS-4 / first-run)',
     `schema_version: ${SUPPORT_FEE_SETUP_SCHEMA_VERSION}. Sheet: opening_balances.`,
     'Apartment key: apartment_number (from Property Book). property_id forbidden.',
     'Columns: apartment_number, billing_year, obligation_type=support_fee,',
     'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference, notes.',
+    'transition_date, source_reference (basis), notes.',
     'Rule: assessed = historically_paid + remaining_debt.',
-    'historically_paid does NOT create payment / allocation rows.',
-    'No early/late recalculation. No synthetic payments.',
-    'Existing obligation → CONFLICT (no overwrite). Identical re-import → SKIP.',
-    'opening_overpayment: at most one non-zero row per apartment in the file.',
+    'historically_paid does NOT create payment / allocation. No future tariff required.',
+    'Debt XOR overpayment; both 0 = confirmed zero. source_reference required.',
+    'Existing obligation → CONFLICT. Identical re-import → SKIP.',
+    'Every Book apartment must have a row for the period. opening_overpayment: ≤1 non-zero/apt.',
   ],
 };
 
@@ -415,7 +426,7 @@ export function buildSupportFeeIs4TemplateBuffer(): ArrayBuffer {
   const example = [
     {
       apartment_number: '101',
-      billing_year: '2024',
+      billing_year: '2025',
       obligation_type: 'support_fee',
       assessed_amount: '400',
       historically_paid_amount: '400',
@@ -423,7 +434,7 @@ export function buildSupportFeeIs4TemplateBuffer(): ArrayBuffer {
       opening_overpayment: '0',
       transition_date: '2026-01-01',
       source_reference: 'OPENING-LEDGER-2026',
-      notes: 'fully paid historical year',
+      notes: 'fully paid / confirmed basis required',
     },
     {
       apartment_number: '101',
@@ -438,16 +449,28 @@ export function buildSupportFeeIs4TemplateBuffer(): ArrayBuffer {
       notes: 'partially paid',
     },
     {
-      apartment_number: '101',
-      billing_year: '2026',
+      apartment_number: '102',
+      billing_year: '2025',
       obligation_type: 'support_fee',
-      assessed_amount: '400',
+      assessed_amount: '0',
       historically_paid_amount: '0',
-      remaining_debt: '400',
+      remaining_debt: '0',
+      opening_overpayment: '0',
+      transition_date: '2026-01-01',
+      source_reference: 'OPENING-LEDGER-2026',
+      notes: 'confirmed zero',
+    },
+    {
+      apartment_number: '103',
+      billing_year: '2025',
+      obligation_type: 'support_fee',
+      assessed_amount: '0',
+      historically_paid_amount: '0',
+      remaining_debt: '0',
       opening_overpayment: '25',
       transition_date: '2026-01-01',
       source_reference: 'OPENING-LEDGER-2026',
-      notes: 'unpaid + opening credit once per apt',
+      notes: 'opening overpayment only (no debt)',
     },
   ].map((row) =>
     Object.fromEntries(

@@ -292,11 +292,9 @@ export function reconcileMeterCommitWithDb(
   batch: MeterCommitBatchResult,
   meters: ExistingMeterRef[],
 ): MeterCommitBatchResult {
-  const activeByProperty = new Set<number>();
   const serialToProperty = new Map<string, number>();
   for (const m of meters) {
     if (m.retiredAt != null && m.retiredAt !== '') continue;
-    activeByProperty.add(m.propertyId);
     serialToProperty.set(m.meterNumber.trim().toLowerCase(), m.propertyId);
   }
 
@@ -304,8 +302,8 @@ export function reconcileMeterCommitWithDb(
     if (row.outcome === 'CREATED' || row.outcome === 'SKIPPED_EXISTING') return row;
     const serialKey = row.meterNumber.trim().toLowerCase();
     const serialOwner = serialToProperty.get(serialKey);
-    const hasActive = activeByProperty.has(row.propertyId);
-    if (hasActive || serialOwner === row.propertyId) {
+    // R1-RC8: multiple active meters per apartment — match by serial only.
+    if (serialOwner === row.propertyId) {
       return {
         ...row,
         outcome: 'SKIPPED_EXISTING' as const,
@@ -323,13 +321,15 @@ export function retryCandidatesFromBatch(
   batch: MeterCommitBatchResult,
   meters: ExistingMeterRef[],
 ): MeterCommitRowResult[] {
-  const activeByProperty = new Set(
-    meters.filter((m) => m.retiredAt == null || m.retiredAt === '').map((m) => m.propertyId),
+  const activeSerialKeys = new Set(
+    meters
+      .filter((m) => m.retiredAt == null || m.retiredAt === '')
+      .map((m) => `${m.propertyId}|${m.meterNumber.trim().toLowerCase()}`),
   );
   return batch.rows.filter(
     (r) =>
       (r.outcome === 'FAILED' || r.outcome === 'NOT_PROCESSED') &&
-      !activeByProperty.has(r.propertyId),
+      !activeSerialKeys.has(`${r.propertyId}|${r.meterNumber.trim().toLowerCase()}`),
   );
 }
 

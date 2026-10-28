@@ -114,6 +114,10 @@ export function validateCapitalRepairOpeningRow(row: Record<string, string>): st
   const td = parseTransitionDate(row.transition_date);
   if (!td.ok) errors.push(td.error);
 
+  if (!String(row.source_reference ?? '').trim()) {
+    errors.push('required:source_reference');
+  }
+
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
   }
@@ -442,13 +446,13 @@ const CR_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
     'Полета: apartment_number, billing_year, obligation_type=capital_repair,',
     'assessment_title (опционално; по подразбиране «Капитальный ремонт {year}»),',
     'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference, notes.',
+    'transition_date, source_reference (задължителен), notes.',
     'Правило: assessed = historically_paid + remaining_debt.',
-    'opening_overpayment и remaining_debt са взаимно изключващи се.',
+    'opening_overpayment и remaining_debt са взаимно изключващи се; и двете 0 = явен нула.',
     'historically_paid НЕ създава payment. Без operational charge RPC.',
     'Всеки ред се връзва към каноничен assessment (създава се shell при нужда).',
     'Съществуващ charge/opening → CONFLICT. Идентичен импорт → SKIP.',
-    'Това са задължения на апартаменти, НЕ банкови/касови резерви на фонда.',
+    'Това са задължения на апартаменти, НЕ банкови/касови резерви (остатъкът на фонда е отделно).',
   ],
   ru: [
     'Капитальный ремонт — начальный импорт (IS-8)',
@@ -457,28 +461,28 @@ const CR_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
     'Поля: apartment_number, billing_year, obligation_type=capital_repair,',
     'assessment_title (опционально; по умолчанию «Капитальный ремонт {year}»),',
     'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference, notes.',
+    'transition_date, source_reference (обязателен), notes.',
     'Правило: assessed = historically_paid + remaining_debt.',
-    'opening_overpayment и remaining_debt взаимно исключают друг друга.',
+    'opening_overpayment и remaining_debt взаимно исключают друг друга; оба 0 = явный ноль.',
     'historically_paid НЕ создаёт payment. Без operational charge RPC.',
     'Каждая строка привязана к каноническому assessment (shell при необходимости).',
     'Существующий charge/opening → CONFLICT. Идентичный импорт → SKIP.',
-    'Это обязательства квартир, НЕ банковские/кассовые резервы фонда.',
+    'Это обязательства квартир, НЕ банковские/кассовые резервы фонда (остаток фонда — отдельно).',
   ],
   en: [
-    'Capital Repair — opening import (IS-8)',
+    'Capital Repair — opening import (IS-8 / R1-RC8)',
     `schema_version: ${CAPITAL_REPAIR_SETUP_SCHEMA_VERSION}. Sheet: opening_balances.`,
     'Apartment key: apartment_number (from Property Book). property_id and assessment_id forbidden.',
     'Columns: apartment_number, billing_year, obligation_type=capital_repair,',
     'assessment_title (optional; default «Капитальный ремонт {year}»),',
     'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference, notes.',
+    'transition_date, source_reference (required), notes.',
     'Rule: assessed = historically_paid + remaining_debt.',
-    'opening_overpayment and remaining_debt are mutually exclusive.',
+    'opening_overpayment and remaining_debt are mutually exclusive; both 0 = explicit zero.',
     'historically_paid does NOT create payment. No operational charge RPC.',
     'Every row links to a canonical assessment (shell created if missing).',
     'Existing charge/opening → CONFLICT. Identical re-import → SKIP.',
-    'These are apartment obligations, NOT bank/cash fund reserves.',
+    'These are apartment obligations, NOT bank/cash fund reserves (fund cash is separate).',
   ],
 };
 

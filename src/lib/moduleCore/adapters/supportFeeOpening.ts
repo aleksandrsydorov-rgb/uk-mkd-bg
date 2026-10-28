@@ -42,7 +42,7 @@ export type SfOpeningClassifyContext = {
   openingImportsByScope: Map<string, { assessed: number; paid: number; remaining: number; over: number }>;
   /**
    * Historical SF opening inventarisation does NOT require a published tariff
-   * (R1-RC8 first-run order: Book → meters → SF → CR → tariffs).
+   * (R1-RC8 first-run order: Book → meters → SF → CR → tariffs → budget).
    * Kept optional for legacy callers; ignored by classify (never blocks).
    * @deprecated No longer gates opening import.
    */

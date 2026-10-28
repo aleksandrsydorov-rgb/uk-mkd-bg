@@ -1359,6 +1359,7 @@ export const ru = {
     firstRunStageSupportFee: 'Такса поддержки',
     firstRunStageCapitalRepair: 'Капитальный ремонт',
     firstRunStageTariffs: 'Тарифы',
+    firstRunStageBudget: 'Бюджет',
     firstRunStageComplete: 'Завершение',
     firstRunWelcomeTitle: 'Добро пожаловать',
     firstRunWelcomeBody: 'Система помогает управляющей компании вести комплекс в одном месте:',
@@ -1457,14 +1458,20 @@ export const ru = {
     firstRunCrActivating: 'Сверка выполнена. Активация модуля «Капитальный ремонт»…',
     firstRunCrCommitted: 'Капитальный ремонт: начальное состояние сохранено, модуль активирован.',
     firstRunCrContinue: 'Далее: тарифы',
+    firstRunTariffsContinue: 'Далее: бюджет',
     firstRunTariffsStubBody:
-      'Следующий обязательный этап — тарифы. Админка остаётся закрытой до завершения первоначальной настройки.',
+      'Обязательный этап тарифов. Следующий обязательный этап — бюджет. Админка остаётся закрытой до завершения первоначальной настройки.',
+    firstRunBudgetStubTitle: 'Бюджет',
+    firstRunBudgetStubBody:
+      'Настройка бюджета ещё не реализована. Здесь только подключение этапа: сохранить бюджет и закрыть мастер нельзя.',
+    firstRunBudgetBlocked:
+      'Сервер отклоняет завершение бюджета и всего мастера, включая прямой вызов, пока настройка бюджета не реализована.',
     firstRunCrStubTitle: 'Капитальный ремонт',
     firstRunCrStubBody:
       'Обязательный этап: начальное состояние капремонта (квартиры + остаток фонда). Админка закрыта до завершения.',
     firstRunCompleteTitle: 'Настройка завершена',
     firstRunCompleteBody:
-      'Обязательная первоначальная настройка выполнена (книга, счётчики, такса, капремонт, тарифы).',
+      'Обязательная первоначальная настройка выполнена (книга, счётчики, такса, капремонт, тарифы, бюджет).',
     firstRunCompleteFinish: 'Перейти в администрирование',
     is7aTariffOptionalSupportFeeOpening:
       'Опубликованный тариф таксы не обязателен для переноса исторического остатка; он понадобится позже для будущих начислений.',
@@ -5045,6 +5052,7 @@ export const en: Messages = {
     firstRunStageSupportFee: 'Support fee',
     firstRunStageCapitalRepair: 'Capital repair',
     firstRunStageTariffs: 'Tariffs',
+    firstRunStageBudget: 'Budget',
     firstRunStageComplete: 'Finish',
     firstRunWelcomeTitle: 'Welcome',
     firstRunWelcomeBody: 'The system helps the management company run the complex in one place:',
@@ -5143,14 +5151,20 @@ export const en: Messages = {
     firstRunCrActivating: 'Reconciled. Activating Capital repair module…',
     firstRunCrCommitted: 'Capital-repair opening state saved; module activated.',
     firstRunCrContinue: 'Next: tariffs',
+    firstRunTariffsContinue: 'Next: budget',
     firstRunTariffsStubBody:
-      'The next mandatory stage is tariffs. Admin stays closed until first-run setup finishes.',
+      'Tariffs are a mandatory stage. The next mandatory stage is budget. Admin stays closed until first-run setup finishes.',
+    firstRunBudgetStubTitle: 'Budget',
+    firstRunBudgetStubBody:
+      'Budget setup is not implemented yet. This screen only connects the stage: the budget cannot be saved and the wizard cannot be finished.',
+    firstRunBudgetBlocked:
+      'The server rejects completing the budget and the whole wizard, including a direct call, until budget setup is implemented.',
     firstRunCrStubTitle: 'Capital repair',
     firstRunCrStubBody:
       'Mandatory stage: capital-repair opening (apartments + fund cash). Admin stays closed until finished.',
     firstRunCompleteTitle: 'Setup complete',
     firstRunCompleteBody:
-      'Mandatory first-run setup is done (book, meters, support fee, capital repair, tariffs).',
+      'Mandatory first-run setup is done (book, meters, support fee, capital repair, tariffs, budget).',
     firstRunCompleteFinish: 'Go to administration',
     is7aTariffOptionalSupportFeeOpening:
       'A published support-fee tariff is not required to transfer historical balances; it will be needed later for future charges.',
@@ -8732,6 +8746,7 @@ export const bg: Messages = {
     firstRunStageSupportFee: 'Такса поддръжка',
     firstRunStageCapitalRepair: 'Основен ремонт',
     firstRunStageTariffs: 'Тарифи',
+    firstRunStageBudget: 'Бюджет',
     firstRunStageComplete: 'Завършване',
     firstRunWelcomeTitle: 'Добре дошли',
     firstRunWelcomeBody: 'Системата помага на управляващата компания да води комплекса на едно място:',
@@ -8830,14 +8845,20 @@ export const bg: Messages = {
     firstRunCrActivating: 'Сверката е готова. Активиране на модула „Основен ремонт“…',
     firstRunCrCommitted: 'Основен ремонт: началното състояние е записано, модулът е активиран.',
     firstRunCrContinue: 'Напред: тарифи',
+    firstRunTariffsContinue: 'Напред: бюджет',
     firstRunTariffsStubBody:
-      'Следващият задължителен етап са тарифите. Админът остава затворен до края на първоначалната настройка.',
+      'Тарифите са задължителен етап. Следващият задължителен етап е бюджетът. Админът остава затворен до края на първоначалната настройка.',
+    firstRunBudgetStubTitle: 'Бюджет',
+    firstRunBudgetStubBody:
+      'Настройката на бюджета още не е реализирана. Тук е само свързването на етапа: бюджетът не може да се запише и първоначалната настройка не може да се завърши.',
+    firstRunBudgetBlocked:
+      'Сървърът отказва завършване на бюджета и на цялата първоначална настройка, включително при директно извикване, докато настройката на бюджета не е реализирана.',
     firstRunCrStubTitle: 'Основен ремонт',
     firstRunCrStubBody:
       'Задължителен етап: начално състояние на КР (апартаменти + остатък на фонда). Админът е затворен до края.',
     firstRunCompleteTitle: 'Настройката е завършена',
     firstRunCompleteBody:
-      'Задължителната първоначална настройка е готова (книга, уреди, такса, основен ремонт, тарифи).',
+      'Задължителната първоначална настройка е готова (книга, уреди, такса, основен ремонт, тарифи, бюджет).',
     firstRunCompleteFinish: 'Към администрацията',
     is7aTariffOptionalSupportFeeOpening:
       'Публикувана тарифа за таксата не е задължителна за пренос на исторически остатък; нужна е по-късно за бъдещи начисления.',

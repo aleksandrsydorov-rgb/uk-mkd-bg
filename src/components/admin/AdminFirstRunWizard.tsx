@@ -721,6 +721,18 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     });
   }
 
+  async function onTariffsContinue() {
+    await run(async () => {
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'tariffs',
+          nextStage: 'budget',
+        }),
+      );
+      goStage('budget');
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // complete
   // ---------------------------------------------------------------------------
@@ -762,6 +774,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         return t('admin.firstRunStageCapitalRepair');
       case 'tariffs':
         return t('admin.firstRunStageTariffs');
+      case 'budget':
+        return t('admin.firstRunStageBudget');
       default:
         return t('admin.firstRunStageComplete');
     }
@@ -1349,6 +1363,22 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         <AdminCard>
           <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunStageTariffs')}</h3>
           <p className="mb-3 text-sm text-secondary">{t('admin.firstRunTariffsStubBody')}</p>
+          <button
+            type="button"
+            className={adminBtnPrimaryClass}
+            disabled={busy}
+            onClick={() => void onTariffsContinue()}
+          >
+            {busy ? t('admin.firstRunBusy') : t('admin.firstRunTariffsContinue')}
+          </button>
+        </AdminCard>
+      ) : null}
+
+      {stage === 'budget' ? (
+        <AdminCard>
+          <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunBudgetStubTitle')}</h3>
+          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunBudgetStubBody')}</p>
+          <p className="text-sm text-danger">{t('admin.firstRunBudgetBlocked')}</p>
         </AdminCard>
       ) : null}
 

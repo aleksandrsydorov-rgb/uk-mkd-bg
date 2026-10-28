@@ -116,6 +116,7 @@ describe('R1-RC8 first-run · gate + resume', () => {
       'support_fee_opening',
       'capital_repair_opening',
       'tariffs',
+      'budget',
       'complete',
     ]);
   });
@@ -330,6 +331,7 @@ describe('R1-RC8 first-run · packaging', () => {
         '103_r1_rc8_first_run_support_fee_opening.sql',
         '104_r1_rc8_support_fee_opening_close.sql',
         '105_r1_rc8_first_run_capital_repair_opening.sql',
+        '106_r1_rc8_first_run_budget_stage.sql',
       ]),
     );
     expect(manifest.chronologicalMigrationsPackaged).toEqual(
@@ -340,6 +342,7 @@ describe('R1-RC8 first-run · packaging', () => {
         'supabase/migrations/20261125150000_r1_rc8_first_run_support_fee_opening.sql',
         'supabase/migrations/20261125160000_r1_rc8_support_fee_opening_close.sql',
         'supabase/migrations/20261125170000_r1_rc8_first_run_capital_repair_opening.sql',
+        'supabase/migrations/20261125180000_r1_rc8_first_run_budget_stage.sql',
       ]),
     );
     expect(manifest.chronologicalMigrationTree).toEqual(
@@ -350,9 +353,38 @@ describe('R1-RC8 first-run · packaging', () => {
         'supabase/migrations/20261125150000_r1_rc8_first_run_support_fee_opening.sql',
         'supabase/migrations/20261125160000_r1_rc8_support_fee_opening_close.sql',
         'supabase/migrations/20261125170000_r1_rc8_first_run_capital_repair_opening.sql',
+        'supabase/migrations/20261125180000_r1_rc8_first_run_budget_stage.sql',
       ]),
     );
-    expect(manifest.expectedChronologicalMigrationCount).toBe(148);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(149);
+  });
+
+  it('budget stage is wired after tariffs and cannot be completed yet', () => {
+    const mig = readFileSync(
+      path.join(process.cwd(), 'supabase/migrations/20261125180000_r1_rc8_first_run_budget_stage.sql'),
+      'utf8',
+    );
+    expect(mig).toContain("('budget', 100, true, 'budget', 'admin.firstRunStageBudget')");
+    expect(mig).toContain('first_run: budget setup not implemented');
+    expect(mig).toContain('first_run: tariffs advances only to budget');
+    expect(mig).toContain("v_next := 'budget'");
+    expect(mig).toContain("where i.first_run_status = 'complete'");
+    expect(mig).toContain("i.first_run_status is distinct from 'complete'");
+    expect(mig).not.toMatch(/set\s+first_run_status\s*=\s*'pending'/i);
+    expect(mig).not.toMatch(/set\s+first_run_status\s*=\s*'in_progress'/i);
+    expect(mig).toContain('perform public.first_run_assert_ready_to_complete(v_id)');
+    expect(mig).toContain('admin_complete_first_run_stage_before_budget');
+
+    const ui = readFileSync(path.join(process.cwd(), 'src/components/admin/AdminFirstRunWizard.tsx'), 'utf8');
+    expect(ui).toContain("nextStage: 'budget'");
+    expect(ui).toContain('firstRunBudgetStubBody');
+    expect(ui).toContain('firstRunBudgetBlocked');
+    expect(ui).not.toContain("stage: 'budget'");
+
+    const messages = readFileSync(path.join(process.cwd(), 'src/i18n/messages.ts'), 'utf8');
+    expect(messages).toContain("firstRunStageBudget: 'Бюджет'");
+    expect(messages).toContain("firstRunStageBudget: 'Budget'");
+    expect(messages).toContain('firstRunBudgetBlocked');
   });
 
   it('admin gate wiring renders wizard, blocks on RPC error, reads server gate state', () => {

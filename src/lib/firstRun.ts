@@ -23,6 +23,7 @@ export const FIRST_RUN_STAGES = [
   'support_fee_opening',
   'capital_repair_opening',
   'tariffs',
+  'budget',
   'complete',
 ] as const;
 export type FirstRunStageKey = (typeof FIRST_RUN_STAGES)[number];

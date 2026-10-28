@@ -41,7 +41,11 @@ export {
   classifyElectricityMeterOpeningRows,
   buildApartmentLookup,
   activePropertyIdsFromMeters,
+  existingActiveSerialsFromMeters,
+  existingMetersBySerialFromMeters,
   serialSetFromMeters,
+  validateOpeningBalanceFields,
+  OPENING_BALANCE_KINDS,
   waterAssignPayloadsFromPreview,
   electricityAssignPayloadsFromPreview,
   buildWaterMeterIs3TemplateBuffer,
@@ -52,6 +56,9 @@ export {
   downloadMeterErrorReport,
   isOpeningReadingRowCommitBlocked,
   isOpeningReadingRowCommitEnabled,
+  type MeterClassifyContext,
+  type OpeningBalanceKind,
+  type ExistingMeterRef,
 } from '@/lib/moduleCore/adapters/metersOpening';
 export {
   waterOpeningAdapter,

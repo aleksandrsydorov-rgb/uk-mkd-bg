@@ -31,6 +31,8 @@ const MIGRATION = path.resolve(
   'supabase/migrations/20261023120000_is4_support_fee_opening_state.sql',
 );
 
+const SRC = 'SF-OPENING-TEST';
+
 describe('IS-4 · Support Fee opening adapter', () => {
   it('registers support_fee adapter under canonical module key', () => {
     resetModuleSetupAdaptersForTests();
@@ -75,6 +77,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
       remaining_debt: '100',
       opening_overpayment: '0',
       transition_date: '2026-01-01',
+      source_reference: SRC,
     });
     expect(errors).toContain('inconsistent:assessed_ne_paid_plus_remaining');
   });
@@ -93,6 +96,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
         remaining_debt: '0',
         opening_overpayment: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '101',
@@ -103,6 +107,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
         remaining_debt: '150',
         opening_overpayment: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '101',
@@ -111,8 +116,9 @@ describe('IS-4 · Support Fee opening adapter', () => {
         assessed_amount: '400',
         historically_paid_amount: '0',
         remaining_debt: '400',
-        opening_overpayment: '25',
+        opening_overpayment: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '101',
@@ -122,6 +128,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
         historically_paid_amount: '100',
         remaining_debt: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
         property_id: '999',
       },
     ];
@@ -164,6 +171,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
           remaining_debt: '150',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       { apartmentsByNumber, existingByScope, openingImportsByScope: new Map() },
@@ -182,6 +190,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
           remaining_debt: '0',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {
@@ -206,6 +215,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
           historically_paid_amount: '0',
           remaining_debt: '100',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {
@@ -234,8 +244,9 @@ describe('IS-4 · Support Fee opening adapter', () => {
           assessed_amount: '400',
           historically_paid_amount: '0',
           remaining_debt: '400',
-          opening_overpayment: '10',
+          opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
         {
           apartment_number: '102',
@@ -246,6 +257,7 @@ describe('IS-4 · Support Fee opening adapter', () => {
           remaining_debt: '0',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       { apartmentsByNumber, existingByScope: new Map(), openingImportsByScope: new Map() },
@@ -387,20 +399,22 @@ describe('IS-4 · Support Fee opening adapter', () => {
           billing_year: '2025',
           obligation_type: 'support_fee',
           assessed_amount: '100',
-          historically_paid_amount: '0',
-          remaining_debt: '100',
+          historically_paid_amount: '100',
+          remaining_debt: '0',
           opening_overpayment: '10',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
         {
           apartment_number: '101',
           billing_year: '2026',
           obligation_type: 'support_fee',
           assessed_amount: '100',
-          historically_paid_amount: '0',
-          remaining_debt: '100',
+          historically_paid_amount: '100',
+          remaining_debt: '0',
           opening_overpayment: '5',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {

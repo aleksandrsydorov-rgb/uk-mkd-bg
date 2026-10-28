@@ -10,6 +10,7 @@ import {
   assertPackageObjectCoverage,
   parseFreshInstallManifest,
 } from '@/lib/moduleCore/freshInstallMeterSchema';
+import { readFreshInstallCoverageSql } from './_freshInstallCoverageSql';
 
 const MTR2_MIGRATION =
   'supabase/migrations/20261109120000_mtr2_electricity_meter_assign_replace.sql';
@@ -79,11 +80,8 @@ describe('MTR-2 · electricity meter assign/replace packaging', () => {
     const manifest = parseFreshInstallManifest(
       read(path.join(FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json')),
     );
-    const sql = FRESH_INSTALL_ORDERED_FILES.map((f) =>
-      read(path.join(FRESH_INSTALL_PACKAGE_DIR, f)),
-    ).join('\n');
     const coverage = assertPackageObjectCoverage(
-      sql,
+      readFreshInstallCoverageSql(),
       manifest.requiredRelationsAfterPackage,
       manifest.requiredFunctionsAfterPackage ?? [],
     );

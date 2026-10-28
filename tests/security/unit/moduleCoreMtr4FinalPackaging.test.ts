@@ -10,6 +10,7 @@ import {
   assertPackageObjectCoverage,
   parseFreshInstallManifest,
 } from '@/lib/moduleCore';
+import { readFreshInstallCoverageSql } from './_freshInstallCoverageSql';
 
 function read(rel: string): string {
   return readFileSync(path.resolve(process.cwd(), rel), 'utf8');
@@ -80,11 +81,8 @@ describe('MTR-4 · final meter packaging', () => {
     const manifest = parseFreshInstallManifest(
       read(path.join(FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json')),
     );
-    const sql = FRESH_INSTALL_ORDERED_FILES.map((f) =>
-      read(path.join(FRESH_INSTALL_PACKAGE_DIR, f)),
-    ).join('\n');
     const coverage = assertPackageObjectCoverage(
-      sql,
+      readFreshInstallCoverageSql(),
       manifest.requiredRelationsAfterPackage,
       manifest.requiredFunctionsAfterPackage ?? [],
     );

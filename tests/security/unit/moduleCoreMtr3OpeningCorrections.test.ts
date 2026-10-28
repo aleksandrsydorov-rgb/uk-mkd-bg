@@ -12,6 +12,7 @@ import {
   isOpeningReadingRowCommitEnabled,
   parseFreshInstallManifest,
 } from '@/lib/moduleCore';
+import { readFreshInstallCoverageSql } from './_freshInstallCoverageSql';
 
 const MTR3_MIGRATION =
   'supabase/migrations/20261109130000_mtr3_opening_readings_and_safe_corrections.sql';
@@ -91,11 +92,8 @@ describe('MTR-3 · opening readings and safe corrections packaging', () => {
     const manifest = parseFreshInstallManifest(
       read(path.join(FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json')),
     );
-    const sql = FRESH_INSTALL_ORDERED_FILES.map((f) =>
-      read(path.join(FRESH_INSTALL_PACKAGE_DIR, f)),
-    ).join('\n');
     const coverage = assertPackageObjectCoverage(
-      sql,
+      readFreshInstallCoverageSql(),
       manifest.requiredRelationsAfterPackage,
       manifest.requiredFunctionsAfterPackage ?? [],
     );

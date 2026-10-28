@@ -35,6 +35,8 @@ const MIGRATION = path.resolve(
   'supabase/migrations/20261027120000_is8_capital_repair_opening_state.sql',
 );
 
+const SRC = 'CR-OPENING-TEST';
+
 describe('IS-8 · Capital Repair opening adapter', () => {
   it('registers capital_repair adapter under canonical module key', () => {
     resetModuleSetupAdaptersForTests();
@@ -93,6 +95,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
       remaining_debt: '40',
       opening_overpayment: '0',
       transition_date: '2026-01-01',
+      source_reference: SRC,
     });
     expect(badArith).toContain('inconsistent:assessed_ne_paid_plus_remaining');
 
@@ -105,6 +108,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
       remaining_debt: '50',
       opening_overpayment: '10',
       transition_date: '2026-01-01',
+      source_reference: SRC,
     });
     expect(creditAndDebt).toContain('inconsistent:credit_and_debt_mutual_exclusive');
   });
@@ -129,6 +133,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
         remaining_debt: '0',
         opening_overpayment: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '101',
@@ -139,6 +144,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
         remaining_debt: '50',
         opening_overpayment: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '101',
@@ -149,6 +155,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
         remaining_debt: '120',
         opening_overpayment: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '102',
@@ -159,6 +166,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
         remaining_debt: '0',
         opening_overpayment: '15',
         transition_date: '2026-01-01',
+        source_reference: SRC,
       },
       {
         apartment_number: '101',
@@ -168,6 +176,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
         historically_paid_amount: '100',
         remaining_debt: '0',
         transition_date: '2026-01-01',
+        source_reference: SRC,
         property_id: '999',
         assessment_id: 'spoof',
       },
@@ -223,6 +232,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           remaining_debt: '120',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {
@@ -249,6 +259,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           remaining_debt: '0',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {
@@ -275,6 +286,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           remaining_debt: '20',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {
@@ -303,6 +315,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           historically_paid_amount: '0',
           remaining_debt: '100',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
         {
           apartment_number: '999',
@@ -312,6 +325,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           historically_paid_amount: '0',
           remaining_debt: '100',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {
@@ -367,6 +381,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           remaining_debt: '120',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
         {
           apartment_number: '102',
@@ -377,6 +392,7 @@ describe('IS-8 · Capital Repair opening adapter', () => {
           remaining_debt: '0',
           opening_overpayment: '0',
           transition_date: '2026-01-01',
+          source_reference: SRC,
         },
       ],
       {

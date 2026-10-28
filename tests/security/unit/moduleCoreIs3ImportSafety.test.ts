@@ -14,8 +14,8 @@ import {
   resetModuleSetupAdaptersForTests,
   retryCandidatesFromBatch,
   buildApartmentLookup,
-  activePropertyIdsFromMeters,
-  serialSetFromMeters,
+  existingActiveSerialsFromMeters,
+  existingMetersBySerialFromMeters,
   type ImportPreviewResult,
   type MeterCommitBatchResult,
 } from '@/lib/moduleCore';
@@ -27,8 +27,8 @@ function waterPreview(rows: Record<string, string>[]): ImportPreviewResult {
       { property_id: 2, apartment_number: '14' },
       { property_id: 3, apartment_number: '16' },
     ]),
-    activePropertyIds: activePropertyIdsFromMeters([]),
-    existingSerials: serialSetFromMeters([]),
+    existingActiveSerials: existingActiveSerialsFromMeters([]),
+    existingMetersBySerial: existingMetersBySerialFromMeters([]),
     policy: { allowReplace: false },
   });
 }
@@ -122,14 +122,11 @@ describe('IS-3 import safety · per-row outcomes', () => {
   });
 
   it('preview SKIP becomes SKIPPED_EXISTING without assign attempt', async () => {
+    const existing = [{ propertyId: 1, meterNumber: 'W-A', retiredAt: null as string | null }];
     const preview = classifyWaterMeterOpeningRows([row('12', 'W-A')], {
       apartmentsByNumber: buildApartmentLookup([{ property_id: 1, apartment_number: '12' }]),
-      activePropertyIds: activePropertyIdsFromMeters([
-        { propertyId: 1, meterNumber: 'W-OLD', retiredAt: null },
-      ]),
-      existingSerials: serialSetFromMeters([
-        { propertyId: 1, meterNumber: 'W-OLD', retiredAt: null },
-      ]),
+      existingActiveSerials: existingActiveSerialsFromMeters(existing),
+      existingMetersBySerial: existingMetersBySerialFromMeters(existing),
       policy: { allowReplace: false },
     });
     let calls = 0;

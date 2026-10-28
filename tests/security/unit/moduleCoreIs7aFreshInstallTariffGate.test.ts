@@ -49,6 +49,7 @@ import {
   type TariffListSnapshot,
 } from '@/lib/moduleCore';
 import { dictionaries } from '@/i18n/messages';
+import { readFreshInstallCoverageSql } from './_freshInstallCoverageSql';
 
 const published: TariffListSnapshot[] = [
   { tariff_key: 'support_fee', module_key: 'support_fee', current_version_id: 'v-sf' },
@@ -228,9 +229,11 @@ describe('IS-9a · fresh-install Book/auth/capital/tariff packaging', () => {
     const sql = packageSqlConcat();
     expect(sql).toMatch(/insert\s+into\s+public\.tariff_catalog/i);
     // IS-10d may insert a cancelled distributive sentinel; must not publish.
+    // Bound to the insert statement ([^;]*) so later RLS 'published' checks do not false-positive.
     expect(sql).not.toMatch(
-      /insert\s+into\s+public\.tariff_versions[\s\S]*?\bvalues\b[\s\S]*?'published'/i,
+      /\binsert\s+into\s+public\.tariff_versions\b[\s\S]*?\bvalues\b[^;]*?'published'/i,
     );
+    expect(sql).not.toMatch(/\binsert\s+into\s+public\.tariff_rate_items\b/i);
     expect(sql).toMatch(/86_distributive_block_amadeus11_sf_cutover/i);
     expect(sql).toMatch(/No published prices/i);
   });
@@ -319,8 +322,9 @@ describe('IS-9b · complete fresh-install database dependencies', () => {
     const manifest = parseFreshInstallManifest(
       readFileSync(path.resolve(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json'), 'utf8'),
     );
+    // Stubs + chronological migrations (same surface a fresh install applies).
     const coverage = assertPackageObjectCoverage(
-      packageSqlConcat(),
+      readFreshInstallCoverageSql(),
       manifest.requiredRelationsAfterPackage,
       manifest.requiredFunctionsAfterPackage ?? [],
     );
@@ -342,12 +346,23 @@ describe('IS-9b · complete fresh-install database dependencies', () => {
 });
 
 describe('IS-7a · tariff setup gate', () => {
-  it('missing published tariff blocks Support Fee and Internet import', () => {
+  it('missing published tariff: SF/CR opening allowed; future SF billing + Internet import blocked', () => {
     const sf = evaluateTariffSetupGate('support_fee', unpublished)!;
+    const cr = evaluateTariffSetupGate('capital_repair', unpublished)!;
     const net = evaluateTariffSetupGate('internet', unpublished)!;
-    expect(sf.importBlockedByMissingTariff).toBe(true);
+    // Historical inventarisation does not need a published tariff.
+    expect(sf.importBlockedByMissingTariff).toBe(false);
+    expect(sf.importReady).toBe(true);
+    expect(cr.importBlockedByMissingTariff).toBe(false);
+    expect(cr.importReady).toBe(true);
+    // Future charges / operational billing still require published tariffs.
+    expect(sf.billingBlockedByMissingTariff).toBe(true);
+    expect(sf.billingReady).toBe(false);
+    expect(cr.billingBlockedByMissingTariff).toBe(true);
+    expect(cr.billingReady).toBe(false);
+    // Internet opening inventarisation still requires a published tariff.
     expect(net.importBlockedByMissingTariff).toBe(true);
-    expect(sf.importReady).toBe(false);
+    expect(net.importReady).toBe(false);
     expect(net.billingReady).toBe(false);
   });
 
@@ -360,7 +375,7 @@ describe('IS-7a · tariff setup gate', () => {
     expect(net.importReady).toBe(true);
   });
 
-  it('Support Fee classify surfaces tariff_not_configured', () => {
+  it('Support Fee historical opening ignores tariff flag; still requires source_reference', () => {
     const apartmentsByNumber = buildApartmentLookup([{ property_id: 1, apartment_number: '101' }]);
     const row = {
       apartment_number: '101',
@@ -371,23 +386,27 @@ describe('IS-7a · tariff setup gate', () => {
       remaining_debt: '100',
       opening_overpayment: '0',
       transition_date: '2026-01-01',
+      source_reference: 'SF-OPENING-TEST',
     };
-    const blocked = classifySupportFeeOpeningRows([row], {
+    const withoutTariff = classifySupportFeeOpeningRows([row], {
       apartmentsByNumber,
       existingByScope: new Map(),
       openingImportsByScope: new Map(),
       supportFeeTariffConfigured: false,
     });
-    expect(blocked.rows[0]?.errors).toContain('tariff_not_configured');
+    expect(withoutTariff.createCount).toBe(1);
+    expect(withoutTariff.rows[0]?.errors).not.toContain('tariff_not_configured');
 
-    const ok = classifySupportFeeOpeningRows([row], {
-      apartmentsByNumber,
-      existingByScope: new Map(),
-      openingImportsByScope: new Map(),
-      supportFeeTariffConfigured: true,
-    });
-    expect(ok.createCount).toBe(1);
-    expect(ok.rows[0]?.errors).not.toContain('tariff_not_configured');
+    const missingRef = classifySupportFeeOpeningRows(
+      [{ ...row, source_reference: '' }],
+      {
+        apartmentsByNumber,
+        existingByScope: new Map(),
+        openingImportsByScope: new Map(),
+        supportFeeTariffConfigured: false,
+      },
+    );
+    expect(missingRef.rows[0]?.errors).toContain('required:source_reference');
   });
 
   it('Internet classify surfaces tariff_not_configured', () => {
@@ -428,8 +447,8 @@ describe('IS-7a · tariff setup gate', () => {
 
     const ctx = {
       apartmentsByNumber: buildApartmentLookup([{ property_id: 1, apartment_number: '12' }]),
-      activePropertyIds: new Set<number>(),
-      existingSerials: new Set<string>(),
+      existingActiveSerials: new Set<string>(),
+      existingMetersBySerial: new Map<string, number>(),
       policy: { allowReplace: false as const },
     };
     const water = classifyWaterMeterOpeningRows(

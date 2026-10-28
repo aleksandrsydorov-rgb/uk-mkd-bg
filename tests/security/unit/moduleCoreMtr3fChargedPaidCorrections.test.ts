@@ -10,6 +10,7 @@ import {
   assertPackageObjectCoverage,
   parseFreshInstallManifest,
 } from '@/lib/moduleCore';
+import { readFreshInstallCoverageSql } from './_freshInstallCoverageSql';
 
 const MTR3F =
   'supabase/migrations/20261109140000_mtr3f_charged_paid_reading_corrections.sql';
@@ -61,11 +62,8 @@ describe('MTR-3F · charged/paid reading corrections', () => {
     const manifest = parseFreshInstallManifest(
       read(path.join(FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json')),
     );
-    const sql = FRESH_INSTALL_ORDERED_FILES.map((f) =>
-      read(path.join(FRESH_INSTALL_PACKAGE_DIR, f)),
-    ).join('\n');
     const coverage = assertPackageObjectCoverage(
-      sql,
+      readFreshInstallCoverageSql(),
       manifest.requiredRelationsAfterPackage,
       manifest.requiredFunctionsAfterPackage ?? [],
     );

@@ -69,6 +69,8 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '101_r1_rc8_first_run_wizard.sql',
   '102_r1_rc8_meters_multi_opening_balance.sql',
   '103_r1_rc8_first_run_support_fee_opening.sql',
+  '104_r1_rc8_support_fee_opening_close.sql',
+  '105_r1_rc8_first_run_capital_repair_opening.sql',
 ] as const;
 
 export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;
@@ -663,7 +665,15 @@ export function assertFreshInstallDependencyOrder(orderedFiles: readonly string[
   };
 }
 
-/** Detect missing required objects listed in manifest vs package SQL. */
+/**
+ * Detect missing required objects listed in manifest vs applied SQL
+ * (package stubs + chronological migrations concatenated by callers).
+ *
+ * Relations count as present when SQL creates them. Exception: platform
+ * storage.* only — to_regclass('storage.*') is an existence guard for the
+ * Supabase storage schema, not proof that arbitrary public objects were created.
+ * Never invent CREATE TABLE stubs solely to satisfy this check.
+ */
 export function assertPackageObjectCoverage(
   sql: string,
   requiredRelations: readonly string[],
@@ -678,10 +688,20 @@ export function assertPackageObjectCoverage(
     const parts = rel.split('.');
     const schema = parts.length > 1 ? parts[0] : 'public';
     const name = parts.length > 1 ? parts.slice(1).join('.') : parts[0];
-    return !new RegExp(
+    const created = new RegExp(
       `create\\s+table\\s+if\\s+not\\s+exists\\s+${schema}\\.${name}\\b`,
       'i',
     ).test(sql);
+    if (created) return false;
+    // Only storage.* may be satisfied by a platform to_regclass existence check.
+    if (schema === 'storage') {
+      const asserted = new RegExp(
+        `to_regclass\\(\\s*'storage\\.${name}'\\s*\\)`,
+        'i',
+      ).test(sql);
+      return !asserted;
+    }
+    return true;
   });
   const missingFunctions = requiredFunctions.filter((fn) => {
     const base = fn.replace(/^public\./, '').replace(/\(.*\)$/, '');

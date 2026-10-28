@@ -117,13 +117,18 @@ export function validateSupportFeeOpeningRow(row: Record<string, string>): strin
   }
 
   const overRaw = String(row.opening_overpayment ?? '').trim();
-  if (overRaw) {
-    const over = parseNonNegMoney(overRaw);
-    if (over == null) errors.push('invalid:opening_overpayment');
+  const over = overRaw ? parseNonNegMoney(overRaw) : 0;
+  if (overRaw && over == null) errors.push('invalid:opening_overpayment');
+  if (over != null && over > 0 && remaining != null && remaining > 0) {
+    errors.push('mutually_exclusive:debt_and_overpayment');
   }
 
   const td = parseTransitionDate(row.transition_date);
   if (!td.ok) errors.push(td.error);
+
+  if (!String(row.source_reference ?? '').trim()) {
+    errors.push('required:source_reference');
+  }
 
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
@@ -180,14 +185,7 @@ export function classifySupportFeeOpeningRows(
 
     if (apt && propertyId == null) errors.push('unknown_apartment');
     // R1-RC8: do not require published SF tariff for historical opening inventarisation.
-
-    if (remaining != null && over > 0 && remaining > 0) {
-      errors.push('mutually_exclusive:debt_and_overpayment');
-    }
-
-    if (!String(raw.source_reference ?? '').trim()) {
-      errors.push('required:source_reference');
-    }
+    // source_reference + debt/overpayment XOR are enforced in validateSupportFeeOpeningRow.
 
     if (propertyId != null && year != null) {
       const sk = scopeKey(propertyId, year);

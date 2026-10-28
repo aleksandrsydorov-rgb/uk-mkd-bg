@@ -5,7 +5,6 @@ import {
   OPENING_READING_ROW_COMMIT,
   PROPERTY_BOOK_MODULE_KEY,
   WATER_MODULE_KEY,
-  activePropertyIdsFromMeters,
   bootstrapModuleSetupAdapters,
   buildApartmentLookup,
   buildElectricityMeterIs3TemplateBuffer,
@@ -13,12 +12,13 @@ import {
   classifyElectricityMeterOpeningRows,
   classifyWaterMeterOpeningRows,
   electricityAssignPayloadsFromPreview,
+  existingActiveSerialsFromMeters,
+  existingMetersBySerialFromMeters,
   getModuleAdapter,
   isOpeningReadingRowCommitBlocked,
   listRegisteredModuleKeys,
   parseInstalledAtDate,
   resetModuleSetupAdaptersForTests,
-  serialSetFromMeters,
   setupCompleteFromDraft,
   validateElectricityMeterRow,
   validateWaterMeterRow,
@@ -39,8 +39,8 @@ function waterCtx(args?: {
   const meters = args?.meters ?? [];
   return {
     apartmentsByNumber: buildApartmentLookup(apts),
-    activePropertyIds: activePropertyIdsFromMeters(meters),
-    existingSerials: serialSetFromMeters(meters),
+    existingActiveSerials: existingActiveSerialsFromMeters(meters),
+    existingMetersBySerial: existingMetersBySerialFromMeters(meters),
     policy: { allowReplace: false as const },
   };
 }
@@ -114,14 +114,25 @@ describe('IS-3 · water validation and classify', () => {
     expect(create.errorCount).toBe(0);
     expect(create.createCount).toBe(1);
 
+    // Multi-meter: SKIP only when the same serial already exists on this apartment.
     const skip = classifyWaterMeterOpeningRows(
       [valid],
       waterCtx({
-        meters: [{ propertyId: 1, meterNumber: 'W-OLD', retiredAt: null }],
+        meters: [{ propertyId: 1, meterNumber: 'W-12-001', retiredAt: null }],
       }),
     );
     expect(skip.skipCount).toBe(1);
     expect(skip.createCount).toBe(0);
+
+    // Different serial on an apartment that already has a meter → CREATE.
+    const second = classifyWaterMeterOpeningRows(
+      [{ ...valid, meter_number: 'W-12-002' }],
+      waterCtx({
+        meters: [{ propertyId: 1, meterNumber: 'W-12-001', retiredAt: null }],
+      }),
+    );
+    expect(second.createCount).toBe(1);
+    expect(second.skipCount).toBe(0);
 
     const unknown = classifyWaterMeterOpeningRows(
       [{ ...valid, apartment_number: '999' }],
@@ -161,10 +172,10 @@ describe('IS-3 · water validation and classify', () => {
         },
       ],
       waterCtx({
-        meters: [{ propertyId: 2, meterNumber: 'W-X', retiredAt: null }],
+        meters: [{ propertyId: 2, meterNumber: 'W-14-001', retiredAt: null }],
       }),
     );
-    // apt 14 SKIP; apt 12 CREATE
+    // apt 14 SKIP (same serial); apt 12 CREATE
     const payloads = waterAssignPayloadsFromPreview(preview);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]?.propertyId).toBe(1);
@@ -200,7 +211,7 @@ describe('IS-3 · electricity validation and classify', () => {
     const preview = classifyElectricityMeterOpeningRows(
       [valid],
       waterCtx({
-        meters: [{ propertyId: 1, meterNumber: 'E-OLD', retiredAt: null }],
+        meters: [{ propertyId: 1, meterNumber: 'E-12-001', retiredAt: null }],
       }),
     );
     expect(preview.skipCount).toBe(1);

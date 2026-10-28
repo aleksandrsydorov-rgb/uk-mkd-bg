@@ -400,7 +400,7 @@
     "notes": [
         "Apply ALL supabase/migrations/*.sql in filename order after the package (or supabase migration up).",
         "Do NOT insert into schema_migrations unless the matching SQL file was actually applied successfully.",
-        "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (144 for RC8).",
+        "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (148 for RC8).",
         "chronologicalMigrationsPackaged lists release-critical files that must be present in the tree; chronologicalMigrationTree is the full ordered inventory.",
         "RC8 additive: 97_r1_rc8_restore_general_meeting.sql / 20261121120000 supersedes R1-MT-HIDE for general_meeting only; Rental stays excluded.",
         "RC7 image/tag/archive remain historical; this manifest tracks RC8 packaging.",

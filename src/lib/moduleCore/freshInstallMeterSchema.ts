@@ -69,6 +69,9 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '101_r1_rc8_first_run_wizard.sql',
   '102_r1_rc8_meters_multi_opening_balance.sql',
   '103_r1_rc8_first_run_support_fee_opening.sql',
+  '104_r1_rc8_support_fee_opening_close.sql',
+  '105_r1_rc8_first_run_capital_repair_opening.sql',
+  '106_r1_rc8_first_run_budget_stage.sql',
 ] as const;
 
 export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;

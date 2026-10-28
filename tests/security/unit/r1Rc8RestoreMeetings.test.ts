@@ -80,6 +80,6 @@ describe('R1-RC8 restore · Initial Setup / gates / Guest Mode', () => {
     };
     expect(manifest.orderedFiles).toContain('97_r1_rc8_restore_general_meeting.sql');
     expect(manifest.chronologicalMigrationsPackaged).toContain(RESTORE_MIG);
-    expect(manifest.expectedChronologicalMigrationCount).toBe(148);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(151);
   });
 });

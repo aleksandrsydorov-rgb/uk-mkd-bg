@@ -34,6 +34,9 @@ import {
   validateComplexForm,
   validateMetersSelection,
   visibleFirstRunStages,
+  BUDGET_MODULE_KEY,
+  firstRunBudgetDraftPayload,
+  type FirstRunBudgetDraft,
   type FirstRunComplexForm,
   type FirstRunErrorRow,
   type FirstRunMeterUtility,
@@ -63,6 +66,8 @@ import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapt
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
 import { parsePropertyBookWorkbook, type PropertyBookWorkbookPayload } from '@/lib/propertyBookAdmin';
 import type { Database } from '@/lib/database.types';
+import { AdminFirstRunTariffs } from '@/components/admin/AdminFirstRunTariffs';
+import { AdminFirstRunBudget } from '@/components/admin/AdminFirstRunBudget';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -722,6 +727,38 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   }
 
   // ---------------------------------------------------------------------------
+  // tariffs → budget → complete
+  // ---------------------------------------------------------------------------
+
+  async function onTariffsContinue() {
+    await run(async () => {
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'tariffs',
+          nextStage: 'budget',
+        }),
+      );
+      setNote(t('admin.firstRunTariffsCommitted'));
+      goStage('budget');
+    });
+  }
+
+  async function onBudgetContinue(payload: FirstRunBudgetDraft) {
+    await run(async () => {
+      await activateModule(BUDGET_MODULE_KEY);
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'budget',
+          nextStage: 'complete',
+          draft: firstRunBudgetDraftPayload(payload),
+        }),
+      );
+      setNote(t('admin.firstRunBudgetCommitted'));
+      goStage('complete');
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // complete
   // ---------------------------------------------------------------------------
 
@@ -762,6 +799,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         return t('admin.firstRunStageCapitalRepair');
       case 'tariffs':
         return t('admin.firstRunStageTariffs');
+      case 'budget':
+        return t('admin.firstRunStageBudget');
       default:
         return t('admin.firstRunStageComplete');
     }
@@ -1348,7 +1387,33 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       {stage === 'tariffs' ? (
         <AdminCard>
           <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunStageTariffs')}</h3>
-          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunTariffsStubBody')}</p>
+          <AdminFirstRunTariffs
+            supabase={supabase}
+            t={t}
+            selection={selectionChosen ? selection : { water: true, electricity: true }}
+            busy={busy}
+            onBusy={setBusy}
+            onContinue={onTariffsContinue}
+          />
+          {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
+          {note ? <p className="mt-3 text-xs text-secondary">{note}</p> : null}
+        </AdminCard>
+      ) : null}
+
+      {stage === 'budget' ? (
+        <AdminCard>
+          <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunStageBudget')}</h3>
+          <AdminFirstRunBudget
+            supabase={supabase}
+            t={t}
+            draft={state?.draft ?? {}}
+            busy={busy}
+            onBusy={setBusy}
+            onState={applyState}
+            onContinue={onBudgetContinue}
+          />
+          {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
+          {note ? <p className="mt-3 text-xs text-secondary">{note}</p> : null}
         </AdminCard>
       ) : null}
 

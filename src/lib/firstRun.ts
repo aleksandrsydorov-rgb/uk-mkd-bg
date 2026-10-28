@@ -23,9 +23,13 @@ export const FIRST_RUN_STAGES = [
   'support_fee_opening',
   'capital_repair_opening',
   'tariffs',
+  'budget',
   'complete',
 ] as const;
 export type FirstRunStageKey = (typeof FIRST_RUN_STAGES)[number];
+
+/** Tariff Core keys required before first-run tariffs stage can complete. */
+export type FirstRunTariffKey = 'water' | 'electricity' | 'support_fee' | 'capital_repair';
 
 export type FirstRunStatus = 'pending' | 'in_progress' | 'complete';
 export type FirstRunMeterUtility = 'water' | 'electricity';
@@ -330,6 +334,99 @@ export function nextAfterMetersStage(
 ): FirstRunStageKey {
   if (current === 'meters_water' && sel.electricity) return 'meters_electricity';
   return 'support_fee_opening';
+}
+
+/** Required published tariffs for first-run (selected utilities + SF + CR). */
+export function requiredFirstRunTariffKeys(sel: MetersSelection): FirstRunTariffKey[] {
+  const keys: FirstRunTariffKey[] = [];
+  if (sel.water) keys.push('water');
+  if (sel.electricity) keys.push('electricity');
+  keys.push('support_fee', 'capital_repair');
+  return keys;
+}
+
+function hasTariffVersionId(id: string | null | undefined): boolean {
+  return id != null && String(id).trim().length > 0;
+}
+
+/**
+ * True when Tariff Core has a published version for first-run.
+ * Annual tariffs (support_fee / capital_repair) may land as nearest_future when
+ * application_year is next calendar year — that still counts as published.
+ */
+export function isFirstRunTariffPublished(
+  row:
+    | {
+        current_version_id?: string | null;
+        nearest_future_version_id?: string | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (row == null) return false;
+  return (
+    hasTariffVersionId(row.current_version_id) || hasTariffVersionId(row.nearest_future_version_id)
+  );
+}
+
+/** Keys still missing a published Tariff Core version. */
+export function missingFirstRunTariffs(
+  required: readonly FirstRunTariffKey[],
+  rows: readonly {
+    tariff_key: string;
+    current_version_id?: string | null;
+    nearest_future_version_id?: string | null;
+  }[],
+): FirstRunTariffKey[] {
+  return required.filter((key) => {
+    const row = rows.find((r) => String(r.tariff_key).toLowerCase() === key);
+    return !isFirstRunTariffPublished(row);
+  });
+}
+
+export const BUDGET_MODULE_KEY = 'budget';
+
+export type FirstRunBudgetDraft = {
+  calendarYear: number | null;
+  yearId: string | null;
+  decisionNote: string;
+  zeroConfirmed: boolean;
+  step: 'year' | 'amounts' | 'review' | 'done';
+};
+
+/** Parse budget fields from first_run_draft (server progress). */
+export function parseFirstRunBudgetDraft(draft: unknown): FirstRunBudgetDraft {
+  const d = asRecord(draft);
+  const yearRaw = d.budget_calendar_year;
+  const yearNum = yearRaw == null || yearRaw === '' ? NaN : Number(yearRaw);
+  const stepRaw = String(d.budget_ui_step ?? '').trim();
+  const step =
+    stepRaw === 'amounts' || stepRaw === 'review' || stepRaw === 'done' || stepRaw === 'year'
+      ? stepRaw
+      : 'year';
+  const zeroRaw = String(d.budget_zero_confirmed ?? '').trim().toLowerCase();
+  return {
+    calendarYear: Number.isFinite(yearNum) && yearNum >= 2020 && yearNum <= 2100 ? yearNum : null,
+    yearId: d.budget_year_id == null || d.budget_year_id === '' ? null : String(d.budget_year_id),
+    decisionNote: str(d.budget_decision_note),
+    zeroConfirmed: zeroRaw === 'true' || zeroRaw === 't' || zeroRaw === '1' || zeroRaw === 'yes',
+    step,
+  };
+}
+
+export function firstRunBudgetDraftPayload(d: FirstRunBudgetDraft): Record<string, unknown> {
+  return {
+    budget_calendar_year: d.calendarYear,
+    budget_year_id: d.yearId,
+    budget_decision_note: d.decisionNote,
+    budget_zero_confirmed: d.zeroConfirmed,
+    budget_ui_step: d.step,
+  };
+}
+
+/** Fully zero plan needs an explicit confirmation flag (server re-checks). */
+export function budgetPlanRequiresZeroConfirmation(totalPlannedEur: number): boolean {
+  return !(Number(totalPlannedEur) > 0);
 }
 
 // ---------------------------------------------------------------------------

@@ -48,7 +48,10 @@
         "102_r1_rc8_meters_multi_opening_balance.sql",
         "103_r1_rc8_first_run_support_fee_opening.sql",
         "104_r1_rc8_support_fee_opening_close.sql",
-        "105_r1_rc8_first_run_capital_repair_opening.sql"
+        "105_r1_rc8_first_run_capital_repair_opening.sql",
+        "106_r1_rc8_first_run_tariffs_budget.sql",
+        "107_r1_rc8_first_run_budget_wizard.sql",
+        "108_r1_rc8_first_run_tariff_period_ready.sql"
     ],
     "companionMigrations": [
         "supabase/migrations/20261026120000_is7a_fresh_install_meter_baseline_ddl.sql",
@@ -95,7 +98,10 @@
         "supabase/migrations/20261125140000_r1_rc8_first_run_hardening.sql",
         "supabase/migrations/20261125150000_r1_rc8_first_run_support_fee_opening.sql",
         "supabase/migrations/20261125160000_r1_rc8_support_fee_opening_close.sql",
-        "supabase/migrations/20261125170000_r1_rc8_first_run_capital_repair_opening.sql"
+        "supabase/migrations/20261125170000_r1_rc8_first_run_capital_repair_opening.sql",
+        "supabase/migrations/20261125180000_r1_rc8_first_run_tariffs_budget.sql",
+        "supabase/migrations/20261125190000_r1_rc8_first_run_budget_wizard.sql",
+        "supabase/migrations/20261125200000_r1_rc8_first_run_tariff_period_ready.sql"
     ],
     "companionMigration": "supabase/migrations/20261030120000_is10d_distributive_neutralize_amadeus11_sf_cutover.sql",
     "requiredExtensions": [
@@ -245,7 +251,7 @@
     "excludeFromCompanion": [
         "00_preflight_refuse_populated.sql"
     ],
-    "expectedChronologicalMigrationCount": 148,
+    "expectedChronologicalMigrationCount": 151,
     "chronologicalMigrationTree": [
         "supabase/migrations/20260924160000_bulk_accrual_hotfix.sql",
         "supabase/migrations/20260924171500_general_meetings_rescheduled_from_meeting_id.sql",
@@ -394,13 +400,16 @@
         "supabase/migrations/20261125140000_r1_rc8_first_run_hardening.sql",
         "supabase/migrations/20261125150000_r1_rc8_first_run_support_fee_opening.sql",
         "supabase/migrations/20261125160000_r1_rc8_support_fee_opening_close.sql",
-        "supabase/migrations/20261125170000_r1_rc8_first_run_capital_repair_opening.sql"
+        "supabase/migrations/20261125170000_r1_rc8_first_run_capital_repair_opening.sql",
+        "supabase/migrations/20261125180000_r1_rc8_first_run_tariffs_budget.sql",
+        "supabase/migrations/20261125190000_r1_rc8_first_run_budget_wizard.sql",
+        "supabase/migrations/20261125200000_r1_rc8_first_run_tariff_period_ready.sql"
     ],
     "release": "1.0.0-rc8",
     "notes": [
         "Apply ALL supabase/migrations/*.sql in filename order after the package (or supabase migration up).",
         "Do NOT insert into schema_migrations unless the matching SQL file was actually applied successfully.",
-        "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (148 for RC8).",
+        "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (151 for RC8).",
         "chronologicalMigrationsPackaged lists release-critical files that must be present in the tree; chronologicalMigrationTree is the full ordered inventory.",
         "RC8 additive: 97_r1_rc8_restore_general_meeting.sql / 20261121120000 supersedes R1-MT-HIDE for general_meeting only; Rental stays excluded.",
         "RC7 image/tag/archive remain historical; this manifest tracks RC8 packaging.",

@@ -47,6 +47,10 @@ export type SupportFeeHistoryKind =
   | 'tariff_change'
   | 'void'
   | 'restore'
+  | 'reversal'
+  | 'opening_obligation'
+  | 'opening_settlement'
+  | 'opening_credit'
   | 'other';
 
 export type SupportFeeHistoryEntryInput = {
@@ -127,6 +131,8 @@ export function classifySupportFeeHistoryKind(kind: string | null | undefined): 
       return 'charge';
     case 'payment':
       return 'payment';
+    case 'payment_reversal':
+      return 'reversal';
     case 'late_increase_waive':
       return 'penalty_waive';
     case 'adjustment_debit':
@@ -136,6 +142,12 @@ export function classifySupportFeeHistoryKind(kind: string | null | undefined): 
       return 'void';
     case 'assessment_restore':
       return 'restore';
+    case 'opening_obligation':
+      return 'opening_obligation';
+    case 'opening_historical_settlement':
+      return 'opening_settlement';
+    case 'opening_credit':
+      return 'opening_credit';
     default:
       return 'other';
   }
@@ -177,6 +189,14 @@ export function supportFeeHistoryKindLabelKey(kind: SupportFeeHistoryKind): stri
       return 'admin.sfHistVoid';
     case 'restore':
       return 'admin.sfHistRestore';
+    case 'reversal':
+      return 'admin.sfHistReversal';
+    case 'opening_obligation':
+      return 'admin.sfHistOpeningObligation';
+    case 'opening_settlement':
+      return 'admin.sfHistOpeningSettlement';
+    case 'opening_credit':
+      return 'admin.sfHistOpeningCredit';
     default:
       return 'admin.kind';
   }

@@ -41,7 +41,9 @@ import {
   OwnershipProcessSteps,
   OwnershipSectionCard,
   OwnershipTransferCard,
+  OwnershipWizardSteps,
   ownerDisplayName,
+  rosterDisplayName,
 } from '@/components/ownership/OwnershipTransferUi';
 
 type DebtStatus = {
@@ -120,10 +122,14 @@ export function AdminOwnershipTransfers({
   const [docFile, setDocFile] = useState<File | null>(null);
   const [uploadedPath, setUploadedPath] = useState<string | null>(null);
   const [adminInitOpen, setAdminInitOpen] = useState(false);
+  const [initStep, setInitStep] = useState(0);
   const [initPropertyId, setInitPropertyId] = useState('');
+  const [initCurrentOwners, setInitCurrentOwners] = useState<OwnershipTargetOwner[]>([]);
+  const [initCurrentLoading, setInitCurrentLoading] = useState(false);
   const [initRoster, setInitRoster] = useState<RosterOwnerForm[]>([emptyRosterOwner()]);
   const [initReason, setInitReason] = useState<OwnershipChangeReason>('sale');
   const [initNote, setInitNote] = useState('');
+  const [initError, setInitError] = useState<string | null>(null);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [corrPropertyId, setCorrPropertyId] = useState('');
   const [corrRoster, setCorrRoster] = useState<RosterOwnerForm[]>([emptyRosterOwner()]);
@@ -387,17 +393,105 @@ export function AdminOwnershipTransfers({
     }
   }
 
+  async function fetchPropertyOwners(propertyId: number): Promise<OwnershipTargetOwner[]> {
+    const { data, error } = await supabase
+      .from('property_registry_people')
+      .select(
+        'entity_kind, first_name, middle_name, last_name, entity_name, eik_bulstat, email, ownership_share_percent, ideal_parts_percent'
+      )
+      .eq('property_id', propertyId)
+      .eq('relation_type', 'owner')
+      .is('deregistered_at', null)
+      .order('id', { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((r) => ({
+      entity_kind: (r.entity_kind as OwnershipTargetOwner['entity_kind']) || 'natural_person',
+      first_name: r.first_name,
+      middle_name: r.middle_name,
+      last_name: r.last_name,
+      entity_name: r.entity_name,
+      eik_bulstat: r.eik_bulstat,
+      email: String(r.email ?? ''),
+      ownership_share_percent: Number(r.ownership_share_percent ?? 0),
+      ideal_parts_percent: Number(r.ideal_parts_percent ?? 0),
+    }));
+  }
+
+  function resetAdminInitiate() {
+    setInitStep(0);
+    setInitPropertyId('');
+    setInitCurrentOwners([]);
+    setInitRoster([emptyRosterOwner()]);
+    setInitReason('sale');
+    setInitNote('');
+    setInitError(null);
+  }
+
+  async function selectInitProperty(rawId: string) {
+    setInitPropertyId(rawId);
+    setInitError(null);
+    const propertyId = Number(rawId);
+    const ideal = propertyIdealParts(propertyId);
+    setInitRoster([
+      {
+        ...emptyRosterOwner(String(ideal || '')),
+        ownership_share_percent: '100',
+        ideal_parts_percent: String(ideal || ''),
+      },
+    ]);
+    setInitCurrentOwners([]);
+    if (!propertyId) return;
+    setInitCurrentLoading(true);
+    try {
+      const owners = await fetchPropertyOwners(propertyId);
+      setInitCurrentOwners(owners);
+    } catch (err: unknown) {
+      setInitError(err instanceof Error ? err.message : t('xfer.errLoadCurrentOwners'));
+    } finally {
+      setInitCurrentLoading(false);
+    }
+  }
+
+  function canAdvanceInitStep(from: number): boolean {
+    if (from === 0) {
+      if (!Number(initPropertyId)) {
+        setInitError(t('xfer.errPickProperty'));
+        return false;
+      }
+      setInitError(null);
+      return true;
+    }
+    if (from === 2) {
+      const ideal = propertyIdealParts(Number(initPropertyId) || 0);
+      if (!validateRosterForms(initRoster, ideal).ok) {
+        setInitError(t('xfer.errRosterInvalid'));
+        return false;
+      }
+      setInitError(null);
+      return true;
+    }
+    setInitError(null);
+    return true;
+  }
+
   async function handleAdminInitiate(e: React.FormEvent) {
     e.preventDefault();
     if (!canManage) return;
     const propertyId = Number(initPropertyId);
-    if (!propertyId) return;
+    if (!propertyId) {
+      setInitError(t('xfer.errPickProperty'));
+      setInitStep(0);
+      return;
+    }
     const ideal = propertyIdealParts(propertyId);
     if (!validateRosterForms(initRoster, ideal).ok) {
+      setInitError(t('xfer.errRosterInvalid'));
+      setInitStep(2);
       onError(t('xfer.errRosterInvalid'));
       return;
     }
     setBusyId(-1);
+    setInitError(null);
     try {
       const { error } = await supabase.rpc('submit_ownership_change', {
         p_property_id: propertyId,
@@ -409,41 +503,28 @@ export function AdminOwnershipTransfers({
       });
       if (error) throw error;
       setAdminInitOpen(false);
+      resetAdminInitiate();
       await onChanged();
     } catch (err: unknown) {
-      if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errSubmit'));
+      const message = isMissingRpcError(err)
+        ? t('xfer.errMigrationRequired')
+        : err instanceof Error
+          ? err.message
+          : t('xfer.errSubmit');
+      setInitError(message);
+      onError(message);
     } finally {
       setBusyId(null);
     }
   }
 
   async function loadBookIntoCorrection(propertyId: number) {
-    const { data, error } = await supabase
-      .from('property_registry_people')
-      .select(
-        'entity_kind, first_name, middle_name, last_name, entity_name, eik_bulstat, email, ownership_share_percent, ideal_parts_percent'
-      )
-      .eq('property_id', propertyId)
-      .eq('relation_type', 'owner')
-      .is('deregistered_at', null)
-      .order('id', { ascending: true });
-    if (error) {
-      onError(error.message);
-      return;
+    try {
+      const owners = await fetchPropertyOwners(propertyId);
+      setCorrRoster(targetOwnersToForms(owners));
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : t('xfer.errLoadCurrentOwners'));
     }
-    const owners = (data ?? []).map((r) => ({
-      entity_kind: (r.entity_kind as OwnershipTargetOwner['entity_kind']) || 'natural_person',
-      first_name: r.first_name,
-      middle_name: r.middle_name,
-      last_name: r.last_name,
-      entity_name: r.entity_name,
-      eik_bulstat: r.eik_bulstat,
-      email: String(r.email ?? ''),
-      ownership_share_percent: Number(r.ownership_share_percent ?? 0),
-      ideal_parts_percent: Number(r.ideal_parts_percent ?? 0),
-    }));
-    setCorrRoster(targetOwnersToForms(owners));
   }
 
   async function handleCorrection(e: React.FormEvent) {
@@ -590,9 +671,10 @@ export function AdminOwnershipTransfers({
 
       <OwnershipProcessSteps
         steps={[
-          { title: t('xfer.processStep1Title'), text: t('xfer.processStep1Text') },
-          { title: t('xfer.processStep2Title'), text: t('xfer.processStep2Text') },
-          { title: t('xfer.processStep3Title'), text: t('xfer.processStep3Text') },
+          { title: t('xfer.adminStepApt'), text: t('xfer.adminStepAptText') },
+          { title: t('xfer.adminStepCurrent'), text: t('xfer.adminStepCurrentText') },
+          { title: t('xfer.adminStepNew'), text: t('xfer.adminStepNewText') },
+          { title: t('xfer.adminStepReview'), text: t('xfer.adminStepReviewText') },
         ]}
       />
 
@@ -629,58 +711,185 @@ export function AdminOwnershipTransfers({
           title={t('xfer.adminInitiate')}
           description={t('xfer.adminInitiateLead')}
           open={adminInitOpen}
-          onOpenChange={setAdminInitOpen}
+          onOpenChange={(open) => {
+            setAdminInitOpen(open);
+            if (!open) resetAdminInitiate();
+          }}
         >
-          <form onSubmit={handleAdminInitiate} className="space-y-3">
-            <select
-              className={adminFieldClass}
-              value={initPropertyId}
-              onChange={(e) => {
-                setInitPropertyId(e.target.value);
-                const ideal = propertyIdealParts(Number(e.target.value));
-                setInitRoster([
-                  {
-                    ...emptyRosterOwner(String(ideal || '')),
-                    ownership_share_percent: '100',
-                    ideal_parts_percent: String(ideal || ''),
-                  },
-                ]);
-              }}
-              required
-            >
-              <option value="">{t('xfer.pickProperty')}</option>
-              {properties.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {t('picker.apt', { n: p.apartment_number ?? p.id })}
-                </option>
-              ))}
-            </select>
-            <select
-              className={adminFieldClass}
-              value={initReason}
-              onChange={(e) => setInitReason(e.target.value as OwnershipChangeReason)}
-            >
-              {OWNERSHIP_CHANGE_REASONS.map((r) => (
-                <option key={r} value={r}>
-                  {reasonLabel(r, t)}
-                </option>
-              ))}
-            </select>
-            <OwnershipRosterEditor
-              owners={initRoster}
-              onChange={setInitRoster}
-              propertyIdealParts={propertyIdealParts(Number(initPropertyId) || 0)}
+          <form
+            onSubmit={(e) => {
+              if (initStep < 3) {
+                e.preventDefault();
+                return;
+              }
+              void handleAdminInitiate(e);
+            }}
+            className="space-y-4"
+          >
+            <OwnershipWizardSteps
+              steps={[
+                t('xfer.adminStepApt'),
+                t('xfer.adminStepCurrent'),
+                t('xfer.adminStepNew'),
+                t('xfer.adminStepReview'),
+              ]}
+              current={initStep}
             />
-            <textarea
-              className={adminFieldClass}
-              placeholder={t('account.phCommentUk')}
-              rows={2}
-              value={initNote}
-              onChange={(e) => setInitNote(e.target.value)}
-            />
-            <AdminPrimaryButton type="submit" disabled={busyId === -1}>
-              {t('xfer.submitAdmin')}
-            </AdminPrimaryButton>
+
+            {initError ? <AdminInlineAlert tone="danger">{initError}</AdminInlineAlert> : null}
+
+            {initStep === 0 ? (
+              <div className="space-y-3">
+                <label className="grid gap-1 text-sm text-secondary">
+                  {t('xfer.adminStepApt')}
+                  <select
+                    className={adminFieldClass}
+                    value={initPropertyId}
+                    onChange={(e) => void selectInitProperty(e.target.value)}
+                    required
+                  >
+                    <option value="">{t('xfer.pickProperty')}</option>
+                    {properties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {t('picker.apt', { n: p.apartment_number ?? p.id })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <OwnershipHint>{t('xfer.adminStepAptText')}</OwnershipHint>
+              </div>
+            ) : null}
+
+            {initStep === 1 ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">
+                  {t('picker.apt', {
+                    n:
+                      properties.find((p) => String(p.id) === initPropertyId)?.apartment_number ??
+                      initPropertyId,
+                  })}
+                </p>
+                {initCurrentLoading ? (
+                  <p className="text-sm text-muted">{t('common.loading')}</p>
+                ) : initCurrentOwners.length === 0 ? (
+                  <AdminEmptyState title={t('xfer.adminNoCurrentOwners')} />
+                ) : (
+                  <ul className="space-y-1.5">
+                    {initCurrentOwners.map((owner, idx) => (
+                      <li
+                        key={`${owner.email}-${idx}`}
+                        className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-2"
+                      >
+                        <p className="text-sm font-medium text-foreground">
+                          {ownerDisplayName(owner)}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {owner.email || '—'} · {t('xfer.sharePercent')}:{' '}
+                          {owner.ownership_share_percent}% · {t('xfer.idealParts')}:{' '}
+                          {owner.ideal_parts_percent}%
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <OwnershipHint>{t('xfer.adminStepCurrentText')}</OwnershipHint>
+              </div>
+            ) : null}
+
+            {initStep === 2 ? (
+              <div className="space-y-3">
+                <label className="grid gap-1 text-sm text-secondary">
+                  {t('xfer.adminStepReason')}
+                  <select
+                    className={adminFieldClass}
+                    value={initReason}
+                    onChange={(e) => setInitReason(e.target.value as OwnershipChangeReason)}
+                  >
+                    {OWNERSHIP_CHANGE_REASONS.filter((r) => r !== 'correction').map((r) => (
+                      <option key={r} value={r}>
+                        {reasonLabel(r, t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <OwnershipHint>{t('xfer.shareHint')}</OwnershipHint>
+                <OwnershipRosterEditor
+                  owners={initRoster}
+                  onChange={(next) => {
+                    setInitRoster(next);
+                    setInitError(null);
+                  }}
+                  propertyIdealParts={propertyIdealParts(Number(initPropertyId) || 0)}
+                />
+                <textarea
+                  className={adminFieldClass}
+                  placeholder={t('account.phCommentUk')}
+                  rows={2}
+                  value={initNote}
+                  onChange={(e) => setInitNote(e.target.value)}
+                />
+              </div>
+            ) : null}
+
+            {initStep === 3 ? (
+              <div className="space-y-3">
+                <div className="rounded-[14px] border border-border bg-surface-secondary/40 px-3 py-3 text-sm">
+                  <p className="font-medium text-foreground">
+                    {t('picker.apt', {
+                      n:
+                        properties.find((p) => String(p.id) === initPropertyId)?.apartment_number ??
+                        initPropertyId,
+                    })}
+                  </p>
+                  <p className="mt-1 text-secondary">{reasonLabel(initReason, t)}</p>
+                  {initNote.trim() ? <p className="mt-1 text-xs text-muted">{initNote}</p> : null}
+                  <p className="mt-2 text-xs text-muted">
+                    {t('xfer.adminReviewNewOwners')}:{' '}
+                    {initRoster.map((o) => rosterDisplayName(o)).filter(Boolean).join(', ') || '—'}
+                  </p>
+                </div>
+                <OwnershipCompare
+                  beforeLabel={t('xfer.compareBefore')}
+                  afterLabel={t('xfer.compareAfter')}
+                  before={initCurrentOwners}
+                  after={initRoster}
+                  emptyBefore={t('xfer.compareEmptyBefore')}
+                  emptyAfter={t('xfer.compareEmptyAfter')}
+                  shareLabel={t('xfer.sharePercent')}
+                  idealLabel={t('xfer.idealParts')}
+                />
+                <OwnershipHint>{t('xfer.adminStepReviewText')}</OwnershipHint>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <AdminSecondaryButton
+                type="button"
+                disabled={initStep === 0 || busyId === -1}
+                onClick={() => {
+                  setInitError(null);
+                  setInitStep((s) => Math.max(0, s - 1));
+                }}
+              >
+                {t('common.back')}
+              </AdminSecondaryButton>
+              {initStep < 3 ? (
+                <AdminPrimaryButton
+                  type="button"
+                  disabled={busyId === -1 || (initStep === 0 && initCurrentLoading)}
+                  onClick={() => {
+                    if (!canAdvanceInitStep(initStep)) return;
+                    setInitStep((s) => Math.min(3, s + 1));
+                  }}
+                >
+                  {t('xfer.nextStep')}
+                </AdminPrimaryButton>
+              ) : (
+                <AdminPrimaryButton type="submit" disabled={busyId === -1}>
+                  {t('xfer.submitAdmin')}
+                </AdminPrimaryButton>
+              )}
+            </div>
           </form>
         </OwnershipSectionCard>
       )}

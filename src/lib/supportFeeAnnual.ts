@@ -59,6 +59,10 @@ export interface SupportFeeAssessment {
   restored_at?: string | null;
   restored_by_email?: string | null;
   restore_ledger_id?: number | null;
+  penalty_waive_reason?: string | null;
+  penalty_waived_at?: string | null;
+  penalty_waived_by_email?: string | null;
+  penalty_waive_ledger_id?: number | null;
   tariff_version_id: string | null;
   area_sqm_snapshot: number | null;
   rate_eur_per_sqm_year_snapshot: number | null;

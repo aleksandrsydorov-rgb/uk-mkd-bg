@@ -61,11 +61,11 @@ export function privateUploadRejectReason(bucket: string, file: File): 'type' | 
   if (bucket === CHAT_FILES_BUCKET) {
     return CHAT_MIMES.has(mime) ? null : 'type';
   }
-  if (
-    bucket === REQUEST_PHOTOS_BUCKET
-    || bucket === POLL_IMAGES_BUCKET
-    || bucket === EXPENSE_RECEIPTS_BUCKET
-  ) {
+  if (bucket === EXPENSE_RECEIPTS_BUCKET) {
+    if (IMAGE_MIMES.has(mime) || mime === 'application/pdf') return null;
+    return 'type';
+  }
+  if (bucket === REQUEST_PHOTOS_BUCKET || bucket === POLL_IMAGES_BUCKET) {
     return IMAGE_MIMES.has(mime) ? null : 'type';
   }
   return null;
@@ -98,6 +98,10 @@ export function expenseReceiptPath(expenseId: number, fileName: string) {
   return `expenses/${expenseId}/${objectFileName(fileName)}`;
 }
 
+export function expensePendingReceiptPath(fileName: string) {
+  return `expenses/pending/${objectFileName(fileName)}`;
+}
+
 export function pollImagePath(pollId: number, fileName: string) {
   return `polls/${pollId}/${objectFileName(fileName)}`;
 }
@@ -116,7 +120,7 @@ export function bucketForStoredPath(stored: string | null | undefined) {
   if (/^requests\/[0-9]+\//.test(path)) return REQUEST_PHOTOS_BUCKET;
   if (/^security\/[0-9]+\//.test(path)) return REQUEST_PHOTOS_BUCKET;
   if (/^properties\/[0-9]+\//.test(path)) return CHAT_FILES_BUCKET;
-  if (/^expenses\/[0-9]+\//.test(path)) return EXPENSE_RECEIPTS_BUCKET;
+  if (/^expenses\/(?:pending|[0-9]+)\//.test(path)) return EXPENSE_RECEIPTS_BUCKET;
   if (/^polls\/[0-9]+\//.test(path)) return POLL_IMAGES_BUCKET;
   if (/^inventory\/[a-z0-9_-]+\/(asset|stock|session-item|maintenance)\//.test(path)) {
     return INVENTORY_DOCUMENTS_BUCKET;

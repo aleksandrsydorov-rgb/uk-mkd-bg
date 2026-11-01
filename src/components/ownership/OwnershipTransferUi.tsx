@@ -73,8 +73,14 @@ export function OwnershipProcessSteps({
 }: {
   steps: Array<{ title: string; text: string }>;
 }) {
+  const cols =
+    steps.length <= 3
+      ? 'sm:grid-cols-3'
+      : steps.length === 4
+        ? 'sm:grid-cols-2 lg:grid-cols-4'
+        : 'sm:grid-cols-2 lg:grid-cols-3';
   return (
-    <ol className="grid gap-2 sm:grid-cols-3">
+    <ol className={`grid gap-2 ${cols}`}>
       {steps.map((step, index) => (
         <li
           key={step.title}

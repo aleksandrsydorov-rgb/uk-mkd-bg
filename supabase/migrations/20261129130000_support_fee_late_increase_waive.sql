@@ -120,6 +120,10 @@ begin
     raise exception 'waive_support_fee_late_increase: assessment not found'
       using errcode = 'P0002';
   end if;
+  if coalesce(v_a.opening_import, false) then
+    raise exception 'waive_support_fee_late_increase: opening_import blocks waive'
+      using errcode = 'P0001';
+  end if;
 
   if v_a.penalty_waived_at is not null then
     raise exception 'waive_support_fee_late_increase: already waived' using errcode = '22023';

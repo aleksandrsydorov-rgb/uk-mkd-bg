@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -52,6 +52,8 @@ export function AdminUkExpenseOpeningForm({
     defaultUkExpenseOpeningManualSourceRef({ expenseDate: bounds.from }),
   );
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   const categoryCode = useMemo(() => {
     const row = budgetCategories.find((c) => c.id === categoryId);
@@ -60,6 +62,7 @@ export function AdminUkExpenseOpeningForm({
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (busyRef.current) return;
     if (!canSubmit) {
       onError(t('admin.expOpeningAdminOnly'));
       return;
@@ -83,6 +86,7 @@ export function AdminUkExpenseOpeningForm({
       return;
     }
 
+    busyRef.current = true;
     setBusy(true);
     try {
       const { error } = await supabase.rpc('import_uk_expense_opening_row', {
@@ -94,7 +98,7 @@ export function AdminUkExpenseOpeningForm({
         p_category_code: categoryCode,
         p_source_document: sourceDocument.trim() || null,
         p_notes: notes.trim() || null,
-        p_idempotency_key: crypto.randomUUID(),
+        p_idempotency_key: idempotencyKeyRef.current,
         p_batch_id: null,
       });
       if (error) throw error;
@@ -102,6 +106,7 @@ export function AdminUkExpenseOpeningForm({
     } catch (err: unknown) {
       onError(ownerVisibleError(err, t('admin.expOpeningSaveFailed')));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

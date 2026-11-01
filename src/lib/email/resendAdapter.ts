@@ -1,26 +1,17 @@
 /**
  * Server-only Resend HTTP adapter.
  * Never import from client components.
+ * A successful response means the API accepted the message, not that it was delivered.
  */
 
-export type ResendSendInput = {
-  to: string;
-  subject: string;
-  html: string;
-  fromName: string;
-  fromEmail: string;
-  replyTo?: string | null;
-  idempotencyKey?: string | null;
-};
+import type { MailSendInput, MailSendResult } from '@/lib/email/mailSend';
+import {
+  RESEND_IDEMPOTENCY_KEY_MAX,
+  providerIdempotencyKey,
+} from '@/lib/email/providerIdempotency';
 
-export type ResendSendResult =
-  | { ok: true; providerMessageId: string }
-  | {
-      ok: false;
-      errorCode: string;
-      responseClass: 'rejected' | 'rate_limited' | 'error';
-      status?: number;
-    };
+export type ResendSendInput = MailSendInput;
+export type ResendSendResult = MailSendResult;
 
 export type ResendHttpClient = {
   fetch: typeof fetch;
@@ -51,9 +42,10 @@ export function createResendAdapter(opts: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       };
-      if (input.idempotencyKey) {
-        headers['Idempotency-Key'] = input.idempotencyKey.slice(0, 256);
-      }
+      const idempotency = input.idempotencyKey
+        ? providerIdempotencyKey(input.idempotencyKey, RESEND_IDEMPOTENCY_KEY_MAX)
+        : null;
+      if (idempotency) headers['Idempotency-Key'] = idempotency;
 
       let res: Response;
       try {

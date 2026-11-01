@@ -76,10 +76,19 @@ describe('Task 09 · Support Fee register filters', () => {
 
 describe('Task 09 · operations history classification', () => {
   it('maps waive and tariff-change corrections', () => {
+    expect(enrichSupportFeeHistoryKind('payment', null)).toBe('payment');
+    expect(enrichSupportFeeHistoryKind('payment_reversal', null)).toBe('reversal');
+    expect(enrichSupportFeeHistoryKind('assessment_void', null)).toBe('void');
+    expect(enrichSupportFeeHistoryKind('opening_obligation', null)).toBe('opening_obligation');
+    expect(enrichSupportFeeHistoryKind('opening_historical_settlement', null)).toBe('opening_settlement');
+    expect(enrichSupportFeeHistoryKind('opening_credit', null)).toBe('opening_credit');
     expect(enrichSupportFeeHistoryKind('late_increase_waive', null)).toBe('penalty_waive');
     expect(enrichSupportFeeHistoryKind('adjustment_credit', 'tariff reprice delta')).toBe('tariff_change');
     expect(enrichSupportFeeHistoryKind('adjustment_debit', 'manual fix')).toBe('correction');
     expect(supportLedgerKindLabelKey('late_increase_waive')).toBe('admin.sfHistPenaltyWaive');
+    expect(supportLedgerKindLabelKey('opening_obligation')).toBe('admin.sfHistOpeningObligation');
+    expect(supportLedgerKindLabelKey('opening_historical_settlement')).toBe('admin.sfHistOpeningSettlement');
+    expect(supportLedgerKindLabelKey('opening_credit')).toBe('admin.sfHistOpeningCredit');
   });
 
   it('builds history rows with author and basis', () => {

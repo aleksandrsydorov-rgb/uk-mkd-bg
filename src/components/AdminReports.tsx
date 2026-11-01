@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
+import { categoryLabel, type BudgetCategory } from '@/lib/budget';
 import { isExpensePublished } from '@/lib/expenses';
 import { annualSupportFee, type SupportFeeEntry } from '@/lib/finance';
 import {
@@ -19,7 +20,29 @@ import {
   outstandingFromUtilityBalance,
   type FundTotalsLike,
 } from '@/lib/financeReporting';
+import {
+  filterBalanceMapByPropertyScope,
+  filterExpenseRowsByCategoryScope,
+  filterPropertiesByScope,
+  filterRowsByPropertyScope,
+  parseReportPropertyScope,
+  reportFilterFingerprint,
+  reportScopeMatchesGroup,
+  type ReportExpenseCategoryScope,
+  type ReportGroupScope,
+  type ReportPropertyScope,
+} from '@/lib/reportScope';
+import {
+  supportFeeStandingCharges,
+  supportFeeStandingPayments,
+  sumLedgerByKind,
+} from '@/lib/supportFeeOverview';
 import { downloadHtmlAsPdf } from '@/lib/pdfDownload';
+import {
+  capitalOpsHistoryTitleKey,
+  sumCapitalOperationalCharges,
+  sumCapitalOperationalReceipts,
+} from '@/lib/capitalRepairUi';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
   labelPriority,
@@ -143,9 +166,10 @@ function moneyOrDash(n: number | null | undefined, money: (v: number) => string,
 
 type ReportCard = {
   id: string;
-  category: 'overview' | 'support_fee' | 'capital' | 'utilities' | 'ops';
+  category: Exclude<ReportGroupScope, 'all'>;
   title: string;
   hint: string;
+  preview: { label: string; value: string }[];
   build: () => string;
 };
 
@@ -161,6 +185,7 @@ export function AdminReports({
   showSalary = false,
   supportAssessments = [],
   supportAssessmentsLoaded = false,
+  budgetCategories = [],
 }: {
   supabase: SupabaseClient<Database>;
   properties: Property[];
@@ -173,18 +198,25 @@ export function AdminReports({
   showSalary?: boolean;
   supportAssessments?: SupportAssessmentBalanceRow[];
   supportAssessmentsLoaded?: boolean;
+  budgetCategories?: BudgetCategory[];
 }) {
   const { t, locale } = useI18n();
   const money = (n: number) => formatEur(n, locale);
   const dash = t('admin.reportUnavailable');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [quarter, setQuarter] = useState(0);
+  const [propertyScopeRaw, setPropertyScopeRaw] = useState('all');
+  const [expenseCategoryScope, setExpenseCategoryScope] =
+    useState<ReportExpenseCategoryScope>('all');
+  const [groupScope, setGroupScope] = useState<ReportGroupScope>('all');
   const [busy, setBusy] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const propertyScope: ReportPropertyScope = parseReportPropertyScope(propertyScopeRaw);
 
   const [capitalFund, setCapitalFund] = useState<FundTotalsLike | null>(null);
   const [capitalLoaded, setCapitalLoaded] = useState(false);
   const [capitalLedger, setCapitalLedger] = useState<CapitalLedger[]>([]);
+  const [capitalByProperty, setCapitalByProperty] = useState<Map<number, UtilityBalance> | null>(null);
   const [waterByProperty, setWaterByProperty] = useState<Map<number, UtilityBalance> | null>(null);
   const [electricityByProperty, setElectricityByProperty] = useState<Map<number, UtilityBalance> | null>(null);
   const [internetByProperty, setInternetByProperty] = useState<Map<number, UtilityBalance> | null>(null);
@@ -206,12 +238,103 @@ export function AdminReports({
     }
     return Array.from(set).sort((a, b) => b - a);
   }, [years, ledger]);
-  const apts = useMemo(() => sortApts(properties), [properties]);
+  const allApts = useMemo(() => sortApts(properties), [properties]);
+  const apts = useMemo(
+    () => filterPropertiesByScope(allApts, propertyScope),
+    [allApts, propertyScope],
+  );
   const yearNum = Number(year);
-  const periodKey = quarter === 0 ? year : `${year}-q${quarter}`;
+  const filterKey = reportFilterFingerprint({
+    year,
+    quarter,
+    propertyScope,
+    expenseCategoryScope,
+  });
   const quarterLabels = [t('admin.reportsYearly'), t('admin.reportsQ1'), t('admin.reportsQ2'), t('admin.reportsQ3'), t('admin.reportsQ4')];
   const periodLabel = quarter === 0 ? `${quarterLabels[0]} ${year}` : `${year} · ${quarterLabels[quarter]}`;
-  const byId = useMemo(() => new Map(apts.map((p) => [p.id, p])), [apts]);
+  const aptFilterLabel =
+    propertyScope === 'all'
+      ? t('admin.reportsAptAll')
+      : allApts.find((p) => p.id === propertyScope)?.apartment_number ?? String(propertyScope);
+  const expenseCategoryOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of ukExpenses) {
+      if (e.budget_category_id) ids.add(String(e.budget_category_id));
+    }
+    return Array.from(ids).sort();
+  }, [ukExpenses]);
+  function expenseCategoryName(id: string) {
+    const cat = budgetCategories.find((c) => c.id === id);
+    return cat ? categoryLabel(cat, locale) : id.slice(0, 8);
+  }
+  const expenseCatLabel =
+    expenseCategoryScope === 'all'
+      ? t('admin.expCategoryAll')
+      : expenseCategoryScope === 'none'
+        ? t('admin.expBudgetCategoryNone')
+        : expenseCategoryName(expenseCategoryScope);
+  const groupLabel =
+    groupScope === 'all'
+      ? t('admin.reportsGroupAll')
+      : groupScope === 'overview'
+        ? t('admin.reportGroupOverview')
+        : groupScope === 'support_fee'
+          ? t('admin.reportCatSupportFee')
+          : groupScope === 'capital'
+            ? t('admin.reportCatCapital')
+            : groupScope === 'utilities'
+              ? t('admin.reportCatUtilities')
+              : t('admin.reportGroupOps');
+  const scopeNote = `${periodLabel} · ${t('admin.reportsApt')}: ${aptFilterLabel} · ${t('admin.reportsGroup')}: ${groupLabel}`;
+  const byId = useMemo(() => new Map(allApts.map((p) => [p.id, p])), [allApts]);
+  const scopedLedger = useMemo(
+    () => filterRowsByPropertyScope(ledger, propertyScope, (e) => e.property_id),
+    [ledger, propertyScope],
+  );
+  const scopedAssessments = useMemo(
+    () => filterRowsByPropertyScope(supportAssessments, propertyScope, (a) => a.property_id),
+    [supportAssessments, propertyScope],
+  );
+  const scopedWater = useMemo(
+    () => filterBalanceMapByPropertyScope(waterByProperty, propertyScope),
+    [waterByProperty, propertyScope],
+  );
+  const scopedElectricity = useMemo(
+    () => filterBalanceMapByPropertyScope(electricityByProperty, propertyScope),
+    [electricityByProperty, propertyScope],
+  );
+  const scopedInternet = useMemo(
+    () => filterBalanceMapByPropertyScope(internetByProperty, propertyScope),
+    [internetByProperty, propertyScope],
+  );
+  const scopedCapitalByProperty = useMemo(
+    () => filterBalanceMapByPropertyScope(capitalByProperty, propertyScope),
+    [capitalByProperty, propertyScope],
+  );
+  const scopedCapitalLedger = useMemo(
+    () => filterRowsByPropertyScope(capitalLedger, propertyScope, (e) => e.property_id),
+    [capitalLedger, propertyScope],
+  );
+  const scopedUtilityLedgers = useMemo(
+    () => ({
+      water: filterRowsByPropertyScope(utilityLedgers.water, propertyScope, (e) => e.property_id),
+      electricity: filterRowsByPropertyScope(
+        utilityLedgers.electricity,
+        propertyScope,
+        (e) => e.property_id,
+      ),
+      internet: filterRowsByPropertyScope(utilityLedgers.internet, propertyScope, (e) => e.property_id),
+    }),
+    [utilityLedgers, propertyScope],
+  );
+  const scopedRequests = useMemo(
+    () => filterRowsByPropertyScope(requests, propertyScope, (r) => r.property_id),
+    [requests, propertyScope],
+  );
+  const scopedExpenses = useMemo(
+    () => filterExpenseRowsByCategoryScope(ukExpenses, expenseCategoryScope),
+    [ukExpenses, expenseCategoryScope],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -294,7 +417,6 @@ export function AdminReports({
     };
   }, [properties, supabase, t]);
 
-  const [capitalByProperty, setCapitalByProperty] = useState<Map<number, UtilityBalance> | null>(null);
   useEffect(() => {
     let cancelled = false;
     async function loadCapApt() {
@@ -332,13 +454,38 @@ export function AdminReports({
   }
 
   function generatedLine() {
-    return `${t('admin.pdfGenerated')}: ${formatOwnerDateTime(new Date().toISOString(), locale)} · ${periodLabel}`;
+    return `${t('admin.pdfGenerated')}: ${formatOwnerDateTime(new Date().toISOString(), locale)} · ${scopeNote}`;
+  }
+
+  function cardFilterNote(cardId: string) {
+    const lines = [scopeNote];
+    if (cardId === 'expenses') {
+      lines.push(`${t('admin.expBudgetCategory')}: ${expenseCatLabel}`);
+      lines.push(t('admin.reportsExpenseAptNa'));
+    } else {
+      lines.push(t('admin.reportsExpenseFilterNa'));
+    }
+    if (cardId === 'summary' && propertyScope !== 'all') {
+      lines.push(t('admin.reportsStaffFilterNa'));
+    }
+    if (cardId === 'capital') {
+      lines.push(
+        propertyScope === 'all' ? t('admin.reportsCapitalNotCash') : t('admin.reportsCapitalAptNotFund'),
+      );
+    }
+    if (cardId !== 'fee' && cardId !== 'expenses' && cardId !== 'requests') {
+      lines.push(t('admin.reportsBalancesNotPeriod'));
+    }
+    if (cardId === 'fee' || cardId === 'support-fee') {
+      lines.push(t('admin.reportsFeeGrossNote'));
+    }
+    return lines.join(' · ');
   }
 
   function sfDebt(p: Property) {
     return displaySupportOutstanding({
       assessmentsLoaded: supportAssessmentsLoaded,
-      assessments: supportAssessments,
+      assessments: scopedAssessments,
       propertyId: p.id,
       portalDebt: p.debt,
     });
@@ -348,25 +495,112 @@ export function AdminReports({
     () =>
       buildSupportFeeReportSnapshot({
         properties: apts,
-        assessments: supportAssessments,
+        assessments: scopedAssessments,
         assessmentsLoaded: supportAssessmentsLoaded,
-        ledger,
+        ledger: scopedLedger,
       }),
-    [apts, supportAssessments, supportAssessmentsLoaded, ledger]
+    [apts, scopedAssessments, supportAssessmentsLoaded, scopedLedger]
   );
-  const capitalSnap = useMemo(
-    () => buildCapitalReportSnapshot(capitalFund, capitalLoaded),
-    [capitalFund, capitalLoaded]
-  );
+  const capitalSnap = useMemo(() => {
+    const charged = sumCapitalOperationalCharges(scopedCapitalLedger);
+    const paid = sumCapitalOperationalReceipts(scopedCapitalLedger);
+    if (propertyScope === 'all') {
+      const base = buildCapitalReportSnapshot(capitalFund, capitalLoaded);
+      if (base.reliability === 'unavailable') return base;
+      return { ...base, charged, paid };
+    }
+    if (!scopedCapitalByProperty) {
+      return buildCapitalReportSnapshot(null, false);
+    }
+    const bal = scopedCapitalByProperty.get(propertyScope);
+    const outstanding = outstandingFromUtilityBalance(bal);
+    return {
+      ...buildCapitalReportSnapshot(
+        {
+          charged_eur: charged,
+          paid_eur: paid,
+          balance_eur: outstanding,
+          apartments_with_debt: outstanding > 0 ? 1 : 0,
+        },
+        true,
+      ),
+      charged,
+      paid,
+    };
+  }, [propertyScope, capitalFund, capitalLoaded, scopedCapitalByProperty, scopedCapitalLedger]);
   const utilitiesSnap = useMemo(
     () =>
       buildUtilitiesReportSnapshot({
-        waterByProperty,
-        electricityByProperty,
-        internetByProperty,
+        waterByProperty: scopedWater,
+        electricityByProperty: scopedElectricity,
+        internetByProperty: scopedInternet,
       }),
-    [waterByProperty, electricityByProperty, internetByProperty]
+    [scopedWater, scopedElectricity, scopedInternet]
   );
+
+  const periodExpenseRows = useMemo(
+    () =>
+      scopedExpenses
+        .filter((e) => dateInPeriod(e.expense_date, yearNum, quarter))
+        .sort((a, b) => a.expense_date.localeCompare(b.expense_date)),
+    [scopedExpenses, yearNum, quarter],
+  );
+  const periodExpensePublishedTotal = useMemo(
+    () =>
+      periodExpenseRows
+        .filter(isExpensePublished)
+        .reduce((s, e) => s + Number(e.amount ?? 0), 0),
+    [periodExpenseRows],
+  );
+  const periodFeeRows = useMemo(
+    () =>
+      scopedLedger
+        .filter((e) => ledgerInPeriod(e, yearNum, quarter))
+        .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [scopedLedger, yearNum, quarter],
+  );
+  const periodDebtRows = useMemo(() => apts.filter((p) => sfDebt(p) > 0), [apts, scopedAssessments, supportAssessmentsLoaded]);
+  const periodRequestRows = useMemo(
+    () =>
+      [...scopedRequests]
+        .filter((r) => dateInPeriod(r.created_at, yearNum, quarter))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    [scopedRequests, yearNum, quarter],
+  );
+  const periodCapitalRows = useMemo(
+    () => scopedCapitalLedger.filter((e) => dateInPeriod(e.created_at, yearNum, quarter)),
+    [scopedCapitalLedger, yearNum, quarter],
+  );
+  const feeMoveKpis = [
+    { label: t('admin.reportSfStandingCharges'), value: money(supportFeeStandingCharges(periodFeeRows)) },
+    { label: t('admin.reportSfStandingPayments'), value: money(supportFeeStandingPayments(periodFeeRows)) },
+    { label: t('admin.reportSfCharges'), value: money(sumLedgerByKind(periodFeeRows, 'charge')) },
+    { label: t('admin.reportSfPayments'), value: money(sumLedgerByKind(periodFeeRows, 'payment')) },
+    { label: t('admin.reportSfReversals'), value: money(sumLedgerByKind(periodFeeRows, 'payment_reversal')) },
+    { label: t('admin.reportSfVoids'), value: money(sumLedgerByKind(periodFeeRows, 'assessment_void')) },
+    { label: t('admin.kindAssessmentRestore'), value: money(sumLedgerByKind(periodFeeRows, 'assessment_restore')) },
+  ];
+  const supportFeeKpis = [
+    { label: t('admin.sfOutstandingLabel'), value: money(sfSnap.outstanding) },
+    { label: t('admin.sfOverpaymentLabel'), value: money(sfSnap.overpayment) },
+    { label: t('admin.reportSfAptsWithDue'), value: String(sfSnap.apartmentsWithOutstanding) },
+    ...feeMoveKpis,
+  ];
+  const capitalKpis =
+    capitalSnap.reliability === 'unavailable'
+      ? [{ label: t('admin.reportCapOutstanding'), value: dash }]
+      : [
+          { label: t('admin.reportCapCharged'), value: money(capitalSnap.charged ?? 0) },
+          { label: t('admin.reportCapPaid'), value: money(capitalSnap.paid ?? 0) },
+          { label: t('admin.reportCapOutstanding'), value: money(capitalSnap.outstanding ?? 0) },
+          { label: t('admin.reportCapDebtApts'), value: String(capitalSnap.apartmentsWithDebt ?? 0) },
+        ];
+  const utilityKpis = [
+    { label: t('admin.water'), value: moneyOrDash(utilitiesSnap.waterOutstanding, money, dash) },
+    { label: t('admin.electricityFinance'), value: moneyOrDash(utilitiesSnap.electricityOutstanding, money, dash) },
+    { label: t('admin.internet'), value: moneyOrDash(utilitiesSnap.internetOutstanding, money, dash) },
+    { label: t('admin.reportUtilitiesDomainSum'), value: moneyOrDash(utilitiesSnap.combinedDomainOutstanding, money, dash) },
+  ];
 
   const cards: ReportCard[] = [
     {
@@ -374,15 +608,19 @@ export function AdminReports({
       category: 'overview',
       title: t('admin.reportSummary'),
       hint: t('admin.reportSummaryHint'),
+      preview: [
+        { label: t('admin.apts'), value: String(apts.length) },
+        { label: t('admin.sfOutstandingLabel'), value: money(sfSnap.outstanding) },
+        { label: t('admin.ukSpend'), value: money(periodExpensePublishedTotal) },
+      ],
       build: () => {
         const area = apts.reduce((s, p) => s + Number(p.area_sqm ?? 0), 0);
-        const exp = ukExpenses
-          .filter((e) => isExpensePublished(e) && dateInPeriod(e.expense_date, yearNum, quarter))
-          .reduce((s, e) => s + Number(e.amount ?? 0), 0);
         const salary = showSalary
           ? staff.filter((s) => s.active).reduce((s, x) => s + Number(x.salary_eur ?? 0), 0)
           : 0;
-        const activeReq = requests.filter((r) => r.status !== 'выполнена' && r.status !== 'отклонена' && dateInPeriod(r.created_at, yearNum, quarter)).length;
+        const activeReq = periodRequestRows.filter(
+          (r) => r.status !== 'выполнена' && r.status !== 'отклонена',
+        ).length;
         const summaryKpis = [
           { label: t('admin.apts'), value: String(apts.length) },
           { label: t('form.colArea'), value: `${area.toFixed(1)} ${t('common.sqm')}` },
@@ -400,12 +638,13 @@ export function AdminReports({
               return fee == null ? '—' : money(fee);
             })(),
           },
-          { label: t('admin.ukSpend'), value: money(exp) },
+          { label: t('admin.ukSpend'), value: money(periodExpensePublishedTotal) },
           { label: t('admin.activeReq'), value: String(activeReq) },
         ];
         if (showSalary) summaryKpis.push({ label: t('admin.staff'), value: money(salary) });
         const body =
           `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(t('admin.reportNoCombinedDebtNote'))}</p>` +
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('summary'))}</p>` +
           kpiGrid(summaryKpis) +
           table(
             showSalary
@@ -433,23 +672,12 @@ export function AdminReports({
       category: 'support_fee',
       title: t('admin.reportSupportFee'),
       hint: t('admin.reportSupportFeeHint'),
+      preview: supportFeeKpis,
       build: () => {
-        const periodLedger = ledger.filter((e) => ledgerInPeriod(e, yearNum, quarter));
-        const periodSnap = buildSupportFeeReportSnapshot({
-          properties: apts,
-          assessments: supportAssessments,
-          assessmentsLoaded: supportAssessmentsLoaded,
-          ledger: periodLedger,
-        });
         const body =
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('support-fee'))}</p>` +
           kpiGrid([
-            { label: t('admin.sfOutstandingLabel'), value: money(sfSnap.outstanding) },
-            { label: t('admin.sfOverpaymentLabel'), value: money(sfSnap.overpayment) },
-            { label: t('admin.reportSfCharges'), value: money(periodSnap.charges) },
-            { label: t('admin.reportSfPayments'), value: money(periodSnap.payments) },
-            { label: t('admin.reportSfReversals'), value: money(periodSnap.reversals) },
-            { label: t('admin.reportSfVoids'), value: money(periodSnap.voids) },
-            { label: t('admin.reportSfAptsWithDue'), value: String(sfSnap.apartmentsWithOutstanding) },
+            ...supportFeeKpis,
             { label: t('admin.reportReliability'), value: t('admin.reportReliabilityD1') },
           ]) +
           table(
@@ -475,24 +703,35 @@ export function AdminReports({
       category: 'support_fee',
       title: t('admin.reportDebt'),
       hint: t('admin.reportDebtHint'),
+      preview: [
+        { label: t('admin.reportSfAptsWithDue'), value: String(periodDebtRows.length) },
+        {
+          label: t('admin.sfOutstandingLabel'),
+          value: money(periodDebtRows.reduce((s, p) => s + sfDebt(p), 0)),
+        },
+      ],
       build: () => {
-        const rows = apts.filter((p) => sfDebt(p) > 0);
+        const rows = periodDebtRows;
         const total = rows.reduce((s, p) => s + sfDebt(p), 0);
-        const body = table(
-          [t('form.colApt'), t('form.colOwner'), t('form.colFloor'), t('admin.sfOutstandingLabel')],
-          rows.map((p) => [
-            escapeHtml(p.apartment_number),
-            escapeHtml(p.owner_name),
-            escapeHtml(p.floor ?? '—'),
-            escapeHtml(money(sfDebt(p))),
-          ]),
-          rows.length ? [t('admin.pdfTotal'), '', '', escapeHtml(money(total))] : undefined
-        );
+        const body =
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('debt'))}</p>` +
+          table(
+            [t('form.colApt'), t('form.colOwner'), t('form.colFloor'), t('admin.sfOutstandingLabel')],
+            rows.map((p) => [
+              escapeHtml(p.apartment_number),
+              escapeHtml(p.owner_name),
+              escapeHtml(p.floor ?? '—'),
+              escapeHtml(money(sfDebt(p))),
+            ]),
+            rows.length ? [t('admin.pdfTotal'), '', '', escapeHtml(money(total))] : undefined
+          );
         return wrapReport(
           t,
           `${t('admin.reportDebt')} · ${periodLabel}`,
           generatedLine(),
-          rows.length ? body : `<p>${escapeHtml(t('admin.pdfNoRows'))}</p>`,
+          rows.length
+            ? body
+            : `<p>${escapeHtml(cardFilterNote('debt'))}</p><p>${escapeHtml(t('admin.pdfNoRows'))}</p>`,
           t('admin.reportSupportFeeScope')
         );
       },
@@ -502,23 +741,12 @@ export function AdminReports({
       category: 'support_fee',
       title: t('admin.reportFee'),
       hint: t('admin.reportFeeHint'),
+      preview: feeMoveKpis,
       build: () => {
-        const rows = ledger
-          .filter((e) => ledgerInPeriod(e, yearNum, quarter))
-          .sort((a, b) => a.created_at.localeCompare(b.created_at));
-        const charges = rows.filter((e) => e.kind === 'charge').reduce((s, e) => s + Number(e.amount ?? 0), 0);
-        const pays = rows.filter((e) => e.kind === 'payment').reduce((s, e) => s + Number(e.amount ?? 0), 0);
-        const reversals = rows.filter((e) => e.kind === 'payment_reversal').reduce((s, e) => s + Number(e.amount ?? 0), 0);
-        const voids = rows.filter((e) => e.kind === 'assessment_void').reduce((s, e) => s + Number(e.amount ?? 0), 0);
-        const restores = rows.filter((e) => e.kind === 'assessment_restore').reduce((s, e) => s + Number(e.amount ?? 0), 0);
+        const rows = periodFeeRows;
         const body =
-          kpiGrid([
-            { label: t('admin.pdfKindCharge'), value: money(charges) },
-            { label: t('admin.pdfKindPay'), value: money(pays) },
-            { label: t('admin.kindPaymentReversal'), value: money(reversals) },
-            { label: t('admin.kindAssessmentVoid'), value: money(voids) },
-            { label: t('admin.kindAssessmentRestore'), value: money(restores) },
-          ]) +
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('fee'))}</p>` +
+          kpiGrid(feeMoveKpis) +
           table(
             [t('admin.pdfDate'), t('form.colApt'), t('admin.pdfKind'), t('admin.pdfAmount'), t('admin.pdfNote')],
             rows.map((e) => {
@@ -532,7 +760,15 @@ export function AdminReports({
               ];
             })
           );
-        return wrapReport(t, `${t('admin.reportFee')} · ${periodLabel}`, generatedLine(), rows.length ? body : `<p>${escapeHtml(t('admin.pdfNoRows'))}</p>`, t('admin.reportSupportFeeScope'));
+        return wrapReport(
+          t,
+          `${t('admin.reportFee')} · ${periodLabel}`,
+          generatedLine(),
+          rows.length
+            ? body
+            : `<p>${escapeHtml(cardFilterNote('fee'))}</p><p>${escapeHtml(t('admin.pdfNoRows'))}</p>`,
+          t('admin.reportSupportFeeScope'),
+        );
       },
     },
     {
@@ -540,23 +776,22 @@ export function AdminReports({
       category: 'capital',
       title: t('admin.reportCapital'),
       hint: t('admin.reportCapitalHint'),
+      preview: capitalKpis,
       build: () => {
         if (capitalSnap.reliability === 'unavailable') {
           return wrapReport(
             t,
             `${t('admin.reportCapital')} · ${periodLabel}`,
             generatedLine(),
-            `<p>${escapeHtml(t('admin.reportCapitalUnavailable'))}</p>`,
+            `<p>${escapeHtml(cardFilterNote('capital'))}</p><p>${escapeHtml(t('admin.reportCapitalUnavailable'))}</p>`,
             t('admin.reportCapitalScope')
           );
         }
-        const periodRows = capitalLedger.filter((e) => dateInPeriod(e.created_at, yearNum, quarter));
+        const periodRows = periodCapitalRows;
         const body =
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('capital'))}</p>` +
           kpiGrid([
-            { label: t('admin.reportCapCharged'), value: money(capitalSnap.charged ?? 0) },
-            { label: t('admin.reportCapPaid'), value: money(capitalSnap.paid ?? 0) },
-            { label: t('admin.reportCapOutstanding'), value: money(capitalSnap.outstanding ?? 0) },
-            { label: t('admin.reportCapDebtApts'), value: String(capitalSnap.apartmentsWithDebt ?? 0) },
+            ...capitalKpis,
             { label: t('admin.reportReliability'), value: t('admin.reportReliabilityLedger') },
           ]) +
           table(
@@ -566,7 +801,7 @@ export function AdminReports({
               return [
                 escapeHtml(e.created_at.slice(0, 10)),
                 escapeHtml(apt?.apartment_number ?? e.property_id),
-                escapeHtml(e.kind),
+                escapeHtml(t(capitalOpsHistoryTitleKey(e.kind))),
                 escapeHtml(money(Number(e.amount_eur ?? 0))),
                 escapeHtml(e.note),
               ];
@@ -586,25 +821,21 @@ export function AdminReports({
       category: 'utilities',
       title: t('admin.reportUtilities'),
       hint: t('admin.reportUtilitiesHint'),
+      preview: utilityKpis,
       build: () => {
         if (utilitiesSnap.reliability === 'unavailable') {
           return wrapReport(
             t,
             `${t('admin.reportUtilities')} · ${periodLabel}`,
             generatedLine(),
-            `<p>${escapeHtml(t('admin.reportUtilitiesUnavailable'))}</p>`,
+            `<p>${escapeHtml(cardFilterNote('utilities'))}</p><p>${escapeHtml(t('admin.reportUtilitiesUnavailable'))}</p>`,
             t('admin.reportUtilitiesScope')
           );
         }
         const body =
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('utilities'))}</p>` +
           kpiGrid([
-            { label: t('admin.water'), value: moneyOrDash(utilitiesSnap.waterOutstanding, money, dash) },
-            { label: t('admin.electricityFinance'), value: moneyOrDash(utilitiesSnap.electricityOutstanding, money, dash) },
-            { label: t('admin.internet'), value: moneyOrDash(utilitiesSnap.internetOutstanding, money, dash) },
-            {
-              label: t('admin.reportUtilitiesDomainSum'),
-              value: moneyOrDash(utilitiesSnap.combinedDomainOutstanding, money, dash),
-            },
+            ...utilityKpis,
             { label: t('admin.reportReliability'), value: t('admin.reportReliabilityLedger') },
           ]) +
           `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(t('admin.reportUtilitiesNotConsumption'))}</p>` +
@@ -612,13 +843,13 @@ export function AdminReports({
             [t('form.colApt'), t('admin.water'), t('admin.electricity'), t('admin.internet')],
             apts.map((p) => [
               escapeHtml(p.apartment_number),
-              escapeHtml(moneyOrDash(waterByProperty ? outstandingFromUtilityBalance(waterByProperty.get(p.id)) : null, money, dash)),
-              escapeHtml(moneyOrDash(electricityByProperty ? outstandingFromUtilityBalance(electricityByProperty.get(p.id)) : null, money, dash)),
-              escapeHtml(moneyOrDash(internetByProperty ? outstandingFromUtilityBalance(internetByProperty.get(p.id)) : null, money, dash)),
+              escapeHtml(moneyOrDash(scopedWater ? outstandingFromUtilityBalance(scopedWater.get(p.id)) : null, money, dash)),
+              escapeHtml(moneyOrDash(scopedElectricity ? outstandingFromUtilityBalance(scopedElectricity.get(p.id)) : null, money, dash)),
+              escapeHtml(moneyOrDash(scopedInternet ? outstandingFromUtilityBalance(scopedInternet.get(p.id)) : null, money, dash)),
             ])
           );
         const hist = (['water', 'electricity', 'internet'] as const).flatMap((domain) =>
-          utilityLedgers[domain]
+          scopedUtilityLedgers[domain]
             .filter((e) => dateInPeriod(e.created_at, yearNum, quarter))
             .map((e) => {
               const apt = byId.get(e.property_id);
@@ -649,9 +880,14 @@ export function AdminReports({
       category: 'overview',
       title: t('admin.reportApts'),
       hint: t('admin.reportAptsHint'),
+      preview: [
+        { label: t('admin.apts'), value: String(apts.length) },
+        { label: t('admin.sfOutstandingLabel'), value: money(sfSnap.outstanding) },
+      ],
       build: () => {
         const body =
           `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(t('admin.reportNoCombinedDebtNote'))}</p>` +
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('apts'))}</p>` +
           table(
             [
               t('form.colApt'),
@@ -665,17 +901,17 @@ export function AdminReports({
             apts.map((p) => {
               const br = apartmentCategoryBreakdown({
                 supportOutstanding: sfDebt(p),
-                capitalOutstanding: capitalByProperty
-                  ? outstandingFromUtilityBalance(capitalByProperty.get(p.id))
+                capitalOutstanding: scopedCapitalByProperty
+                  ? outstandingFromUtilityBalance(scopedCapitalByProperty.get(p.id))
                   : null,
-                waterOutstanding: waterByProperty
-                  ? outstandingFromUtilityBalance(waterByProperty.get(p.id))
+                waterOutstanding: scopedWater
+                  ? outstandingFromUtilityBalance(scopedWater.get(p.id))
                   : null,
-                electricityOutstanding: electricityByProperty
-                  ? outstandingFromUtilityBalance(electricityByProperty.get(p.id))
+                electricityOutstanding: scopedElectricity
+                  ? outstandingFromUtilityBalance(scopedElectricity.get(p.id))
                   : null,
-                internetOutstanding: internetByProperty
-                  ? outstandingFromUtilityBalance(internetByProperty.get(p.id))
+                internetOutstanding: scopedInternet
+                  ? outstandingFromUtilityBalance(scopedInternet.get(p.id))
                   : null,
               });
               return [
@@ -697,23 +933,34 @@ export function AdminReports({
       category: 'ops',
       title: t('admin.reportExpenses'),
       hint: t('admin.reportExpensesHint'),
+      preview: [
+        { label: t('admin.pdfRows'), value: String(periodExpenseRows.length) },
+        { label: t('admin.published'), value: money(periodExpensePublishedTotal) },
+      ],
       build: () => {
-        const rows = ukExpenses
-          .filter((e) => dateInPeriod(e.expense_date, yearNum, quarter))
-          .sort((a, b) => a.expense_date.localeCompare(b.expense_date));
-        const published = rows.filter(isExpensePublished);
-        const total = published.reduce((s, e) => s + Number(e.amount ?? 0), 0);
-        const body = table(
-          [t('admin.pdfDate'), t('admin.pdfTitle'), t('admin.pdfAmount'), t('form.colStatus')],
-          rows.map((e) => [
-            escapeHtml(e.expense_date.slice(0, 10)),
-            escapeHtml(e.title),
-            escapeHtml(money(Number(e.amount ?? 0))),
-            escapeHtml(isExpensePublished(e) ? t('admin.published') : t('admin.pending')),
-          ]),
-          rows.length ? [t('admin.pdfTotal'), t('admin.published'), escapeHtml(money(total)), ''] : undefined
+        const rows = periodExpenseRows;
+        const body =
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('expenses'))}</p>` +
+          table(
+            [t('admin.pdfDate'), t('admin.pdfTitle'), t('admin.pdfAmount'), t('form.colStatus')],
+            rows.map((e) => [
+              escapeHtml(e.expense_date.slice(0, 10)),
+              escapeHtml(e.title),
+              escapeHtml(money(Number(e.amount ?? 0))),
+              escapeHtml(isExpensePublished(e) ? t('admin.published') : t('admin.pending')),
+            ]),
+            rows.length
+              ? [t('admin.pdfTotal'), t('admin.published'), escapeHtml(money(periodExpensePublishedTotal)), '']
+              : undefined
+          );
+        return wrapReport(
+          t,
+          `${t('admin.reportExpenses')} · ${periodLabel}`,
+          generatedLine(),
+          rows.length
+            ? body
+            : `<p>${escapeHtml(cardFilterNote('expenses'))}</p><p>${escapeHtml(t('admin.pdfNoRows'))}</p>`,
         );
-        return wrapReport(t, `${t('admin.reportExpenses')} · ${periodLabel}`, generatedLine(), rows.length ? body : `<p>${escapeHtml(t('admin.pdfNoRows'))}</p>`);
       },
     },
     {
@@ -721,24 +968,32 @@ export function AdminReports({
       category: 'ops',
       title: t('admin.reportRequests'),
       hint: t('admin.reportRequestsHint'),
+      preview: [{ label: t('admin.pdfRows'), value: String(periodRequestRows.length) }],
       build: () => {
-        const rows = [...requests]
-          .filter((r) => dateInPeriod(r.created_at, yearNum, quarter))
-          .sort((a, b) => b.created_at.localeCompare(a.created_at));
-        const body = table(
-          [t('admin.pdfDate'), t('form.colApt'), t('admin.pdfSubject'), t('form.colStatus'), t('admin.pdfPriority')],
-          rows.map((r) => {
-            const apt = r.property_id != null ? byId.get(r.property_id) : undefined;
-            return [
-              escapeHtml(r.created_at.slice(0, 10)),
-              escapeHtml(apt?.apartment_number ?? '—'),
-              escapeHtml(r.subject || r.description),
-              escapeHtml(labelRequestStatus(r.status, t)),
-              escapeHtml(labelPriority(r.priority, t)),
-            ];
-          })
+        const rows = periodRequestRows;
+        const body =
+          `<p style="margin:0 0 12px;color:#64748b;font-size:11px;">${escapeHtml(cardFilterNote('requests'))}</p>` +
+          table(
+            [t('admin.pdfDate'), t('form.colApt'), t('admin.pdfSubject'), t('form.colStatus'), t('admin.pdfPriority')],
+            rows.map((r) => {
+              const apt = r.property_id != null ? byId.get(r.property_id) : undefined;
+              return [
+                escapeHtml(r.created_at.slice(0, 10)),
+                escapeHtml(apt?.apartment_number ?? '—'),
+                escapeHtml(r.subject || r.description),
+                escapeHtml(labelRequestStatus(r.status, t)),
+                escapeHtml(labelPriority(r.priority, t)),
+              ];
+            })
+          );
+        return wrapReport(
+          t,
+          `${t('admin.reportRequests')} · ${periodLabel}`,
+          generatedLine(),
+          rows.length
+            ? body
+            : `<p>${escapeHtml(cardFilterNote('requests'))}</p><p>${escapeHtml(t('admin.pdfNoRows'))}</p>`,
         );
-        return wrapReport(t, `${t('admin.reportRequests')} · ${periodLabel}`, generatedLine(), rows.length ? body : `<p>${escapeHtml(t('admin.pdfNoRows'))}</p>`);
       },
     },
   ];
@@ -751,6 +1006,8 @@ export function AdminReports({
     { key: 'ops', title: t('admin.reportGroupOps') },
   ];
 
+  const visibleCards = cards.filter((c) => reportScopeMatchesGroup(c.category, groupScope));
+
   return (
     <div className="space-y-4">
       <AdminPageHeader title={t('admin.reports')} secondary={t('admin.reportsLead')} />
@@ -758,6 +1015,7 @@ export function AdminReports({
         {pdfError && <AdminInlineAlert tone="danger">{pdfError}</AdminInlineAlert>}
         {domainLoadNote ? <AdminInlineAlert tone="warning">{domainLoadNote}</AdminInlineAlert> : null}
         <AdminInlineAlert tone="info">{t('admin.reportNoCombinedDebtNote')}</AdminInlineAlert>
+        <p className="text-xs text-muted">{t('admin.reportsFilterMirror')}</p>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="flex flex-col gap-1 text-sm text-secondary">
             <span>{t('admin.reportsYear')}</span>
@@ -765,6 +1023,52 @@ export function AdminReports({
               {yearOptions.map((n) => (
                 <option key={n} value={String(n)}>
                   {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-secondary">
+            <span>{t('admin.reportsApt')}</span>
+            <select
+              value={propertyScopeRaw}
+              onChange={(e) => setPropertyScopeRaw(e.target.value)}
+              className={adminFieldClass}
+            >
+              <option value="all">{t('admin.reportsAptAll')}</option>
+              {allApts.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.apartment_number}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-secondary">
+            <span>{t('admin.expBudgetCategory')}</span>
+            <select
+              value={expenseCategoryScope}
+              onChange={(e) => setExpenseCategoryScope(e.target.value as ReportExpenseCategoryScope)}
+              className={adminFieldClass}
+            >
+              <option value="all">{t('admin.expCategoryAll')}</option>
+              <option value="none">{t('admin.expBudgetCategoryNone')}</option>
+              {expenseCategoryOptions.map((id) => (
+                <option key={id} value={id}>
+                  {expenseCategoryName(id)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-secondary">
+            <span>{t('admin.reportsGroup')}</span>
+            <select
+              value={groupScope}
+              onChange={(e) => setGroupScope(e.target.value as ReportGroupScope)}
+              className={adminFieldClass}
+            >
+              <option value="all">{t('admin.reportsGroupAll')}</option>
+              {categoryOrder.map((g) => (
+                <option key={g.key} value={g.key}>
+                  {g.title}
                 </option>
               ))}
             </select>
@@ -792,30 +1096,46 @@ export function AdminReports({
       </AdminFilterBar>
 
       {categoryOrder.map((group) => {
-        const groupCards = cards.filter((c) => c.category === group.key);
+        const groupCards = visibleCards.filter((c) => c.category === group.key);
         if (!groupCards.length) return null;
         return (
-          <AdminCard key={group.key}>
+          <div key={group.key} className="space-y-3">
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{group.title}</p>
-            <div className="mt-2 divide-y divide-border">
+            <div className="grid gap-3 lg:grid-cols-2">
               {groupCards.map((card) => (
-                <div key={card.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-foreground">{card.title}</h2>
-                    <p className="text-sm text-muted">{card.hint}</p>
+                <AdminCard key={card.id}>
+                  <div className="flex flex-col gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-semibold text-foreground">{card.title}</h2>
+                      <p className="mt-1 text-sm text-muted">{card.hint}</p>
+                      <p className="mt-1 text-[11px] text-muted">{cardFilterNote(card.id)}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {card.preview.map((item) => (
+                        <div
+                          key={`${card.id}-${item.label}`}
+                          className="rounded-lg border border-border bg-surface-secondary/60 px-3 py-2"
+                        >
+                          <div className="text-[10px] uppercase tracking-wide text-muted">{item.label}</div>
+                          <div className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
+                            {item.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <AdminPrimaryButton
+                      type="button"
+                      disabled={busy !== null}
+                      className="self-start"
+                      onClick={() => void run(card.id, `mkd-${card.id}-${filterKey}.pdf`, card.build())}
+                    >
+                      {busy === card.id ? t('common.preparingPdf') : t('common.downloadPdf')}
+                    </AdminPrimaryButton>
                   </div>
-                  <AdminPrimaryButton
-                    type="button"
-                    disabled={busy !== null}
-                    className="shrink-0 self-start sm:self-center"
-                    onClick={() => void run(card.id, `mkd-${card.id}-${periodKey}.pdf`, card.build())}
-                  >
-                    {busy === card.id ? t('common.preparingPdf') : t('common.downloadPdf')}
-                  </AdminPrimaryButton>
-                </div>
+                </AdminCard>
               ))}
             </div>
-          </AdminCard>
+          </div>
         );
       })}
     </div>

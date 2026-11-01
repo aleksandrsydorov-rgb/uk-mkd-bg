@@ -1,16 +1,20 @@
 /**
  * Email Core outbox worker (Phase B/D).
- * Host gate EMAIL_SENDING_ENABLED must be true before any Resend call.
+ * Host gate EMAIL_SENDING_ENABLED must be true before any provider call.
+ * The selected adapter does not fall back to another provider.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import {
-  hasResendApiKeyPresent,
+  hasActiveMailCredential,
   isEmailSendingEnvEnabled,
   isPermanentProviderFailure,
+  outboxAttemptNeedsOperatorReview,
+  resolveEmailMailProvider,
 } from '@/lib/emailCore';
-import { createResendAdapter, type ResendAdapter } from '@/lib/email/resendAdapter';
+import { createConfiguredMailAdapter } from '@/lib/email/mailAdapter';
+import type { MailAdapter } from '@/lib/email/mailSend';
 import { renderTransactionalEmail } from '@/lib/email/templates';
 import { isNonPublicInviteUrl } from '@/lib/publicAppUrl';
 import {
@@ -31,6 +35,7 @@ export type WorkerRunResult = {
   failed: number;
   retried: number;
   cancelled?: number;
+  reviewed?: number;
 };
 
 type EnvProbe = Record<string, string | undefined>;
@@ -46,6 +51,9 @@ type OutboxRow = {
   payload: Record<string, unknown> | null;
   attempts: number;
   event_key?: string | null;
+  first_attempt_at?: string | null;
+  uncertain_attempt?: boolean;
+  provider_message_id?: string | null;
 };
 
 export function assertWorkerAuthorized(
@@ -75,8 +83,16 @@ export function canWorkerSend(env: EnvProbe = process.env as EnvProbe): {
   if (!isEmailSendingEnvEnabled(env)) {
     return { ok: false, reason: 'EMAIL_SENDING_ENABLED=false' };
   }
-  if (!hasResendApiKeyPresent(env)) {
-    return { ok: false, reason: 'RESEND_API_KEY_missing' };
+  const provider = resolveEmailMailProvider(env);
+  if (!provider) {
+    return { ok: false, reason: 'EMAIL_MAIL_PROVIDER_invalid' };
+  }
+  if (!hasActiveMailCredential(env)) {
+    return {
+      ok: false,
+      reason:
+        provider === 'lettermint' ? 'LETTERMINT_PROJECT_TOKEN_missing' : 'RESEND_API_KEY_missing',
+    };
   }
   return { ok: true };
 }
@@ -88,7 +104,8 @@ function asRecord(v: unknown): Record<string, unknown> {
 export async function runOutboxWorker(opts: {
   supabase: SupabaseClient<Database>;
   env?: EnvProbe;
-  adapter?: ResendAdapter;
+  adapter?: MailAdapter;
+  http?: { fetch: typeof fetch };
   limit?: number;
 }): Promise<WorkerRunResult> {
   const env = opts.env ?? (process.env as EnvProbe);
@@ -188,14 +205,13 @@ export async function runOutboxWorker(opts: {
     };
   }
 
-  const adapter =
-    opts.adapter ??
-    createResendAdapter({ apiKey: (env.RESEND_API_KEY ?? '').trim() });
+  const adapter = opts.adapter ?? createConfiguredMailAdapter(env, opts.http);
 
   let sent = 0;
   let failed = 0;
   let retried = 0;
   let cancelled = 0;
+  let reviewed = 0;
 
   for (const row of rows) {
     const payload = asRecord(row.payload);
@@ -269,6 +285,26 @@ export async function runOutboxWorker(opts: {
       }
     }
 
+    if (
+      outboxAttemptNeedsOperatorReview({
+        nowMs: Date.now(),
+        attemptCount: Number(row.attempts ?? 0),
+        firstAttemptAt: row.first_attempt_at ?? null,
+        uncertainAttempt: row.uncertain_attempt === true,
+        providerMessageId: row.provider_message_id ?? null,
+      })
+    ) {
+      try {
+        await opts.supabase.rpc('email_core_hold_idempotency_review' as never, {
+          p_outbox_id: row.id,
+        } as never);
+      } catch {
+        /* The claim row stays sending until reclaim applies the same hold. */
+      }
+      reviewed += 1;
+      continue;
+    }
+
     const rendered = renderTransactionalEmail({
       templateKey: row.template_key,
       locale: row.locale,
@@ -327,6 +363,7 @@ export async function runOutboxWorker(opts: {
     failed,
     retried,
     cancelled,
+    reviewed,
   };
 }
 
@@ -334,6 +371,34 @@ export async function runOutboxWorker(opts: {
 export function computeBackoffSeconds(attempt: number): number {
   const a = Math.max(1, Math.min(attempt, 10));
   return Math.min(3600, 2 ** a * 30);
+}
+
+/** Lettermint dedupes the same Idempotency-Key and body for 24 hours. */
+export const PROVIDER_IDEMPOTENCY_WINDOW_SECONDS = 24 * 60 * 60;
+
+/**
+ * Wait scheduled after failed attempts 1–7. Attempt 8 is terminal and adds no further delay.
+ * About 7380 seconds, inside the 24-hour provider window when the worker runs on time.
+ */
+export function outboxScheduledRetrySpanSeconds(): number {
+  let sum = 0;
+  for (let attempt = 1; attempt <= 7; attempt += 1) {
+    sum += computeBackoffSeconds(attempt);
+  }
+  return sum;
+}
+
+/**
+ * Scheduled retries stay inside the provider window.
+ * A duplicate is still possible when the API already accepted the message and a later
+ * retry of the same key happens after 24 hours, for example while the worker is stopped
+ * or EMAIL_SENDING_ENABLED is off and the acceptance was not stored.
+ */
+export const PROVIDER_IDEMPOTENCY_DUPLICATE_RISK =
+  'A second copy is possible if the same Idempotency-Key is sent after the 24-hour provider window. The worker does not send that retry: the row waits for operator review when an earlier attempt may already have been accepted.';
+
+export function idempotencyWindowDuplicateRisk(elapsedSinceAcceptSeconds: number): boolean {
+  return elapsedSinceAcceptSeconds > PROVIDER_IDEMPOTENCY_WINDOW_SECONDS;
 }
 
 /** Recover rows stuck in `sending` after worker crash / timeout. */

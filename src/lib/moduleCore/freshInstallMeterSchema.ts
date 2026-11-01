@@ -74,6 +74,13 @@ export const FRESH_INSTALL_ORDERED_FILES = [
   '106_r1_rc8_first_run_tariffs_budget.sql',
   '107_r1_rc8_first_run_budget_wizard.sql',
   '108_r1_rc8_first_run_tariff_period_ready.sql',
+  '109_ux_support_fee_tariff_lifecycle.sql',
+  '110_ux_support_fee_late_increase_waive.sql',
+  '111_ux_capital_repair_tariff_lifecycle.sql',
+  '112_ux_expense_receipt_documents.sql',
+  '113_ux_expense_operational_receipt.sql',
+  '114_ux_expense_staff_write_path.sql',
+  '115_ux_email_attempt_guard.sql',
 ] as const;
 
 export const FRESH_INSTALL_PACKAGE_STATUS = 'READY_FOR_ISOLATED_TEST' as const;

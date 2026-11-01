@@ -28,15 +28,43 @@ export function isEmailSendingEnvEnabled(
   return raw === '1' || raw === 'true' || raw === 'yes';
 }
 
+export type EmailMailProviderName = 'resend' | 'lettermint';
+
+/** Empty or `resend` keeps the existing Resend transport. Anything else is refused. */
+export function resolveEmailMailProvider(
+  env: EnvProbe = process.env as EnvProbe
+): EmailMailProviderName | null {
+  const raw = (env.EMAIL_MAIL_PROVIDER ?? '').trim().toLowerCase();
+  if (raw === '' || raw === 'resend') return 'resend';
+  if (raw === 'lettermint') return 'lettermint';
+  return null;
+}
+
 export function hasResendApiKeyPresent(
   env: EnvProbe = process.env as EnvProbe
 ): boolean {
   return Boolean((env.RESEND_API_KEY ?? '').trim());
 }
 
+export function hasLettermintProjectToken(
+  env: EnvProbe = process.env as EnvProbe
+): boolean {
+  return Boolean((env.LETTERMINT_PROJECT_TOKEN ?? '').trim());
+}
+
+/** Credential for the selected transport only. A missing Lettermint token does not count Resend. */
+export function hasActiveMailCredential(
+  env: EnvProbe = process.env as EnvProbe
+): boolean {
+  const provider = resolveEmailMailProvider(env);
+  if (provider === 'lettermint') return hasLettermintProjectToken(env);
+  if (provider === 'resend') return hasResendApiKeyPresent(env);
+  return false;
+}
+
 /** Never expose key material — only presence for health UI. */
 export function serverSecretPresent(env: EnvProbe = process.env as EnvProbe): boolean {
-  return hasResendApiKeyPresent(env) && isEmailSendingEnvEnabled(env);
+  return hasActiveMailCredential(env) && isEmailSendingEnvEnabled(env);
 }
 
 export type EmailModuleKey =
@@ -100,6 +128,7 @@ export type ModuleHonestyStatus =
   | 'LOCAL_ONLY'
   | 'PROVIDER_NOT_CONFIGURED'
   | 'QUEUED'
+  | 'ACCEPTED'
   | 'SENT'
   | 'FAILED'
   | 'in_app_only';
@@ -204,10 +233,77 @@ export function isOutboxRetryEligible(row: {
   if (row.status !== 'queued' && row.status !== 'held') return false;
   if (row.attempts >= 8) return false;
   if (isPermanentProviderFailure(row.last_error_code)) return false;
+  if (row.last_error_code === 'idempotency_window_review') return false;
   return true;
 }
 
-/** Map outbox + optional webhook event to operator-facing honesty. */
+/** Provider idempotency window. The clock is the first send attempt, not row creation. */
+export const EMAIL_ATTEMPT_REVIEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Hold for an operator when a previous attempt may have been accepted and
+ * repeating it would fall outside the provider window.
+ * `uncertainAttempt` is about an earlier attempt, not the one just opened.
+ * A row that has never been sent (`attemptCount` 0, no clock, not uncertain) stays eligible.
+ */
+export function outboxAttemptNeedsOperatorReview(input: {
+  nowMs: number;
+  attemptCount: number;
+  firstAttemptAt?: string | null;
+  earliestAttemptAt?: string | null;
+  uncertainAttempt: boolean;
+  providerMessageId?: string | null;
+}): boolean {
+  if (String(input.providerMessageId ?? '').trim()) return false;
+  const neverSent =
+    input.attemptCount <= 0 &&
+    !input.firstAttemptAt &&
+    !input.earliestAttemptAt &&
+    !input.uncertainAttempt;
+  if (neverSent) return false;
+  if (!input.uncertainAttempt) return false;
+  const clock = input.firstAttemptAt || input.earliestAttemptAt || null;
+  if (!clock) return input.attemptCount > 0 || input.uncertainAttempt;
+  const started = Date.parse(clock);
+  if (Number.isNaN(started)) return true;
+  return input.nowMs - started >= EMAIL_ATTEMPT_REVIEW_WINDOW_MS;
+}
+
+/** Host transport selected by EMAIL_MAIL_PROVIDER. No secrets. */
+export function emailProviderUiPayload(
+  env: EnvProbe = process.env as EnvProbe
+): { provider: EmailMailProviderName | 'invalid' } {
+  const provider = resolveEmailMailProvider(env);
+  return { provider: provider ?? 'invalid' };
+}
+
+export function emailOutboxOperatorLabelKey(row: {
+  status: string;
+  latestEventType?: string | null;
+  lastErrorCode?: string | null;
+}):
+  | 'admin.emailAcceptedByService'
+  | 'admin.emailDelivered'
+  | 'admin.emailAwaitingSend'
+  | 'admin.emailOperatorReview'
+  | null {
+  const ev = String(row.latestEventType ?? '')
+    .trim()
+    .toLowerCase();
+  if (ev === 'delivered') return 'admin.emailDelivered';
+  if (row.lastErrorCode === 'idempotency_window_review') return 'admin.emailOperatorReview';
+  if (row.status === 'sent') return 'admin.emailAcceptedByService';
+  if (row.status === 'queued' || row.status === 'held' || row.status === 'sending') {
+    return 'admin.emailAwaitingSend';
+  }
+  return null;
+}
+
+/**
+ * Map outbox + optional webhook event to operator-facing honesty.
+ * `sent` without a delivery event is provider acceptance (ACCEPTED).
+ * SENT requires a delivery event. Lettermint webhooks are not connected.
+ */
 export function honestyFromDeliveryState(opts: {
   status: string;
   latestEventType?: string | null;
@@ -219,8 +315,10 @@ export function honestyFromDeliveryState(opts: {
   if (ev === 'bounced' || ev === 'bounce' || ev === 'complained' || ev === 'complaint' || ev === 'failed') {
     return 'FAILED';
   }
-  if (opts.status === 'sent') return 'SENT';
-  if (opts.status === 'queued' || opts.status === 'sending' || opts.status === 'held') return 'QUEUED';
+  if (opts.status === 'sent') return 'ACCEPTED';
+  if (opts.status === 'queued' || opts.status === 'sending' || opts.status === 'held') {
+    return 'QUEUED';
+  }
   if (opts.status === 'failed' || opts.status === 'cancelled') return 'FAILED';
   return 'PROVIDER_NOT_CONFIGURED';
 }
@@ -240,6 +338,7 @@ export function assertNoClientSecrets(bundleProbe: Record<string, unknown>): voi
   const forbidden = [
     'RESEND_API_KEY',
     'RESEND_WEBHOOK_SECRET',
+    'LETTERMINT_PROJECT_TOKEN',
     'EMAIL_WORKER_SECRET',
     'SUPABASE_SERVICE_ROLE_KEY',
     'service_role_key',
@@ -673,7 +772,7 @@ export function honestyFromEnqueue(
   module: EmailModuleKey,
   opts: { queued: boolean; sent: boolean; fallback: string }
 ): ModuleHonestyStatus {
-  if (opts.sent) return 'SENT';
+  if (opts.sent) return 'ACCEPTED';
   if (opts.queued) return 'QUEUED';
   if (module === 'pb1_invite') return 'COPY_LINK';
   if (module === 'meeting') return 'in_app_only';
@@ -682,6 +781,7 @@ export function honestyFromEnqueue(
     'LOCAL_ONLY',
     'PROVIDER_NOT_CONFIGURED',
     'QUEUED',
+    'ACCEPTED',
     'SENT',
     'FAILED',
     'in_app_only',

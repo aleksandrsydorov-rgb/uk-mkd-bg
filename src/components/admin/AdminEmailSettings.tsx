@@ -11,6 +11,7 @@ import {
   adminFieldClass,
 } from '@/components/admin/AdminUi';
 import {
+  emailOutboxOperatorLabelKey,
   enqueueAllowlistedTestEmail,
   fetchEmailQueueSummary,
   fetchEmailSettings,
@@ -35,6 +36,18 @@ type Props = {
   /** Personal prefs role hint for staff vs admin. */
   personalRoleHint?: 'admin' | 'staff';
 };
+
+function outboxRowLabel(
+  row: EmailDiagnosticRow,
+  t: (key: string, vars?: Record<string, string | number>) => string
+) {
+  const key = emailOutboxOperatorLabelKey({
+    status: row.status,
+    latestEventType: row.latest_event_type,
+    lastErrorCode: row.last_error_code,
+  });
+  return key ? t(key) : row.status;
+}
 
 function statusLabel(
   status: string,
@@ -64,6 +77,7 @@ export function AdminEmailSettings({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [settings, setSettings] = useState<ComplexEmailSettings | null>(null);
+  const [hostProvider, setHostProvider] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<EmailDiagnosticRow[]>([]);
   const [summary, setSummary] = useState<EmailQueueSummary | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -85,6 +99,13 @@ export function AdminEmailSettings({
     try {
       const s = await fetchEmailSettings(supabase);
       setSettings(s);
+      try {
+        const response = await fetch('/api/email/provider');
+        const body = (await response.json()) as { provider?: unknown };
+        setHostProvider(typeof body.provider === 'string' ? body.provider : null);
+      } catch {
+        setHostProvider(null);
+      }
       setSenderName(s.sender_name);
       setSenderEmail(s.sender_email ?? '');
       setReplyTo(s.reply_to_email ?? '');
@@ -234,7 +255,7 @@ export function AdminEmailSettings({
                 <p className="mt-1 text-xs text-secondary">{t('admin.emailPhaseNote')}</p>
                 <ul className="mt-2 space-y-1 text-xs text-muted">
                   <li>
-                    {t('admin.emailProvider')}: {settings.mail_provider}
+                    {t('admin.emailProvider')}: {hostProvider ?? t('admin.emailProviderUnavailable')}
                   </li>
                   <li>
                     {t('admin.emailDomain')}:{' '}
@@ -498,7 +519,7 @@ export function AdminEmailSettings({
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">{row.to_masked ?? '—'}</td>
                     <td className="py-2 pr-3">
-                      {row.status}
+                      {outboxRowLabel(row, t)}
                       <span className="mt-0.5 block text-[10px] text-muted">
                         attempts={row.attempts}
                       </span>

@@ -409,7 +409,7 @@ describe('R1-RC8 first-run · packaging', () => {
     );
   });
 
-  it('MANIFEST lists 101–108 and chronological count 151', () => {
+  it('MANIFEST lists 101–108 and chronological count 158', () => {
     const manifest = JSON.parse(
       readFileSync(path.join(process.cwd(), FRESH_INSTALL_PACKAGE_DIR, 'MANIFEST.json'), 'utf8'),
     ) as {
@@ -456,7 +456,7 @@ describe('R1-RC8 first-run · packaging', () => {
         MIG_TARIFF_PERIOD,
       ]),
     );
-    expect(manifest.expectedChronologicalMigrationCount).toBe(151);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(158);
   });
 
   it('tariffs + budget wizard use Core RPCs; assert requires published plan', () => {

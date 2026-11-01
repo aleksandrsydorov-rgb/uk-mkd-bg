@@ -112,6 +112,8 @@ describe('Task 08 · late increase waive migration', () => {
     expect(sql).toContain('penalty_waive_reason');
     expect(sql).toContain('penalty_waived_at');
     expect(sql).toContain('penalty_waived_by_email');
+    expect(sql).toContain('opening_import blocks waive');
+    expect(sql).toContain('already waived');
     expect(sql).not.toMatch(/delete from public\.support_fee_assessments/i);
   });
 });

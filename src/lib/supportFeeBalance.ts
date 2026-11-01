@@ -78,6 +78,7 @@ export function supportLedgerNet(
     } else if (
       kind === 'payment' ||
       kind === 'adjustment_credit' ||
+      kind === 'late_increase_waive' ||
       kind === 'opening_historical_settlement' ||
       kind === 'opening_credit'
     ) {

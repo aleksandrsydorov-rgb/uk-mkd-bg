@@ -4,6 +4,11 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
+  authCallbackFailureKey,
+  exchangePkceCodeOnce,
+  hasPkceFlowSlotCookie,
+} from '@/lib/auth/callbackPkce';
+import {
   otpTypeForTokenHashVerify,
   safeNextPath,
 } from '@/lib/auth/emailConfirmation';
@@ -19,6 +24,7 @@ function AuthCallbackInner() {
   const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [supabase] = useState(() => createClient({ detectSessionInUrl: false }));
   const [error, setError] = useState<string | null>(null);
   /** One-time tokens must not be verified twice (remount / Strict Mode / back-nav). */
   const consumedTokenHashRef = useRef<string | null>(null);
@@ -26,7 +32,6 @@ function AuthCallbackInner() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const supabase = createClient();
       const next = safeNextPath(searchParams.get('next'), '/account');
 
       try {
@@ -44,8 +49,23 @@ function AuthCallbackInner() {
 
         const code = searchParams.get('code');
         if (code) {
-          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
-          if (exErr) throw exErr;
+          const { error: exErr } = await exchangePkceCodeOnce(
+            (authCode) => supabase.auth.exchangeCodeForSession(authCode),
+            code,
+          );
+          if (exErr) {
+            const key = authCallbackFailureKey(
+              exErr,
+              hasPkceFlowSlotCookie(
+                typeof document === 'undefined' ? '' : document.cookie,
+              ),
+            );
+            if (key) {
+              if (!cancelled) setError(t(key));
+              return;
+            }
+            throw exErr;
+          }
           if (!cancelled) router.replace(next);
           return;
         }
@@ -132,7 +152,7 @@ function AuthCallbackInner() {
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams, t]);
+  }, [router, searchParams, supabase, t]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">

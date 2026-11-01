@@ -33,7 +33,39 @@ describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
 
   it('disk migration count matches MANIFEST expectedChronologicalMigrationCount', () => {
     expect(manifest.expectedChronologicalMigrationCount).toBe(diskFiles.length);
-    expect(diskFiles.length).toBeGreaterThanOrEqual(138);
+    expect(diskFiles.length).toBe(158);
+  });
+
+  it('keeps the UX migrations after the RC8 tariff-period migration', () => {
+    const tree = manifest.chronologicalMigrationTree ?? [];
+    const base = tree.indexOf(
+      'supabase/migrations/20261125200000_r1_rc8_first_run_tariff_period_ready.sql',
+    );
+    const ux = [
+      'supabase/migrations/20261129120000_support_fee_tariff_lifecycle_policy.sql',
+      'supabase/migrations/20261129130000_support_fee_late_increase_waive.sql',
+      'supabase/migrations/20261129140000_capital_repair_tariff_lifecycle_policy.sql',
+      'supabase/migrations/20261129150000_uk_expense_receipt_documents.sql',
+      'supabase/migrations/20261129160000_uk_expense_operational_receipt_required.sql',
+      'supabase/migrations/20261129170000_uk_expense_staff_write_path.sql',
+      'supabase/migrations/20261129180000_email_core_lettermint_attempt_guard.sql',
+    ];
+    let prev = base;
+    for (const rel of ux) {
+      const at = tree.indexOf(rel);
+      expect(at).toBeGreaterThan(prev);
+      expect(manifest.chronologicalMigrationsPackaged).toContain(rel);
+      prev = at;
+    }
+    expect(manifest.orderedFiles.slice(-7)).toEqual([
+      '109_ux_support_fee_tariff_lifecycle.sql',
+      '110_ux_support_fee_late_increase_waive.sql',
+      '111_ux_capital_repair_tariff_lifecycle.sql',
+      '112_ux_expense_receipt_documents.sql',
+      '113_ux_expense_operational_receipt.sql',
+      '114_ux_expense_staff_write_path.sql',
+      '115_ux_email_attempt_guard.sql',
+    ]);
   });
 
   it('chronologicalMigrationTree matches disk filenames in order', () => {

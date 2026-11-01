@@ -4,10 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { labelLedgerKind } from '@/i18n/labels';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import { sofiaCurrentYear } from '@/lib/tariffs';
+import {
+  capitalFundCashBalance,
+  capitalLedgerKindFilterActive,
+  capitalOpsHistoryTitleKey,
+  filterCapitalLedgerRows,
+  sumCapitalOperationalCharges,
+  sumCapitalOperationalReceipts,
+  type CapitalAdminTab,
+  type CapitalLedgerKindFilter,
+} from '@/lib/capitalRepairUi';
 import {
   balanceTone,
   canSeeCapitalAdmin,
@@ -20,10 +29,12 @@ import {
 import {
   AdminPageHeader,
   AdminMetricCard,
+  AdminTabBar,
   AdminTableShell,
   AdminEmptyState,
   AdminInlineAlert,
   AdminPrimaryButton,
+  AdminSecondaryButton,
   adminCardClass,
   adminFieldClass,
   adminTableCellClass,
@@ -75,10 +86,12 @@ export function AdminCapital({
   const [ledger, setLedger] = useState<CapitalLedger[]>([]);
   const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
   const [propLoading, setPropLoading] = useState(false);
-  const [fundCharged, setFundCharged] = useState<number | null>(null);
-  const [fundPaid, setFundPaid] = useState<number | null>(null);
-  const [fundBalance, setFundBalance] = useState<number | null>(null);
+  const [opsCharges, setOpsCharges] = useState<number | null>(null);
+  const [opsReceipts, setOpsReceipts] = useState<number | null>(null);
+  const [fundCash, setFundCash] = useState<number | null>(null);
   const [fundDebtApts, setFundDebtApts] = useState<number | null>(null);
+  const [aptCharges, setAptCharges] = useState<number | null>(null);
+  const [aptReceipts, setAptReceipts] = useState<number | null>(null);
   const [fundLoading, setFundLoading] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,48 +104,70 @@ export function AdminCapital({
   const [bulkExisting, setBulkExisting] = useState<number | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const [tab, setTab] = useState<CapitalAdminTab>('overview');
+  const [ledgerKindFilter, setLedgerKindFilter] = useState<CapitalLedgerKindFilter>('all');
   const payKeyRef = useRef(crypto.randomUUID());
 
   const loadFund = useCallback(async () => {
     if (!canSee) return;
     setFundLoading(true);
-    const { data, error: rpcErr } = await supabase.rpc('get_capital_repair_fund_totals');
+    const cashClient = supabase as unknown as {
+      from: (table: 'capital_repair_fund_cash_opening') => {
+        select: (columns: 'balance_eur, as_of_date') => {
+          limit: (n: number) => PromiseLike<{
+            data: { balance_eur: number | null }[] | null;
+            error: { message?: string } | null;
+          }>;
+        };
+      };
+    };
+    const [totalsRes, opsRes, cashRes] = await Promise.all([
+      supabase.rpc('get_capital_repair_fund_totals'),
+      supabase
+        .from('capital_repair_ledger')
+        .select('kind, amount_eur')
+        .in('kind', ['charge', 'payment'])
+        .limit(5000),
+      cashClient.from('capital_repair_fund_cash_opening').select('balance_eur, as_of_date').limit(1),
+    ]);
     setFundLoading(false);
-    if (rpcErr) {
-      if (!/could not find the function/i.test(rpcErr.message ?? '')) {
-        setError(t(mapAdminRpcError(rpcErr.message)));
+    if (totalsRes.error) {
+      if (!/could not find the function/i.test(totalsRes.error.message ?? '')) {
+        setError(t(mapAdminRpcError(totalsRes.error.message)));
       }
-      setFundCharged(null);
-      setFundPaid(null);
-      setFundBalance(null);
       setFundDebtApts(null);
-      return;
+    } else {
+      const row = firstRow(
+        totalsRes.data as { apartments_with_debt?: number }[] | null,
+      );
+      setFundDebtApts(row?.apartments_with_debt != null ? Number(row.apartments_with_debt) : 0);
     }
-    const row = firstRow(
-      data as
-        | {
-            charged_eur?: number;
-            paid_eur?: number;
-            balance_eur?: number;
-            apartments_with_debt?: number;
-          }[]
-        | null,
-    );
-    setFundCharged(row?.charged_eur != null ? Number(row.charged_eur) : 0);
-    setFundPaid(row?.paid_eur != null ? Number(row.paid_eur) : 0);
-    setFundBalance(row?.balance_eur != null ? Number(row.balance_eur) : 0);
-    setFundDebtApts(row?.apartments_with_debt != null ? Number(row.apartments_with_debt) : 0);
+    if (opsRes.error) {
+      setOpsCharges(null);
+      setOpsReceipts(null);
+    } else {
+      const rows = opsRes.data ?? [];
+      setOpsCharges(sumCapitalOperationalCharges(rows));
+      setOpsReceipts(sumCapitalOperationalReceipts(rows));
+    }
+    if (cashRes.error) {
+      setFundCash(null);
+    } else {
+      setFundCash(capitalFundCashBalance(cashRes.data?.[0]?.balance_eur));
+    }
   }, [canSee, supabase, t]);
 
   const loadPropertyCapital = useCallback(async () => {
     if (!canSee || propertyId === '') {
       setLedger([]);
       setBalance(emptyBalance());
+      setAptCharges(null);
+      setAptReceipts(null);
       return;
     }
     setPropLoading(true);
     const pid = Number(propertyId);
-    const [ledgerRes, balanceRes] = await Promise.all([
+    const [ledgerRes, balanceRes, opsRes] = await Promise.all([
       supabase
         .from('capital_repair_ledger')
         .select('*')
@@ -140,6 +175,12 @@ export function AdminCapital({
         .order('created_at', { ascending: false })
         .limit(40),
       supabase.rpc('get_capital_repair_balance', { p_property_id: pid }),
+      supabase
+        .from('capital_repair_ledger')
+        .select('kind, amount_eur')
+        .eq('property_id', pid)
+        .in('kind', ['charge', 'payment'])
+        .limit(5000),
     ]);
     setPropLoading(false);
     if (ledgerRes.error && !isMissingRelation(ledgerRes.error, 'capital_repair_ledger')) {
@@ -160,6 +201,14 @@ export function AdminCapital({
           }
         : emptyBalance(),
     );
+    if (opsRes.error) {
+      setAptCharges(null);
+      setAptReceipts(null);
+    } else {
+      const rows = opsRes.data ?? [];
+      setAptCharges(sumCapitalOperationalCharges(rows));
+      setAptReceipts(sumCapitalOperationalReceipts(rows));
+    }
   }, [canSee, propertyId, supabase, t]);
 
   useEffect(() => {
@@ -321,6 +370,12 @@ export function AdminCapital({
     await Promise.all([loadPropertyCapital(), loadFund()]);
   }
 
+  const filteredLedger = useMemo(
+    () => filterCapitalLedgerRows(ledger, ledgerKindFilter),
+    [ledger, ledgerKindFilter],
+  );
+  const ledgerFilterActive = capitalLedgerKindFilterActive(ledgerKindFilter);
+
   if (!canSee) {
     return (
       <div className={cardClass}>
@@ -332,10 +387,14 @@ export function AdminCapital({
   const aptTone = balanceTone(balance.balance_eur);
   const aptStatus =
     aptTone === 'debt' ? t('admin.balDebt') : aptTone === 'over' ? t('admin.balOver') : t('admin.balSettled');
-  const fundTone = balanceTone(fundBalance ?? 0);
   const total = sorted.length;
   const existing = bulkExisting ?? 0;
   const will = Math.max(0, total - existing);
+  const capitalTabs = [
+    { id: 'overview', label: t('admin.capitalTabOverview') },
+    { id: 'charge', label: t('admin.capitalTabCharge') },
+    { id: 'apartment', label: t('admin.capitalTabApartment') },
+  ] as const;
 
   return (
     <div className="space-y-4">
@@ -344,32 +403,76 @@ export function AdminCapital({
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <AdminMetricCard
-          label={t('admin.charged')}
-          value={fundLoading || fundCharged == null ? t('common.loading') : formatEur(fundCharged, locale)}
-        />
-        <AdminMetricCard
-          label={t('admin.paid')}
-          value={fundLoading || fundPaid == null ? t('common.loading') : formatEur(fundPaid, locale)}
-        />
-        <AdminMetricCard
-          label={t('admin.capitalBalance')}
-          value={
-            fundLoading || fundBalance == null
-              ? t('common.loading')
-              : formatEur(Math.abs(fundBalance), locale)
-          }
-          secondary={
-            fundTone === 'debt' ? t('admin.balDebt') : fundTone === 'over' ? t('admin.balOver') : t('admin.balSettled')
-          }
-          alert={fundTone === 'debt'}
-        />
-        <AdminMetricCard
-          label={t('admin.capitalDebtApts')}
-          value={fundLoading || fundDebtApts == null ? t('common.loading') : String(fundDebtApts)}
-        />
-      </div>
+      <AdminTabBar
+        tabs={[...capitalTabs]}
+        active={tab}
+        onChange={(id) => setTab(id as CapitalAdminTab)}
+      />
+
+      {tab === 'overview' ? (
+        <div className="space-y-4">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+            {t('admin.capitalFundState')}
+          </p>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <AdminMetricCard
+              label={t('admin.capitalCardCharges')}
+              value={fundLoading || opsCharges == null ? t('common.loading') : formatEur(opsCharges, locale)}
+              secondary={t('admin.capitalOperationalHint')}
+              onClick={() => setTab('charge')}
+            />
+            <AdminMetricCard
+              label={t('admin.capitalCardReceipts')}
+              value={fundLoading || opsReceipts == null ? t('common.loading') : formatEur(opsReceipts, locale)}
+              secondary={t('admin.capitalOperationalHint')}
+              onClick={() => setTab('apartment')}
+            />
+            <AdminMetricCard
+              label={t('admin.capitalFundCash')}
+              value={fundLoading ? t('common.loading') : fundCash == null ? '—' : formatEur(fundCash, locale)}
+              secondary={t('admin.capitalFundCashHint')}
+            />
+            <AdminMetricCard
+              label={t('admin.capitalDebtApts')}
+              value={fundLoading || fundDebtApts == null ? t('common.loading') : String(fundDebtApts)}
+              onClick={() => setTab('apartment')}
+            />
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className={cardClass}>
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+                {t('admin.capitalCardTariff')}
+              </p>
+              <p className="mt-3 text-2xl font-semibold tabular-nums text-foreground">
+                {tariffLoading
+                  ? t('common.loading')
+                  : tariffAmount != null
+                    ? formatEur(tariffAmount, locale)
+                    : t('admin.capitalNoTariff')}
+              </p>
+              <p className="mt-1 text-sm text-secondary">
+                {billingYear} · {t('admin.tcUnitAptYear')}
+              </p>
+              <p className="mt-3 text-xs text-muted">{t('admin.capitalTariffHint')}</p>
+              <AdminSecondaryButton type="button" className="mt-4" onClick={() => setTab('charge')}>
+                {t('admin.capitalOpenCharge')}
+              </AdminSecondaryButton>
+            </div>
+            <div className={cardClass}>
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+                {t('admin.capitalCardOpsHistory')}
+              </p>
+              <p className="mt-2 text-sm text-secondary">{t('admin.capitalOpsHistoryHint')}</p>
+              <AdminSecondaryButton type="button" className="mt-4" onClick={() => setTab('apartment')}>
+                {t('admin.capitalOpenApartment')}
+              </AdminSecondaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === 'charge' ? (
 
       <div className={cardClass}>
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
@@ -421,7 +524,10 @@ export function AdminCapital({
         </AdminPrimaryButton>
         {bulkResult ? <p className="mt-3 text-sm text-secondary">{bulkResult}</p> : null}
       </div>
+      ) : null}
 
+      {tab === 'apartment' ? (
+        <div className="space-y-4">
       <div className={cardClass}>
         <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
         <ApartmentCombobox
@@ -432,6 +538,7 @@ export function AdminCapital({
             setPropertyId(id);
             setError(null);
             setSuccess(null);
+            setLedgerKindFilter('all');
           }}
         />
       </div>
@@ -440,12 +547,18 @@ export function AdminCapital({
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <AdminMetricCard
-              label={t('admin.charged')}
-              value={propLoading ? t('common.loading') : formatEur(balance.charged_eur, locale)}
+              label={t('admin.capitalCardCharges')}
+              value={
+                propLoading || aptCharges == null ? t('common.loading') : formatEur(aptCharges, locale)
+              }
+              secondary={t('admin.capitalOperationalHint')}
             />
             <AdminMetricCard
-              label={t('admin.paid')}
-              value={propLoading ? t('common.loading') : formatEur(balance.paid_eur, locale)}
+              label={t('admin.capitalCardReceipts')}
+              value={
+                propLoading || aptReceipts == null ? t('common.loading') : formatEur(aptReceipts, locale)
+              }
+              secondary={t('admin.capitalOperationalHint')}
             />
             <AdminMetricCard
               label={t('admin.capitalBalance')}
@@ -477,22 +590,46 @@ export function AdminCapital({
                   value={payNote}
                   onChange={(e) => setPayNote(e.target.value)}
                 />
-                <button
-                  type="submit"
-                  disabled={payBusy}
-                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
-                >
+                <AdminPrimaryButton type="submit" disabled={payBusy}>
                   {payBusy ? t('common.saving') : t('admin.recordPayment')}
-                </button>
+                </AdminPrimaryButton>
               </form>
             </div>
             <div className={cardClass}>
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
-                {t('admin.capitalLedger')}
-              </p>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+                  {t('admin.capitalCardOpsHistory')}
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-xs text-secondary">
+                    {t('admin.capitalLedgerFilter')}
+                    <select
+                      className={`mt-1 block w-36 ${fieldClass}`}
+                      value={ledgerKindFilter}
+                      onChange={(e) => setLedgerKindFilter(e.target.value as CapitalLedgerKindFilter)}
+                    >
+                      <option value="all">{t('admin.capitalFilterAll')}</option>
+                      <option value="charge">{t('admin.kindCharge')}</option>
+                      <option value="payment">{t('admin.kindPayment')}</option>
+                      <option value="adjustment">{t('admin.capitalFilterAdj')}</option>
+                    </select>
+                  </label>
+                  <AdminSecondaryButton
+                    type="button"
+                    disabled={!ledgerFilterActive}
+                    onClick={() => setLedgerKindFilter('all')}
+                  >
+                    {t('admin.capitalFilterReset')}
+                  </AdminSecondaryButton>
+                </div>
+              </div>
               {ledger.length === 0 ? (
                 <div className="mt-3">
                   <AdminEmptyState title={t('admin.noCapitalLedger')} />
+                </div>
+              ) : filteredLedger.length === 0 ? (
+                <div className="mt-3">
+                  <AdminEmptyState title={t('admin.capitalLedgerEmptyFilter')} />
                 </div>
               ) : (
                 <div className="mt-3">
@@ -507,12 +644,12 @@ export function AdminCapital({
                         </tr>
                       </thead>
                       <tbody>
-                        {ledger.map((row) => (
+                        {filteredLedger.map((row) => (
                           <tr key={row.id} className={adminTableRowClass}>
                             <td className={`${adminTableCellClass} tabular-nums`}>
                               {formatOwnerDate(row.created_at)}
                             </td>
-                            <td className={adminTableCellClass}>{labelLedgerKind(row.kind, t)}</td>
+                            <td className={adminTableCellClass}>{t(capitalOpsHistoryTitleKey(row.kind))}</td>
                             <td className={`${adminTableCellClass} tabular-nums`}>
                               {formatEur(Number(row.amount_eur), locale)}
                             </td>
@@ -527,6 +664,10 @@ export function AdminCapital({
             </div>
           </div>
         </>
+      ) : (
+        <AdminEmptyState title={t('admin.capitalPickAptHint')} />
+      )}
+        </div>
       ) : null}
     </div>
   );

@@ -53,3 +53,62 @@ export function capitalOpsHistoryTitleKey(kind: string | null | undefined): stri
       return 'admin.kind';
   }
 }
+
+export type CapitalAmountRow = {
+  kind: string | null | undefined;
+  amount_eur?: number | string | null;
+};
+
+function roundMoney(n: number) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+export function sumCapitalKind(rows: CapitalAmountRow[], kind: string): number {
+  return roundMoney(
+    rows
+      .filter((row) => String(row.kind) === kind)
+      .reduce((sum, row) => sum + (Number(row.amount_eur) || 0), 0),
+  );
+}
+
+/**
+ * Operational charges: gross kind `charge` only.
+ * Capital Repair has no void or restore, so this gross total is also the standing charge.
+ * Opening obligation is inventarisation, not a new charge.
+ */
+export function sumCapitalOperationalCharges(rows: CapitalAmountRow[]): number {
+  return sumCapitalKind(rows, 'charge');
+}
+
+/**
+ * Operational receipts: gross kind `payment` only.
+ * Capital Repair has no payment reversal, so this gross total is also the standing receipt.
+ * Opening settlement and opening credit are not receipts and are not cash movements.
+ */
+export function sumCapitalOperationalReceipts(rows: CapitalAmountRow[]): number {
+  return sumCapitalKind(rows, 'payment');
+}
+
+/**
+ * Confirmed opening cash snapshot.
+ * Later apartment payments, charges, opening debts/credits, and expenses are not posted to this cash record.
+ */
+export function capitalFundCashBalance(
+  fundCashOpeningEur: number | null | undefined,
+): number | null {
+  if (fundCashOpeningEur == null) return null;
+  const amount = Number(fundCashOpeningEur);
+  if (!Number.isFinite(amount)) return null;
+  return roundMoney(amount);
+}
+
+export function buildCapitalRepairKpis(input: {
+  fundCashOpeningEur: number | null | undefined;
+  ledger: CapitalAmountRow[];
+}): { charges: number; receipts: number; fundCash: number | null } {
+  return {
+    charges: sumCapitalOperationalCharges(input.ledger),
+    receipts: sumCapitalOperationalReceipts(input.ledger),
+    fundCash: capitalFundCashBalance(input.fundCashOpeningEur),
+  };
+}

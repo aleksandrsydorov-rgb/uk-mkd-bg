@@ -8,17 +8,23 @@ import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
 import {
   BOOK_ENTITY_KINDS,
+  EMPTY_PROPERTY_BOOK_LIST_FILTERS,
   OWNERSHIP_TYPES,
   canSeePropertyBookAdmin,
+  collectPropertyBookFilterOptions,
   downloadPropertyBookExcelTemplate,
+  filterPropertyBookListRows,
   parsePropertyBookWorkbook,
+  propertyBookListFiltersActive,
   type BookEntityKind,
   type OwnershipType,
+  type PropertyBookListFilters,
   type PropertyBookListRow,
 } from '@/lib/propertyBookAdmin';
 import {
   AdminPageHeader,
   AdminEmptyState,
+  AdminFilterBar,
   AdminInlineAlert,
   AdminPrimaryButton,
   AdminSecondaryButton,
@@ -35,6 +41,8 @@ import {
   emailCoreCancelPb1InviteOutbox,
   emailCoreNotifyPb1Invite,
 } from '@/lib/emailCoreAdapters';
+import { presentPropertyBookHistoryEntry } from '@/lib/propertyBookHistory';
+import { formatOwnerDateTime } from '@/lib/ownerFormat';
 
 type PropertyOption = {
   id: number;
@@ -87,7 +95,9 @@ export function AdminPropertyBook({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'complete' | 'incomplete'>('all');
+  const [listFilters, setListFilters] = useState<PropertyBookListFilters>(
+    EMPTY_PROPERTY_BOOK_LIST_FILTERS,
+  );
 
   const [selectedId, setSelectedId] = useState<number | ''>('');
   const [apartmentNumber, setApartmentNumber] = useState('');
@@ -158,17 +168,12 @@ export function AdminPropertyBook({
     [properties],
   );
 
-  const filtered = useMemo(() => {
-    const list =
-      filter === 'complete'
-        ? rows.filter((r) => r.book_complete)
-        : filter === 'incomplete'
-          ? rows.filter((r) => !r.book_complete)
-          : [...rows];
-    return list.sort(
-      (a, b) => Number(a.apartment_number) - Number(b.apartment_number),
-    );
-  }, [rows, filter]);
+  const filterOptions = useMemo(() => collectPropertyBookFilterOptions(rows), [rows]);
+  const filtered = useMemo(
+    () => filterPropertyBookListRows(rows, listFilters),
+    [rows, listFilters],
+  );
+  const filtersActive = propertyBookListFiltersActive(listFilters);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -296,6 +301,80 @@ export function AdminPropertyBook({
         setChangeLog([]);
       }
       setInviteLink(null);
+      requestAnimationFrame(() => {
+        document.getElementById('book-edit-card')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    } catch (e: unknown) {
+      setError(ownerVisibleError(e, t('admin.errGeneric')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createOwnerInvite(registryPeopleId: number) {
+    if (!selectedId) return;
+    setInviteOwnerId(registryPeopleId);
+    setBusy(true);
+    setError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('admin_create_property_invite', {
+        p_property_id: selectedId,
+        p_registry_people_id: registryPeopleId,
+      });
+      if (rpcErr) throw rpcErr;
+      const payload = data as {
+        id?: string;
+        token?: string;
+        email?: string;
+        email_sent?: boolean;
+        delivery_status?: string;
+      };
+      const token = String(payload.token ?? '');
+      const link = buildInviteAbsoluteUrl(token);
+      setInviteLink(link);
+      let honesty = String(payload.delivery_status ?? 'COPY_LINK');
+      try {
+        const notify = await emailCoreNotifyPb1Invite(supabase, {
+          inviteId: String(payload.id ?? token),
+          toEmail: String(payload.email ?? ''),
+          inviteLink: link,
+          apartment: apartmentNumber || null,
+          locale,
+        });
+        honesty = notify.honesty;
+      } catch {
+        /* keep COPY_LINK */
+      }
+      try {
+        await navigator.clipboard.writeText(link);
+      } catch {
+        /* clipboard optional */
+      }
+      const linkMsg = t('admin.bookInviteLinkCopied');
+      const emailMsg =
+        honesty === 'ACCEPTED'
+          ? t('admin.emailAcceptedByService')
+          : honesty === 'QUEUED' || honesty === 'SENT'
+            ? t('admin.bookInviteEmailQueued')
+            : t('admin.bookInviteEmailNotSent');
+      setSuccess(`${linkMsg} ${emailMsg}`);
+      const { data: invData } = await supabase.rpc('admin_list_property_invites', {
+        p_property_id: selectedId,
+      });
+      setInvites(
+        ((invData as Array<Record<string, unknown>>) ?? []).map((i) => ({
+          id: String(i.id),
+          email: String(i.email ?? ''),
+          status: String(i.status ?? ''),
+          expires_at: String(i.expires_at ?? ''),
+          created_at: String(i.created_at ?? ''),
+          registry_people_id:
+            i.registry_people_id != null ? Number(i.registry_people_id) : null,
+        })),
+      );
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
     } finally {
@@ -593,7 +672,7 @@ export function AdminPropertyBook({
               void runImport(f, true);
             }}
           >
-            {t('admin.bookDryRun')}
+            {t('admin.bookCheck')}
           </AdminSecondaryButton>
           <AdminPrimaryButton
             type="button"
@@ -728,57 +807,139 @@ export function AdminPropertyBook({
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-semibold text-foreground">{t('admin.bookList')}</h3>
-          <div className="flex flex-wrap gap-2">
-            <select
-              className={adminFieldClass}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as typeof filter)}
+          <AdminSecondaryButton type="button" disabled={busy || loading} onClick={() => void load()}>
+            {t('admin.secRefresh')}
+          </AdminSecondaryButton>
+        </div>
+
+        <AdminFilterBar>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <label className="grid gap-1 text-xs text-secondary">
+              {t('admin.status')}
+              <select
+                className={adminFieldClass}
+                value={listFilters.completeness}
+                onChange={(e) =>
+                  setListFilters((prev) => ({
+                    ...prev,
+                    completeness: e.target.value as PropertyBookListFilters['completeness'],
+                  }))
+                }
+              >
+                <option value="all">{t('admin.bookFilterAll')}</option>
+                <option value="complete">{t('admin.bookFilterComplete')}</option>
+                <option value="incomplete">{t('admin.bookFilterIncomplete')}</option>
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs text-secondary">
+              {t('admin.bookBlock')}
+              <select
+                className={adminFieldClass}
+                value={listFilters.block}
+                onChange={(e) => setListFilters((prev) => ({ ...prev, block: e.target.value }))}
+              >
+                <option value="">{t('admin.bookFilterAll')}</option>
+                {filterOptions.blocks.map((block) => (
+                  <option key={block} value={block}>
+                    {block}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs text-secondary">
+              {t('admin.bookSection')}
+              <select
+                className={adminFieldClass}
+                value={listFilters.section}
+                onChange={(e) => setListFilters((prev) => ({ ...prev, section: e.target.value }))}
+              >
+                <option value="">{t('admin.bookFilterAll')}</option>
+                {filterOptions.sections.map((section) => (
+                  <option key={section} value={section}>
+                    {section}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs text-secondary">
+              {t('admin.phFloor')}
+              <select
+                className={adminFieldClass}
+                value={listFilters.floor}
+                onChange={(e) => setListFilters((prev) => ({ ...prev, floor: e.target.value }))}
+              >
+                <option value="">{t('admin.bookFilterAll')}</option>
+                {filterOptions.floors.map((floorOption) => (
+                  <option key={floorOption} value={floorOption}>
+                    {floorOption}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs text-secondary">
+              {t('admin.apartments')}
+              <input
+                className={adminFieldClass}
+                value={listFilters.apartmentQuery}
+                placeholder={t('admin.bookFilterAptPh')}
+                onChange={(e) =>
+                  setListFilters((prev) => ({ ...prev, apartmentQuery: e.target.value }))
+                }
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted">
+              {t('admin.bookFilterCount', {
+                shown: String(filtered.length),
+                total: String(rows.length),
+              })}
+            </p>
+            <AdminSecondaryButton
+              type="button"
+              className="min-h-9 px-3 text-sm"
+              disabled={!filtersActive}
+              onClick={() => setListFilters(EMPTY_PROPERTY_BOOK_LIST_FILTERS)}
             >
-              <option value="all">{t('admin.bookFilterAll')}</option>
-              <option value="complete">{t('admin.bookFilterComplete')}</option>
-              <option value="incomplete">{t('admin.bookFilterIncomplete')}</option>
-            </select>
-            <AdminSecondaryButton type="button" disabled={busy || loading} onClick={() => void load()}>
-              {t('admin.secRefresh')}
+              {t('common.resetFilters')}
             </AdminSecondaryButton>
           </div>
-        </div>
+        </AdminFilterBar>
 
         {loading ? (
           <p className="text-sm text-muted">{t('common.loading')}</p>
         ) : filtered.length === 0 ? (
           <AdminEmptyState title={t('admin.bookEmpty')} />
         ) : (
-          <AdminTableShell>
-            <table className="w-full min-w-[48rem] text-sm">
-              <thead>
-                <tr className={adminTableHeadRowClass}>
-                  <th className={adminTableCellClass}>{t('admin.apartments')}</th>
-                  <th className={adminTableCellClass}>{t('admin.bookBlock')}</th>
-                  <th className={adminTableCellClass}>{t('admin.bookSection')}</th>
-                  <th className={adminTableCellClass}>{t('admin.phFloor')}</th>
-                  <th className={adminTableCellClass}>{t('admin.bookOwnershipType')}</th>
-                  <th className={adminTableCellClass}>{t('admin.bookOwners')}</th>
-                  <th className={adminTableCellClass}>{t('admin.status')}</th>
-                  <th className={adminTableCellClass} />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.property_id} className={adminTableRowClass}>
-                    <td className={adminTableCellClass}>{row.apartment_number}</td>
-                    <td className={adminTableCellClass}>{row.block_code || '—'}</td>
-                    <td className={adminTableCellClass}>{row.section_code || '—'}</td>
-                    <td className={adminTableCellClass}>
-                      {row.floor != null ? String(row.floor) : '—'}
-                    </td>
-                    <td className={adminTableCellClass}>
-                      {row.ownership_type
-                        ? t(`admin.bookType_${row.ownership_type}`)
-                        : '—'}
-                    </td>
-                    <td className={adminTableCellClass}>{row.owner_count}</td>
-                    <td className={adminTableCellClass}>
+          <>
+            <div className="space-y-1.5 md:hidden">
+              {filtered.map((row) => {
+                const active = selectedId === row.property_id;
+                return (
+                  <button
+                    key={row.property_id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void openProperty(row.property_id)}
+                    className={`${adminCardClass} w-full px-3 py-2.5 text-left ${
+                      active ? 'border-accent/40 ring-1 ring-accent/25' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">
+                          № {row.apartment_number}
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          {[
+                            row.block_code,
+                            row.section_code,
+                            row.floor != null ? `${t('common.floor')} ${row.floor}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || '—'}
+                        </p>
+                      </div>
                       <StatusBadge
                         label={
                           row.book_complete
@@ -787,27 +948,73 @@ export function AdminPropertyBook({
                         }
                         tone={row.book_complete ? 'success' : 'warning'}
                       />
-                    </td>
-                    <td className={adminTableCellClass}>
-                      <button
-                        type="button"
-                        className="text-sm text-accent hover:underline"
-                        disabled={busy}
-                        onClick={() => void openProperty(row.property_id)}
-                      >
-                        {t('common.open')}
-                      </button>
-                    </td>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <AdminTableShell className="hidden md:block">
+              <table className="w-full min-w-[40rem] text-sm">
+                <thead>
+                  <tr className={adminTableHeadRowClass}>
+                    <th className={adminTableCellClass}>{t('admin.apartments')}</th>
+                    <th className={adminTableCellClass}>{t('admin.bookBlock')}</th>
+                    <th className={adminTableCellClass}>{t('admin.bookSection')}</th>
+                    <th className={adminTableCellClass}>{t('admin.phFloor')}</th>
+                    <th className={adminTableCellClass}>{t('admin.bookOwnershipType')}</th>
+                    <th className={adminTableCellClass}>{t('admin.bookOwners')}</th>
+                    <th className={adminTableCellClass}>{t('admin.status')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </AdminTableShell>
+                </thead>
+                <tbody>
+                  {filtered.map((row) => {
+                    const active = selectedId === row.property_id;
+                    return (
+                      <tr
+                        key={row.property_id}
+                        className={`${adminTableRowClass} cursor-pointer ${
+                          active ? 'bg-accent-bg/60' : ''
+                        }`}
+                        onClick={() => {
+                          if (!busy) void openProperty(row.property_id);
+                        }}
+                      >
+                        <td className={`${adminTableCellClass} font-semibold text-foreground`}>
+                          № {row.apartment_number}
+                        </td>
+                        <td className={adminTableCellClass}>{row.block_code || '—'}</td>
+                        <td className={adminTableCellClass}>{row.section_code || '—'}</td>
+                        <td className={adminTableCellClass}>
+                          {row.floor != null ? String(row.floor) : '—'}
+                        </td>
+                        <td className={adminTableCellClass}>
+                          {row.ownership_type
+                            ? t(`admin.bookType_${row.ownership_type}`)
+                            : '—'}
+                        </td>
+                        <td className={adminTableCellClass}>{row.owner_count}</td>
+                        <td className={adminTableCellClass}>
+                          <StatusBadge
+                            label={
+                              row.book_complete
+                                ? t('admin.bookComplete')
+                                : t('admin.bookIncomplete')
+                            }
+                            tone={row.book_complete ? 'success' : 'warning'}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </AdminTableShell>
+          </>
         )}
       </section>
 
       {selectedId ? (
-        <section className={`${adminCardClass} space-y-4 p-4`}>
+        <section id="book-edit-card" className={`${adminCardClass} space-y-4 p-4`}>
           <h3 className="text-base font-semibold text-foreground">
             {t('admin.bookEdit')} ·{' '}
             {aptLabel(sortedProps.find((p) => p.id === selectedId)?.apartment_number)}
@@ -1055,105 +1262,64 @@ export function AdminPropertyBook({
           <div className="space-y-3 border-t border-border pt-4">
             <h4 className="text-sm font-semibold">{t('admin.bookInvite')}</h4>
             <p className="text-xs text-secondary">{t('admin.bookInviteHint')}</p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <label className="grid min-w-0 flex-1 gap-1 text-sm text-secondary">
-                {t('admin.bookInviteOwner')}
-                <select
-                  className={adminFieldClass}
-                  value={inviteOwnerId === '' ? '' : String(inviteOwnerId)}
-                  onChange={(e) =>
-                    setInviteOwnerId(e.target.value ? Number(e.target.value) : '')
-                  }
-                >
-                  <option value="">{t('admin.bookInviteOwnerPick')}</option>
-                  {owners
-                    .filter((o) => o.id != null && o.email.trim())
-                    .map((o) => (
-                      <option key={o.id!} value={o.id!}>
-                        {o.email}
-                        {o.last_name || o.entity_name
-                          ? ` — ${[o.first_name, o.last_name, o.entity_name].filter(Boolean).join(' ')}`
-                          : ''}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <AdminPrimaryButton
-                type="button"
-                disabled={busy || inviteOwnerId === ''}
-                onClick={() => {
-                  void (async () => {
-                    if (!selectedId || inviteOwnerId === '') return;
-                    setBusy(true);
-                    setError(null);
-                    try {
-                      const { data, error: rpcErr } = await supabase.rpc(
-                        'admin_create_property_invite',
-                        {
-                          p_property_id: selectedId,
-                          p_registry_people_id: inviteOwnerId,
-                        },
-                      );
-                      if (rpcErr) throw rpcErr;
-                      const payload = data as {
-                        id?: string;
-                        token?: string;
-                        email?: string;
-                        email_sent?: boolean;
-                        delivery_status?: string;
-                      };
-                      const token = String(payload.token ?? '');
-                      const link = buildInviteAbsoluteUrl(token);
-                      setInviteLink(link);
-                      let honesty = String(payload.delivery_status ?? 'COPY_LINK');
-                      try {
-                        const notify = await emailCoreNotifyPb1Invite(supabase, {
-                          inviteId: String(payload.id ?? token),
-                          toEmail: String(payload.email ?? ''),
-                          inviteLink: link,
-                          apartment: apartmentNumber || null,
-                          locale,
-                        });
-                        honesty = notify.honesty;
-                      } catch {
-                        /* keep COPY_LINK */
-                      }
-                      try {
-                        await navigator.clipboard.writeText(link);
-                      } catch {
-                        /* clipboard optional */
-                      }
-                      const linkMsg = t('admin.bookInviteLinkCopied');
-                      const emailMsg =
-                        honesty === 'QUEUED' || honesty === 'SENT'
-                          ? t('admin.bookInviteEmailQueued')
-                          : t('admin.bookInviteEmailNotSent');
-                      setSuccess(`${linkMsg} ${emailMsg}`);
-                      const { data: invData } = await supabase.rpc('admin_list_property_invites', {
-                        p_property_id: selectedId,
-                      });
-                      setInvites(
-                        ((invData as Array<Record<string, unknown>>) ?? []).map((i) => ({
-                          id: String(i.id),
-                          email: String(i.email ?? ''),
-                          status: String(i.status ?? ''),
-                          expires_at: String(i.expires_at ?? ''),
-                          created_at: String(i.created_at ?? ''),
-                          registry_people_id:
-                            i.registry_people_id != null ? Number(i.registry_people_id) : null,
-                        })),
-                      );
-                    } catch (e: unknown) {
-                      setError(ownerVisibleError(e, t('admin.errGeneric')));
-                    } finally {
-                      setBusy(false);
-                    }
-                  })();
-                }}
-              >
-                {t('admin.bookInviteSend')}
-              </AdminPrimaryButton>
-            </div>
+            {(() => {
+              const inviteable = owners.filter((o) => o.id != null && o.email.trim());
+              if (inviteable.length === 0) {
+                return <p className="text-xs text-muted">{t('admin.bookInviteNoOwners')}</p>;
+              }
+              return (
+                <ul className="space-y-1.5">
+                  {inviteable.map((o) => {
+                    const name =
+                      [o.first_name, o.last_name, o.entity_name].filter(Boolean).join(' ') ||
+                      o.email;
+                    const latestInvite = invites.find((inv) => inv.registry_people_id === o.id);
+                    const selected = inviteOwnerId === o.id;
+                    return (
+                      <li
+                        key={o.id!}
+                        className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 ${
+                          selected ? 'border-accent/40' : 'border-border'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{name}</p>
+                          <p className="truncate text-xs text-muted">{o.email}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {latestInvite ? (
+                            <StatusBadge
+                              label={t(
+                                `admin.bookInviteStatus_${latestInvite.status}` as 'admin.bookInviteStatus_pending',
+                              )}
+                              tone={
+                                latestInvite.status === 'accepted'
+                                  ? 'success'
+                                  : latestInvite.status === 'revoked' ||
+                                      latestInvite.status === 'expired'
+                                    ? 'warning'
+                                    : 'info'
+                              }
+                            />
+                          ) : null}
+                          <AdminSecondaryButton
+                            type="button"
+                            className="min-h-9 px-3 text-sm"
+                            disabled={busy}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void createOwnerInvite(o.id!);
+                            }}
+                          >
+                            {t('admin.bookInviteSend')}
+                          </AdminSecondaryButton>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()}
             {inviteLink ? (
               <p className="break-all text-xs text-muted">
                 {t('admin.bookInviteLink')}: {inviteLink}
@@ -1218,9 +1384,11 @@ export function AdminPropertyBook({
                                 }
                                 const linkMsg = t('admin.bookInviteLinkCopied');
                                 const emailMsg =
-                                  honesty === 'QUEUED' || honesty === 'SENT'
-                                    ? t('admin.bookInviteEmailQueued')
-                                    : t('admin.bookInviteEmailNotSent');
+                                  honesty === 'ACCEPTED'
+                                    ? t('admin.emailAcceptedByService')
+                                    : honesty === 'QUEUED' || honesty === 'SENT'
+                                      ? t('admin.bookInviteEmailQueued')
+                                      : t('admin.bookInviteEmailNotSent');
                                 setSuccess(`${linkMsg} ${emailMsg}`);
                                 const { data: invData } = await supabase.rpc(
                                   'admin_list_property_invites',
@@ -1295,23 +1463,33 @@ export function AdminPropertyBook({
             {changeLog.length === 0 ? (
               <p className="text-xs text-muted">{t('admin.bookHistoryEmpty')}</p>
             ) : (
-              <ul className="max-h-64 space-y-2 overflow-auto text-xs">
-                {changeLog.map((entry) => (
-                  <li key={entry.id} className="rounded-lg border border-border bg-background p-2">
-                    <div className="text-secondary">
-                      {entry.changed_at
-                        ? new Date(entry.changed_at).toLocaleString()
-                        : '—'}
-                      {entry.changed_by_email
-                        ? ` · ${t('admin.bookHistoryBy')} ${entry.changed_by_email}`
-                        : ''}
-                      {` · ${entry.entity}/${entry.action}`}
-                    </div>
-                    <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] text-foreground">
-                      {JSON.stringify(entry.changes, null, 2)}
-                    </pre>
-                  </li>
-                ))}
+              <ul className="max-h-72 space-y-2 overflow-auto">
+                {changeLog.map((entry) => {
+                  const presented = presentPropertyBookHistoryEntry(entry, apartmentNumber, t);
+                  return (
+                    <li
+                      key={entry.id}
+                      className="rounded-lg border border-border bg-background px-3 py-2"
+                    >
+                      <p className="text-sm font-medium text-foreground">{presented.title}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">
+                        {entry.changed_at
+                          ? formatOwnerDateTime(entry.changed_at, locale)
+                          : t('admin.bookHistEmptyValue')}
+                        {entry.changed_by_email
+                          ? ` · ${t('admin.bookHistoryBy')} ${entry.changed_by_email}`
+                          : ''}
+                      </p>
+                      <ul className="mt-1.5 space-y-0.5 text-xs text-secondary">
+                        {presented.details.map((line, idx) => (
+                          <li key={`${entry.id}-${idx}`} className="leading-snug">
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

@@ -8,15 +8,11 @@ import Link from 'next/link';
 import {
   isMissingRelation,
   isPollAcceptingVotes,
-  pollDecisionLabel,
-  tallyPoll,
   type Poll,
-  type PollCategory,
   type PollOption,
   type PollVote,
   type PollVoteHistory,
 } from '@/lib/polls';
-import { PollDetails, PollOptionBars } from '@/components/PollPanel';
 import { listingStatus, type OwnerTransfer } from '@/lib/ownership';
 import { AdminOwnershipTransfers } from '@/components/admin/AdminOwnershipTransfers';
 import { normalizePriority, priorityClass } from '@/lib/requests';
@@ -28,8 +24,13 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
 import { buildRoleNavGroups } from '@/lib/adminNav';
-import { navGroupIcon, navSectionIcon } from '@/components/nav/NavIcons';
-import { labelCategory, labelExpenseStatus, labelListing, labelOccupancy, labelOccupantKind, labelOwnerType, labelPollCategory, labelPollDecision, labelPollStatus, labelPriority, labelRequestStatus, labelStaffRole, labelTransfer } from '@/i18n/labels';
+import {
+  navGroupIcon,
+  navGroupIconChipClass,
+  navSectionIcon,
+  navSectionIconChipClass,
+} from '@/components/nav/NavIcons';
+import { labelCategory, labelExpenseStatus, labelListing, labelOccupancy, labelOccupantKind, labelOwnerType, labelPriority, labelRequestStatus, labelStaffRole, labelTransfer } from '@/i18n/labels';
 import { StatusBadge } from '@/components/account/ownerUi';
 import {
   AdminPageHeader,
@@ -89,19 +90,32 @@ import {
   isSupportPaymentReversible,
   supportLedgerKindLabelKey,
 } from '@/lib/supportFeeReversal';
-import { EXPENSE_PENDING, EXPENSE_PUBLISHED, MAX_EXPENSE_PHOTOS, expensePhotoUrls, isExpensePublished } from '@/lib/expenses';
+import {
+  EXPENSE_PENDING,
+  EXPENSE_PUBLISHED,
+  EXPENSE_RECEIPT_ACCEPT,
+  EXPENSE_RECEIPT_CAMERA_ACCEPT,
+  MAX_EXPENSE_PHOTOS,
+  expensePhotoUrls,
+  isExpensePublished,
+  isExpenseReceiptPdfPath,
+  isOpeningExpense,
+  expenseReceiptServerErrorKey,
+  operationalExpenseRequiresSupportingFile,
+  validateOperationalExpenseSupportingFiles,
+} from '@/lib/expenses';
+import { AdminUkExpenseOpeningForm } from '@/components/admin/AdminUkExpenseOpeningForm';
 import { findOperationalExpenseDuplicate } from '@/lib/budget';
 import { ExpensePhotoStrip } from '@/components/ExpensePhotoStrip';
 import { AdminReports } from '@/components/AdminReports';
 import { ChatMedia } from '@/components/ChatMedia';
-import { SignedStorageLink } from '@/components/SignedStorageMedia';
+import { SignedStorageImage, SignedStorageLink } from '@/components/SignedStorageMedia';
 import {
   CHAT_FILES_BUCKET,
   EXPENSE_RECEIPTS_BUCKET,
-  POLL_IMAGES_BUCKET,
   chatFilePath,
+  expensePendingReceiptPath,
   expenseReceiptPath,
-  pollImagePath,
   uploadPrivateFile,
   messageForUploadError,
 } from '@/lib/privateMedia';
@@ -109,6 +123,8 @@ import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
 import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
+import { AdminAnnouncements } from '@/components/admin/AdminAnnouncements';
+import { AdminPolls } from '@/components/admin/AdminPolls';
 import { AdminSecurity } from '@/components/admin/AdminSecurity';
 import { AdminCleaning } from '@/components/admin/AdminCleaning';
 import { AdminInventory } from '@/components/admin/AdminInventory';
@@ -119,6 +135,7 @@ import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisi
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
+import { AdminSupportFeeOverview } from '@/components/admin/AdminSupportFeeOverview';
 import {
   AdminSettingsHub,
   parseSettingsTab,
@@ -422,7 +439,13 @@ function NavChevron({ open }: { open: boolean }) {
 }
 
 function NavGroupIcon({ id }: { id: string }) {
-  return navGroupIcon(id);
+  return (
+    <span
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${navGroupIconChipClass(id)}`}
+    >
+      {navGroupIcon(id)}
+    </span>
+  );
 }
 
 function formatUkDate(dateStr: string) {
@@ -671,7 +694,6 @@ function AdminPortal() {
   const [pollVotes, setPollVotes] = useState<PollVote[]>([]);
   const [pollVoteHistory, setPollVoteHistory] = useState<PollVoteHistory[]>([]);
   const [ownerTransfers, setOwnerTransfers] = useState<OwnerTransfer[]>([]);
-  const [expandedPollHistory, setExpandedPollHistory] = useState<number | null>(null);
 
   // ---------- ФИЛЬТРЫ КВАРТИР ----------
   const [aptSearch, setAptSearch] = useState('');
@@ -706,8 +728,6 @@ function AdminPortal() {
     }[]
   >([]);
   const [requestLifecycleBusy, setRequestLifecycleBusy] = useState(false);
-  const [annDetailId, setAnnDetailId] = useState<number | null>(null);
-  const [pollDetailId, setPollDetailId] = useState<number | null>(null);
 
   // ---------- ФИЛЬТРЫ СЧЁТЧИКОВ ----------
   const [meterAptFilter] = useState<string>('');
@@ -789,15 +809,18 @@ function AdminPortal() {
   const [elCorrectCharge, setElCorrectCharge] = useState<ElectricityChargeCorrectionRef | null>(null);
   const elCorrectKeyRef = useRef(crypto.randomUUID());
 
-  const [showAnnForm, setShowAnnForm] = useState(false);
-  const [annForm, setAnnForm] = useState({ title: '', body: '', created_by: 'УК' });
+  const [annCreateNonce, setAnnCreateNonce] = useState(0);
 
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const expenseSaveBusy = useRef(false);
+  const [showOpeningExpenseForm, setShowOpeningExpenseForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<UkExpense | null>(null);
   const [expenseYearFilter, setExpenseYearFilter] = useState<number | 'all'>(
     new Date().getFullYear()
   );
   const [expenseStatusFilter, setExpenseStatusFilter] = useState<'all' | 'pending' | 'published'>('all');
+  const [expenseOriginFilter, setExpenseOriginFilter] = useState<'all' | 'opening' | 'operational'>('all');
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>('all');
   const [expenseDetailId, setExpenseDetailId] = useState<number | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     expense_date: new Date().toISOString().slice(0, 10),
@@ -825,18 +848,7 @@ function AdminPortal() {
     inventory: emptyStaffInventoryPermissionsForm() as StaffInventoryPermissionsForm,
   });
 
-  const [showPollForm, setShowPollForm] = useState(false);
-  const [pollForm, setPollForm] = useState({
-    title: '',
-    body: '',
-    category: 'ремонт' as PollCategory,
-    voting_starts: '',
-    deadline: '',
-    budget_eur: '',
-    created_by: 'УК',
-    options: ['За', 'Против'] as string[],
-  });
-  const [pollPhoto, setPollPhoto] = useState<File | null>(null);
+  const [pollCreateNonce, setPollCreateNonce] = useState(0);
 
   // ---------- ЗАГРУЗКА ВСЕХ ДАННЫХ ----------
   async function loadAll() {
@@ -1703,11 +1715,6 @@ function AdminPortal() {
   );
 
   // ---------- ВСПОМОГАТЕЛЬНЫЕ ----------
-  function propertyNameById(id: number) {
-    const p = properties.find((x) => x.id === id);
-    return p ? t('picker.apt', { n: p.apartment_number }) : `#${id}`;
-  }
-
   function propertyFullById(id: number) {
     const p = properties.find((x) => x.id === id);
     return p ? `${t('picker.apt', { n: p.apartment_number })}, ${p.owner_name}` : `#${id}`;
@@ -2397,46 +2404,8 @@ function AdminPortal() {
     }
   }
 
-  async function handleSaveAnn(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canManageCriticalAccess) {
-      setError(t('admin.errNoAccess'));
-      return;
-    }
-    setError(null);
-    try {
-      const { error } = await supabase.from('announcements').insert({
-        title: annForm.title.trim(), body: annForm.body.trim(),
-        created_by: annForm.created_by.trim() || 'УК',
-      });
-      if (error) throw error;
-      setShowAnnForm(false);
-      setAnnForm({ title: '', body: '', created_by: 'УК' });
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message ?? 'Ошибка создания объявления');
-    }
-  }
-
-  async function handleDeleteAnn(id: number) {
-    if (!canManageCriticalAccess) {
-      setError(t('admin.errNoAccess'));
-      return false;
-    }
-    if (!confirm(t('confirm.deleteAnn'))) return false;
-    try {
-      const { error } = await supabase.from('announcements').delete().eq('id', id);
-      if (error) throw error;
-      setAnnDetailId((current) => (current === id ? null : current));
-      await loadAll();
-      return true;
-    } catch (e: any) {
-      setError(e?.message ?? 'Ошибка удаления');
-      return false;
-    }
-  }
-
   function startNewExpense() {
+    setShowOpeningExpenseForm(false);
     setEditingExpense(null);
     setExpenseForm({
       expense_date: new Date().toISOString().slice(0, 10),
@@ -2450,7 +2419,16 @@ function AdminPortal() {
     setShowExpenseForm(true);
   }
 
+  function startOpeningExpense() {
+    setShowExpenseForm(false);
+    setEditingExpense(null);
+    setExpensePhotoFiles([]);
+    setExpenseExistingUrls([]);
+    setShowOpeningExpenseForm(true);
+  }
+
   function startEditExpense(e: UkExpense) {
+    setShowOpeningExpenseForm(false);
     setEditingExpense(e);
     setExpenseForm({
       expense_date: e.expense_date.slice(0, 10),
@@ -2475,6 +2453,7 @@ function AdminPortal() {
 
   async function handleSaveExpense(e: React.FormEvent) {
     e.preventDefault();
+    if (expenseSaveBusy.current) return;
     setError(null);
     const title = expenseForm.title.trim();
     const amount = Number(expenseForm.amount);
@@ -2483,8 +2462,21 @@ function AdminPortal() {
       return;
     }
     if (expenseExistingUrls.length + expensePhotoFiles.length > MAX_EXPENSE_PHOTOS) {
-      setError(`Можно приложить не больше ${MAX_EXPENSE_PHOTOS} фото.`);
+      setError(t('admin.expReceiptTooMany', { n: String(MAX_EXPENSE_PHOTOS) }));
       return;
+    }
+    const storedReceipts = editingExpense ? expensePhotoUrls(editingExpense).length : 0;
+    const enforceReceipt = !editingExpense || storedReceipts > 0;
+    if (enforceReceipt) {
+      const receiptCheck = validateOperationalExpenseSupportingFiles({
+        expense: editingExpense,
+        existingUrls: expenseExistingUrls,
+        newFilesCount: expensePhotoFiles.length,
+      });
+      if (!receiptCheck.ok) {
+        setError(t(receiptCheck.errorKey, { n: String(MAX_EXPENSE_PHOTOS) }));
+        return;
+      }
     }
     const published = editingExpense ? isExpensePublished(editingExpense) : false;
     const keepPublished = published && canApproveUkExpenses(staffRole);
@@ -2528,27 +2520,29 @@ function AdminPortal() {
       approved_at: keepPublished ? (editingExpense?.approved_at ?? null) : null,
       ...(showBudget ? { budget_category_id: budgetCategoryId } : {}),
     };
+    const pendingUploaded: string[] = [];
+    let createdId: number | null = null;
+    expenseSaveBusy.current = true;
     try {
       let expenseId = editingExpense?.id;
       if (editingExpense) {
         const { error } = await supabase.from('uk_expenses').update(payload).eq('id', editingExpense.id);
-        if (error) {
-          if (error.message?.includes('status') || error.message?.includes('photo_urls')) {
-            throw new Error(t('err.expenseSql'));
-          }
-          throw error;
-        }
+        if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('uk_expenses').insert(payload).select('id').single();
-        if (error) {
-          if (error.message?.includes('status') || error.message?.includes('photo_urls')) {
-            throw new Error(t('err.expenseSql'));
-          }
-          throw error;
+        for (const file of expensePhotoFiles) {
+          const filePath = expensePendingReceiptPath(file.name);
+          pendingUploaded.push(await uploadPrivateFile(supabase, EXPENSE_RECEIPTS_BUCKET, filePath, file));
         }
+        const { data, error } = await supabase
+          .from('uk_expenses')
+          .insert({ ...payload, photo_urls: pendingUploaded.slice(0, MAX_EXPENSE_PHOTOS) })
+          .select('id')
+          .single();
+        if (error) throw error;
         expenseId = data.id as number;
+        createdId = expenseId;
       }
-      if (expenseId && expensePhotoFiles.length > 0) {
+      if (editingExpense && expenseId && expensePhotoFiles.length > 0) {
         const uploaded = await uploadExpensePhotos(expenseId, expensePhotoFiles);
         const photo_urls = [...expenseExistingUrls, ...uploaded].slice(0, MAX_EXPENSE_PHOTOS);
         const { error: photoErr } = await supabase.from('uk_expenses').update({ photo_urls }).eq('id', expenseId);
@@ -2567,7 +2561,32 @@ function AdminPortal() {
       setExpenseYearFilter(Number(expenseForm.expense_date.slice(0, 4)) || new Date().getFullYear());
       await loadAll();
     } catch (err: any) {
+      if (createdId == null && pendingUploaded.length > 0) {
+        await supabase.storage.from(EXPENSE_RECEIPTS_BUCKET).remove(pendingUploaded);
+      }
+      if (createdId != null) {
+        setShowExpenseForm(false);
+        setEditingExpense(null);
+        setExpensePhotoFiles([]);
+        setExpenseExistingUrls([]);
+      }
+      const receiptKey = expenseReceiptServerErrorKey(err?.message);
+      if (receiptKey) {
+        setError(t(receiptKey));
+        return;
+      }
+      const msg = String(err?.message ?? '');
+      if (/permission denied|row-level security|42501/i.test(msg)) {
+        setError(t('admin.errNoAccess'));
+        return;
+      }
+      if (msg.includes('status') || msg.includes('photo_urls')) {
+        setError(t('err.expenseSql'));
+        return;
+      }
       setError(messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ?? err?.message ?? 'Ошибка сохранения расхода');
+    } finally {
+      expenseSaveBusy.current = false;
     }
   }
 
@@ -2587,6 +2606,8 @@ function AdminPortal() {
         approved_at: new Date().toISOString(),
       }).eq('id', exp.id);
       if (error) {
+        const receiptKey = expenseReceiptServerErrorKey(error.message);
+        if (receiptKey) throw new Error(t(receiptKey));
         if (error.message?.includes('status')) {
           throw new Error(t('err.expenseSql'));
         }
@@ -2892,109 +2913,6 @@ function AdminPortal() {
       await loadAll();
     } catch (e: unknown) {
       setError(ownerVisibleError(e, t('admin.errGeneric')));
-    }
-  }
-
-  function startNewPoll() {
-    if (!canManageCriticalAccess) {
-      setError(t('admin.errNoAccess'));
-      return;
-    }
-    setPollForm({
-      title: '',
-      body: '',
-      category: 'ремонт',
-      voting_starts: new Date().toISOString().slice(0, 10),
-      deadline: '',
-      budget_eur: '',
-      created_by: 'УК',
-      options: ['За', 'Против'],
-    });
-    setPollPhoto(null);
-    setShowPollForm(true);
-  }
-
-  async function handleSavePoll(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canManageCriticalAccess) {
-      setError(t('admin.errNoAccess'));
-      return;
-    }
-    setError(null);
-    const title = pollForm.title.trim();
-    const options = pollForm.options.map((o) => o.trim()).filter(Boolean);
-    if (!title || options.length < 2) {
-      setError('Нужны заголовок и минимум два варианта ответа.');
-      return;
-    }
-    try {
-      const { data, error } = await supabase
-        .from('polls')
-        .insert({
-          title,
-          body: pollForm.body.trim() || null,
-          category: pollForm.category,
-          status: 'открыт',
-          result: 'идёт',
-          voting_starts: pollForm.voting_starts || null,
-          deadline: pollForm.deadline || null,
-          budget_eur: pollForm.budget_eur ? Number(pollForm.budget_eur) : null,
-          created_by: pollForm.created_by.trim() || 'УК',
-        })
-        .select('id')
-        .single();
-      if (error) throw error;
-      const pollId = data.id as number;
-      const { error: optErr } = await supabase.from('poll_options').insert(
-        options.map((label, i) => ({ poll_id: pollId, label, sort_order: i }))
-      );
-      if (optErr) throw optErr;
-      if (pollPhoto) {
-        const filePath = pollImagePath(pollId, pollPhoto.name);
-        const storedPath = await uploadPrivateFile(supabase, POLL_IMAGES_BUCKET, filePath, pollPhoto);
-        await supabase.from('polls').update({ photo_url: storedPath }).eq('id', pollId);
-      }
-      setShowPollForm(false);
-      setPollPhoto(null);
-      await loadAll();
-    } catch (err: any) {
-      setError(messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ?? err?.message ?? 'Ошибка создания опроса');
-    }
-  }
-
-  async function handleTogglePoll(poll: Poll) {
-    if (!canManageCriticalAccess) {
-      setError(t('admin.errNoAccess'));
-      return;
-    }
-    try {
-      const { error } = await supabase.rpc('set_poll_lifecycle', {
-        p_poll_id: poll.id,
-        p_close: poll.status === 'открыт',
-      });
-      if (error) throw error;
-      await loadAll();
-    } catch (err: any) {
-      setError(err?.message ?? 'Ошибка смены статуса');
-    }
-  }
-
-  async function handleDeletePoll(id: number) {
-    if (!canManageCriticalAccess) {
-      setError(t('admin.errNoAccess'));
-      return false;
-    }
-    if (!confirm(t('confirm.deletePoll'))) return false;
-    try {
-      const { error } = await supabase.from('polls').delete().eq('id', id);
-      if (error) throw error;
-      setPollDetailId((current) => (current === id ? null : current));
-      setExpandedPollHistory((current) => (current === id ? null : current));
-      await loadAll();
-      return true;
-    } catch (err: any) {
-      setError(err?.message ?? 'Ошибка удаления');
-      return false;
     }
   }
 
@@ -3338,7 +3256,10 @@ function AdminPortal() {
                   {canManageCriticalAccess && showAnnouncements ? (
                     <button
                       type="button"
-                      onClick={() => { navigateAdminSection('объявления'); setShowAnnForm(true); }}
+                      onClick={() => {
+                        setAnnCreateNonce((n) => n + 1);
+                        navigateAdminSection('объявления');
+                      }}
                       className={adminBtnPrimaryClass}
                     >
                       {t('admin.quickAnnounce')}
@@ -3347,7 +3268,10 @@ function AdminPortal() {
                   {canManageCriticalAccess && showPolls ? (
                     <button
                       type="button"
-                      onClick={() => { startNewPoll(); navigateAdminSection('опросы'); }}
+                      onClick={() => {
+                        setPollCreateNonce((n) => n + 1);
+                        navigateAdminSection('опросы');
+                      }}
                       className={adminBtnSecondaryClass}
                     >
                       {t('admin.quickPoll')}
@@ -3619,38 +3543,71 @@ function AdminPortal() {
             </AdminFilterBar>
 
             {/* СПИСОК КВАРТИР — МОБИЛЬНЫЕ КАРТОЧКИ */}
-            <div className="space-y-2 md:hidden">
+            <div className="space-y-1.5 md:hidden">
               {filteredProperties.map((p) => {
                 const ownerPrimary = (p.owner_name ?? '').trim() || (p.owner_email ?? '').trim() || '—';
                 const debtN = sfDebtOf(p);
                 const overN = supportOverpayment(p.overpayment);
                 return (
-                <button
+                <div
                   key={p.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setDetailProperty(p)}
-                  className={`${adminCardClass} w-full p-3 text-left`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setDetailProperty(p);
+                    }
+                  }}
+                  className={`${adminCardClass} w-full cursor-pointer px-3 py-2.5 text-left`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-semibold text-foreground">№ {p.apartment_number}</div>
-                      <div className="truncate text-sm text-secondary">{ownerPrimary}</div>
+                      <div className="text-sm font-semibold text-foreground">№ {p.apartment_number}</div>
+                      <div className="truncate text-xs text-secondary">{ownerPrimary}</div>
+                      <div className="mt-0.5 text-[11px] text-muted">
+                        {p.area_sqm ?? '—'} {t('common.sqm')} · {p.floor ?? '—'} {t('common.floor')}
+                        {' · '}
+                        <span className={debtN > 0 ? 'font-medium text-danger' : ''}>
+                          {debtN > 0 ? money(debtN) : overN > 0 ? money(overN) : t('admin.aptNoDebt')}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex shrink-0 flex-col items-end gap-1">
                       {p.archived_at ? (
                         <StatusBadge label={t('admin.aptArchivedBadge')} tone="warning" />
                       ) : null}
                       <StatusBadge label={occupancyLabel(p.occupancy_status)} tone={p.occupancy_status === 'standby' ? 'warning' : 'info'} />
+                      {canManageCriticalAccess ? (
+                        <div className="flex gap-2 pt-0.5">
+                          <button
+                            type="button"
+                            className="text-[11px] font-medium text-accent hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditProp(p);
+                            }}
+                          >
+                            {t('common.edit')}
+                          </button>
+                          {!p.archived_at ? (
+                            <button
+                              type="button"
+                              className="text-[11px] font-medium text-danger hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDeleteProp(p.id);
+                              }}
+                            >
+                              {t('common.delete')}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                  <div className="mt-1 text-xs text-muted">
-                    {p.area_sqm ?? '—'} {t('common.sqm')} · {p.floor ?? '—'} {t('common.floor')}
-                  </div>
-                  <div className={`mt-1 text-sm ${debtN > 0 ? 'font-medium text-danger' : 'text-secondary'}`}>
-                    {debtN > 0 ? money(debtN) : overN > 0 ? money(overN) : t('admin.aptNoDebt')}
-                  </div>
-                  <div className="mt-1 text-xs text-accent">{t('admin.aptDetails')} →</div>
-                </button>
+                </div>
                 );
               })}
             </div>
@@ -3666,7 +3623,7 @@ function AdminPortal() {
                     <th className={adminTableCellClass}>{t('form.colFloor')}</th>
                     <th className={adminTableCellClass}>{t('form.colMode')}</th>
                     <th className={adminTableCellClass}>{t('account.debt')}</th>
-                    <th className={adminTableCellClass}></th>
+                    {canManageCriticalAccess ? <th className={adminTableCellClass} /> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -3702,15 +3659,34 @@ function AdminPortal() {
                         <td className={`${adminTableCellClass} ${debtN > 0 ? 'font-medium text-danger' : 'text-secondary'}`}>
                           {debtN > 0 ? money(debtN) : overN > 0 ? money(overN) : t('admin.aptNoDebt')}
                         </td>
-                        <td className={adminTableCellClass}>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setDetailProperty(p); }}
-                            className={adminBtnTertiaryClass}
-                          >
-                            {t('admin.aptDetails')} →
-                          </button>
-                        </td>
+                        {canManageCriticalAccess ? (
+                          <td className={adminTableCellClass}>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-accent hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditProp(p);
+                                }}
+                              >
+                                {t('common.edit')}
+                              </button>
+                              {!p.archived_at ? (
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-danger hover:underline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleDeleteProp(p.id);
+                                  }}
+                                >
+                                  {t('common.delete')}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        ) : null}
                       </tr>
                     );
                   })}
@@ -4702,9 +4678,16 @@ function AdminPortal() {
                   : ''
               }`}
               action={
-                <AdminPrimaryButton type="button" onClick={startNewExpense}>
-                  + {t('admin.addPlus')}
-                </AdminPrimaryButton>
+                <div className="flex flex-wrap gap-2">
+                  {canApproveUkExpenses(staffRole) ? (
+                    <AdminSecondaryButton type="button" onClick={startOpeningExpense}>
+                      {t('admin.expOpeningAction')}
+                    </AdminSecondaryButton>
+                  ) : null}
+                  <AdminPrimaryButton type="button" onClick={startNewExpense}>
+                    + {t('admin.addPlus')}
+                  </AdminPrimaryButton>
+                </div>
               }
             />
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -4742,8 +4725,54 @@ function AdminPortal() {
                     <option value="published">{t('status.expPublished')}</option>
                   </select>
                 </label>
+                <label className="text-sm text-secondary">
+                  {t('admin.expOriginFilter')}
+                  <select
+                    className={`${adminFieldClass} mt-1`}
+                    value={expenseOriginFilter}
+                    onChange={(e) =>
+                      setExpenseOriginFilter(e.target.value as 'all' | 'opening' | 'operational')
+                    }
+                  >
+                    <option value="all">{t('admin.expOriginAll')}</option>
+                    <option value="opening">{t('admin.expOriginOpening')}</option>
+                    <option value="operational">{t('admin.expOriginOperational')}</option>
+                  </select>
+                </label>
+                {showBudget ? (
+                  <label className="text-sm text-secondary">
+                    {t('admin.expBudgetCategory')}
+                    <select
+                      className={`${adminFieldClass} mt-1`}
+                      value={expenseCategoryFilter}
+                      onChange={(e) => setExpenseCategoryFilter(e.target.value)}
+                    >
+                      <option value="all">{t('admin.expCategoryAll')}</option>
+                      <option value="none">{t('admin.expBudgetCategoryNone')}</option>
+                      {budgetCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {categoryLabel(c, locale)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
             </AdminFilterBar>
+            {showOpeningExpenseForm ? (
+              <AdminUkExpenseOpeningForm
+                supabase={supabase}
+                budgetCategories={budgetCategories}
+                canSubmit={canApproveUkExpenses(staffRole)}
+                onCancel={() => setShowOpeningExpenseForm(false)}
+                onError={setError}
+                onDone={async () => {
+                  setShowOpeningExpenseForm(false);
+                  setExpenseOriginFilter('opening');
+                  await loadAll();
+                }}
+              />
+            ) : null}
             {showExpenseForm && (
               <form onSubmit={handleSaveExpense}
                 className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
@@ -4790,15 +4819,29 @@ function AdminPortal() {
                   ) : null}
                 </div>
                 <div>
-                  <p className="mb-2 text-xs text-secondary">
-                    {t('admin.expPhotos', { n: MAX_EXPENSE_PHOTOS })}
+                  <p className="mb-1 text-xs text-secondary">
+                    {!editingExpense
+                      ? t('admin.expReceiptRequiredHint', { n: String(MAX_EXPENSE_PHOTOS) })
+                      : t('admin.expPhotos', { n: MAX_EXPENSE_PHOTOS })}
                   </p>
                   {(expenseExistingUrls.length > 0 || expensePhotoFiles.length > 0) && (
                     <div className="mb-2 flex flex-wrap gap-2">
                       {expenseExistingUrls.map((url) => (
                         <div key={url} className="relative">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" className="h-16 w-16 rounded-lg border border-border object-cover" />
+                          {isExpenseReceiptPdfPath(url) ? (
+                            <SignedStorageLink
+                              stored={url}
+                              className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-hover text-xs font-semibold text-accent"
+                            >
+                              PDF
+                            </SignedStorageLink>
+                          ) : (
+                            <SignedStorageImage
+                              stored={url}
+                              alt=""
+                              className="h-16 w-16 rounded-lg border border-border object-cover"
+                            />
+                          )}
                           <button
                             type="button"
                             onClick={() => setExpenseExistingUrls((prev) => prev.filter((u) => u !== url))}
@@ -4810,8 +4853,14 @@ function AdminPortal() {
                       ))}
                       {expensePhotoFiles.map((file, i) => (
                         <div key={`${file.name}-${i}`} className="relative">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={URL.createObjectURL(file)} alt="" className="h-16 w-16 rounded-lg border border-border object-cover" />
+                          {file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? (
+                            <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-hover px-1 text-center text-[10px] font-semibold leading-tight text-accent">
+                              PDF
+                            </div>
+                          ) : (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={URL.createObjectURL(file)} alt="" className="h-16 w-16 rounded-lg border border-border object-cover" />
+                          )}
                           <button
                             type="button"
                             onClick={() => setExpensePhotoFiles((prev) => prev.filter((_, idx) => idx !== i))}
@@ -4824,18 +4873,38 @@ function AdminPortal() {
                     </div>
                   )}
                   {expenseExistingUrls.length + expensePhotoFiles.length < MAX_EXPENSE_PHOTOS && (
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary"
-                      onChange={(e) => {
-                        const room = MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
-                        const added = Array.from(e.target.files ?? []).slice(0, room);
-                        setExpensePhotoFiles((prev) => [...prev, ...added]);
-                        e.target.value = '';
-                      }}
-                    />
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-border bg-hover/40 px-3 py-3 text-center text-xs text-secondary hover:bg-hover">
+                        {t('admin.expReceiptPick')}
+                        <input
+                          type="file"
+                          accept={EXPENSE_RECEIPT_ACCEPT}
+                          multiple
+                          className="sr-only"
+                          onChange={(e) => {
+                            const room = MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
+                            const added = Array.from(e.target.files ?? []).slice(0, room);
+                            setExpensePhotoFiles((prev) => [...prev, ...added]);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-border bg-hover/40 px-3 py-3 text-center text-xs text-secondary hover:bg-hover sm:max-w-[12rem]">
+                        {t('admin.expReceiptCamera')}
+                        <input
+                          type="file"
+                          accept={EXPENSE_RECEIPT_CAMERA_ACCEPT}
+                          capture="environment"
+                          className="sr-only"
+                          onChange={(e) => {
+                            const room = MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
+                            const added = Array.from(e.target.files ?? []).slice(0, room);
+                            setExpensePhotoFiles((prev) => [...prev, ...added]);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
                   )}
                 </div>
                 <div className="flex gap-2">
@@ -4852,13 +4921,22 @@ function AdminPortal() {
                 </div>
               </form>
             )}
-            {ukExpenses.length === 0 && !showExpenseForm ? (
+            {ukExpenses.length === 0 && !showExpenseForm && !showOpeningExpenseForm ? (
               <AdminEmptyState title={t('admin.expNone')} />
             ) : (
               <div className="space-y-6">
                 {yearsToShow.map((year) => {
                   const group = expensesByYear.get(year);
                   const items = (group?.items ?? []).filter((exp) => {
+                    if (expenseOriginFilter === 'opening' && !isOpeningExpense(exp)) return false;
+                    if (expenseOriginFilter === 'operational' && isOpeningExpense(exp)) return false;
+                    if (showBudget && expenseCategoryFilter !== 'all') {
+                      if (expenseCategoryFilter === 'none') {
+                        if (exp.budget_category_id) return false;
+                      } else if (String(exp.budget_category_id ?? '') !== expenseCategoryFilter) {
+                        return false;
+                      }
+                    }
                     if (expenseStatusFilter === 'all') return true;
                     const published = isExpensePublished(exp);
                     return expenseStatusFilter === 'published' ? published : !published;
@@ -4893,18 +4971,33 @@ function AdminPortal() {
                                 <tbody>
                                   {items.map((exp) => {
                                     const published = isExpensePublished(exp);
+                                    const opening = isOpeningExpense(exp);
                                     const photos = expensePhotoUrls(exp);
+                                    const needsReceipt =
+                                      operationalExpenseRequiresSupportingFile(exp) && photos.length === 0;
+                                    const cat = budgetCategories.find((c) => c.id === exp.budget_category_id);
                                     const open = expenseDetailId === exp.id;
                                     return (
                                       <tr key={exp.id} className={adminTableRowClass}>
                                         <td className={adminTableCellClass}>{formatUkDate(exp.expense_date)}</td>
                                         <td className={adminTableCellClass}>
-                                          <div>{exp.title?.trim() || t('admin.expUntitled')}</div>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <span>{exp.title?.trim() || t('admin.expUntitled')}</span>
+                                            {opening ? (
+                                              <StatusBadge label={t('admin.expOriginOpening')} tone="neutral" />
+                                            ) : (
+                                              <StatusBadge label={t('admin.expOriginOperational')} tone="info" />
+                                            )}
+                                          </div>
+                                          {cat ? (
+                                            <div className="mt-0.5 text-xs text-muted">{categoryLabel(cat, locale)}</div>
+                                          ) : null}
                                           {open && (
                                             <div className="mt-2 space-y-2">
                                               <div className="text-xs text-muted">
                                                 {exp.created_by || t('common.uk')}
                                                 {exp.approved_by ? ` · ${t('admin.expApprovedBy', { name: exp.approved_by })}` : ''}
+                                                {opening ? ` · ${t('admin.expOpeningBadgeHint')}` : ''}
                                               </div>
                                               {photos.length > 0 && <ExpensePhotoStrip urls={photos} size="sm" />}
                                             </div>
@@ -4912,7 +5005,17 @@ function AdminPortal() {
                                         </td>
                                         <td className={`${adminTableCellClass} tabular-nums`}>{money(exp.amount)}</td>
                                         <td className={adminTableCellClass}>
-                                          <StatusBadge label={labelExpenseStatus(published, t)} tone={published ? 'info' : 'warning'} />
+                                          <div className="flex flex-wrap gap-1">
+                                            <StatusBadge label={labelExpenseStatus(published, t)} tone={published ? 'info' : 'warning'} />
+                                            {needsReceipt ? (
+                                              <StatusBadge label={t('admin.expReceiptMissing')} tone="warning" />
+                                            ) : photos.length > 0 ? (
+                                              <StatusBadge
+                                                label={t('admin.expReceiptCount', { n: String(photos.length) })}
+                                                tone="neutral"
+                                              />
+                                            ) : null}
+                                          </div>
                                         </td>
                                         <td className={adminTableCellClass}>
                                           <div className="flex flex-wrap justify-end gap-1">
@@ -4942,19 +5045,39 @@ function AdminPortal() {
                           <div className="space-y-2 md:hidden">
                             {items.map((exp) => {
                               const published = isExpensePublished(exp);
+                              const opening = isOpeningExpense(exp);
                               const photos = expensePhotoUrls(exp);
+                              const needsReceipt =
+                                operationalExpenseRequiresSupportingFile(exp) && photos.length === 0;
+                              const cat = budgetCategories.find((c) => c.id === exp.budget_category_id);
                               const open = expenseDetailId === exp.id;
                               return (
                                 <div key={exp.id} className="rounded-xl border border-border bg-surface p-3">
                                   <div className="flex items-start justify-between gap-2">
                                     <div>
                                       <div className="text-sm font-medium">{exp.title?.trim() || t('admin.expUntitled')}</div>
-                                      <div className="mt-1 text-xs text-muted">{formatUkDate(exp.expense_date)}</div>
+                                      <div className="mt-1 text-xs text-muted">
+                                        {formatUkDate(exp.expense_date)}
+                                        {cat ? ` · ${categoryLabel(cat, locale)}` : ''}
+                                      </div>
                                     </div>
                                     <div className="text-sm font-semibold tabular-nums">{money(exp.amount)}</div>
                                   </div>
                                   <div className="mt-2 flex flex-wrap items-center gap-2">
                                     <StatusBadge label={labelExpenseStatus(published, t)} tone={published ? 'info' : 'warning'} />
+                                    {opening ? (
+                                      <StatusBadge label={t('admin.expOriginOpening')} tone="neutral" />
+                                    ) : (
+                                      <StatusBadge label={t('admin.expOriginOperational')} tone="info" />
+                                    )}
+                                    {needsReceipt ? (
+                                      <StatusBadge label={t('admin.expReceiptMissing')} tone="warning" />
+                                    ) : photos.length > 0 ? (
+                                      <StatusBadge
+                                        label={t('admin.expReceiptCount', { n: String(photos.length) })}
+                                        tone="neutral"
+                                      />
+                                    ) : null}
                                     <button type="button" onClick={() => setExpenseDetailId(open ? null : exp.id)} className="text-xs text-accent">
                                       {t('admin.expDetails')}
                                     </button>
@@ -4970,9 +5093,12 @@ function AdminPortal() {
                                       <button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-xs text-danger">✕</button>
                                     ) : null}
                                   </div>
-                                  {open && photos.length > 0 && (
-                                    <div className="mt-2">
-                                      <ExpensePhotoStrip urls={photos} size="sm" />
+                                  {open && (opening || photos.length > 0) && (
+                                    <div className="mt-2 space-y-2">
+                                      {opening ? (
+                                        <div className="text-xs text-muted">{t('admin.expOpeningBadgeHint')}</div>
+                                      ) : null}
+                                      {photos.length > 0 ? <ExpensePhotoStrip urls={photos} size="sm" /> : null}
                                     </div>
                                   )}
                                 </div>
@@ -5364,411 +5490,36 @@ function AdminPortal() {
       // =============================================================
       // ОПРОСЫ
       // =============================================================
-      case 'опросы': {
-        const selectedPoll = polls.find((p) => p.id === pollDetailId) ?? null;
-        const detailOptions = selectedPoll
-          ? pollOptions.filter((o) => o.poll_id === selectedPoll.id).sort((a, b) => a.sort_order - b.sort_order)
-          : [];
-        const detailVotes = selectedPoll ? pollVotes.filter((v) => v.poll_id === selectedPoll.id) : [];
-        const detailHistory = selectedPoll ? pollVoteHistory.filter((h) => h.poll_id === selectedPoll.id) : [];
-        const detailDecision = selectedPoll
-          ? pollDecisionLabel(selectedPoll, tallyPoll(detailOptions, detailVotes, properties).accepted)
-          : 'идёт';
+      case 'опросы':
         return (
-          <div className="space-y-4">
-            <AdminPageHeader
-              title={t('admin.polls')}
-              secondary={t('admin.pollsLeadAdmin')}
-              action={canManageCriticalAccess ? (
-                <AdminPrimaryButton type="button" onClick={startNewPoll}>
-                  + {t('admin.quickPoll')}
-                </AdminPrimaryButton>
-              ) : undefined}
-            />
-            <p className="text-xs text-muted">{t('account.pollsNotMeeting')}</p>
-            <AdminCard>
-              {showPollForm && (
-                <form onSubmit={handleSavePoll} className={`${adminFormPanelClass} mb-6`}>
-                  <h3 className="text-sm font-semibold text-foreground">{t('admin.pollFormTitle')}</h3>
-                  <select
-                    className={adminFieldClass}
-                    value={pollForm.category}
-                    onChange={(e) => setPollForm({ ...pollForm, category: e.target.value as PollCategory })}
-                  >
-                    <option value="ремонт">{labelPollCategory('ремонт', t)}</option>
-                    <option value="покупка">{labelPollCategory('покупка', t)}</option>
-                    <option value="опрос">{labelPollCategory('опрос', t)}</option>
-                  </select>
-                  <input className={adminFieldClass}
-                    placeholder={t('admin.pollWhatPh')} value={pollForm.title}
-                    onChange={(e) => setPollForm({ ...pollForm, title: e.target.value })} required />
-                  <textarea className={adminFieldClass}
-                    placeholder={t('admin.pollBodyPh')} rows={3} value={pollForm.body}
-                    onChange={(e) => setPollForm({ ...pollForm, body: e.target.value })} />
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="text-xs text-secondary mb-1 block">{t('admin.pollStarts')}</label>
-                      <input type="date"
-                        className={adminFieldClass}
-                        value={pollForm.voting_starts}
-                        onChange={(e) => setPollForm({ ...pollForm, voting_starts: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-secondary mb-1 block">{t('admin.pollEnds')}</label>
-                      <input type="date"
-                        className={adminFieldClass}
-                        value={pollForm.deadline}
-                        onChange={(e) => setPollForm({ ...pollForm, deadline: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-secondary mb-1 block">{t('admin.pollBudget')}</label>
-                      <input type="number" step="0.01" min="0"
-                        className={adminFieldClass}
-                        placeholder="0.00" value={pollForm.budget_eur}
-                        onChange={(e) => setPollForm({ ...pollForm, budget_eur: e.target.value })} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-secondary mb-1 block">{t('admin.pollPhoto')}</label>
-                    <input type="file" accept="image/*"
-                      className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary"
-                      onChange={(e) => setPollPhoto(e.target.files?.[0] ?? null)} />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-xs text-secondary">{t('admin.pollOptions')}</div>
-                    {pollForm.options.map((opt, i) => (
-                      <div key={i} className="flex gap-2">
-                        <input
-                          className={adminFieldClass}
-                          value={opt}
-                          onChange={(e) => {
-                            const next = [...pollForm.options];
-                            next[i] = e.target.value;
-                            setPollForm({ ...pollForm, options: next });
-                          }}
-                          required
-                        />
-                        {pollForm.options.length > 2 && (
-                          <button type="button"
-                            onClick={() => setPollForm({
-                              ...pollForm,
-                              options: pollForm.options.filter((_, idx) => idx !== i),
-                            })}
-                            className="rounded px-2 text-xs text-danger bg-danger-bg">✕</button>
-                        )}
-                      </div>
-                    ))}
-                    <button type="button"
-                      onClick={() => setPollForm({ ...pollForm, options: [...pollForm.options, ''] })}
-                      className={adminBtnTertiaryClass}>
-                      + {t('admin.pollAddOption')}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <AdminPrimaryButton type="submit">{t('admin.pollPublish')}</AdminPrimaryButton>
-                    <AdminSecondaryButton type="button" onClick={() => setShowPollForm(false)}>
-                      {t('common.cancel')}
-                    </AdminSecondaryButton>
-                  </div>
-                </form>
-              )}
-              {polls.length === 0 && !showPollForm && (
-                <AdminEmptyState title={t('account.noPolls')} />
-              )}
-              {polls.length > 0 && (
-                <>
-                  <div className="space-y-2 md:hidden">
-                    {polls.map((poll) => {
-                      const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
-                      const options = pollOptions.filter((o) => o.poll_id === poll.id);
-                      const tally = tallyPoll(options, votesForPoll, properties);
-                      const decision = pollDecisionLabel(poll, tally.accepted);
-                      return (
-                        <button
-                          key={poll.id}
-                          type="button"
-                          onClick={() => setPollDetailId(poll.id)}
-                          className="w-full rounded-[14px] border border-border bg-surface p-3 text-left"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="truncate text-sm font-medium text-foreground">{poll.title}</span>
-                            <StatusBadge
-                              label={labelPollStatus(poll.status, t)}
-                              tone={poll.status === 'открыт' ? 'info' : 'neutral'}
-                            />
-                          </div>
-                          <div className="mt-1 text-xs text-muted">
-                            {formatOwnerDate(poll.voting_starts, locale)} – {formatOwnerDate(poll.deadline, locale)}
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-xs text-secondary">{t('admin.pollVotesN', { n: votesForPoll.length })}</span>
-                            <StatusBadge
-                              label={labelPollDecision(decision, t)}
-                              tone={decision === 'принято' ? 'success' : decision === 'не принято' ? 'danger' : 'warning'}
-                            />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <AdminTableShell className="hidden md:block">
-                    <table className="w-full min-w-[720px] text-sm">
-                      <thead>
-                        <tr className={adminTableHeadRowClass}>
-                          <th className={adminTableCellClass}>{t('account.subject')}</th>
-                          <th className={adminTableCellClass}>{t('admin.status')}</th>
-                          <th className={adminTableCellClass}>{t('admin.pollColVotes')}</th>
-                          <th className={adminTableCellClass}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {polls.map((poll) => {
-                          const votesForPoll = pollVotes.filter((v) => v.poll_id === poll.id);
-                          const options = pollOptions.filter((o) => o.poll_id === poll.id);
-                          const tally = tallyPoll(options, votesForPoll, properties);
-                          const decision = pollDecisionLabel(poll, tally.accepted);
-                          return (
-                            <tr key={poll.id} className={adminTableRowClass}>
-                              <td className={adminTableCellClass}>
-                                <div className="font-medium text-foreground">{poll.title}</div>
-                                <div className="text-xs text-muted">
-                                  {labelPollCategory(poll.category, t)} · {formatOwnerDate(poll.voting_starts, locale)} – {formatOwnerDate(poll.deadline, locale)}
-                                </div>
-                              </td>
-                              <td className={adminTableCellClass}>
-                                <div className="flex flex-wrap gap-1">
-                                  <StatusBadge
-                                    label={labelPollStatus(poll.status, t)}
-                                    tone={poll.status === 'открыт' ? 'info' : 'neutral'}
-                                  />
-                                  <StatusBadge
-                                    label={labelPollDecision(decision, t)}
-                                    tone={decision === 'принято' ? 'success' : decision === 'не принято' ? 'danger' : 'warning'}
-                                  />
-                                </div>
-                              </td>
-                              <td className={`${adminTableCellClass} text-secondary`}>
-                                {t('admin.pollVotesN', { n: votesForPoll.length })}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                <button type="button" onClick={() => setPollDetailId(poll.id)} className={adminBtnTertiaryClass}>
-                                  {t('admin.annOpen')}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </AdminTableShell>
-                </>
-              )}
-              {selectedPoll ? (
-                  <div className="mt-4 space-y-3 border-t border-border pt-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="text-base font-semibold text-foreground">{selectedPoll.title}</h3>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          <StatusBadge label={labelPollCategory(selectedPoll.category, t)} />
-                          <StatusBadge
-                            label={labelPollStatus(selectedPoll.status, t)}
-                            tone={selectedPoll.status === 'открыт' ? 'info' : 'neutral'}
-                          />
-                          <StatusBadge
-                            label={labelPollDecision(detailDecision, t)}
-                            tone={detailDecision === 'принято' ? 'success' : detailDecision === 'не принято' ? 'danger' : 'warning'}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <AdminSecondaryButton type="button" onClick={() => setPollDetailId(null)}>
-                          {t('common.close')}
-                        </AdminSecondaryButton>
-                        {canManageCriticalAccess ? (
-                        <button type="button" onClick={() => handleTogglePoll(selectedPoll)} className={adminBtnSecondaryClass}>
-                          {selectedPoll.status === 'открыт' ? t('admin.pollClose') : t('admin.pollReopen')}
-                        </button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <PollDetails poll={selectedPoll} options={detailOptions} votes={detailVotes} properties={properties} />
-                    <PollOptionBars poll={selectedPoll} options={detailOptions} votes={detailVotes} properties={properties} alwaysShowStats />
-                    <button
-                      type="button"
-                      onClick={() => setExpandedPollHistory(expandedPollHistory === selectedPoll.id ? null : selectedPoll.id)}
-                      className={adminBtnTertiaryClass}
-                    >
-                      {expandedPollHistory === selectedPoll.id
-                        ? t('admin.pollHideHistory')
-                        : t('admin.pollHistory', { n: detailHistory.length })}
-                    </button>
-                    {expandedPollHistory === selectedPoll.id && (
-                      detailHistory.length === 0 ? (
-                        <AdminEmptyState title={t('admin.pollNoHistory')} />
-                      ) : (
-                        <AdminTableShell>
-                          <table className="w-full min-w-[520px] text-xs">
-                            <thead>
-                              <tr className={adminTableHeadRowClass}>
-                                <th className={adminTableCellClass}>{t('admin.pollWhen')}</th>
-                                <th className={adminTableCellClass}>{t('admin.aptLabel')}</th>
-                                <th className={adminTableCellClass}>{t('admin.pollVote')}</th>
-                                <th className={`${adminTableCellClass} text-right`}>{t('admin.pollWeight')}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {detailHistory.map((h) => (
-                                <tr key={h.id} className={adminTableRowClass}>
-                                  <td className={adminTableCellClass}>{formatOwnerDateTime(h.created_at, locale)}</td>
-                                  <td className={adminTableCellClass}>{propertyNameById(h.property_id)}</td>
-                                  <td className={adminTableCellClass}>
-                                    {detailOptions.find((o) => o.id === h.option_id)?.label ?? h.option_id}
-                                  </td>
-                                  <td className={`${adminTableCellClass} text-right`}>{formatM3(Number(h.weight ?? 0), locale)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </AdminTableShell>
-                      )
-                    )}
-                    {canManageCriticalAccess ? (
-                    <div className="border-t border-border pt-3">
-                      <button type="button" onClick={() => handleDeletePoll(selectedPoll.id)} className="text-sm text-danger hover:underline">
-                        {t('common.delete')}
-                      </button>
-                    </div>
-                    ) : null}
-                  </div>
-              ) : null}
-            </AdminCard>
-          </div>
+          <AdminPolls
+            supabase={supabase}
+            polls={polls}
+            pollOptions={pollOptions}
+            pollVotes={pollVotes}
+            pollVoteHistory={pollVoteHistory}
+            properties={properties}
+            canManage={canManageCriticalAccess}
+            createNonce={pollCreateNonce}
+            onChanged={loadAll}
+            onError={setError}
+          />
         );
-      }
 
       // =============================================================
       // ОБЪЯВЛЕНИЯ
       // =============================================================
-      case 'объявления': {
-        const selectedAnn = announcements.find((a) => a.id === annDetailId) ?? null;
+      case 'объявления':
         return (
-          <div className="space-y-4">
-            <AdminPageHeader
-              title={t('admin.announcements')}
-              secondary={t('admin.announcementsLead')}
-              action={canManageCriticalAccess ? (
-                <AdminPrimaryButton type="button" onClick={() => setShowAnnForm(true)}>
-                  + {t('admin.quickAnnounce')}
-                </AdminPrimaryButton>
-              ) : undefined}
-            />
-            {showAnnForm && (
-              <form onSubmit={handleSaveAnn} className={adminFormPanelClass}>
-                <h3 className="text-sm font-semibold text-foreground">{t('admin.annNew')}</h3>
-                <input className={adminFieldClass}
-                  placeholder={t('admin.annTitlePh')} value={annForm.title}
-                  onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })} required />
-                <textarea className={adminFieldClass}
-                  placeholder={t('admin.annBodyPh')} rows={4} value={annForm.body}
-                  onChange={(e) => setAnnForm({ ...annForm, body: e.target.value })} required />
-                <input className={adminFieldClass}
-                  placeholder={t('admin.annFromPh')} value={annForm.created_by}
-                  onChange={(e) => setAnnForm({ ...annForm, created_by: e.target.value })} />
-                <div className="flex flex-wrap gap-2">
-                  <AdminPrimaryButton type="submit">{t('admin.pollPublish')}</AdminPrimaryButton>
-                  <AdminSecondaryButton type="button" onClick={() => setShowAnnForm(false)}>
-                    {t('common.cancel')}
-                  </AdminSecondaryButton>
-                </div>
-              </form>
-            )}
-            {announcements.length === 0 ? (
-              <AdminEmptyState title={t('account.noAnnouncements')} />
-            ) : (
-              <>
-                <div className="space-y-2 md:hidden">
-                  {announcements.map((a) => {
-                    const preview = String(a.body ?? '').replace(/\s+/g, ' ').trim();
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => setAnnDetailId(a.id)}
-                        className="w-full rounded-[14px] border border-border bg-surface p-3 text-left shadow-card"
-                      >
-                        <div className="truncate text-sm font-medium text-foreground">{a.title}</div>
-                        <div className="mt-1 text-xs text-muted">{formatOwnerDateTime(a.created_at, locale)}</div>
-                        {preview ? <div className="mt-1 line-clamp-2 text-xs text-secondary">{preview}</div> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-                <AdminTableShell className="hidden md:block">
-                  <table className="w-full min-w-[640px] text-sm">
-                    <thead>
-                      <tr className={adminTableHeadRowClass}>
-                        <th className={adminTableCellClass}>{t('admin.annTitlePh')}</th>
-                        <th className={adminTableCellClass}>{t('admin.date')}</th>
-                        <th className={adminTableCellClass}>{t('account.description')}</th>
-                        <th className={adminTableCellClass}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {announcements.map((a) => {
-                        const preview = String(a.body ?? '').replace(/\s+/g, ' ').trim();
-                        return (
-                          <tr key={a.id} className={adminTableRowClass}>
-                            <td className={`${adminTableCellClass} font-medium text-foreground`}>{a.title}</td>
-                            <td className={`${adminTableCellClass} whitespace-nowrap text-xs text-muted`}>
-                              {formatOwnerDateTime(a.created_at, locale)}
-                            </td>
-                            <td className={adminTableCellClass}>
-                              <div className="max-w-md truncate text-secondary">{preview || '—'}</div>
-                            </td>
-                            <td className={adminTableCellClass}>
-                              <button type="button" onClick={() => setAnnDetailId(a.id)} className={adminBtnTertiaryClass}>
-                                {t('admin.annOpen')}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </AdminTableShell>
-              </>
-            )}
-            {selectedAnn ? (
-              <div className={adminModalOverlayClass} onClick={() => setAnnDetailId(null)}>
-                <div className={`${adminModalPanelClass} max-w-lg`} onClick={(e) => e.stopPropagation()}>
-                  <div className={adminModalHeaderClass}>
-                    <div className="min-w-0">
-                      <h3 className="text-lg font-semibold text-foreground">{selectedAnn.title}</h3>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {selectedAnn.created_by ? `${t('admin.annFrom', { name: selectedAnn.created_by })} · ` : ''}
-                        {formatOwnerDateTime(selectedAnn.created_at, locale)}
-                      </p>
-                    </div>
-                    <button type="button" onClick={() => setAnnDetailId(null)} className={adminBtnSecondaryClass}>
-                      {t('common.close')}
-                    </button>
-                  </div>
-                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-                    <p className="whitespace-pre-wrap text-sm text-secondary">{selectedAnn.body}</p>
-                    {canManageCriticalAccess ? (
-                    <div className="border-t border-border pt-4">
-                      <button type="button" onClick={() => handleDeleteAnn(selectedAnn.id)} className="text-sm text-danger hover:underline">
-                        {t('common.delete')}
-                      </button>
-                    </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
+          <AdminAnnouncements
+            supabase={supabase}
+            announcements={announcements}
+            canManage={canManageCriticalAccess}
+            createNonce={annCreateNonce}
+            onChanged={loadAll}
+            onError={setError}
+          />
         );
-      }
 
       case 'тарифы':
         return (
@@ -5794,6 +5545,7 @@ function AdminPortal() {
             showSalary={showStaffSalary}
             supportAssessments={supportAssessments}
             supportAssessmentsLoaded={supportAssessmentsLoaded}
+            budgetCategories={budgetCategories}
           />
         );
 
@@ -6014,31 +5766,19 @@ function AdminPortal() {
               onChange={(id) => openSectionTab('такса', id)}
             />
             {feeTab === 'overview' && (
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <AdminMetricCard
-                  label={t('admin.feeCurrentRate')}
-                  value={supportRate == null ? '—' : money(supportRate)}
-                  secondary={supportRate == null ? t('admin.feeTariffNotConfigured') : t('admin.feePerSqm')}
-                  onClick={() => openSectionTab('такса', 'operations')}
-                />
-                <AdminMetricCard
-                  label={t('admin.feeYear')}
-                  value={annualSupportTotal == null ? '—' : money(annualSupportTotal)}
-                  secondary={String(sofiaCalendarYear())}
-                  onClick={() => openSectionTab('такса', 'policy')}
-                />
-                <AdminMetricCard
-                  label={t('admin.sfOutstandingLabel')}
-                  value={money(totalDebt)}
-                  alert={totalDebt > 0}
-                  onClick={() => openSectionTab('такса', 'register')}
-                />
-                <AdminMetricCard
-                  label={t('admin.sfOverpaymentLabel')}
-                  value={money(totalOverpayment)}
-                  onClick={() => openSectionTab('такса', 'register')}
-                />
-              </div>
+              <AdminSupportFeeOverview
+                supportRate={supportRate}
+                annualSupportTotal={annualSupportTotal}
+                billingYear={sofiaCalendarYear()}
+                outstandingTotal={totalDebt}
+                overpaymentTotal={totalOverpayment}
+                outstandingByProperty={properties.map((p) => sfDebtOf(p))}
+                apartmentsCount={properties.length}
+                ledger={ledger}
+                onOpenOperations={() => openSectionTab('такса', 'operations')}
+                onOpenPolicy={() => openSectionTab('такса', 'policy')}
+                onOpenRegister={() => openSectionTab('такса', 'register')}
+              />
             )}
 
             <div className={feeTab === 'policy' || feeTab === 'register' ? undefined : 'hidden'}>
@@ -6392,23 +6132,36 @@ function AdminPortal() {
         type="button"
         onClick={() => navigateAdminSection(key)}
         title={item.label}
+        aria-current={active ? 'page' : undefined}
         className={`flex w-full min-w-0 items-center overflow-hidden rounded-lg border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-          sidebarOpen ? (nested ? 'h-8 gap-2 pl-8 pr-2' : 'h-9 gap-2.5 px-2.5') : 'h-9 justify-center px-0'
+          sidebarOpen
+            ? nested
+              ? 'h-8 gap-2 pl-7 pr-2'
+              : 'h-9 gap-2 px-2'
+            : 'h-9 justify-center px-0'
         } ${
           active
-            ? 'border-accent/25 bg-accent-bg text-accent'
+            ? 'border-accent/35 bg-accent-bg text-foreground shadow-[inset_3px_0_0_0_var(--accent)]'
             : 'border-transparent text-secondary hover:bg-hover hover:text-foreground'
         }`}
       >
-        <span className="relative flex h-5 w-5 flex-shrink-0 items-center justify-center text-base leading-none">
+        <span
+          className={`relative inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md leading-none ${navSectionIconChipClass(key)}`}
+        >
           {item.icon}
           {!sidebarOpen && badge > 0 ? (
-            <span className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${key === 'чат' ? 'bg-danger' : 'bg-warning'}`} />
+            <span
+              className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${
+                key === 'чат' ? 'bg-danger' : 'bg-warning'
+              }`}
+            />
           ) : null}
         </span>
         {sidebarOpen ? (
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-left">{item.label}</span>
+            <span className={`truncate text-left ${active ? 'font-semibold text-accent' : ''}`}>
+              {item.label}
+            </span>
             {badge > 0 ? (
               <span
                 className={`ml-auto min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-semibold ${
@@ -6568,8 +6321,10 @@ function AdminPortal() {
                       type="button"
                       aria-expanded={expanded}
                       onClick={() => toggleNavGroup(group.id)}
-                      className={`flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                        expanded ? 'bg-hover text-foreground' : 'text-secondary hover:bg-hover hover:text-foreground'
+                      className={`flex h-9 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                        expanded
+                          ? 'bg-hover font-medium text-foreground'
+                          : 'text-secondary hover:bg-hover hover:text-foreground'
                       }`}
                     >
                       <NavGroupIcon id={group.id} />

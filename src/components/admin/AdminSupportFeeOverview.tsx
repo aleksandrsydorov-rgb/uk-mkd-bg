@@ -116,11 +116,6 @@ export function AdminSupportFeeOverview({
               <dd className="font-semibold tabular-nums text-success">{money(stats.paymentsTotal)}</dd>
             </div>
           </dl>
-          <ShareBar
-            leftShare={stats.activityShareCharges}
-            leftTone="bg-accent/70"
-            rightTone="bg-success/70"
-          />
           <p className="mt-2 text-[11px] text-muted">{t('admin.sfOverviewActivityHint')}</p>
         </AdminCard>
 

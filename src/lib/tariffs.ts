@@ -192,3 +192,119 @@ export function applicationYearFromValidFrom(validFrom: string | null | undefine
   const y = Number(String(validFrom).slice(0, 4));
   return Number.isFinite(y) ? y : null;
 }
+
+/** Support Fee publish intents — Task 07 annual policy. */
+export type SupportFeePublishIntent = 'activation' | 'next_year' | 'amend';
+
+export function supportFeeHasCurrentTariff(row: Pick<TariffListRow, 'current_version_id'> | null | undefined): boolean {
+  return Boolean(row?.current_version_id);
+}
+
+export function defaultSupportFeePublishIntent(
+  row: Pick<TariffListRow, 'current_version_id'> | null | undefined,
+): SupportFeePublishIntent {
+  return supportFeeHasCurrentTariff(row) ? 'next_year' : 'activation';
+}
+
+/** Planned Support Fee years: only the next calendar year (not +2/+3…). */
+export function supportFeePlannedApplicationYear(now = new Date()): number {
+  return sofiaCurrentYear(now) + 1;
+}
+
+export function supportFeeAllowedApplicationYears(
+  intent: SupportFeePublishIntent,
+  now = new Date(),
+): number[] {
+  const current = sofiaCurrentYear(now);
+  const next = current + 1;
+  if (intent === 'activation') return [current, next];
+  if (intent === 'amend') return [current];
+  return [next];
+}
+
+export function validateSupportFeePublishInput(args: {
+  intent: SupportFeePublishIntent;
+  applicationYear: number;
+  validFrom: string | null | undefined;
+  hasCurrentTariff: boolean;
+  todayIso?: string;
+}): { ok: true } | { ok: false; errorKey: string } {
+  const today = args.todayIso ?? sofiaTodayIsoDate();
+  const current = Number(today.slice(0, 4));
+  const next = current + 1;
+  const year = args.applicationYear;
+
+  if (!Number.isFinite(year)) {
+    return { ok: false, errorKey: 'admin.tcErrSupportYear' };
+  }
+
+  if (args.intent === 'activation') {
+    if (args.hasCurrentTariff) {
+      return { ok: false, errorKey: 'admin.tcErrSupportActivationDone' };
+    }
+    if (year !== current && year !== next) {
+      return { ok: false, errorKey: 'admin.tcErrSupportActivationYear' };
+    }
+    return { ok: true };
+  }
+
+  if (args.intent === 'next_year') {
+    if (year !== next) {
+      return { ok: false, errorKey: 'admin.tcErrSupportNextYearOnly' };
+    }
+    return { ok: true };
+  }
+
+  // amend in-force rate from publication date — does not rewrite old assessments
+  if (!args.hasCurrentTariff) {
+    return { ok: false, errorKey: 'admin.tcErrSupportAmendNeedsCurrent' };
+  }
+  if (year !== current) {
+    return { ok: false, errorKey: 'admin.tcErrSupportAmendYear' };
+  }
+  const vf = String(args.validFrom ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(vf) || vf < today) {
+    return { ok: false, errorKey: 'admin.tcErrValidFrom' };
+  }
+  return { ok: true };
+}
+
+export function supportFeePublishValidFrom(args: {
+  intent: SupportFeePublishIntent;
+  applicationYear: number;
+  amendValidFrom: string | null | undefined;
+}): string | null {
+  if (args.intent === 'amend') {
+    return String(args.amendValidFrom ?? '').trim() || null;
+  }
+  return null;
+}
+
+/** Capital Repair publish intents — Task 11 (same lifecycle as Support Fee). */
+export type CapitalRepairPublishIntent = SupportFeePublishIntent;
+
+export const capitalRepairHasCurrentTariff = supportFeeHasCurrentTariff;
+export const defaultCapitalRepairPublishIntent = defaultSupportFeePublishIntent;
+export const capitalRepairPlannedApplicationYear = supportFeePlannedApplicationYear;
+export const capitalRepairAllowedApplicationYears = supportFeeAllowedApplicationYears;
+export const capitalRepairPublishValidFrom = supportFeePublishValidFrom;
+
+export function validateCapitalRepairPublishInput(args: {
+  intent: CapitalRepairPublishIntent;
+  applicationYear: number;
+  validFrom: string | null | undefined;
+  hasCurrentTariff: boolean;
+  todayIso?: string;
+}): { ok: true } | { ok: false; errorKey: string } {
+  const result = validateSupportFeePublishInput(args);
+  if (result.ok) return result;
+  const map: Record<string, string> = {
+    'admin.tcErrSupportYear': 'admin.tcErrCapitalYear',
+    'admin.tcErrSupportActivationDone': 'admin.tcErrCapitalActivationDone',
+    'admin.tcErrSupportActivationYear': 'admin.tcErrCapitalActivationYear',
+    'admin.tcErrSupportNextYearOnly': 'admin.tcErrCapitalNextYearOnly',
+    'admin.tcErrSupportAmendNeedsCurrent': 'admin.tcErrCapitalAmendNeedsCurrent',
+    'admin.tcErrSupportAmendYear': 'admin.tcErrCapitalAmendYear',
+  };
+  return { ok: false, errorKey: map[result.errorKey] ?? result.errorKey };
+}

@@ -62,6 +62,7 @@ describe('Email Core Phase D · permanent failure & retry', () => {
 
   it('maps delivery honesty from outbox + webhook event', () => {
     expect(honestyFromDeliveryState({ status: 'queued' })).toBe('QUEUED');
+    expect(honestyFromDeliveryState({ status: 'sent' })).toBe('ACCEPTED');
     expect(honestyFromDeliveryState({ status: 'sent', latestEventType: 'delivered' })).toBe('SENT');
     expect(honestyFromDeliveryState({ status: 'sent', latestEventType: 'bounced' })).toBe('FAILED');
     expect(honestyFromDeliveryState({ status: 'failed' })).toBe('FAILED');

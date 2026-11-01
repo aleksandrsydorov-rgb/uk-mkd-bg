@@ -42,11 +42,16 @@ export function MobileBottomNav({
               key={item.key}
               type="button"
               onClick={() => onSelect(item.key)}
+              aria-current={active ? 'page' : undefined}
               className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium ${
                 active ? 'text-accent' : 'text-muted'
               }`}
             >
-              <span className="flex h-5 items-center justify-center leading-none [&>svg]:h-4 [&>svg]:w-4">
+              <span
+                className={`flex h-7 w-7 items-center justify-center rounded-md leading-none [&>svg]:h-4 [&>svg]:w-4 ${
+                  active ? 'bg-accent-bg ring-1 ring-accent/25' : ''
+                }`}
+              >
                 {item.icon}
               </span>
               <span className="max-w-full truncate">{item.label}</span>
@@ -65,7 +70,11 @@ export function MobileBottomNav({
             moreActive ? 'text-accent' : 'text-muted'
           }`}
         >
-          <span className="flex h-5 items-center justify-center leading-none">
+          <span
+            className={`flex h-7 w-7 items-center justify-center rounded-md leading-none ${
+              moreActive ? 'bg-accent-bg ring-1 ring-accent/25 text-accent' : 'text-muted'
+            }`}
+          >
             <Menu className="h-4 w-4" strokeWidth={1.75} aria-hidden />
           </span>
           <span>{t('common.more')}</span>

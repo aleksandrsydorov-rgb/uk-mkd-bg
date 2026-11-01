@@ -17,7 +17,8 @@ export type SupportLedgerKind =
   | 'adjustment_credit'
   | 'payment_reversal'
   | 'assessment_void'
-  | 'assessment_restore';
+  | 'assessment_restore'
+  | 'late_increase_waive';
 
 export function isSupportPaymentReversible(kind: string | null | undefined): boolean {
   return (kind ?? '') === 'payment';
@@ -386,6 +387,14 @@ export function supportLedgerKindLabelKey(kind: string | null | undefined): stri
       return 'admin.kindAdjDebit';
     case 'adjustment_credit':
       return 'admin.kindAdjCredit';
+    case 'late_increase_waive':
+      return 'admin.sfHistPenaltyWaive';
+    case 'opening_obligation':
+      return 'admin.sfHistOpeningObligation';
+    case 'opening_historical_settlement':
+      return 'admin.sfHistOpeningSettlement';
+    case 'opening_credit':
+      return 'admin.sfHistOpeningCredit';
     default:
       return 'admin.kind';
   }

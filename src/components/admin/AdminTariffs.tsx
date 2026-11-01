@@ -12,11 +12,25 @@ import {
   canCancelTariffVersionInUi,
   canPublishSupportTariff,
   canPublishUtilityTariff,
+  capitalRepairAllowedApplicationYears,
+  capitalRepairHasCurrentTariff,
+  capitalRepairPlannedApplicationYear,
+  capitalRepairPublishValidFrom,
+  defaultCapitalRepairPublishIntent,
+  defaultSupportFeePublishIntent,
   formatTariffRate,
   normalizeTariffHistoryRow,
   normalizeTariffListRow,
   sofiaCurrentYear,
   sofiaTodayIsoDate,
+  supportFeeAllowedApplicationYears,
+  supportFeeHasCurrentTariff,
+  supportFeePlannedApplicationYear,
+  supportFeePublishValidFrom,
+  validateCapitalRepairPublishInput,
+  validateSupportFeePublishInput,
+  type CapitalRepairPublishIntent,
+  type SupportFeePublishIntent,
   type TariffHistoryRow,
   type TariffListRow,
   type TariffTab,
@@ -169,10 +183,13 @@ export function AdminTariffs({
   const currentYear = sofiaCurrentYear();
   const nextYear = currentYear + 1;
 
+  const [supportIntent, setSupportIntent] = useState<SupportFeePublishIntent>('activation');
+  const [capitalIntent, setCapitalIntent] = useState<CapitalRepairPublishIntent>('activation');
   const [supportForm, setSupportForm] = useState({
     rate: '',
     rate_legal: '',
     application_year: String(nextYear),
+    amend_valid_from: today,
     basis_mode: 'general_meeting' as 'general_meeting' | 'external_decision',
     decision_id: '',
     basis_reference: '',
@@ -291,9 +308,9 @@ export function AdminTariffs({
     [rows],
   );
 
-  async function publishAnnualRate(e: React.FormEvent, tariffKey: 'support_fee' | 'capital_repair') {
+  async function publishSupport(e: React.FormEvent) {
     e.preventDefault();
-    const tariff = byKey.get(tariffKey);
+    const tariff = byKey.get('support_fee');
     if (!tariff || !canSupport) return;
     setBusy(true);
     setError(null);
@@ -302,8 +319,14 @@ export function AdminTariffs({
       const rateLegal = Number(supportForm.rate_legal.trim() || supportForm.rate);
       if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
       const year = Number(supportForm.application_year);
-      const minYear = tariffKey === 'capital_repair' ? currentYear : nextYear;
-      if (!Number.isFinite(year) || year < minYear) throw new Error(t('admin.tcErrSupportYear'));
+      const validation = validateSupportFeePublishInput({
+        intent: supportIntent,
+        applicationYear: year,
+        validFrom: supportForm.amend_valid_from,
+        hasCurrentTariff: supportFeeHasCurrentTariff(tariff),
+        todayIso: today,
+      });
+      if (!validation.ok) throw new Error(t(validation.errorKey));
       if (!supportForm.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
       if (!supportForm.basis_date) throw new Error(t('admin.tcErrBasisDate'));
       const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
@@ -313,7 +336,11 @@ export function AdminTariffs({
         p_basis_note: supportForm.basis_note.trim(),
         p_idempotency_key: crypto.randomUUID(),
         p_application_year: year,
-        p_valid_from: null,
+        p_valid_from: supportFeePublishValidFrom({
+          intent: supportIntent,
+          applicationYear: year,
+          amendValidFrom: supportForm.amend_valid_from,
+        }),
         p_basis_reference:
           supportForm.basis_mode === 'external_decision'
             ? supportForm.basis_reference.trim() || null
@@ -335,12 +362,58 @@ export function AdminTariffs({
     }
   }
 
-  async function publishSupport(e: React.FormEvent) {
-    return publishAnnualRate(e, 'support_fee');
-  }
-
   async function publishCapital(e: React.FormEvent) {
-    return publishAnnualRate(e, 'capital_repair');
+    e.preventDefault();
+    const tariff = byKey.get('capital_repair');
+    if (!tariff || !canSupport) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const rate = Number(supportForm.rate);
+      const rateLegal = Number(supportForm.rate_legal.trim() || supportForm.rate);
+      if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
+      const year = Number(supportForm.application_year);
+      const validation = validateCapitalRepairPublishInput({
+        intent: capitalIntent,
+        applicationYear: year,
+        validFrom: supportForm.amend_valid_from,
+        hasCurrentTariff: capitalRepairHasCurrentTariff(tariff),
+        todayIso: today,
+      });
+      if (!validation.ok) throw new Error(t(validation.errorKey));
+      if (!supportForm.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
+      if (!supportForm.basis_date) throw new Error(t('admin.tcErrBasisDate'));
+      const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
+        p_tariff_id: tariff.tariff_id,
+        p_rates: { natural: { base: rate }, legal: { base: rateLegal } },
+        p_basis_type: supportForm.basis_mode,
+        p_basis_note: supportForm.basis_note.trim(),
+        p_idempotency_key: crypto.randomUUID(),
+        p_application_year: year,
+        p_valid_from: capitalRepairPublishValidFrom({
+          intent: capitalIntent,
+          applicationYear: year,
+          amendValidFrom: supportForm.amend_valid_from,
+        }),
+        p_basis_reference:
+          supportForm.basis_mode === 'external_decision'
+            ? supportForm.basis_reference.trim() || null
+            : null,
+        p_basis_date: supportForm.basis_date,
+        p_decision_id:
+          supportForm.basis_mode === 'general_meeting' && supportForm.decision_id
+            ? supportForm.decision_id
+            : null,
+      });
+      if (rpcErr) throw rpcErr;
+      setPublishKey(null);
+      setSupportForm((f) => ({ ...f, rate: '', rate_legal: '', basis_note: '' }));
+      await load();
+    } catch (err: unknown) {
+      setError(ownerVisibleError(err, t('admin.errGeneric')));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function publishWater(e: React.FormEvent) {
@@ -493,10 +566,46 @@ export function AdminTariffs({
     setPublishKey((prev) => (prev === key ? null : key));
     setCancelId(null);
     if (key === 'capital_repair') {
-      setSupportForm((f) => ({ ...f, application_year: String(currentYear) }));
+      const row = byKey.get('capital_repair');
+      const intent = defaultCapitalRepairPublishIntent(row);
+      setCapitalIntent(intent);
+      const years = capitalRepairAllowedApplicationYears(intent);
+      setSupportForm((f) => ({
+        ...f,
+        application_year: String(years[0] ?? capitalRepairPlannedApplicationYear()),
+        amend_valid_from: today,
+      }));
     } else if (key === 'support_fee') {
-      setSupportForm((f) => ({ ...f, application_year: String(nextYear) }));
+      const row = byKey.get('support_fee');
+      const intent = defaultSupportFeePublishIntent(row);
+      setSupportIntent(intent);
+      const years = supportFeeAllowedApplicationYears(intent);
+      setSupportForm((f) => ({
+        ...f,
+        application_year: String(years[0] ?? supportFeePlannedApplicationYear()),
+        amend_valid_from: today,
+      }));
     }
+  }
+
+  function applyCapitalIntent(intent: CapitalRepairPublishIntent) {
+    setCapitalIntent(intent);
+    const years = capitalRepairAllowedApplicationYears(intent);
+    setSupportForm((f) => ({
+      ...f,
+      application_year: String(years[0] ?? nextYear),
+      amend_valid_from: f.amend_valid_from || today,
+    }));
+  }
+
+  function applySupportIntent(intent: SupportFeePublishIntent) {
+    setSupportIntent(intent);
+    const years = supportFeeAllowedApplicationYears(intent);
+    setSupportForm((f) => ({
+      ...f,
+      application_year: String(years[0] ?? nextYear),
+      amend_valid_from: f.amend_valid_from || today,
+    }));
   }
 
   function openHistory(tariffId: string) {
@@ -506,17 +615,38 @@ export function AdminTariffs({
   }
 
   function renderPublishForm(key: string): ReactNode {
-    if ((key === 'support_fee' || key === 'capital_repair') && canSupport) {
-      const onSubmit = key === 'capital_repair' ? publishCapital : publishSupport;
-      const isCapital = key === 'capital_repair';
-      const minYear = isCapital ? currentYear : nextYear;
+    if (key === 'support_fee' && canSupport) {
+      const supportRow = byKey.get('support_fee');
+      const hasCurrent = supportFeeHasCurrentTariff(supportRow);
+      const supportYears = supportFeeAllowedApplicationYears(supportIntent);
       return (
-        <form onSubmit={onSubmit} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-          <p className="text-sm font-semibold text-foreground sm:col-span-2">
-            {isCapital ? t('admin.tcSetAnnualAmount') : t('admin.tcChangeRate')}
-          </p>
+        <form onSubmit={publishSupport} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcSupportIntent')}
+            <select
+              className={adminFieldClass}
+              value={supportIntent}
+              onChange={(e) => applySupportIntent(e.target.value as SupportFeePublishIntent)}
+            >
+              {!hasCurrent ? (
+                <option value="activation">{t('admin.tcSupportIntentActivation')}</option>
+              ) : null}
+              <option value="next_year">{t('admin.tcSupportIntentNextYear')}</option>
+              {hasCurrent ? (
+                <option value="amend">{t('admin.tcSupportIntentAmend')}</option>
+              ) : null}
+            </select>
+            <span className="text-xs text-muted">
+              {supportIntent === 'activation'
+                ? t('admin.tcSupportIntentActivationHint')
+                : supportIntent === 'amend'
+                  ? t('admin.tcSupportIntentAmendHint')
+                  : t('admin.tcSupportIntentNextYearHint')}
+            </span>
+          </label>
           <label className="grid gap-1 text-sm text-secondary">
-            {isCapital ? t('admin.tcAnnualAmount') : t('admin.tcNewRate')}
+            {t('admin.tcNewRate')}
             <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
             <input
               className={adminFieldClass}
@@ -529,7 +659,7 @@ export function AdminTariffs({
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
-            {isCapital ? t('admin.tcAnnualAmount') : t('admin.tcNewRate')}
+            {t('admin.tcNewRate')}
             <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
             <input
               className={adminFieldClass}
@@ -543,15 +673,192 @@ export function AdminTariffs({
           </label>
           <label className="grid gap-1 text-sm text-secondary">
             {t('admin.tcApplicationYear')}
-            <input
+            <select
               className={adminFieldClass}
-              type="number"
-              min={minYear}
               value={supportForm.application_year}
               onChange={(e) => setSupportForm({ ...supportForm, application_year: e.target.value })}
               required
+            >
+              {supportYears.map((y) => (
+                <option key={y} value={String(y)}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+          {supportIntent === 'amend' ? (
+            <label className="grid gap-1 text-sm text-secondary">
+              {t('admin.tcValidFrom')}
+              <input
+                className={adminFieldClass}
+                type="date"
+                min={today}
+                value={supportForm.amend_valid_from}
+                onChange={(e) => setSupportForm({ ...supportForm, amend_valid_from: e.target.value })}
+                required
+              />
+            </label>
+          ) : null}
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcBasis')}
+            <select
+              className={adminFieldClass}
+              value={supportForm.basis_mode}
+              onChange={(e) =>
+                setSupportForm({
+                  ...supportForm,
+                  basis_mode: e.target.value as 'general_meeting' | 'external_decision',
+                })
+              }
+            >
+              <option value="general_meeting">{t('admin.tcBasisGm')}</option>
+              <option value="external_decision">{t('admin.tcBasisExternal')}</option>
+            </select>
+          </label>
+          {supportForm.basis_mode === 'general_meeting' ? (
+            <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              {t('admin.tcDecision')}
+              <select
+                className={adminFieldClass}
+                value={supportForm.decision_id}
+                onChange={(e) => setSupportForm({ ...supportForm, decision_id: e.target.value })}
+                required
+              >
+                <option value="">{t('admin.tcDecisionPick')}</option>
+                {decisions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.decision_number} · {d.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              {t('admin.tcBasisReference')}
+              <input
+                className={adminFieldClass}
+                value={supportForm.basis_reference}
+                onChange={(e) => setSupportForm({ ...supportForm, basis_reference: e.target.value })}
+                required
+              />
+            </label>
+          )}
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcBasisDate')}
+            <input
+              className={adminFieldClass}
+              type="date"
+              value={supportForm.basis_date}
+              onChange={(e) => setSupportForm({ ...supportForm, basis_date: e.target.value })}
+              required
             />
           </label>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcBasisNote')}
+            <input
+              className={adminFieldClass}
+              value={supportForm.basis_note}
+              onChange={(e) => setSupportForm({ ...supportForm, basis_note: e.target.value })}
+              required
+            />
+          </label>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <AdminPrimaryButton type="submit" disabled={busy}>
+              {busy ? t('common.saving') : t('admin.tcPublish')}
+            </AdminPrimaryButton>
+            <AdminSecondaryButton type="button" onClick={() => setPublishKey(null)}>
+              {t('common.cancel')}
+            </AdminSecondaryButton>
+          </div>
+        </form>
+      );
+    }
+
+    if (key === 'capital_repair' && canSupport) {
+      const hasCurrentCapital = capitalRepairHasCurrentTariff(byKey.get('capital_repair'));
+      const capitalYears = capitalRepairAllowedApplicationYears(capitalIntent);
+      return (
+        <form onSubmit={publishCapital} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <p className="text-sm font-semibold text-foreground sm:col-span-2">
+            {t('admin.tcSetAnnualAmount')}
+          </p>
+          <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+            {t('admin.tcCapitalIntent')}
+            <select
+              className={adminFieldClass}
+              value={capitalIntent}
+              onChange={(e) => applyCapitalIntent(e.target.value as CapitalRepairPublishIntent)}
+            >
+              {!hasCurrentCapital ? (
+                <option value="activation">{t('admin.tcCapitalIntentActivation')}</option>
+              ) : null}
+              <option value="next_year">{t('admin.tcCapitalIntentNextYear')}</option>
+              {hasCurrentCapital ? (
+                <option value="amend">{t('admin.tcCapitalIntentAmend')}</option>
+              ) : null}
+            </select>
+            <span className="text-xs text-muted">
+              {capitalIntent === 'activation'
+                ? t('admin.tcCapitalIntentActivationHint')
+                : capitalIntent === 'amend'
+                  ? t('admin.tcCapitalIntentAmendHint')
+                  : t('admin.tcCapitalIntentNextYearHint')}
+            </span>
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcAnnualAmount')}
+            <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={supportForm.rate}
+              onChange={(e) => setSupportForm({ ...supportForm, rate: e.target.value })}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcAnnualAmount')}
+            <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+            <input
+              className={adminFieldClass}
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={supportForm.rate_legal}
+              onChange={(e) => setSupportForm({ ...supportForm, rate_legal: e.target.value })}
+              placeholder={supportForm.rate || undefined}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-secondary">
+            {t('admin.tcApplicationYear')}
+            <select
+              className={adminFieldClass}
+              value={supportForm.application_year}
+              onChange={(e) => setSupportForm({ ...supportForm, application_year: e.target.value })}
+              required
+            >
+              {capitalYears.map((y) => (
+                <option key={y} value={String(y)}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+          {capitalIntent === 'amend' ? (
+            <label className="grid gap-1 text-sm text-secondary">
+              {t('admin.tcValidFrom')}
+              <input
+                className={adminFieldClass}
+                type="date"
+                min={today}
+                value={supportForm.amend_valid_from}
+                onChange={(e) => setSupportForm({ ...supportForm, amend_valid_from: e.target.value })}
+                required
+              />
+            </label>
+          ) : null}
           <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
             {t('admin.tcBasis')}
             <select

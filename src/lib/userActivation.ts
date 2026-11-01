@@ -247,7 +247,7 @@ export async function createUserActivationReminder(
       inviteLink,
       locale: args.locale ?? null,
     });
-    if (notify.honesty === 'QUEUED' || notify.honesty === 'SENT') {
+    if (notify.honesty === 'QUEUED' || notify.honesty === 'SENT' || notify.honesty === 'ACCEPTED') {
       // Honest: enqueue accepted ≠ provider delivered. Worker/webhook later upgrade status.
       result.delivery_status = notify.honesty;
     } else if (notify.honesty === 'FAILED') {

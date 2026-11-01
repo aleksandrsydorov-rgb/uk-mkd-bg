@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { annualSupportFee } from '@/lib/finance';
+import { annualSupportFee, type SupportFeeEntry } from '@/lib/finance';
+import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import {
   assertSupportFeeRestoreTargetMatch,
   assertSupportFeeVoidTargetMatch,
@@ -25,7 +26,25 @@ import {
   type SupportFeeAssessment,
 } from '@/lib/supportFeeAnnual';
 import {
+  assessWaiveLateIncreaseEligibility,
+  defaultEarlyPaymentDeadlineDate,
+  earlyPaymentDeadlineIsoFromDate,
+  validateSupportFeeAnnualPolicyDraft,
+  validateWaiveLateIncreaseReason,
+} from '@/lib/supportFeePenalty';
+import {
+  EMPTY_SUPPORT_FEE_REGISTER_FILTERS,
+  buildSupportFeeHistoryRows,
+  filterSupportFeeRegisterRows,
+  sortSupportFeeRegisterRows,
+  supportFeeHistoryKindLabelKey,
+  supportFeeRegisterFiltersActive,
+  type SupportFeeRegisterFilters,
+  type SupportFeeRegisterRowInput,
+} from '@/lib/supportFeeRegister';
+import {
   AdminEmptyState,
+  AdminSecondaryButton,
   AdminTableShell,
   adminCardClass,
   adminFieldClass,
@@ -76,8 +95,15 @@ export function AdminSupportFeeAnnual({
   const [enabled, setEnabled] = useState(true);
   const [discount, setDiscount] = useState('10');
   const [increase, setIncrease] = useState('10');
+  const [deadlineDate, setDeadlineDate] = useState(defaultEarlyPaymentDeadlineDate(defaultYear));
+  const [waiveId, setWaiveId] = useState('');
+  const [waiveReason, setWaiveReason] = useState('');
   const [policies, setPolicies] = useState<SupportFeeAnnualPolicy[]>([]);
   const [assessments, setAssessments] = useState<SupportFeeAssessment[]>([]);
+  const [opsLedger, setOpsLedger] = useState<SupportFeeEntry[]>([]);
+  const [registerFilters, setRegisterFilters] = useState<SupportFeeRegisterFilters>(
+    EMPTY_SUPPORT_FEE_REGISTER_FILTERS,
+  );
   const [saving, setSaving] = useState(false);
   const [corrId, setCorrId] = useState('');
   const [corrAmt, setCorrAmt] = useState('');
@@ -137,6 +163,24 @@ export function AdminSupportFeeAnnual({
     return [...set].sort((a, b) => a - b);
   }, [policies, defaultYear, y]);
 
+  const registerRows = useMemo(() => {
+    const input: SupportFeeRegisterRowInput[] = properties.map((p) => ({
+      propertyId: p.id,
+      apartmentNumber: p.apartment_number,
+      ownerName: p.owner_name,
+      overpayment: p.overpayment,
+      assessment: assessments.find((a) => a.property_id === p.id) ?? null,
+    }));
+    return sortSupportFeeRegisterRows(filterSupportFeeRegisterRows(input, registerFilters));
+  }, [properties, assessments, registerFilters]);
+
+  const historyRows = useMemo(() => {
+    const aptById = new Map(properties.map((p) => [p.id, p.apartment_number] as const));
+    return buildSupportFeeHistoryRows(opsLedger, aptById).slice(0, 60);
+  }, [opsLedger, properties]);
+
+  const filtersActive = supportFeeRegisterFiltersActive(registerFilters);
+
   function statusLabel() {
     if (isPublished) return t('admin.sfStatusPublished');
     if (isClosed) return t('admin.sfStatusClosed');
@@ -152,21 +196,47 @@ export function AdminSupportFeeAnnual({
 
   async function load() {
     const yNum = Number.isFinite(y) ? y : defaultYear;
-    const [pRes, aRes] = await Promise.all([
+    const [pRes, aRes, ledgerRes] = await Promise.all([
       supabase.from('support_fee_annual_policies').select('*').order('billing_year', { ascending: false }),
       supabase.from('support_fee_assessments').select('*').eq('billing_year', yNum),
+      supabase
+        .from('support_fee_ledger')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(120),
     ]);
     if (pRes.error) return;
     if (!pRes.error) setPolicies((pRes.data as SupportFeeAnnualPolicy[]) ?? []);
     if (!aRes.error) setAssessments((aRes.data as SupportFeeAssessment[]) ?? []);
+    if (!ledgerRes.error) setOpsLedger((ledgerRes.data as SupportFeeEntry[]) ?? []);
     if (pRes.data) {
       const row = (pRes.data as SupportFeeAnnualPolicy[]).find((p) => p.billing_year === y);
       if (row) {
         setEnabled(Boolean(row.enabled));
         setDiscount(String(row.early_discount_percent));
         setIncrease(String(row.late_increase_percent));
+        const dl = String(row.early_payment_deadline ?? '');
+        setDeadlineDate(
+          /^\d{4}-\d{2}-\d{2}/.test(dl) ? dl.slice(0, 10) : defaultEarlyPaymentDeadlineDate(yNum),
+        );
+      } else {
+        setDeadlineDate(defaultEarlyPaymentDeadlineDate(yNum));
       }
     }
+  }
+
+  function policyDraftValid(): boolean {
+    const check = validateSupportFeeAnnualPolicyDraft({
+      discountPercent: disc,
+      increasePercent: inc,
+      deadlineYmd: deadlineDate,
+      billingYear: Number(year),
+    });
+    if (!check.ok) {
+      onError(t(check.errorKey));
+      return false;
+    }
+    return true;
   }
 
   useEffect(() => {
@@ -182,6 +252,7 @@ export function AdminSupportFeeAnnual({
     }
     if (!isDraft) return false;
     if (!/^\d{4}$/.test(year)) return false;
+    if (!policyDraftValid()) return false;
     setSaving(true);
     try {
       const { error } = await supabase.rpc('upsert_support_fee_annual_policy', {
@@ -189,7 +260,7 @@ export function AdminSupportFeeAnnual({
         p_enabled: enabled,
         p_early_discount_percent: disc,
         p_late_increase_percent: inc,
-        p_early_payment_deadline: null,
+        p_early_payment_deadline: earlyPaymentDeadlineIsoFromDate(deadlineDate),
       });
       if (error) throw error;
       await load();
@@ -206,6 +277,8 @@ export function AdminSupportFeeAnnual({
 
   async function publish() {
     if (!canRate || !isDraft) return;
+    if (saving) return;
+    if (!policyDraftValid()) return;
     setSaving(true);
     try {
       const { error: upsertError } = await supabase.rpc('upsert_support_fee_annual_policy', {
@@ -213,7 +286,7 @@ export function AdminSupportFeeAnnual({
         p_enabled: enabled,
         p_early_discount_percent: disc,
         p_late_increase_percent: inc,
-        p_early_payment_deadline: null,
+        p_early_payment_deadline: earlyPaymentDeadlineIsoFromDate(deadlineDate),
       });
       if (upsertError) throw upsertError;
       const { error } = await supabase.rpc('publish_support_fee_annual_policy', { p_billing_year: Number(year) });
@@ -377,14 +450,30 @@ export function AdminSupportFeeAnnual({
             </div>
           </div>
         )}
-        <div className="mt-3 text-sm">
-          <div className="text-muted">{t('admin.sfDeadlineLabel')}</div>
-          <div className="font-medium text-foreground">
-            {current?.early_payment_deadline
-              ? `${formatSofiaDeadline(current.early_payment_deadline)} · ${t('admin.sfSofiaTz')}`
-              : `31.12.${Number(year) - 1} · 23:59 · ${t('admin.sfSofiaTz')}`}
+        {isDraft ? (
+          <label className="mt-3 block text-sm text-secondary">
+            {t('admin.sfDeadlineLabel')}
+            <input
+              type="date"
+              value={deadlineDate}
+              max={`${Number(year) - 1}-12-31`}
+              onChange={(e) => setDeadlineDate(e.target.value)}
+              className={`mt-1 block w-full max-w-xs ${adminFieldClass}`}
+            />
+            <span className="mt-1 block text-xs text-muted">
+              {t('admin.sfDeadlineEditableHint', { year: String(Number(year) - 1) })}
+            </span>
+          </label>
+        ) : (
+          <div className="mt-3 text-sm">
+            <div className="text-muted">{t('admin.sfDeadlineLabel')}</div>
+            <div className="font-medium text-foreground">
+              {current?.early_payment_deadline
+                ? `${formatSofiaDeadline(current.early_payment_deadline)} · ${t('admin.sfSofiaTz')}`
+                : `31.12.${Number(year) - 1} · 23:59 · ${t('admin.sfSofiaTz')}`}
+            </div>
           </div>
-        </div>
+        )}
         <div className="mt-3 grid gap-2 sm:grid-cols-3 text-sm">
           <div className="rounded-xl bg-surface-secondary px-3 py-2">
             <div className="text-muted">{t('admin.sfBase100', { p: formatPolicyPercent(100, locale) })}</div>
@@ -398,7 +487,9 @@ export function AdminSupportFeeAnnual({
               {t('admin.sfUntilDate', {
                 d: current?.early_payment_deadline
                   ? formatSofiaDate(current.early_payment_deadline)
-                  : `31.12.${Number(year) - 1}`,
+                  : deadlineDate
+                    ? deadlineDate.split('-').reverse().join('.')
+                    : `31.12.${Number(year) - 1}`,
               })}
             </div>
             <div className="font-semibold tabular-nums text-success">
@@ -448,9 +539,76 @@ export function AdminSupportFeeAnnual({
 
       {showRegister && (
       <div className="space-y-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.sfPropertyView')} · {year}</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+            {t('admin.sfPropertyView')} · {year}
+          </p>
+          <p className="text-xs text-muted">
+            {t('admin.sfRegisterCount', { n: String(registerRows.length) })}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2 rounded-[14px] border border-border bg-surface px-3 py-2">
+          <label className="text-xs text-secondary">
+            {t('admin.sfFilterApt')}
+            <input
+              value={registerFilters.apartmentQuery}
+              onChange={(e) =>
+                setRegisterFilters((f) => ({ ...f, apartmentQuery: e.target.value }))
+              }
+              placeholder={t('admin.sfFilterAptPh')}
+              className={`mt-1 block w-36 ${adminFieldClass}`}
+            />
+          </label>
+          <label className="text-xs text-secondary">
+            {t('admin.sfFilterStatus')}
+            <select
+              value={registerFilters.status}
+              onChange={(e) =>
+                setRegisterFilters((f) => ({
+                  ...f,
+                  status: e.target.value as SupportFeeRegisterFilters['status'],
+                }))
+              }
+              className={`mt-1 block w-36 ${adminFieldClass}`}
+            >
+              <option value="all">{t('admin.sfFilterAll')}</option>
+              <option value="debt">{t('admin.sfFilterDebt')}</option>
+              <option value="settled">{t('admin.sfFilterSettled')}</option>
+              <option value="void">{t('admin.sfFilterVoid')}</option>
+              <option value="waived">{t('admin.sfFilterWaived')}</option>
+            </select>
+          </label>
+          <label className="text-xs text-secondary">
+            {t('admin.sfFilterPricing')}
+            <select
+              value={registerFilters.pricing}
+              onChange={(e) =>
+                setRegisterFilters((f) => ({
+                  ...f,
+                  pricing: e.target.value as SupportFeeRegisterFilters['pricing'],
+                }))
+              }
+              className={`mt-1 block w-40 ${adminFieldClass}`}
+            >
+              <option value="all">{t('admin.sfFilterAll')}</option>
+              <option value="early">{t('admin.sfFilterEarly')}</option>
+              <option value="late">{t('admin.sfFilterLate')}</option>
+              <option value="standard">{t('admin.sfFilterStandard')}</option>
+              <option value="none">{t('admin.sfFilterNoAssessment')}</option>
+            </select>
+          </label>
+          <AdminSecondaryButton
+            type="button"
+            disabled={!filtersActive}
+            onClick={() => setRegisterFilters(EMPTY_SUPPORT_FEE_REGISTER_FILTERS)}
+          >
+            {t('admin.sfFilterReset')}
+          </AdminSecondaryButton>
+        </div>
         {properties.length === 0 ? (
           <AdminEmptyState title={t('admin.feeNoLedger')} />
+        ) : registerRows.length === 0 ? (
+          <AdminEmptyState title={t('admin.sfRegisterEmptyFilter')} />
         ) : (
         <AdminTableShell>
         <table className="w-full min-w-[48rem] text-sm">
@@ -467,7 +625,9 @@ export function AdminSupportFeeAnnual({
             </tr>
           </thead>
           <tbody>
-            {properties.slice(0, 80).map((p) => {
+            {registerRows.map((row) => {
+              const p = properties.find((x) => x.id === row.propertyId);
+              if (!p) return null;
               const a = assessments.find((x) => x.property_id === p.id);
               // D1: remaining_due is canonical outstanding; portal debt/over are reconcile/credit only.
               const outstanding = a ? Number(a.remaining_due ?? 0) : 0;
@@ -518,6 +678,11 @@ export function AdminSupportFeeAnnual({
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.applied_credit_amount, locale) : '—'}</td>
                   <td className={`${adminTableCellClass} tabular-nums`}>{a ? formatEurAmount(a.remaining_due, locale) : '—'}</td>
                   <td className={adminTableCellClass}>
+                    {a?.penalty_waived_at ? (
+                      <div className="mb-1">
+                        <StatusBadge label={t('admin.sfWaivedBadge')} tone="info" />
+                      </div>
+                    ) : null}
                     {a?.status === 'void' ? (
                       <StatusBadge label={t('admin.feeVoidedBadge')} tone="warning" />
                     ) : outstanding > 0 ? (
@@ -615,6 +780,60 @@ export function AdminSupportFeeAnnual({
         </table>
         </AdminTableShell>
         )}
+
+        <div className={`${adminCardClass} p-4 md:p-5`}>
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+            {t('admin.sfOpsHistory')}
+          </p>
+          <p className="mt-1 text-xs text-muted">{t('admin.sfOpsHistoryHint')}</p>
+          {historyRows.length === 0 ? (
+            <div className="mt-3">
+              <AdminEmptyState title={t('admin.feeNoLedger')} />
+            </div>
+          ) : (
+            <div className="mt-3">
+              <AdminTableShell>
+                <table className="w-full min-w-[40rem] text-sm">
+                  <thead>
+                    <tr className={adminTableHeadRowClass}>
+                      <th className={adminTableCellClass}>{t('admin.date')}</th>
+                      <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                      <th className={adminTableCellClass}>{t('admin.kind')}</th>
+                      <th className={adminTableCellClass}>{t('admin.amount')}</th>
+                      <th className={adminTableCellClass}>{t('admin.sfHistAuthor')}</th>
+                      <th className={adminTableCellClass}>{t('admin.sfHistBasis')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRows.map((h) => (
+                      <tr key={h.id} className={adminTableRowClass}>
+                        <td className={adminTableCellClass}>
+                          {formatOwnerDateTime(h.createdAt, locale)}
+                        </td>
+                        <td className={`${adminTableCellClass} tabular-nums`}>№ {h.apartmentNumber}</td>
+                        <td className={adminTableCellClass}>
+                          <div>{t(supportFeeHistoryKindLabelKey(h.historyKind))}</div>
+                          {h.period ? (
+                            <div className="text-[10px] text-muted">{h.period}</div>
+                          ) : null}
+                        </td>
+                        <td className={`${adminTableCellClass} tabular-nums`}>
+                          {formatEurAmount(h.amount, locale)}
+                        </td>
+                        <td className={`${adminTableCellClass} max-w-[10rem] truncate text-xs`}>
+                          {h.author ?? '—'}
+                        </td>
+                        <td className={`${adminTableCellClass} max-w-[14rem] text-xs text-secondary`}>
+                          {h.basis ? <span className="line-clamp-2">{h.basis}</span> : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </AdminTableShell>
+            </div>
+          )}
+        </div>
         {canPay && voidTarget ? (
           <div className={`${adminCardClass} mt-4 p-4 text-sm`} data-void-panel="1">
             <p className="font-medium">{t('admin.feeVoidAssessment')}</p>
@@ -894,6 +1113,111 @@ export function AdminSupportFeeAnnual({
             className="mt-4 grid gap-2 sm:grid-cols-4"
             onSubmit={async (e) => {
               e.preventDefault();
+              if (saving) return;
+              if (!waiveId || !validateWaiveLateIncreaseReason(waiveReason)) {
+                onError(t('admin.sfErrWaiveReason'));
+                return;
+              }
+              const target = assessments.find((a) => a.id === waiveId);
+              const elig = assessWaiveLateIncreaseEligibility({
+                status: target?.status,
+                pricingRule: target?.pricing_rule,
+                increasePercent: target?.increase_percent,
+                baseAmount: target?.base_amount,
+                lateAmount: target?.late_amount,
+                remainingDue: target?.remaining_due,
+                alreadyWaived: Boolean(target?.penalty_waived_at),
+              });
+              if (!elig.ok) {
+                onError(t('admin.sfErrWaiveNotEligible'));
+                return;
+              }
+              if (!confirm(t('admin.sfWaiveConfirm'))) return;
+              setSaving(true);
+              try {
+                const { error } = await supabase.rpc('waive_support_fee_late_increase', {
+                  p_assessment_id: waiveId,
+                  p_reason: waiveReason.trim(),
+                  p_idempotency_key: crypto.randomUUID(),
+                });
+                if (error) throw error;
+                setWaiveId('');
+                setWaiveReason('');
+                await load();
+                await onReload();
+              } catch (err: unknown) {
+                onError(
+                  err && typeof err === 'object' && 'message' in err
+                    ? String((err as { message: unknown }).message)
+                    : t('admin.sfSaveFailed'),
+                );
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            <p className="sm:col-span-4 text-sm font-medium">{t('admin.sfWaivePenalty')}</p>
+            <p className="sm:col-span-4 text-xs text-muted">{t('admin.sfWaivePenaltyHint')}</p>
+            <select
+              required
+              value={waiveId}
+              onChange={(e) => setWaiveId(e.target.value)}
+              className={adminFieldClass}
+            >
+              <option value="">{t('form.pickApt')}</option>
+              {assessments
+                .filter((a) =>
+                  assessWaiveLateIncreaseEligibility({
+                    status: a.status,
+                    pricingRule: a.pricing_rule,
+                    increasePercent: a.increase_percent,
+                    baseAmount: a.base_amount,
+                    lateAmount: a.late_amount,
+                    remainingDue: a.remaining_due,
+                    alreadyWaived: Boolean(a.penalty_waived_at),
+                  }).ok,
+                )
+                .map((a) => {
+                  const p = properties.find((x) => x.id === a.property_id);
+                  const rowElig = assessWaiveLateIncreaseEligibility({
+                    status: a.status,
+                    pricingRule: a.pricing_rule,
+                    increasePercent: a.increase_percent,
+                    baseAmount: a.base_amount,
+                    lateAmount: a.late_amount,
+                    remainingDue: a.remaining_due,
+                    alreadyWaived: Boolean(a.penalty_waived_at),
+                  });
+                  const amt = rowElig.ok ? rowElig.waiveAmount : 0;
+                  return (
+                    <option key={a.id} value={a.id}>
+                      № {p?.apartment_number ?? a.property_id} · −{formatEurAmount(amt, locale)}
+                    </option>
+                  );
+                })}
+            </select>
+            <input
+              required
+              value={waiveReason}
+              onChange={(e) => setWaiveReason(e.target.value)}
+              placeholder={t('admin.sfWaiveReason')}
+              className={`${adminFieldClass} sm:col-span-2`}
+            />
+            <button
+              type="submit"
+              disabled={saving || !waiveId}
+              className="rounded-full border border-border px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {saving ? t('common.saving') : t('admin.sfWaivePenaltyAction')}
+            </button>
+          </form>
+        ) : null}
+        {canPay ? (
+          <form
+            className="mt-4 grid gap-2 sm:grid-cols-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (saving) return;
               if (!corrId || !corrReason.trim()) return;
               setSaving(true);
               try {

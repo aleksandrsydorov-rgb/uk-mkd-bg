@@ -229,3 +229,76 @@ export function downloadPropertyBookExcelTemplate(filename = 'property_book_temp
   XLSX.utils.book_append_sheet(wb, ownersSheet, BOOK_OWNERS_SHEET);
   XLSX.writeFile(wb, filename);
 }
+
+export type PropertyBookListFilters = {
+  completeness: 'all' | 'complete' | 'incomplete';
+  block: string;
+  section: string;
+  floor: string;
+  apartmentQuery: string;
+};
+
+export const EMPTY_PROPERTY_BOOK_LIST_FILTERS: PropertyBookListFilters = {
+  completeness: 'all',
+  block: '',
+  section: '',
+  floor: '',
+  apartmentQuery: '',
+};
+
+export function propertyBookListFiltersActive(f: PropertyBookListFilters): boolean {
+  return (
+    f.completeness !== 'all' ||
+    Boolean(f.block.trim()) ||
+    Boolean(f.section.trim()) ||
+    Boolean(f.floor.trim()) ||
+    Boolean(f.apartmentQuery.trim())
+  );
+}
+
+export function collectPropertyBookFilterOptions(rows: PropertyBookListRow[]): {
+  blocks: string[];
+  sections: string[];
+  floors: string[];
+} {
+  const blocks = new Set<string>();
+  const sections = new Set<string>();
+  const floors = new Set<string>();
+  for (const row of rows) {
+    const block = String(row.block_code ?? '').trim();
+    const section = String(row.section_code ?? '').trim();
+    if (block) blocks.add(block);
+    if (section) sections.add(section);
+    if (row.floor != null && Number.isFinite(Number(row.floor))) {
+      floors.add(String(row.floor));
+    }
+  }
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  return {
+    blocks: [...blocks].sort(collator.compare),
+    sections: [...sections].sort(collator.compare),
+    floors: [...floors].sort(collator.compare),
+  };
+}
+
+export function filterPropertyBookListRows(
+  rows: PropertyBookListRow[],
+  filters: PropertyBookListFilters,
+): PropertyBookListRow[] {
+  const block = filters.block.trim();
+  const section = filters.section.trim();
+  const floor = filters.floor.trim();
+  const aptQ = filters.apartmentQuery.trim().toLowerCase();
+
+  const list = rows.filter((row) => {
+    if (filters.completeness === 'complete' && !row.book_complete) return false;
+    if (filters.completeness === 'incomplete' && row.book_complete) return false;
+    if (block && String(row.block_code ?? '').trim() !== block) return false;
+    if (section && String(row.section_code ?? '').trim() !== section) return false;
+    if (floor && String(row.floor ?? '') !== floor) return false;
+    if (aptQ && !String(row.apartment_number ?? '').toLowerCase().includes(aptQ)) return false;
+    return true;
+  });
+
+  return list.sort((a, b) => Number(a.apartment_number) - Number(b.apartment_number));
+}

@@ -1164,6 +1164,7 @@ export interface Database {
           opening_import_batch_id: string | null;
           opening_imported_at: string | null;
           opening_imported_by: string | null;
+          receipt_enforced: boolean;
         };
         Insert: {
           id?: number;
@@ -1185,6 +1186,7 @@ export interface Database {
           opening_import_batch_id?: string | null;
           opening_imported_at?: string | null;
           opening_imported_by?: string | null;
+          receipt_enforced?: boolean;
         };
         Update: {
           id?: number;
@@ -1206,6 +1208,7 @@ export interface Database {
           opening_import_batch_id?: string | null;
           opening_imported_at?: string | null;
           opening_imported_by?: string | null;
+          receipt_enforced?: boolean;
         };
         Relationships: [];
       };
@@ -5137,6 +5140,14 @@ export interface Database {
       };
       record_support_fee_assessment_correction: {
         Args: { p_assessment_id: string; p_amount: number; p_reason: string };
+        Returns: Json;
+      };
+      waive_support_fee_late_increase: {
+        Args: {
+          p_assessment_id: string;
+          p_reason: string;
+          p_idempotency_key: string;
+        };
         Returns: Json;
       };
       reverse_support_payment: {

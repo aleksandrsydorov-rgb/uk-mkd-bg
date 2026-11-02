@@ -3,15 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  AdminCard,
-  AdminPageHeader,
-  adminBtnPrimaryClass,
-  adminBtnSecondaryClass,
-  adminFieldClass,
-  adminTableCellClass,
-  adminTableHeadRowClass,
-  adminTableRowClass,
-} from '@/components/admin/AdminUi';
+  FirstRunCapitalRepair,
+  FirstRunErrorNote,
+  FirstRunFinish,
+  FirstRunSupportFee,
+} from '@/components/admin/FirstRunFinance';
+import styles from '@/components/admin/FirstRunFrame.module.css';
 import {
   apartmentCountMismatchInfo,
   complexFormToPayload,
@@ -68,6 +65,13 @@ import { parsePropertyBookWorkbook, type PropertyBookWorkbookPayload } from '@/l
 import type { Database } from '@/lib/database.types';
 import { AdminFirstRunTariffs } from '@/components/admin/AdminFirstRunTariffs';
 import { AdminFirstRunBudget } from '@/components/admin/AdminFirstRunBudget';
+import { FirstRunFrame, FirstRunWelcome } from '@/components/admin/FirstRunFrame';
+import {
+  FirstRunBookImport,
+  FirstRunComplexCard,
+  FirstRunMetersImport,
+  FirstRunMetersSelectForm,
+} from '@/components/admin/FirstRunSteps';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -146,41 +150,6 @@ function errorsFromRpcDetails(err: { details?: string | null } | null | undefine
   } catch {
     return [];
   }
-}
-
-function ErrorTable({ rows, t }: { rows: FirstRunErrorRow[]; t: (key: string) => string }) {
-  if (rows.length === 0) return null;
-  return (
-    <div className="overflow-x-auto rounded-lg border border-danger/30">
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr className={adminTableHeadRowClass}>
-            <th className={adminTableCellClass}>{t('admin.firstRunErrSheet')}</th>
-            <th className={adminTableCellClass}>{t('admin.firstRunErrRow')}</th>
-            <th className={adminTableCellClass}>{t('admin.firstRunErrApartment')}</th>
-            <th className={adminTableCellClass}>{t('admin.firstRunErrField')}</th>
-            <th className={adminTableCellClass}>{t('admin.firstRunErrReason')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.slice(0, 200).map((r, i) => (
-            <tr key={`${r.sheet}-${r.row}-${r.field}-${i}`} className={adminTableRowClass}>
-              <td className={adminTableCellClass}>{r.sheet || '—'}</td>
-              <td className={adminTableCellClass}>{r.row || '—'}</td>
-              <td className={adminTableCellClass}>{r.apartment || '—'}</td>
-              <td className={adminTableCellClass}>{r.field || '—'}</td>
-              <td className={adminTableCellClass}>{r.reason || '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > 200 ? (
-        <p className="px-3 py-2 text-xs text-muted">
-          {t('admin.firstRunErrTruncated').replace('{n}', String(rows.length))}
-        </p>
-      ) : null}
-    </div>
-  );
 }
 
 export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
@@ -777,7 +746,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     () => visibleFirstRunStages(selectionChosen ? selection : null),
     [selection, selectionChosen],
   );
-  const stageIndex = Math.max(0, visibleStages.indexOf(stage));
 
   const stageLabel = (key: FirstRunStageKey): string => {
     switch (key) {
@@ -812,620 +780,180 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   const bookNeedsComplexFix = hasApartmentCountMismatch(bookDry?.errors) || countMismatch != null;
 
-  function fieldError(key: string) {
-    return formErrors.includes(key) ? (
-      <span className="mt-1 block text-xs text-danger">{t(`admin.firstRunComplexErr_${key}`)}</span>
-    ) : null;
-  }
-
-  function renderMetersStage(utility: FirstRunMeterUtility) {
-    const title =
-      utility === 'water' ? t('admin.firstRunStageMetersWater') : t('admin.firstRunStageMetersElectricity');
-    return (
-      <AdminCard>
-        <h3 className="mb-1 text-base font-semibold text-foreground">{title}</h3>
-        <p className="mb-3 text-sm text-secondary">{t('admin.firstRunMetersLead')}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={adminBtnSecondaryClass}
-            onClick={() =>
-              downloadXlsx(
-                utility === 'water' ? buildWaterMeterIs3TemplateBuffer() : buildElectricityMeterIs3TemplateBuffer(),
-                utility === 'water' ? 'water_meters_opening_template.xlsx' : 'electricity_meters_opening_template.xlsx',
-              )
-            }
-          >
-            {t('admin.firstRunMetersDownload')}
-          </button>
-          <label className="text-sm text-secondary">
-            <span className="mr-2">{t('admin.firstRunMetersUpload')}</span>
-            <input
-              type="file"
-              accept=".xlsx"
-              disabled={busy}
-              className="text-sm"
-              onChange={(e) => {
-                void onMetersFile(utility, e.target.files?.[0] ?? null);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-
-        {meterDry ? (
-          <div className="mt-4 space-y-3">
-            {meterDry.ok ? (
-              <p className="text-sm text-success">
-                {t('admin.firstRunMetersDryRunOk')
-                  .replace('{rows}', String(meterDry.rowCount))
-                  .replace('{skipped}', String(meterDry.skippedExisting))}
-              </p>
-            ) : (
-              <p className="text-sm text-danger">
-                {t('admin.firstRunMetersDryRunErrors').replace('{n}', String(errorRows.length))}
-              </p>
-            )}
-          </div>
-        ) : null}
-        <div className="mt-3">
-          <ErrorTable rows={errorRows} t={t} />
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {!meterCommitted ? (
-            <button
-              type="button"
-              className={adminBtnPrimaryClass}
-              disabled={busy || !meterDry?.ok}
-              onClick={() => void onMetersCommit(utility)}
-            >
-              {busy ? t('admin.firstRunBusy') : t('admin.firstRunMetersCommit')}
-            </button>
-          ) : (
-            <button type="button" className={adminBtnPrimaryClass} onClick={() => onMetersContinue(utility)}>
-              {t('admin.firstRunContinue')}
-            </button>
-          )}
-          <button
-            type="button"
-            className={adminBtnSecondaryClass}
-            disabled={busy}
-            onClick={() => editComplexFrom(stage)}
-          >
-            {t('admin.firstRunEditComplex')}
-          </button>
-        </div>
-      </AdminCard>
-    );
-  }
-
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
-      <AdminPageHeader title={t('admin.firstRunTitle')} secondary={t('admin.firstRunLead')} />
-
-      <nav aria-label={t('admin.firstRunTitle')}>
-        <ol className="flex flex-wrap gap-1.5">
-          {visibleStages.map((key, idx) => (
-            <li
-              key={key}
-              className={`rounded-full border px-2.5 py-1 text-xs ${
-                key === stage
-                  ? 'border-accent/30 bg-accent-bg font-semibold text-accent'
-                  : idx < stageIndex
-                    ? 'border-border bg-surface text-secondary'
-                    : 'border-transparent text-muted'
-              }`}
-            >
-              {idx + 1}. {stageLabel(key)}
-            </li>
-          ))}
-        </ol>
-        <p className="mt-2 text-xs text-muted">
-          {t('admin.firstRunProgress')
-            .replace('{n}', String(stageIndex + 1))
-            .replace('{total}', String(visibleStages.length))}
-        </p>
-      </nav>
-
-      {error ? (
-        <div className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">{error}</div>
-      ) : null}
-      {note ? (
-        <div className="rounded-lg border border-accent/20 bg-accent-bg px-3 py-2 text-sm text-foreground">{note}</div>
-      ) : null}
+    <FirstRunFrame
+      t={t}
+      stages={visibleStages}
+      stage={stage}
+      stageRows={state?.stages}
+      stageLabel={stageLabel}
+    >
+      {error ? <FirstRunErrorNote raw={error} t={t} /> : null}
+      {note ? <div className={styles.okNote}>{note}</div> : null}
 
       {stage === 'welcome' ? (
-        <AdminCard>
-          <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunWelcomeTitle')}</h3>
-          <p className="mb-2 text-sm text-secondary">{t('admin.firstRunWelcomeBody')}</p>
-          <ul className="mb-4 list-inside list-disc space-y-1 text-sm text-secondary">
-            <li>{t('admin.firstRunWelcomeCap1')}</li>
-            <li>{t('admin.firstRunWelcomeCap2')}</li>
-            <li>{t('admin.firstRunWelcomeCap3')}</li>
-            <li>{t('admin.firstRunWelcomeCap4')}</li>
-          </ul>
-          <p className="mb-4 text-xs text-muted">{t('admin.firstRunWelcomeMandatory')}</p>
-          <button type="button" className={adminBtnPrimaryClass} disabled={busy} onClick={() => void onStartSetup()}>
-            {busy ? t('admin.firstRunBusy') : t('admin.firstRunWelcomeStart')}
-          </button>
-        </AdminCard>
+        <FirstRunWelcome t={t} busy={busy} onStart={() => void onStartSetup()} />
       ) : null}
 
       {stage === 'complex_card' ? (
-        <AdminCard>
-          <h3 className="mb-1 text-base font-semibold text-foreground">{t('admin.firstRunComplexTitle')}</h3>
-          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunComplexLead')}</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm text-secondary sm:col-span-2">
-              {t('admin.firstRunFieldName')}
-              <input
-                className={`${adminFieldClass} mt-1`}
-                value={form.display_name}
-                onChange={(e) => setForm({ ...form, display_name: e.target.value })}
-                disabled={busy}
-              />
-              {fieldError('display_name')}
-            </label>
-            <label className="block text-sm text-secondary sm:col-span-2">
-              {t('admin.firstRunFieldAddress')}
-              <input
-                className={`${adminFieldClass} mt-1`}
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-                disabled={busy}
-              />
-              {fieldError('address')}
-            </label>
-            <label className="block text-sm text-secondary">
-              {t('admin.firstRunFieldApartmentCount')}
-              <input
-                className={`${adminFieldClass} mt-1`}
-                inputMode="numeric"
-                value={form.apartment_count}
-                onChange={(e) => setForm({ ...form, apartment_count: e.target.value })}
-                disabled={busy}
-              />
-              {fieldError('apartment_count')}
-            </label>
-            <label className="block text-sm text-secondary">
-              {t('admin.firstRunFieldPhone')}
-              <input
-                className={`${adminFieldClass} mt-1`}
-                type="tel"
-                value={form.contact_phone}
-                onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
-                disabled={busy}
-              />
-            </label>
-            <label className="block text-sm text-secondary sm:col-span-2">
-              {t('admin.firstRunFieldEmail')}
-              <input
-                className={`${adminFieldClass} mt-1`}
-                type="email"
-                value={form.contact_email}
-                onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
-                disabled={busy}
-              />
-              {fieldError('contact_email')}
-            </label>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className={adminBtnPrimaryClass} disabled={busy} onClick={() => void onSaveComplex()}>
-              {busy ? t('admin.firstRunBusy') : t('admin.firstRunContinue')}
-            </button>
-            {returnStage ? (
-              <button
-                type="button"
-                className={adminBtnSecondaryClass}
-                disabled={busy}
-                onClick={() => {
-                  const back = returnStage;
-                  setReturnStage(null);
-                  goStage(back);
-                }}
-              >
-                {t('admin.firstRunBack')}
-              </button>
-            ) : null}
-          </div>
-        </AdminCard>
+        <FirstRunComplexCard
+          t={t}
+          form={form}
+          formErrors={formErrors}
+          busy={busy}
+          showBack={returnStage != null}
+          onChange={setForm}
+          onSave={() => void onSaveComplex()}
+          onBack={() => {
+            const back = returnStage;
+            if (!back) return;
+            setReturnStage(null);
+            goStage(back);
+          }}
+        />
       ) : null}
 
       {stage === 'property_book' ? (
-        <AdminCard>
-          <h3 className="mb-1 text-base font-semibold text-foreground">{t('admin.firstRunBookTitle')}</h3>
-          <p className="mb-3 text-sm text-secondary">
-            {t('admin.firstRunBookLead').replace(
-              '{n}',
-              state?.complex.apartment_count != null ? String(state.complex.apartment_count) : '—',
-            )}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={adminBtnSecondaryClass}
-              onClick={() =>
-                downloadXlsx(buildPropertyBookIs2TemplateBuffer(), 'property_book_opening_template.xlsx')
-              }
-            >
-              {t('admin.firstRunBookDownload')}
-            </button>
-            <label className="text-sm text-secondary">
-              <span className="mr-2">{t('admin.firstRunBookUpload')}</span>
-              <input
-                type="file"
-                accept=".xlsx"
-                disabled={busy}
-                className="text-sm"
-                onChange={(e) => {
-                  void onBookFile(e.target.files?.[0] ?? null);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          </div>
-
-          {bookDry ? (
-            <div className="mt-4 space-y-2">
-              {bookDry.ok ? (
-                <p className="text-sm text-success">
-                  {t('admin.firstRunBookDryRunOk')
-                    .replace('{new}', String(bookDry.newCount))
-                    .replace('{existing}', String(bookDry.existingCount))
-                    .replace('{changes}', String(bookDry.changesCount))}
-                </p>
-              ) : (
-                <p className="text-sm text-danger">
-                  {t('admin.firstRunBookDryRunErrors').replace('{n}', String(errorRows.length))}
-                </p>
-              )}
-              {bookDry.requiresOverwriteConfirmation ? (
-                <p className="text-sm text-warning">{t('admin.firstRunBookOverwriteBlocked')}</p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {bookNeedsComplexFix ? (
-            <div className="mt-3 rounded-lg border border-warning/40 bg-warning-bg px-3 py-2 text-sm text-foreground">
-              <p>
-                {t('admin.firstRunBookCountMismatch')
-                  .replace(
-                    '{expected}',
-                    String(countMismatch?.expected ?? state?.complex.apartment_count ?? '—'),
-                  )
-                  .replace('{actual}', String(countMismatch?.actual ?? '—'))}
-              </p>
-              <button
-                type="button"
-                className={`${adminBtnSecondaryClass} mt-2`}
-                disabled={busy}
-                onClick={() => editComplexFrom('property_book')}
-              >
-                {t('admin.firstRunBookBackToComplex')}
-              </button>
-            </div>
-          ) : null}
-
-          <div className="mt-3">
-            <ErrorTable rows={errorRows} t={t} />
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {!bookCommitted ? (
-              <button
-                type="button"
-                className={adminBtnPrimaryClass}
-                disabled={busy || !bookDry?.ok || bookDry.requiresOverwriteConfirmation}
-                onClick={() => void onBookCommit()}
-              >
-                {busy ? t('admin.firstRunBusy') : t('admin.firstRunBookCommit')}
-              </button>
-            ) : (
-              <button type="button" className={adminBtnPrimaryClass} onClick={() => goStage('meters_select')}>
-                {t('admin.firstRunContinue')}
-              </button>
-            )}
-            <button
-              type="button"
-              className={adminBtnSecondaryClass}
-              disabled={busy}
-              onClick={() => editComplexFrom('property_book')}
-            >
-              {t('admin.firstRunEditComplex')}
-            </button>
-          </div>
-        </AdminCard>
+        <FirstRunBookImport
+          t={t}
+          apartmentCount={state?.complex.apartment_count != null ? String(state.complex.apartment_count) : '—'}
+          busy={busy}
+          dry={bookDry}
+          errorRows={errorRows}
+          countMismatch={countMismatch ?? (state?.complex.apartment_count != null ? { expected: state.complex.apartment_count, actual: null } : null)}
+          committed={bookCommitted}
+          needsComplexFix={bookNeedsComplexFix}
+          onDownload={() => downloadXlsx(buildPropertyBookIs2TemplateBuffer(), 'property_book_opening_template.xlsx')}
+          onFile={(file) => void onBookFile(file)}
+          onCommit={() => void onBookCommit()}
+          onContinue={() => goStage('meters_select')}
+          onEditComplex={() => editComplexFrom('property_book')}
+        />
       ) : null}
 
       {stage === 'meters_select' ? (
-        <AdminCard>
-          <h3 className="mb-1 text-base font-semibold text-foreground">{t('admin.firstRunMetersSelectTitle')}</h3>
-          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunMetersSelectLead')}</p>
-          <div className="mb-3 space-y-2">
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={selection.water}
-                disabled={busy}
-                onChange={(e) => setSelection({ ...selection, water: e.target.checked })}
-              />
-              {t('admin.firstRunMetersSelectWater')}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={selection.electricity}
-                disabled={busy}
-                onChange={(e) => setSelection({ ...selection, electricity: e.target.checked })}
-              />
-              {t('admin.firstRunMetersSelectElectricity')}
-            </label>
-          </div>
-          {!validateMetersSelection(selection).ok ? (
-            <p className="mb-3 text-xs text-muted">{t('admin.firstRunMetersSelectRequired')}</p>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={adminBtnPrimaryClass}
-              disabled={busy || !validateMetersSelection(selection).ok}
-              onClick={() => void onMetersSelectContinue()}
-            >
-              {busy ? t('admin.firstRunBusy') : t('admin.firstRunContinue')}
-            </button>
-            <button
-              type="button"
-              className={adminBtnSecondaryClass}
-              disabled={busy}
-              onClick={() => editComplexFrom('meters_select')}
-            >
-              {t('admin.firstRunEditComplex')}
-            </button>
-          </div>
-        </AdminCard>
+        <FirstRunMetersSelectForm
+          t={t}
+          water={selection.water}
+          electricity={selection.electricity}
+          busy={busy}
+          valid={validateMetersSelection(selection).ok}
+          onWater={(checked) => setSelection({ ...selection, water: checked })}
+          onElectricity={(checked) => setSelection({ ...selection, electricity: checked })}
+          onContinue={() => void onMetersSelectContinue()}
+          onEditComplex={() => editComplexFrom('meters_select')}
+        />
       ) : null}
 
-      {stage === 'meters_water' ? renderMetersStage('water') : null}
-      {stage === 'meters_electricity' ? renderMetersStage('electricity') : null}
+      {stage === 'meters_water' ? (
+        <FirstRunMetersImport
+          utility="water"
+          t={t}
+          busy={busy}
+          dry={meterDry}
+          rows={meterRows}
+          errorRows={errorRows}
+          committed={meterCommitted}
+          onDownload={() => downloadXlsx(buildWaterMeterIs3TemplateBuffer(), 'water_meters_opening_template.xlsx')}
+          onFile={(file) => void onMetersFile('water', file)}
+          onCommit={() => void onMetersCommit('water')}
+          onContinue={() => onMetersContinue('water')}
+          onEditComplex={() => editComplexFrom('meters_water')}
+        />
+      ) : null}
+      {stage === 'meters_electricity' ? (
+        <FirstRunMetersImport
+          utility="electricity"
+          t={t}
+          busy={busy}
+          dry={meterDry}
+          rows={meterRows}
+          errorRows={errorRows}
+          committed={meterCommitted}
+          onDownload={() =>
+            downloadXlsx(buildElectricityMeterIs3TemplateBuffer(), 'electricity_meters_opening_template.xlsx')
+          }
+          onFile={(file) => void onMetersFile('electricity', file)}
+          onCommit={() => void onMetersCommit('electricity')}
+          onContinue={() => onMetersContinue('electricity')}
+          onEditComplex={() => editComplexFrom('meters_electricity')}
+        />
+      ) : null}
 
       {stage === 'support_fee_opening' ? (
-        <AdminCard>
-          <h3 className="mb-1 text-base font-semibold text-foreground">{t('admin.firstRunSfTitle')}</h3>
-          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunSfLead')}</p>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={adminBtnSecondaryClass}
-              disabled={busy}
-              onClick={() => downloadXlsx(buildSupportFeeIs4TemplateBuffer(), 'support_fee_opening_template.xlsx')}
-            >
-              {t('admin.firstRunSfDownload')}
-            </button>
-            <label className={`${adminBtnSecondaryClass} cursor-pointer`}>
-              {t('admin.firstRunSfUpload')}
-              <input
-                type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                disabled={busy}
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  e.target.value = '';
-                  void onSfFile(f);
-                }}
-              />
-            </label>
-          </div>
-          {sfDry ? (
-            <p className={`mb-3 text-sm ${sfDry.ok ? 'text-secondary' : 'text-danger'}`}>
-              {sfDry.ok
-                ? t('admin.firstRunSfDryRunOk')
-                    .replace('{rows}', String(sfDry.rowCount))
-                    .replace('{create}', String(sfDry.createCount))
-                    .replace('{skipped}', String(sfDry.skippedExisting))
-                    .replace('{debt}', String(sfDry.debtSum))
-                    .replace('{credit}', String(sfDry.creditSum))
-                : t('admin.firstRunSfDryRunErrors').replace('{n}', String(sfDry.errors.length))}
-            </p>
-          ) : null}
-          <ErrorTable rows={errorRows} t={t} />
-          <div className="mt-3 flex flex-wrap gap-2">
-            {!sfCommitted ? (
-              <button
-                type="button"
-                className={adminBtnPrimaryClass}
-                disabled={busy || !sfDry?.ok || !sfRows}
-                onClick={() => void onSfCommit()}
-              >
-                {busy ? t('admin.firstRunBusy') : t('admin.firstRunSfCommit')}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={adminBtnPrimaryClass}
-                disabled={busy}
-                onClick={() => goStage('capital_repair_opening')}
-              >
-                {t('admin.firstRunSfContinue')}
-              </button>
-            )}
-          </div>
-          {note ? <p className="mt-3 text-xs text-secondary">{note}</p> : null}
-          {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
-        </AdminCard>
+        <FirstRunSupportFee
+          t={t}
+          busy={busy}
+          dry={sfDry}
+          errorRows={errorRows}
+          committed={sfCommitted}
+          canCommit={Boolean(sfDry?.ok && sfRows)}
+          note={note}
+          error={error}
+          onDownload={() =>
+            downloadXlsx(buildSupportFeeIs4TemplateBuffer(), 'support_fee_opening_template.xlsx')
+          }
+          onFile={(file) => void onSfFile(file)}
+          onCommit={() => void onSfCommit()}
+          onContinue={() => goStage('capital_repair_opening')}
+        />
       ) : null}
 
       {stage === 'capital_repair_opening' ? (
-        <AdminCard>
-          <h3 className="mb-1 text-base font-semibold text-foreground">{t('admin.firstRunCrTitle')}</h3>
-          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunCrLead')}</p>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={adminBtnSecondaryClass}
-              disabled={busy}
-              onClick={() =>
-                downloadXlsx(buildCapitalRepairIs8TemplateBuffer(), 'capital_repair_opening_template.xlsx')
-              }
-            >
-              {t('admin.firstRunCrDownload')}
-            </button>
-            <label className={`${adminBtnSecondaryClass} cursor-pointer`}>
-              {t('admin.firstRunCrUpload')}
-              <input
-                type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                disabled={busy}
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  e.target.value = '';
-                  void onCrFile(f);
-                }}
-              />
-            </label>
-          </div>
-          {crDry ? (
-            <p className={`mb-3 text-sm ${crDry.ok ? 'text-secondary' : 'text-danger'}`}>
-              {crDry.ok
-                ? t('admin.firstRunCrDryRunOk')
-                    .replace('{rows}', String(crDry.rowCount))
-                    .replace('{create}', String(crDry.createCount))
-                    .replace('{skipped}', String(crDry.skippedExisting))
-                    .replace('{debt}', String(crDry.debtSum))
-                    .replace('{credit}', String(crDry.creditSum))
-                : t('admin.firstRunCrDryRunErrors').replace('{n}', String(crDry.errors.length))}
-            </p>
-          ) : null}
-          <ErrorTable rows={errorRows} t={t} />
-          <div className="mt-3 flex flex-wrap gap-2">
-            {!crCommitted ? (
-              <button
-                type="button"
-                className={adminBtnPrimaryClass}
-                disabled={busy || !crDry?.ok || !crRows}
-                onClick={() => void onCrCommit()}
-              >
-                {busy ? t('admin.firstRunBusy') : t('admin.firstRunCrCommit')}
-              </button>
-            ) : (
-              <p className="text-sm text-secondary">{t('admin.firstRunCrAptsCommitted')}</p>
-            )}
-          </div>
-
-          <div className="mt-6 border-t border-border pt-4">
-            <h4 className="mb-1 text-sm font-semibold text-foreground">{t('admin.firstRunCrFundTitle')}</h4>
-            <p className="mb-3 text-xs text-secondary">{t('admin.firstRunCrFundLead')}</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="text-xs text-secondary">
-                {t('admin.firstRunCrFundBalance')}
-                <input
-                  className={`${adminFieldClass} mt-1`}
-                  value={crFundBalance}
-                  disabled={busy || crFundOk}
-                  onChange={(e) => setCrFundBalance(e.target.value)}
-                />
-              </label>
-              <label className="text-xs text-secondary">
-                {t('admin.firstRunCrFundDate')}
-                <input
-                  type="date"
-                  className={`${adminFieldClass} mt-1`}
-                  value={crFundDate}
-                  disabled={busy || crFundOk}
-                  onChange={(e) => setCrFundDate(e.target.value)}
-                />
-              </label>
-              <label className="text-xs text-secondary sm:col-span-2">
-                {t('admin.firstRunCrFundSource')}
-                <input
-                  className={`${adminFieldClass} mt-1`}
-                  value={crFundSource}
-                  disabled={busy || crFundOk}
-                  onChange={(e) => setCrFundSource(e.target.value)}
-                />
-              </label>
-              <label className="text-xs text-secondary sm:col-span-2">
-                {t('admin.firstRunCrFundNotes')}
-                <input
-                  className={`${adminFieldClass} mt-1`}
-                  value={crFundNotes}
-                  disabled={busy || crFundOk}
-                  onChange={(e) => setCrFundNotes(e.target.value)}
-                />
-              </label>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {!crFundOk ? (
-                <button
-                  type="button"
-                  className={adminBtnPrimaryClass}
-                  disabled={busy || !crCommitted}
-                  onClick={() => void onCrFundConfirm()}
-                >
-                  {busy ? t('admin.firstRunBusy') : t('admin.firstRunCrFundCommit')}
-                </button>
-              ) : (
-                <p className="text-sm text-secondary">{t('admin.firstRunCrFundCommitted')}</p>
-              )}
-              <button
-                type="button"
-                className={adminBtnPrimaryClass}
-                disabled={busy || !crCommitted || !crFundOk}
-                onClick={() => void onCrContinue()}
-              >
-                {t('admin.firstRunCrContinue')}
-              </button>
-            </div>
-          </div>
-          {note ? <p className="mt-3 text-xs text-secondary">{note}</p> : null}
-          {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
-        </AdminCard>
+        <FirstRunCapitalRepair
+          t={t}
+          busy={busy}
+          dry={crDry}
+          errorRows={errorRows}
+          committed={crCommitted}
+          canCommit={Boolean(crDry?.ok && crRows)}
+          fundOk={crFundOk}
+          balance={crFundBalance}
+          date={crFundDate}
+          source={crFundSource}
+          notes={crFundNotes}
+          note={note}
+          error={error}
+          onDownload={() =>
+            downloadXlsx(buildCapitalRepairIs8TemplateBuffer(), 'capital_repair_opening_template.xlsx')
+          }
+          onFile={(file) => void onCrFile(file)}
+          onCommit={() => void onCrCommit()}
+          onBalance={setCrFundBalance}
+          onDate={setCrFundDate}
+          onSource={setCrFundSource}
+          onNotes={setCrFundNotes}
+          onFundConfirm={() => void onCrFundConfirm()}
+          onContinue={() => void onCrContinue()}
+        />
       ) : null}
 
       {stage === 'tariffs' ? (
-        <AdminCard>
-          <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunStageTariffs')}</h3>
-          <AdminFirstRunTariffs
-            supabase={supabase}
-            t={t}
-            selection={selectionChosen ? selection : { water: true, electricity: true }}
-            busy={busy}
-            onBusy={setBusy}
-            onContinue={onTariffsContinue}
-          />
-          {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
-          {note ? <p className="mt-3 text-xs text-secondary">{note}</p> : null}
-        </AdminCard>
+        <AdminFirstRunTariffs
+          supabase={supabase}
+          t={t}
+          selection={selectionChosen ? selection : { water: true, electricity: true }}
+          busy={busy}
+          onBusy={setBusy}
+          onContinue={onTariffsContinue}
+        />
       ) : null}
 
       {stage === 'budget' ? (
-        <AdminCard>
-          <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunStageBudget')}</h3>
-          <AdminFirstRunBudget
-            supabase={supabase}
-            t={t}
-            draft={state?.draft ?? {}}
-            busy={busy}
-            onBusy={setBusy}
-            onState={applyState}
-            onContinue={onBudgetContinue}
-          />
-          {error ? <p className="mt-3 text-xs text-danger">{error}</p> : null}
-          {note ? <p className="mt-3 text-xs text-secondary">{note}</p> : null}
-        </AdminCard>
+        <AdminFirstRunBudget
+          supabase={supabase}
+          t={t}
+          draft={state?.draft ?? {}}
+          busy={busy}
+          onBusy={setBusy}
+          onState={applyState}
+          onContinue={onBudgetContinue}
+        />
       ) : null}
 
       {stage === 'complete' ? (
-        <AdminCard>
-          <h3 className="mb-2 text-base font-semibold text-foreground">{t('admin.firstRunCompleteTitle')}</h3>
-          <p className="mb-4 text-sm text-secondary">{t('admin.firstRunCompleteBody')}</p>
-          <button type="button" className={adminBtnPrimaryClass} disabled={busy} onClick={() => void onFinish()}>
-            {busy ? t('admin.firstRunBusy') : t('admin.firstRunCompleteFinish')}
-          </button>
-        </AdminCard>
+        <FirstRunFinish t={t} busy={busy} onFinish={() => void onFinish()} />
       ) : null}
-    </div>
+    </FirstRunFrame>
   );
 }

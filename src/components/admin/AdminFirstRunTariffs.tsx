@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
-import {
-  adminBtnPrimaryClass,
-  adminBtnSecondaryClass,
-  adminFieldClass,
-} from '@/components/admin/AdminUi';
+import { Receipt } from 'lucide-react';
+import { FirstRunScreen } from '@/components/admin/FirstRunSteps';
+import styles from './FirstRunFrame.module.css';
 import {
   isFirstRunTariffPublished,
   missingFirstRunTariffs,
@@ -15,7 +13,8 @@ import {
   type FirstRunTariffKey,
   type MetersSelection,
 } from '@/lib/firstRun';
-import { ownerVisibleError } from '@/lib/ownerError';
+import { firstRunFailureText, tariffBasisLabel } from '@/lib/firstRunUserMessage';
+import { FirstRunErrorNote } from '@/components/admin/FirstRunFinance';
 import {
   normalizeTariffListRow,
   sofiaCurrentYear,
@@ -130,7 +129,7 @@ export function AdminFirstRunTariffs({
       p_limit: 50,
     });
     if (error) {
-      setLoadError(ownerVisibleError(error, t('admin.errGeneric')));
+      setLoadError(firstRunFailureText(error) || t('admin.errGeneric'));
       setRows([]);
       return;
     }
@@ -303,30 +302,30 @@ export function AdminFirstRunTariffs({
       }));
       await load();
     } catch (err: unknown) {
-      setFormError(ownerVisibleError(err, t('admin.errGeneric')));
+      setFormError(firstRunFailureText(err) || t('admin.errGeneric'));
     } finally {
       onBusy(false);
     }
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-secondary">{t('admin.firstRunTariffsLead')}</p>
-      <p className="text-xs text-muted">{t('admin.firstRunTariffsNoCharge')}</p>
+    <FirstRunScreen
+      icon={Receipt}
+      iconClass="text-teal-700"
+      title={t('admin.firstRunStageTariffs')}
+      lead={t('admin.firstRunTariffsLead')}
+      busy={busy}
+    >
+      <p className={styles.hint}>{t('admin.firstRunTariffsNoCharge')}</p>
 
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className={styles.choices}>
         {required.map((key) => {
           const row = byKey.get(key);
           const ok = isFirstRunTariffPublished(row);
           return (
-            <li
-              key={key}
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                ok ? 'border-border bg-surface-secondary/40' : 'border-border'
-              }`}
-            >
-              <div className="font-medium text-foreground">{t(labelKey(key))}</div>
-              <div className="mt-1 text-xs text-secondary">
+            <li key={key} className={`${styles.stepBlock} ${ok ? styles.choiceOn : ''}`}>
+              <div>{t(labelKey(key))}</div>
+              <div className={styles.hint}>
                 {ok
                   ? t('admin.firstRunTariffStatusPublished')
                       .replace(
@@ -336,7 +335,10 @@ export function AdminFirstRunTariffs({
                       .replace(
                         '{basis}',
                         [
-                          row?.current_basis_type ?? row?.nearest_future_basis_type,
+                          tariffBasisLabel(
+                            row?.current_basis_type ?? row?.nearest_future_basis_type,
+                            t,
+                          ),
                           row?.current_basis_date ?? row?.nearest_future_basis_date,
                           row?.current_basis_note ?? row?.nearest_future_basis_note,
                         ]
@@ -350,21 +352,21 @@ export function AdminFirstRunTariffs({
         })}
       </ul>
 
-      {loadError ? <p className="text-xs text-danger">{loadError}</p> : null}
+      {loadError ? <FirstRunErrorNote raw={loadError} t={t} /> : null}
 
       {activeKey ? (
-        <form onSubmit={(e) => void publishActive(e)} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-          <p className="text-sm font-semibold text-foreground sm:col-span-2">
+        <form onSubmit={(e) => void publishActive(e)} className={styles.formGrid}>
+          <p className={`${styles.groupTitle} ${styles.span2}`}>
             {t('admin.firstRunTariffConfigure').replace('{name}', t(labelKey(activeKey)))}
           </p>
 
           {activeKey === 'support_fee' || activeKey === 'capital_repair' ? (
             <>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {activeKey === 'capital_repair' ? t('admin.tcAnnualAmount') : t('admin.tcNewRate')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectNatural')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.01"
                   min="0.01"
@@ -373,11 +375,11 @@ export function AdminFirstRunTariffs({
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {activeKey === 'capital_repair' ? t('admin.tcAnnualAmount') : t('admin.tcNewRate')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectLegal')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.01"
                   min="0.01"
@@ -386,10 +388,10 @@ export function AdminFirstRunTariffs({
                   placeholder={annual.rate || undefined}
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcApplicationYear')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   min={activeKey === 'capital_repair' ? currentYear : nextYear}
                   value={annual.application_year}
@@ -397,10 +399,10 @@ export function AdminFirstRunTariffs({
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              <label className={`${styles.field} ${styles.span2}`}>
                 {t('admin.tcBasis')}
                 <select
-                  className={adminFieldClass}
+                  className={styles.input}
                   value={annual.basis_mode}
                   onChange={(e) =>
                     setAnnual({
@@ -416,10 +418,10 @@ export function AdminFirstRunTariffs({
                 </select>
               </label>
               {annual.basis_mode === 'general_meeting' && decisions.length > 0 ? (
-                <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+                <label className={`${styles.field} ${styles.span2}`}>
                   {t('admin.tcDecision')}
                   <select
-                    className={adminFieldClass}
+                    className={styles.input}
                     value={annual.decision_id}
                     onChange={(e) => setAnnual({ ...annual, decision_id: e.target.value })}
                     required
@@ -433,30 +435,30 @@ export function AdminFirstRunTariffs({
                   </select>
                 </label>
               ) : (
-                <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+                <label className={`${styles.field} ${styles.span2}`}>
                   {t('admin.tcBasisReference')}
                   <input
-                    className={adminFieldClass}
+                    className={styles.input}
                     value={annual.basis_reference}
                     onChange={(e) => setAnnual({ ...annual, basis_reference: e.target.value })}
                     required
                   />
                 </label>
               )}
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcBasisDate')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="date"
                   value={annual.basis_date}
                   onChange={(e) => setAnnual({ ...annual, basis_date: e.target.value })}
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              <label className={`${styles.field} ${styles.span2}`}>
                 {t('admin.tcBasisNote')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   value={annual.basis_note}
                   onChange={(e) => setAnnual({ ...annual, basis_note: e.target.value })}
                   required
@@ -467,11 +469,11 @@ export function AdminFirstRunTariffs({
 
           {activeKey === 'water' ? (
             <>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcNewRate')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectNatural')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.0001"
                   min="0"
@@ -480,11 +482,11 @@ export function AdminFirstRunTariffs({
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcNewRate')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectLegal')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.0001"
                   min="0"
@@ -498,11 +500,11 @@ export function AdminFirstRunTariffs({
 
           {activeKey === 'electricity' ? (
             <>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcCompDay')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectNatural')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.0001"
                   min="0"
@@ -511,11 +513,11 @@ export function AdminFirstRunTariffs({
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcCompNight')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectNatural')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.0001"
                   min="0"
@@ -524,11 +526,11 @@ export function AdminFirstRunTariffs({
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcCompDay')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectLegal')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.0001"
                   min="0"
@@ -537,11 +539,11 @@ export function AdminFirstRunTariffs({
                   placeholder={utility.day || undefined}
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcCompNight')}
-                <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
+                <span className={styles.hint}>{t('admin.tcSubjectLegal')}</span>
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.0001"
                   min="0"
@@ -555,10 +557,10 @@ export function AdminFirstRunTariffs({
 
           {activeKey === 'water' || activeKey === 'electricity' ? (
             <>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcValidFrom')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="date"
                   min={today}
                   value={utility.valid_from}
@@ -566,28 +568,28 @@ export function AdminFirstRunTariffs({
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcSupplierRef')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   value={utility.basis_reference}
                   onChange={(e) => setUtility({ ...utility, basis_reference: e.target.value })}
                   required
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary">
+              <label className={styles.field}>
                 {t('admin.tcBasisDate')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="date"
                   value={utility.basis_date}
                   onChange={(e) => setUtility({ ...utility, basis_date: e.target.value })}
                 />
               </label>
-              <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
+              <label className={`${styles.field} ${styles.span2}`}>
                 {t('admin.tcBasisNote')}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   value={utility.basis_note}
                   onChange={(e) => setUtility({ ...utility, basis_note: e.target.value })}
                   required
@@ -596,13 +598,13 @@ export function AdminFirstRunTariffs({
             </>
           ) : null}
 
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <button type="submit" className={adminBtnPrimaryClass} disabled={busy}>
+          <div className={`${styles.actions} ${styles.span2}`}>
+            <button type="submit" className={styles.primary} disabled={busy}>
               {busy ? t('admin.firstRunBusy') : t('admin.tcPublish')}
             </button>
             <button
               type="button"
-              className={adminBtnSecondaryClass}
+              className={styles.secondary}
               disabled={busy}
               onClick={() => void load()}
             >
@@ -612,15 +614,15 @@ export function AdminFirstRunTariffs({
         </form>
       ) : null}
 
-      {formError ? <p className="text-xs text-danger">{formError}</p> : null}
-      {note ? <p className="text-xs text-secondary">{note}</p> : null}
+      {formError ? <FirstRunErrorNote raw={formError} t={t} /> : null}
+      {note ? <p className={styles.okNote}>{note}</p> : null}
 
       {allReady ? (
-        <div className="border-t border-border pt-4">
-          <p className="mb-3 text-sm text-secondary">{t('admin.firstRunTariffsReady')}</p>
+        <div className={styles.stepBlock}>
+          <p className={styles.okNote}>{t('admin.firstRunTariffsReady')}</p>
           <button
             type="button"
-            className={adminBtnPrimaryClass}
+            className={styles.primary}
             disabled={busy}
             onClick={() => void onContinue()}
           >
@@ -628,6 +630,6 @@ export function AdminFirstRunTariffs({
           </button>
         </div>
       ) : null}
-    </div>
+    </FirstRunScreen>
   );
 }

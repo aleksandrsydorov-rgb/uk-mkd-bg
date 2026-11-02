@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
-import {
-  adminBtnPrimaryClass,
-  adminBtnSecondaryClass,
-  adminFieldClass,
-} from '@/components/admin/AdminUi';
+import { Wallet } from 'lucide-react';
+import { FirstRunScreen } from '@/components/admin/FirstRunSteps';
+import styles from './FirstRunFrame.module.css';
 import {
   BUDGET_MODULE_KEY,
   budgetPlanRequiresZeroConfirmation,
@@ -24,7 +22,8 @@ import {
   type BudgetLineRow,
   type BudgetYear,
 } from '@/lib/budget';
-import { ownerVisibleError } from '@/lib/ownerError';
+import { budgetYearStatusLabel, firstRunFailureText } from '@/lib/firstRunUserMessage';
+import { FirstRunErrorNote } from '@/components/admin/FirstRunFinance';
 import { useI18n } from '@/i18n/I18nProvider';
 
 type UntypedRpc = {
@@ -179,7 +178,7 @@ export function AdminFirstRunBudget({
         }
       }
     } catch (e: unknown) {
-      setLoadError(ownerVisibleError(e, t('admin.errGeneric')));
+      setLoadError(firstRunFailureText(e) || t('admin.errGeneric'));
     }
   }, [
     ensureModuleEnabled,
@@ -252,7 +251,7 @@ export function AdminFirstRunBudget({
           : t('admin.firstRunBudgetYearReady'),
       );
     } catch (err: unknown) {
-      setFormError(ownerVisibleError(err, t('admin.errGeneric')));
+      setFormError(firstRunFailureText(err) || t('admin.errGeneric'));
     } finally {
       onBusy(false);
     }
@@ -292,7 +291,7 @@ export function AdminFirstRunBudget({
       await persistDraft(next);
       setNote(t('admin.firstRunBudgetAmountsSaved'));
     } catch (err: unknown) {
-      setFormError(ownerVisibleError(err, t('admin.errGeneric')));
+      setFormError(firstRunFailureText(err) || t('admin.errGeneric'));
     } finally {
       onBusy(false);
     }
@@ -340,7 +339,7 @@ export function AdminFirstRunBudget({
       await persistDraft(done);
       setNote(t('admin.firstRunBudgetPublished'));
     } catch (err: unknown) {
-      setFormError(ownerVisibleError(err, t('admin.errGeneric')));
+      setFormError(firstRunFailureText(err) || t('admin.errGeneric'));
     } finally {
       onBusy(false);
     }
@@ -358,20 +357,23 @@ export function AdminFirstRunBudget({
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-secondary">{t('admin.firstRunBudgetLead')}</p>
-      <p className="text-xs text-muted">{t('admin.firstRunBudgetNoCharge')}</p>
-      {moduleReady ? (
-        <p className="text-xs text-secondary">{t('admin.firstRunBudgetModuleEnabled')}</p>
-      ) : null}
-      {loadError ? <p className="text-xs text-danger">{loadError}</p> : null}
+    <FirstRunScreen
+      icon={Wallet}
+      iconClass="text-teal-700"
+      title={t('admin.firstRunStageBudget')}
+      lead={t('admin.firstRunBudgetLead')}
+      busy={busy}
+    >
+      <p className={styles.hint}>{t('admin.firstRunBudgetNoCharge')}</p>
+      {moduleReady ? <p className={styles.okNote}>{t('admin.firstRunBudgetModuleEnabled')}</p> : null}
+      {loadError ? <FirstRunErrorNote raw={loadError} t={t} /> : null}
 
       {step === 'year' ? (
-        <form onSubmit={(e) => void onSelectYear(e)} className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm text-secondary">
+        <form onSubmit={(e) => void onSelectYear(e)} className={styles.formGrid}>
+          <label className={styles.field}>
             {t('admin.firstRunBudgetYear')}
             <input
-              className={adminFieldClass}
+              className={styles.input}
               type="number"
               min={2020}
               max={2100}
@@ -380,8 +382,8 @@ export function AdminFirstRunBudget({
               required
             />
           </label>
-          <div className="flex items-end">
-            <button type="submit" className={adminBtnPrimaryClass} disabled={busy}>
+          <div className={styles.actions}>
+            <button type="submit" className={styles.primary} disabled={busy}>
               {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetYearContinue')}
             </button>
           </div>
@@ -389,16 +391,16 @@ export function AdminFirstRunBudget({
       ) : null}
 
       {step === 'amounts' && !locked ? (
-        <form onSubmit={(e) => void onSaveAmounts(e)} className="grid gap-3">
-          <p className="text-sm font-semibold text-foreground">
+        <form onSubmit={(e) => void onSaveAmounts(e)} className={styles.group}>
+          <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetAmountsTitle').replace('{year}', calendarYear)}
           </p>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className={styles.formGrid}>
             {categories.map((cat) => (
-              <label key={cat.id} className="grid gap-1 text-sm text-secondary">
+              <label key={cat.id} className={styles.field}>
                 {categoryLabel(cat, locale)}
                 <input
-                  className={adminFieldClass}
+                  className={styles.input}
                   type="number"
                   step="0.01"
                   min="0"
@@ -408,23 +410,23 @@ export function AdminFirstRunBudget({
                 />
               </label>
             ))}
+            <label className={`${styles.field} ${styles.span2}`}>
+              {t('admin.firstRunBudgetBasisNote')}
+              <input
+                className={styles.input}
+                value={decisionNote}
+                onChange={(e) => setDecisionNote(e.target.value)}
+                placeholder={t('admin.firstRunBudgetBasisNotePh')}
+              />
+            </label>
           </div>
-          <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.firstRunBudgetBasisNote')}
-            <input
-              className={adminFieldClass}
-              value={decisionNote}
-              onChange={(e) => setDecisionNote(e.target.value)}
-              placeholder={t('admin.firstRunBudgetBasisNotePh')}
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button type="submit" className={adminBtnPrimaryClass} disabled={busy}>
+          <div className={styles.actions}>
+            <button type="submit" className={styles.primary} disabled={busy}>
               {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetReviewContinue')}
             </button>
             <button
               type="button"
-              className={adminBtnSecondaryClass}
+              className={styles.secondary}
               disabled={busy}
               onClick={() => setStep('year')}
             >
@@ -435,37 +437,36 @@ export function AdminFirstRunBudget({
       ) : null}
 
       {(step === 'review' || step === 'done' || locked) && yearId ? (
-        <div className="space-y-3 border-t border-border pt-4">
-          <p className="text-sm font-semibold text-foreground">
+        <div className={styles.stepBlock}>
+          <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetReviewTitle').replace('{year}', calendarYear)}
           </p>
-          <ul className="grid gap-1 text-sm text-secondary">
+          <ul className={styles.reviewList}>
             {categories.map((cat) => (
-              <li key={cat.id} className="flex justify-between gap-3">
-                <span>{categoryLabel(cat, locale)}</span>
-                <span>{moneyEur(Number(amounts[cat.id] ?? 0))}</span>
+              <li key={cat.id} className={styles.reviewRow}>
+                <span className={styles.reviewName}>{categoryLabel(cat, locale)}</span>
+                <span className={styles.reviewAmt}>{moneyEur(Number(amounts[cat.id] ?? 0))}</span>
               </li>
             ))}
           </ul>
-          <p className="text-sm font-medium text-foreground">
+          <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetTotal').replace('{total}', moneyEur(total))}
           </p>
           {decisionNote.trim() ? (
-            <p className="text-xs text-secondary">
+            <p className={styles.hint}>
               {t('admin.firstRunBudgetBasisNote')}: {decisionNote.trim()}
             </p>
           ) : null}
           {yearStatus ? (
-            <p className="text-xs text-secondary">
-              {t('admin.firstRunBudgetStatus')}: {yearStatus}
+            <p className={styles.hint}>
+              {t('admin.firstRunBudgetStatus')}: {budgetYearStatusLabel(yearStatus, t)}
             </p>
           ) : null}
 
           {needsZeroConfirm && !locked ? (
-            <label className="flex items-start gap-2 text-sm text-secondary">
+            <label className={styles.checkLine}>
               <input
                 type="checkbox"
-                className="mt-1"
                 checked={zeroConfirmed}
                 onChange={(e) => setZeroConfirmed(e.target.checked)}
               />
@@ -473,12 +474,12 @@ export function AdminFirstRunBudget({
             </label>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className={styles.actions}>
             {!locked ? (
               <>
                 <button
                   type="button"
-                  className={adminBtnPrimaryClass}
+                  className={styles.primary}
                   disabled={busy || (needsZeroConfirm && !zeroConfirmed)}
                   onClick={() => void onPublish()}
                 >
@@ -486,7 +487,7 @@ export function AdminFirstRunBudget({
                 </button>
                 <button
                   type="button"
-                  className={adminBtnSecondaryClass}
+                  className={styles.secondary}
                   disabled={busy}
                   onClick={() => setStep('amounts')}
                 >
@@ -496,7 +497,7 @@ export function AdminFirstRunBudget({
             ) : (
               <button
                 type="button"
-                className={adminBtnPrimaryClass}
+                className={styles.primary}
                 disabled={busy}
                 onClick={() => void onFinishStage()}
               >
@@ -505,13 +506,13 @@ export function AdminFirstRunBudget({
             )}
           </div>
           {locked && lines.length === 0 ? (
-            <p className="text-xs text-muted">{t('admin.firstRunBudgetExistingPublished')}</p>
+            <p className={styles.hint}>{t('admin.firstRunBudgetExistingPublished')}</p>
           ) : null}
         </div>
       ) : null}
 
-      {formError ? <p className="text-xs text-danger">{formError}</p> : null}
-      {note ? <p className="text-xs text-secondary">{note}</p> : null}
-    </div>
+      {formError ? <FirstRunErrorNote raw={formError} t={t} /> : null}
+      {note ? <p className={styles.okNote}>{note}</p> : null}
+    </FirstRunScreen>
   );
 }

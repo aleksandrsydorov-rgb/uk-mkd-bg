@@ -165,6 +165,6 @@ export const capitalRepairOpeningAdapter: ModuleSetupAdapter = {
   },
 };
 
-export function downloadCapitalRepairOpeningTemplate(): void {
-  downloadCapitalRepairIs8Template();
+export function downloadCapitalRepairOpeningTemplate(locale?: string): void {
+  downloadCapitalRepairIs8Template(locale);
 }

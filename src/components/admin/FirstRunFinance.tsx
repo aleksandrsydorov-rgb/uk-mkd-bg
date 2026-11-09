@@ -1,9 +1,19 @@
 'use client';
 
+import { useState, type Ref } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { BadgeCheck, CircleDollarSign, Landmark } from 'lucide-react';
-import type { FirstRunErrorRow } from '@/lib/firstRun';
+import type { Database } from '@/lib/database.types';
+import { isFirstRunTariffPrepared, type FirstRunErrorRow, type FirstRunTariffPrepMap } from '@/lib/firstRun';
 import { explainFirstRunFailure } from '@/lib/firstRunUserMessage';
+import { FirstRunStageActions } from '@/components/admin/FirstRunFrame';
 import { FirstRunErrorTable, FirstRunScreen } from '@/components/admin/FirstRunSteps';
+import {
+  FirstRunTariffPrepBlock,
+  type FirstRunTariffPrepHandle,
+} from '@/components/admin/FirstRunTariffPrepBlock';
+import { FirstRunStatusBanner, FirstRunStatusStack } from '@/components/admin/FirstRunStatusBanner';
+import { AppFilePicker } from '@/components/ui/AppFilePicker';
 import styles from './FirstRunFrame.module.css';
 
 type T = (key: string) => string;
@@ -20,17 +30,7 @@ type OpeningDry = {
 
 export function FirstRunErrorNote({ raw, t }: { raw: string; t: T }) {
   const view = explainFirstRunFailure(raw, t);
-  return (
-    <div className={styles.badNote}>
-      <p>{view.message}</p>
-      {view.detail ? (
-        <details className={styles.detail}>
-          <summary>{t('admin.firstRunErrDetail')}</summary>
-          <p>{view.detail}</p>
-        </details>
-      ) : null}
-    </div>
-  );
+  return <FirstRunStatusBanner tone="error" title={view.message} />;
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
@@ -63,6 +63,11 @@ export function FirstRunSupportFee({
   canCommit,
   note,
   error,
+  supabase,
+  tariffPrep,
+  onSaveTariffPrep,
+  onTariffBusy,
+  tariffNavRef,
   onDownload,
   onFile,
   onCommit,
@@ -76,11 +81,20 @@ export function FirstRunSupportFee({
   canCommit: boolean;
   note: string | null;
   error: string | null;
+  supabase?: SupabaseClient<Database>;
+  tariffPrep?: FirstRunTariffPrepMap;
+  onSaveTariffPrep?: (next: FirstRunTariffPrepMap) => Promise<void>;
+  onTariffBusy?: (v: boolean) => void;
+  tariffNavRef?: Ref<FirstRunTariffPrepHandle>;
   onDownload: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
   onContinue: () => void;
 }) {
+  const [openingUnlocked, setOpeningUnlocked] = useState(() =>
+    isFirstRunTariffPrepared('support_fee', tariffPrep ?? {}),
+  );
+  const showImportForm = openingUnlocked || committed;
   return (
     <FirstRunScreen
       icon={CircleDollarSign}
@@ -89,74 +103,116 @@ export function FirstRunSupportFee({
       lead={t('admin.firstRunSfLead')}
       busy={busy}
     >
+      <FirstRunStatusStack>
+        {error ? <FirstRunStatusBanner tone="error" title={error} /> : null}
+        {committed ? (
+          <FirstRunStatusBanner
+            tone="success"
+            title={note?.trim() || t('admin.firstRunSfCommitted')}
+            detail={t('admin.firstRunImportSavedContinue')}
+          />
+        ) : null}
+        {!committed && note ? <FirstRunStatusBanner tone="success" title={note} /> : null}
+        {!committed && dry?.ok ? (
+          <FirstRunStatusBanner
+            tone="success"
+            title={t('admin.firstRunOpeningCheckOkTitle')}
+            detail={t('admin.firstRunSfDryRunOk')
+              .replace('{rows}', String(dry.rowCount))
+              .replace('{create}', String(dry.createCount))
+              .replace('{skipped}', String(dry.skippedExisting))
+              .replace('{debt}', String(dry.debtSum))
+              .replace('{credit}', String(dry.creditSum))}
+          />
+        ) : null}
+        {!committed && dry && !dry.ok ? (
+          <FirstRunStatusBanner
+            tone="error"
+            title={t('admin.firstRunOpeningCheckFailTitle')}
+            detail={t('admin.firstRunSfDryRunErrors').replace('{n}', String(dry.errors.length))}
+          />
+        ) : null}
+        {committed && !openingUnlocked ? (
+          <FirstRunStatusBanner
+            tone="warning"
+            title={t('admin.firstRunTariffNeededAfterImportTitle')}
+            detail={t('admin.firstRunTariffNeededAfterImportDetail')}
+          />
+        ) : null}
+      </FirstRunStatusStack>
+      {supabase && onSaveTariffPrep ? (
+        <FirstRunTariffPrepBlock
+          ref={tariffNavRef}
+          tariffKey="support_fee"
+          supabase={supabase}
+          t={t}
+          prep={tariffPrep ?? {}}
+          busy={busy}
+          onBusy={onTariffBusy}
+          onSavePrep={onSaveTariffPrep}
+          onGateChange={(gate) => setOpeningUnlocked(gate.unlockOpening)}
+        />
+      ) : null}
+      <p className={styles.importLabel}>{t('admin.firstRunSectionOpeningData')}</p>
+      <p className={styles.hint}>{t('admin.firstRunSectionOpeningBalancesHint')}</p>
+      {!showImportForm ? (
+        <p className={styles.hint}>{t('admin.firstRunOpeningLockedUntilTariff')}</p>
+      ) : (
       <div className={styles.importGrid}>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportDownload')}</p>
-          <button type="button" className={styles.secondary} disabled={busy} onClick={onDownload}>
+          <button type="button" className={styles.secondary} disabled={busy || !openingUnlocked} onClick={onDownload}>
             {t('admin.firstRunSfDownload')}
           </button>
+          <p className={styles.hint}>{t('admin.firstRunSfImportColumnsHint')}</p>
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
-          <label className={styles.file}>
-            {t('admin.firstRunSfUpload')}
-            <input
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              disabled={busy}
-              onChange={(e) => {
-                onFile(e.target.files?.[0] ?? null);
-                e.target.value = '';
-              }}
-            />
-          </label>
+          <AppFilePicker
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            disabled={busy || committed || !openingUnlocked}
+            resetInputAfterChange
+            hint={
+              committed
+                ? undefined
+                : `${t('common.fileHintFormats').replace('{formats}', '.xlsx')} · ${t('admin.firstRunFileReselectHint')}`
+            }
+            onChange={(picked) => onFile(picked[0] ?? null)}
+          />
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-          {dry ? (
-            <>
-              {dry.ok ? <OpeningStats dry={dry} t={t} /> : null}
-              <p className={dry.ok ? styles.okNote : styles.badNote}>
-                {dry.ok
-                  ? t('admin.firstRunSfDryRunOk')
-                      .replace('{rows}', String(dry.rowCount))
-                      .replace('{create}', String(dry.createCount))
-                      .replace('{skipped}', String(dry.skippedExisting))
-                      .replace('{debt}', String(dry.debtSum))
-                      .replace('{credit}', String(dry.creditSum))
-                  : t('admin.firstRunSfDryRunErrors').replace('{n}', String(dry.errors.length))}
-              </p>
-            </>
-          ) : (
-            <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
-          )}
+          {dry && !committed && dry.ok ? <OpeningStats dry={dry} t={t} /> : null}
+          {!dry && !committed ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
           <div className={styles.tableWrap}>
-            <FirstRunErrorTable rows={errorRows} t={t} />
+            <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
           </div>
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>
           <p className={styles.hint}>{t('admin.firstRunSfConfirm')}</p>
-          <div className={styles.actions}>
+          {!openingUnlocked && !committed ? (
+            <p className={styles.hint}>{t('admin.firstRunOpeningConfirmLockedWhileEditing')}</p>
+          ) : null}
+          <FirstRunStageActions>
             {!committed ? (
               <button
                 type="button"
                 className={styles.primary}
-                disabled={busy || !canCommit}
+                disabled={busy || !canCommit || !openingUnlocked}
                 onClick={onCommit}
               >
-                {busy ? t('admin.firstRunBusy') : t('admin.firstRunSfCommit')}
+                {busy ? t('admin.firstRunImporting') : t('admin.firstRunSfCommit')}
               </button>
             ) : (
-              <button type="button" className={styles.primary} disabled={busy} onClick={onContinue}>
+              <button type="button" className={styles.primary} disabled={busy || !openingUnlocked} onClick={onContinue}>
                 {busy ? t('admin.firstRunBusy') : t('admin.firstRunSfContinue')}
               </button>
             )}
-          </div>
-          {note ? <p className={styles.okNote}>{note}</p> : null}
-          {error ? <p className={styles.badNote}>{error}</p> : null}
+          </FirstRunStageActions>
         </div>
       </div>
+      )}
     </FirstRunScreen>
   );
 }
@@ -175,6 +231,11 @@ export function FirstRunCapitalRepair({
   notes,
   note,
   error,
+  supabase,
+  tariffPrep,
+  onSaveTariffPrep,
+  onTariffBusy,
+  tariffNavRef,
   onDownload,
   onFile,
   onCommit,
@@ -198,6 +259,11 @@ export function FirstRunCapitalRepair({
   notes: string;
   note: string | null;
   error: string | null;
+  supabase?: SupabaseClient<Database>;
+  tariffPrep?: FirstRunTariffPrepMap;
+  onSaveTariffPrep?: (next: FirstRunTariffPrepMap) => Promise<void>;
+  onTariffBusy?: (v: boolean) => void;
+  tariffNavRef?: Ref<FirstRunTariffPrepHandle>;
   onDownload: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
@@ -209,6 +275,10 @@ export function FirstRunCapitalRepair({
   onContinue: () => void;
 }) {
   const fundLocked = busy || fundOk;
+  const [openingUnlocked, setOpeningUnlocked] = useState(() =>
+    isFirstRunTariffPrepared('capital_repair', tariffPrep ?? {}),
+  );
+  const showImportForm = openingUnlocked || committed;
   return (
     <FirstRunScreen
       icon={Landmark}
@@ -217,77 +287,116 @@ export function FirstRunCapitalRepair({
       lead={t('admin.firstRunCrLead')}
       busy={busy}
     >
+      <FirstRunStatusStack>
+        {error ? <FirstRunStatusBanner tone="error" title={error} /> : null}
+        {note ? <FirstRunStatusBanner tone="success" title={note} /> : null}
+        {!committed && dry?.ok ? (
+          <FirstRunStatusBanner
+            tone="success"
+            title={t('admin.firstRunOpeningCheckOkTitle')}
+            detail={t('admin.firstRunCrDryRunOk')
+              .replace('{rows}', String(dry.rowCount))
+              .replace('{create}', String(dry.createCount))
+              .replace('{skipped}', String(dry.skippedExisting))
+              .replace('{debt}', String(dry.debtSum))
+              .replace('{credit}', String(dry.creditSum))}
+          />
+        ) : null}
+        {!committed && dry && !dry.ok ? (
+          <FirstRunStatusBanner
+            tone="error"
+            title={t('admin.firstRunOpeningCheckFailTitle')}
+            detail={t('admin.firstRunCrDryRunErrors').replace('{n}', String(dry.errors.length))}
+          />
+        ) : null}
+        {committed && !openingUnlocked ? (
+          <FirstRunStatusBanner
+            tone="warning"
+            title={t('admin.firstRunTariffNeededAfterImportTitle')}
+            detail={t('admin.firstRunTariffNeededAfterImportDetail')}
+          />
+        ) : null}
+      </FirstRunStatusStack>
+      {supabase && onSaveTariffPrep ? (
+        <FirstRunTariffPrepBlock
+          ref={tariffNavRef}
+          tariffKey="capital_repair"
+          supabase={supabase}
+          t={t}
+          prep={tariffPrep ?? {}}
+          busy={busy}
+          onBusy={onTariffBusy}
+          onSavePrep={onSaveTariffPrep}
+          onGateChange={(gate) => setOpeningUnlocked(gate.unlockOpening)}
+        />
+      ) : null}
       <div className={styles.group}>
-        <h3 className={styles.groupTitle}>{t('admin.firstRunImportCheck')}</h3>
+        <h3 className={styles.groupTitle}>{t('admin.firstRunSectionOpeningData')}</h3>
+        <p className={styles.hint}>{t('admin.firstRunSectionOpeningBalancesHint')}</p>
+        {!showImportForm ? (
+          <p className={styles.hint}>{t('admin.firstRunOpeningLockedUntilTariff')}</p>
+        ) : (
         <div className={styles.importGrid}>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportDownload')}</p>
-            <button type="button" className={styles.secondary} disabled={busy} onClick={onDownload}>
+            <button type="button" className={styles.secondary} disabled={busy || !openingUnlocked} onClick={onDownload}>
               {t('admin.firstRunCrDownload')}
             </button>
+            <p className={styles.hint}>{t('admin.firstRunCrImportColumnsHint')}</p>
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
-            <label className={styles.file}>
-              {t('admin.firstRunCrUpload')}
-              <input
-                type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                disabled={busy}
-                onChange={(e) => {
-                  onFile(e.target.files?.[0] ?? null);
-                  e.target.value = '';
-                }}
-              />
-            </label>
+            <AppFilePicker
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              disabled={busy || committed || !openingUnlocked}
+              resetInputAfterChange
+              hint={
+                committed
+                  ? undefined
+                  : `${t('common.fileHintFormats').replace('{formats}', '.xlsx')} · ${t('admin.firstRunFileReselectHint')}`
+              }
+              onChange={(picked) => onFile(picked[0] ?? null)}
+            />
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-            {dry ? (
-              <>
-                {dry.ok ? <OpeningStats dry={dry} t={t} /> : null}
-                <p className={dry.ok ? styles.okNote : styles.badNote}>
-                  {dry.ok
-                    ? t('admin.firstRunCrDryRunOk')
-                        .replace('{rows}', String(dry.rowCount))
-                        .replace('{create}', String(dry.createCount))
-                        .replace('{skipped}', String(dry.skippedExisting))
-                        .replace('{debt}', String(dry.debtSum))
-                        .replace('{credit}', String(dry.creditSum))
-                    : t('admin.firstRunCrDryRunErrors').replace('{n}', String(dry.errors.length))}
-                </p>
-              </>
-            ) : (
-              <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
-            )}
+            {dry && !committed && dry.ok ? <OpeningStats dry={dry} t={t} /> : null}
+            {!dry && !committed ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
             <div className={styles.tableWrap}>
-              <FirstRunErrorTable rows={errorRows} t={t} />
+              <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
             </div>
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>
             <p className={styles.hint}>{t('admin.firstRunCrConfirm')}</p>
+            {!openingUnlocked && !committed ? (
+              <p className={styles.hint}>{t('admin.firstRunOpeningConfirmLockedWhileEditing')}</p>
+            ) : null}
             <div className={styles.actions}>
               {!committed ? (
                 <button
                   type="button"
                   className={styles.primary}
-                  disabled={busy || !canCommit}
+                  disabled={busy || !canCommit || !openingUnlocked}
                   onClick={onCommit}
                 >
-                  {busy ? t('admin.firstRunBusy') : t('admin.firstRunCrCommit')}
+                  {busy ? t('admin.firstRunImporting') : t('admin.firstRunCrCommit')}
                 </button>
               ) : (
-                <p className={styles.okNote}>{t('admin.firstRunCrAptsCommitted')}</p>
+                <FirstRunStatusBanner tone="success" title={t('admin.firstRunCrAptsCommitted')} />
               )}
             </div>
           </div>
         </div>
+        )}
       </div>
 
       <div className={styles.group}>
         <h3 className={styles.groupTitle}>{t('admin.firstRunCrFundTitle')}</h3>
         <p className={styles.hint}>{t('admin.firstRunCrFundLead')}</p>
+        {!openingUnlocked && !fundOk ? (
+          <p className={styles.hint}>{t('admin.firstRunOpeningLockedUntilTariff')}</p>
+        ) : null}
         <div className={styles.formGrid}>
           <label className={styles.field}>
             {t('admin.firstRunCrFundBalance')}
@@ -308,6 +417,7 @@ export function FirstRunCapitalRepair({
               disabled={fundLocked}
               onChange={(e) => onDate(e.target.value)}
             />
+            <span className={styles.hint}>{t('admin.firstRunCrFundDateHint')}</span>
           </label>
           <label className={`${styles.field} ${styles.span2}`}>
             {t('admin.firstRunCrFundSource')}
@@ -317,6 +427,7 @@ export function FirstRunCapitalRepair({
               disabled={fundLocked}
               onChange={(e) => onSource(e.target.value)}
             />
+            <span className={styles.hint}>{t('admin.firstRunCrFundSourceHint')}</span>
           </label>
           <label className={`${styles.field} ${styles.span2}`}>
             {t('admin.firstRunCrFundNotes')}
@@ -326,33 +437,32 @@ export function FirstRunCapitalRepair({
               disabled={fundLocked}
               onChange={(e) => onNotes(e.target.value)}
             />
+            <span className={styles.hint}>{t('admin.firstRunCrFundNotesHint')}</span>
           </label>
         </div>
-        <div className={styles.actions}>
+        <FirstRunStageActions>
           {!fundOk ? (
             <button
               type="button"
               className={styles.primary}
-              disabled={busy || !committed}
+              disabled={busy || !committed || !openingUnlocked}
               onClick={onFundConfirm}
             >
               {busy ? t('admin.firstRunBusy') : t('admin.firstRunCrFundCommit')}
             </button>
           ) : (
-            <p className={styles.okNote}>{t('admin.firstRunCrFundCommitted')}</p>
+            <FirstRunStatusBanner tone="success" title={t('admin.firstRunCrFundCommitted')} />
           )}
           <button
             type="button"
             className={styles.primary}
-            disabled={busy || !committed || !fundOk}
+            disabled={busy || !committed || !fundOk || !openingUnlocked}
             onClick={onContinue}
           >
             {busy ? t('admin.firstRunBusy') : t('admin.firstRunCrContinue')}
           </button>
-        </div>
+        </FirstRunStageActions>
       </div>
-      {note ? <p className={styles.okNote}>{note}</p> : null}
-      {error ? <p className={styles.badNote}>{error}</p> : null}
     </FirstRunScreen>
   );
 }
@@ -374,11 +484,11 @@ export function FirstRunFinish({
       lead={t('admin.firstRunCompleteBody')}
       busy={busy}
     >
-      <div className={styles.actions}>
+      <FirstRunStageActions>
         <button type="button" className={styles.primary} disabled={busy} onClick={onFinish}>
           {busy ? t('admin.firstRunBusy') : t('admin.firstRunCompleteFinish')}
         </button>
-      </div>
+      </FirstRunStageActions>
     </FirstRunScreen>
   );
 }

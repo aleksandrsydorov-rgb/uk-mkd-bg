@@ -7,15 +7,20 @@
 import * as XLSX from 'xlsx';
 import {
   BOOK_ENTITY_KINDS,
-  BOOK_OBJECTS_CSV_HEADERS,
   BOOK_OBJECTS_SHEET,
-  BOOK_OWNERS_CSV_HEADERS,
   BOOK_OWNERS_SHEET,
   OWNERSHIP_TYPES,
+  buildPropertyBookTemplateBuffer,
+  propertyBookTemplateFileName,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
 import type { ImportPreviewResult, ImportPreviewRow, ImportRowOperation } from '@/lib/moduleCore/types';
 import { sanitizeSpreadsheetCell } from '@/lib/moduleCore/xlsxEngine';
+import {
+  downloadImportTemplateBuffer,
+  toImportTemplateLocale,
+  type ImportTemplateLocale,
+} from '@/lib/importTemplates';
 
 export const PROPERTY_BOOK_MODULE_KEY = 'property_book';
 export const PROPERTY_BOOK_SETUP_SCHEMA_VERSION = '1.0';
@@ -39,13 +44,21 @@ function normApt(value: string | undefined | null): string {
   return String(value ?? '').trim().toLowerCase();
 }
 
+export type PropertyBookFieldIssues = { errors: string[]; warnings: string[] };
+
+/** Hard: cannot safely match/save. Soft: importable, needs clarification. */
 export function validatePropertyBookObjectProps(row: Record<string, string>): string[] {
+  return splitPropertyBookObjectProps(row).errors;
+}
+
+export function splitPropertyBookObjectProps(row: Record<string, string>): PropertyBookFieldIssues {
   const errors: string[] = [];
+  const warnings: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
-  if (!row.purpose?.trim()) errors.push('required:purpose');
-  if (!row.area_sqm?.trim()) errors.push('required:area_sqm');
-  if (!row.ideal_parts_percent?.trim()) errors.push('required:ideal_parts_percent');
-  if (!row.ownership_type?.trim()) errors.push('required:ownership_type');
+  if (!row.purpose?.trim()) warnings.push('required:purpose');
+  if (!row.area_sqm?.trim()) warnings.push('required:area_sqm');
+  if (!row.ideal_parts_percent?.trim()) warnings.push('required:ideal_parts_percent');
+  if (!row.ownership_type?.trim()) warnings.push('required:ownership_type');
   else if (!OWNERSHIP_SET.has(row.ownership_type.trim().toLowerCase())) {
     errors.push('invalid:ownership_type');
   }
@@ -53,28 +66,34 @@ export function validatePropertyBookObjectProps(row: Record<string, string>): st
   if (row.area_sqm?.trim() && !(area > 0)) errors.push('invalid:area_sqm');
   const ideal = Number(row.ideal_parts_percent);
   if (row.ideal_parts_percent?.trim() && !(ideal >= 0)) errors.push('invalid:ideal_parts_percent');
-  return errors;
+  return { errors, warnings };
 }
 
 export function validatePropertyBookOwnerRow(row: Record<string, string>): string[] {
+  return splitPropertyBookOwnerRow(row).errors;
+}
+
+export function splitPropertyBookOwnerRow(row: Record<string, string>): PropertyBookFieldIssues {
   const errors: string[] = [];
+  const warnings: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
   const kind = (row.entity_kind ?? '').trim().toLowerCase();
-  if (!kind) errors.push('required:entity_kind');
+  if (!kind) warnings.push('required:entity_kind');
   else if (!ENTITY_KIND_SET.has(kind)) errors.push('invalid:entity_kind');
 
   if (kind === 'natural_person') {
-    if (!row.first_name?.trim()) errors.push('required:first_name');
-    if (!row.last_name?.trim()) errors.push('required:last_name');
+    if (!row.first_name?.trim()) warnings.push('required:first_name');
+    if (!row.last_name?.trim()) warnings.push('required:last_name');
   }
   if (kind === 'legal_entity' || kind === 'sole_trader') {
-    if (!row.entity_name?.trim()) errors.push('required:entity_name');
-    if (!row.eik_bulstat?.trim()) errors.push('required:eik_bulstat');
+    if (!row.entity_name?.trim()) warnings.push('required:entity_name');
+    if (!row.eik_bulstat?.trim()) warnings.push('required:eik_bulstat');
   }
+  if (!row.email?.trim()) warnings.push('required:email');
 
   const share = Number(row.ownership_share_percent);
   if (!row.ownership_share_percent?.trim() || !(share > 0)) {
-    errors.push('invalid:ownership_share_percent');
+    warnings.push('invalid:ownership_share_percent');
   }
   const ideal = Number(row.ideal_parts_percent);
   if (row.ideal_parts_percent?.trim() && !(ideal >= 0)) {
@@ -84,7 +103,7 @@ export function validatePropertyBookOwnerRow(row: Record<string, string>): strin
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
   }
-  return errors;
+  return { errors, warnings };
 }
 
 export function classifyPropertyBookOpeningRows(
@@ -101,6 +120,8 @@ export function classifyPropertyBookOpeningRows(
   let updateCount = 0;
   let skipCount = 0;
   let errorCount = 0;
+  let warningCount = 0;
+  let clarificationCount = 0;
 
   const bump = (op: ImportRowOperation) => {
     if (op === 'create') createCount += 1;
@@ -111,7 +132,9 @@ export function classifyPropertyBookOpeningRows(
 
   payload.objects.forEach((raw, idx) => {
     const rowNumber = idx + 2;
-    const errors = validatePropertyBookObjectProps(raw);
+    const split = splitPropertyBookObjectProps(raw);
+    const errors = [...split.errors];
+    const warnings = [...split.warnings];
     const apt = normApt(raw.apartment_number);
     if (apt) {
       if (objectAptsInFile.has(apt)) errors.push('duplicate_in_file:apartment_number');
@@ -133,11 +156,16 @@ export function classifyPropertyBookOpeningRows(
 
     if (errors.length) operation = 'error';
     bump(operation);
+    if (warnings.length) {
+      warningCount += warnings.length;
+      if (operation !== 'error') clarificationCount += 1;
+    }
     rows.push({
       rowNumber,
       operation,
       data: { sheet: BOOK_OBJECTS_SHEET, ...raw },
       errors,
+      warnings,
       matchKey: apt || undefined,
     });
   });
@@ -153,20 +181,22 @@ export function classifyPropertyBookOpeningRows(
 
   payload.owners.forEach((raw, idx) => {
     const rowNumber = idx + 2;
-    const errors = validatePropertyBookOwnerRow(raw);
+    const split = splitPropertyBookOwnerRow(raw);
+    const errors = [...split.errors];
+    const warnings = [...split.warnings];
     const apt = normApt(raw.apartment_number);
 
     if (apt && !objectAptsInFile.has(apt) && !existing.has(apt)) {
       errors.push('owner_without_object_row');
     }
 
-    // Soft share / ideal / ownership-type checks per apartment (owners sheet).
-    // Shared natural_person + legal_entity is allowed; multiple legal entities are not.
+    // Hard ownership contradictions only (soft incompleteness stays as warnings).
     if (apt && ownersByApt.has(apt)) {
       const group = ownersByApt.get(apt)!;
       const first = group[0] === raw;
+      const hasShares = group.some((r) => String(r.ownership_share_percent ?? '').trim());
       const sum = group.reduce((acc, r) => acc + (Number(r.ownership_share_percent) || 0), 0);
-      if (first && Math.abs(sum - 100) > 0.01) {
+      if (first && hasShares && Math.abs(sum - 100) > 0.01) {
         errors.push('shares_must_sum_100');
       }
       const soleOwners = group.length === 1;
@@ -176,10 +206,13 @@ export function classifyPropertyBookOpeningRows(
         .toLowerCase();
       const objectIdeal = Number(objOp?.data.ideal_parts_percent);
       const idealSum = group.reduce((acc, r) => acc + (Number(r.ideal_parts_percent) || 0), 0);
-      const legalN = group.filter(
-        (r) => String(r.entity_kind ?? '').trim().toLowerCase() === 'legal_entity',
+      const kindOf = (r: Record<string, string>) =>
+        String(r.entity_kind ?? '').trim().toLowerCase();
+      const legalN = group.filter((r) => kindOf(r) === 'legal_entity').length;
+      const naturalN = group.filter(
+        (r) => kindOf(r) === 'natural_person' || kindOf(r) === 'sole_trader',
       ).length;
-      if (first && legalN > 1) errors.push('multiple_legal_forbidden');
+      if (first && legalN > 0 && naturalN > 0) errors.push('mixed_natural_legal_forbidden');
       if (ownershipType === 'sole' && !soleOwners && first) {
         errors.push('sole_requires_one_owner');
       }
@@ -190,6 +223,7 @@ export function classifyPropertyBookOpeningRows(
         first &&
         ownershipType === 'shared' &&
         Number.isFinite(objectIdeal) &&
+        group.some((r) => String(r.ideal_parts_percent ?? '').trim()) &&
         Math.abs(idealSum - objectIdeal) > 0.01
       ) {
         errors.push('owner_ideal_parts_sum_mismatch');
@@ -199,6 +233,7 @@ export function classifyPropertyBookOpeningRows(
         ownershipType === 'sole' &&
         soleOwners &&
         Number.isFinite(objectIdeal) &&
+        group.some((r) => String(r.ideal_parts_percent ?? '').trim()) &&
         Math.abs(idealSum - objectIdeal) > 0.01
       ) {
         errors.push('sole_ideal_parts_mismatch');
@@ -218,11 +253,16 @@ export function classifyPropertyBookOpeningRows(
     }
     if (errors.length) operation = 'error';
     bump(operation);
+    if (warnings.length) {
+      warningCount += warnings.length;
+      if (operation !== 'error') clarificationCount += 1;
+    }
     rows.push({
       rowNumber,
       operation,
       data: { sheet: BOOK_OWNERS_SHEET, ...raw },
       errors,
+      warnings,
       matchKey: apt || undefined,
     });
   });
@@ -234,6 +274,8 @@ export function classifyPropertyBookOpeningRows(
     updateCount,
     skipCount,
     errorCount,
+    warningCount,
+    clarificationCount,
   };
 }
 
@@ -260,12 +302,17 @@ function rpcApartmentKey(entry: unknown): string | undefined {
 export function previewFromPropertyBookDryRun(result: {
   ok?: boolean;
   errors?: unknown[];
+  warnings?: unknown[];
   existing_properties?: unknown[];
   new_properties?: unknown[];
   changes?: unknown[];
   duplicates?: unknown[];
+  clarification_count?: number;
+  importable_count?: number;
+  blocking_error_count?: number;
 }): ImportPreviewResult {
   const errors = Array.isArray(result.errors) ? result.errors : [];
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
   const existing = Array.isArray(result.existing_properties) ? result.existing_properties : [];
   const created = Array.isArray(result.new_properties) ? result.new_properties : [];
   const changes = Array.isArray(result.changes) ? result.changes : [];
@@ -280,6 +327,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'error',
       data: { detail: JSON.stringify(d), sheet: 'validation' },
       errors: ['duplicate'],
+      warnings: [],
       matchKey: rpcApartmentKey(d),
     });
   }
@@ -294,7 +342,24 @@ export function previewFromPropertyBookDryRun(result: {
         apartment_number: rpcApartmentKey(e) ?? '',
       },
       errors: codes,
+      warnings: [],
       matchKey: rpcApartmentKey(e),
+    });
+  }
+  for (const w of warnings) {
+    const codes = rpcErrorCodes(w);
+    rows.push({
+      rowNumber: rowNumber++,
+      operation: 'create',
+      data: {
+        sheet: 'validation',
+        detail: JSON.stringify(w),
+        apartment_number: rpcApartmentKey(w) ?? '',
+        severity: 'warning',
+      },
+      errors: [],
+      warnings: codes,
+      matchKey: rpcApartmentKey(w),
     });
   }
   for (const item of created) {
@@ -303,6 +368,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'create',
       data: { detail: JSON.stringify(item) },
       errors: [],
+      warnings: [],
       matchKey: rpcApartmentKey(item),
     });
   }
@@ -312,6 +378,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'update',
       data: { detail: JSON.stringify(item) },
       errors: [],
+      warnings: [],
       matchKey: rpcApartmentKey(item),
     });
   }
@@ -321,6 +388,7 @@ export function previewFromPropertyBookDryRun(result: {
       operation: 'skip',
       data: { detail: JSON.stringify(item) },
       errors: [],
+      warnings: [],
       matchKey: rpcApartmentKey(item),
     });
   }
@@ -332,6 +400,9 @@ export function previewFromPropertyBookDryRun(result: {
     updateCount: changes.length,
     skipCount: existing.length,
     errorCount: errors.length + duplicates.length,
+    warningCount: warnings.length,
+    clarificationCount:
+      typeof result.clarification_count === 'number' ? result.clarification_count : warnings.length,
   };
 }
 
@@ -391,142 +462,21 @@ export function mergePropertyBookLocalAndRpcPreview(
   };
 }
 
-const INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    'Книга на етажната собственост — начален импорт (IS-2)',
-    'Листове: objects (обекти) и owners (собственици). Ключ: apartment_number.',
-    'По подразбиране съществуващите апартаменти/собственици НЕ се презаписват (SKIP).',
-    'CREATE само след изрично потвърждение за липсващи апартаменти (празна/нова инсталация).',
-    'Корекции на вече попълнени данни — през законовите процедури за прехвърляне, не през импорт.',
-    'ownership_type: sole | shared. entity_kind: natural_person | legal_entity | sole_trader.',
-    'Сумата ownership_share_percent за апартамент трябва да е 100.',
-  ],
-  ru: [
-    'Книга этажной собственности — начальный импорт (IS-2)',
-    'Листы: objects (объекты) и owners (собственники). Ключ: apartment_number.',
-    'По умолчанию существующие квартиры/собственники НЕ перезаписываются (SKIP).',
-    'CREATE только после явного подтверждения для отсутствующих квартир (пустая/новая установка).',
-    'Исправления уже заполненных данных — через законные процедуры передачи, не через импорт.',
-    'ownership_type: sole | shared. entity_kind: natural_person | legal_entity | sole_trader.',
-    'Сумма ownership_share_percent по квартире должна быть 100.',
-  ],
-  en: [
-    'Property Book — opening import (IS-2)',
-    'Sheets: objects and owners. Match key: apartment_number.',
-    'By default existing apartments/owners are NOT overwritten (SKIP).',
-    'CREATE only after explicit confirmation for missing apartments (empty/new install).',
-    'Corrections to populated data use lawful ownership-transfer workflows, not generic import overwrite.',
-    'ownership_type: sole | shared. entity_kind: natural_person | legal_entity | sole_trader.',
-    'ownership_share_percent must sum to 100 per apartment.',
-  ],
-};
-
-/** Template with objects + owners + BG/RU/EN instruction sheets. */
-export function buildPropertyBookIs2TemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-
-  const objectsExample = [
-    {
-      apartment_number: '12',
-      floor: '3',
-      section_code: 'A',
-      block_code: '1',
-      purpose: 'апартамент',
-      area_sqm: '78.5',
-      ideal_parts_percent: '1.234567',
-      ownership_type: 'sole',
-    },
-    {
-      apartment_number: '14',
-      floor: '3',
-      section_code: 'A',
-      block_code: '1',
-      purpose: 'апартамент',
-      area_sqm: '92',
-      ideal_parts_percent: '2.5',
-      ownership_type: 'shared',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-
-  const ownersExample = [
-    {
-      apartment_number: '12',
-      entity_kind: 'natural_person',
-      ownership_share_percent: '100',
-      ideal_parts_percent: '1.234567',
-      email: 'owner@example.com',
-      first_name: 'Иван',
-      middle_name: '',
-      last_name: 'Иванов',
-      entity_name: '',
-      eik_bulstat: '',
-    },
-    {
-      apartment_number: '14',
-      entity_kind: 'natural_person',
-      ownership_share_percent: '60',
-      ideal_parts_percent: '1.5',
-      email: 'a@example.com',
-      first_name: 'Анна',
-      middle_name: '',
-      last_name: 'Петрова',
-      entity_name: '',
-      eik_bulstat: '',
-    },
-    {
-      apartment_number: '14',
-      entity_kind: 'legal_entity',
-      ownership_share_percent: '40',
-      ideal_parts_percent: '1.0',
-      email: 'office@example.com',
-      first_name: '',
-      middle_name: '',
-      last_name: '',
-      entity_name: 'EXAMPLE EOOD',
-      eik_bulstat: '123456789',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(objectsExample, { header: [...BOOK_OBJECTS_CSV_HEADERS] }),
-    BOOK_OBJECTS_SHEET,
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(ownersExample, { header: [...BOOK_OWNERS_CSV_HEADERS] }),
-    BOOK_OWNERS_SHEET,
-  );
-
-  for (const lang of ['bg', 'ru', 'en'] as const) {
-    const aoa = INSTRUCTIONS[lang].map((line) => [line]);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), `instructions_${lang}`);
-  }
-
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+/** Localized template: Objects + Owners data sheets + one Instructions sheet. */
+export function buildPropertyBookIs2TemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildPropertyBookTemplateBuffer(toImportTemplateLocale(locale));
 }
 
 export function downloadPropertyBookIs2Template(
-  fileName = 'property_book_opening_template.xlsx',
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
 ): void {
-  const buf = buildPropertyBookIs2TemplateBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const isFileName = typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx');
+  const locale = toImportTemplateLocale(isFileName ? 'ru' : localeOrFileName);
+  const name = fileName ?? (isFileName ? (localeOrFileName as string) : propertyBookTemplateFileName(locale));
+  downloadImportTemplateBuffer(buildPropertyBookIs2TemplateBuffer(locale), name);
 }
 
 export function buildPropertyBookErrorReportXlsx(preview: ImportPreviewResult): ArrayBuffer {

@@ -7,13 +7,11 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
 import {
-  budgetExecutionOverspendCategories,
   budgetStatusTone,
   canSeeBudgetAdmin,
   categoryLabel,
   isBudgetOverspent,
   moneyEur,
-  sumBudgetExecutionTotals,
   type BudgetAdjustment,
   type BudgetCategory,
   type BudgetExecutionRow,
@@ -132,6 +130,10 @@ export function AdminBudget({
         adjustments_amount_eur: Number(r.adjustments_amount_eur ?? 0),
         actual_amount_eur: Number(r.actual_amount_eur),
         remaining_amount_eur: Number(r.remaining_amount_eur),
+        opening_amount_eur: Number(r.opening_amount_eur ?? 0),
+        operational_amount_eur: Number(r.operational_amount_eur ?? r.expenses_amount_eur ?? 0),
+        total_expenses_eur: Number(r.total_expenses_eur ?? r.actual_amount_eur),
+        plan_remainder_eur: Number(r.plan_remainder_eur ?? r.remaining_amount_eur),
       })),
     );
     setAdjustments(
@@ -193,10 +195,17 @@ export function AdminBudget({
     }
   }, [adjCategoryId, categories]);
 
-  const totals = useMemo(() => sumBudgetExecutionTotals(execution), [execution]);
+  const planTotals = useMemo(() => {
+    const planned = execution.reduce((sum, row) => sum + Number(row.planned_amount_eur ?? 0), 0);
+    const spent = execution.reduce(
+      (sum, row) => sum + Number(row.total_expenses_eur ?? row.actual_amount_eur ?? 0),
+      0,
+    );
+    return { planned, spent, remainder: planned - spent };
+  }, [execution]);
 
   const overspendCategories = useMemo(
-    () => budgetExecutionOverspendCategories(execution),
+    () => execution.filter((row) => isBudgetOverspent(row.plan_remainder_eur ?? row.remaining_amount_eur)),
     [execution],
   );
 
@@ -419,15 +428,16 @@ export function AdminBudget({
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">{t('admin.budgetExecution')}</h3>
             <p className="text-xs text-secondary">
-              {t('admin.budgetTotals', {
-                p: moneyEur(totals.planned),
-                a: moneyEur(totals.actual),
-                r: moneyEur(totals.remaining),
+              {t('admin.budgetExecutionTotals', {
+                p: moneyEur(planTotals.planned),
+                a: moneyEur(planTotals.spent),
+                r: moneyEur(planTotals.remainder),
               })}
             </p>
-            {isBudgetOverspent(totals.remaining) ? (
+            <p className="text-xs text-secondary">{t('admin.budgetPlanRemainderHint')}</p>
+            {isBudgetOverspent(planTotals.remainder) ? (
               <AdminInlineAlert tone="warning">
-                {t('admin.budgetOverspendWarn', { r: moneyEur(totals.remaining) })}
+                {t('admin.budgetOverspendWarn', { r: moneyEur(planTotals.remainder) })}
                 {overspendCategories.length > 0
                   ? ` ${t('admin.budgetOverspendCats', {
                       n: String(overspendCategories.length),
@@ -441,27 +451,28 @@ export function AdminBudget({
                   <tr className={adminTableHeadRowClass}>
                     <th className={adminTableCellClass}>{t('admin.budgetCategory')}</th>
                     <th className={adminTableCellClass}>{t('admin.budgetPlanned')}</th>
-                    <th className={adminTableCellClass}>{t('admin.budgetExpenses')}</th>
+                    <th className={adminTableCellClass}>{t('admin.budgetOpening')}</th>
+                    <th className={adminTableCellClass}>{t('admin.budgetOperational')}</th>
+                    <th className={adminTableCellClass}>{t('admin.budgetTotalExpenses')}</th>
+                    <th className={adminTableCellClass}>{t('admin.budgetPlanRemainder')}</th>
                     <th className={adminTableCellClass}>{t('admin.budgetAdjustments')}</th>
-                    <th className={adminTableCellClass}>{t('admin.budgetActual')}</th>
-                    <th className={adminTableCellClass}>{t('admin.budgetRemaining')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {execution.map((row) => {
-                    const over = isBudgetOverspent(row.remaining_amount_eur);
+                    const remainder = Number(row.plan_remainder_eur ?? row.remaining_amount_eur);
+                    const over = isBudgetOverspent(remainder);
                     return (
                       <tr key={row.category_id} className={adminTableRowClass}>
                         <td className={adminTableCellClass}>{row.category_name_ru}</td>
                         <td className={adminTableCellClass}>{moneyEur(row.planned_amount_eur)}</td>
-                        <td className={adminTableCellClass}>{moneyEur(row.expenses_amount_eur)}</td>
-                        <td className={adminTableCellClass}>{moneyEur(row.adjustments_amount_eur)}</td>
-                        <td className={adminTableCellClass}>{moneyEur(row.actual_amount_eur)}</td>
-                        <td
-                          className={`${adminTableCellClass}${over ? ' font-semibold text-warning' : ''}`}
-                        >
-                          {moneyEur(row.remaining_amount_eur)}
+                        <td className={adminTableCellClass}>{moneyEur(row.opening_amount_eur)}</td>
+                        <td className={adminTableCellClass}>{moneyEur(row.operational_amount_eur)}</td>
+                        <td className={adminTableCellClass}>{moneyEur(row.total_expenses_eur)}</td>
+                        <td className={`${adminTableCellClass}${over ? ' font-semibold text-warning' : ''}`}>
+                          {moneyEur(remainder)}
                         </td>
+                        <td className={adminTableCellClass}>{moneyEur(row.adjustments_amount_eur)}</td>
                       </tr>
                     );
                   })}

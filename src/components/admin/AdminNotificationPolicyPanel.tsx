@@ -20,6 +20,7 @@ import {
   setAdminNotificationModule,
 } from '@/lib/email/notificationPrefsClient';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -48,7 +49,7 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
       setMissing(false);
     } catch (err) {
       if (isMissingRpcError(err)) setMissing(true);
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setLoading(false);
     }
@@ -76,7 +77,7 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
       setEvents(next.events);
       setSuccess(t('notify.adminSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -90,7 +91,7 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
       setEvents(next.events);
       setSuccess(t('notify.adminSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -179,11 +180,10 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
                 return (
                   <tr key={ev.eventKey} className="border-b border-border/70">
                     <td className="py-2 pr-2">
-                      <code className="text-xs">{ev.eventKey}</code>
-                      <span className="mt-0.5 block text-[10px] text-muted">{ev.moduleKey}</span>
+                      <span className="text-sm text-foreground">{t(`notify.event.${ev.eventKey}`)}</span>
                     </td>
-                    <td className="py-2 pr-2 text-xs">{ev.importance}</td>
-                    <td className="py-2 pr-2 text-xs text-muted">{ev.producerStatus}</td>
+                    <td className="py-2 pr-2 text-xs">{t(`notify.importance.${ev.importance}`)}</td>
+                    <td className="py-2 pr-2 text-xs text-muted">{t(`notify.producer.${ev.producerStatus}`)}</td>
                     <td className="py-2">
                       <input
                         type="checkbox"

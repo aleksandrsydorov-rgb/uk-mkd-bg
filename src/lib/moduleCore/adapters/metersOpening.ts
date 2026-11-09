@@ -7,6 +7,15 @@
 import * as XLSX from 'xlsx';
 import type { ImportPreviewResult, ImportPreviewRow, ImportRowOperation } from '@/lib/moduleCore/types';
 import { sanitizeSpreadsheetCell } from '@/lib/moduleCore/xlsxEngine';
+import {
+  ELECTRICITY_METERS_IMPORT_SPEC,
+  WATER_METERS_IMPORT_SPEC,
+  buildLocalizedImportWorkbook,
+  downloadImportTemplateBuffer,
+  localizedTemplateFileName,
+  toImportTemplateLocale,
+  type ImportTemplateLocale,
+} from '@/lib/importTemplates';
 
 export const WATER_MODULE_KEY = 'water';
 export const ELECTRICITY_MODULE_KEY = 'electricity';
@@ -38,6 +47,7 @@ export const DEFAULT_METER_OPENING_POLICY: MeterOpeningPolicy = {
   allowReplace: false,
 };
 
+/** Canonical column keys (also accepted as spreadsheet headers). */
 export const WATER_METER_HEADERS = [
   'apartment_number',
   'meter_number',
@@ -56,6 +66,29 @@ export const ELECTRICITY_METER_HEADERS = [
   'opening_balance_kind',
   'opening_balance_eur',
 ] as const;
+
+/** Human BG labels for new templates; parsers still accept snake_case keys. */
+export const WATER_METER_HEADER_LABELS_BG: Record<(typeof WATER_METER_HEADERS)[number], string> = {
+  apartment_number: 'Апартамент',
+  meter_number: 'Номер на водомер',
+  initial_reading: 'Начално показание',
+  installed_at: 'Дата на монтаж',
+  opening_balance_kind: 'Тип начален остатък',
+  opening_balance_eur: 'Сума начален остатък (EUR)',
+};
+
+export const ELECTRICITY_METER_HEADER_LABELS_BG: Record<
+  (typeof ELECTRICITY_METER_HEADERS)[number],
+  string
+> = {
+  apartment_number: 'Апартамент',
+  meter_number: 'Номер на електромер',
+  initial_day_reading: 'Начално (ден)',
+  initial_night_reading: 'Начално (нощ)',
+  installed_at: 'Дата на монтаж',
+  opening_balance_kind: 'Тип начален остатък',
+  opening_balance_eur: 'Сума начален остатък (EUR)',
+};
 
 function normApt(value: string | undefined | null): string {
   return String(value ?? '').trim().toLowerCase();
@@ -91,14 +124,33 @@ export function parseInstalledAtDate(raw: string | undefined): { ok: true; iso: 
 export const OPENING_BALANCE_KINDS = ['zero', 'debt', 'overpayment'] as const;
 export type OpeningBalanceKind = (typeof OPENING_BALANCE_KINDS)[number];
 
-/** Empty kind ⇒ zero (RC8 first-run). debt/overpayment require amount > 0. */
-export function validateOpeningBalanceFields(row: Record<string, string>): string[] {
-  const kind = String(row.opening_balance_kind ?? '')
+/** Map UI-localized balance kinds to canonical tokens. */
+export function normalizeOpeningBalanceKind(raw: string | undefined | null): string {
+  const kind = String(raw ?? '')
     .trim()
     .toLowerCase();
-  const effectiveKind = kind || 'zero';
+  if (!kind) return 'zero';
+  if (['zero', '0', 'ноль', 'нула', 'none', 'empty'].includes(kind)) return 'zero';
+  if (['debt', 'долг', 'дълг', 'due'].includes(kind)) return 'debt';
+  if (
+    ['overpayment', 'переплата', 'преплата', 'credit', 'overpay', 'кредит'].includes(kind)
+  ) {
+    return 'overpayment';
+  }
+  return kind;
+}
+
+/** Empty kind ⇒ zero (RC8 first-run). debt/overpayment require amount > 0. */
+export function validateOpeningBalanceFields(row: Record<string, string>): string[] {
+  const effectiveKind = normalizeOpeningBalanceKind(row.opening_balance_kind);
   if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(effectiveKind)) {
     return ['invalid:opening_balance_kind'];
+  }
+  // Normalize in-place so downstream payloads see canonical tokens.
+  if (row.opening_balance_kind != null) {
+    row.opening_balance_kind = effectiveKind === 'zero' && !String(row.opening_balance_kind).trim()
+      ? ''
+      : effectiveKind;
   }
   const rawAmount = String(row.opening_balance_eur ?? '').trim();
   if (effectiveKind === 'zero') {
@@ -108,6 +160,40 @@ export function validateOpeningBalanceFields(row: Record<string, string>): strin
   const amount = parseNonNegNumber(rawAmount);
   if (amount == null || amount <= 0) return ['required:opening_balance_eur'];
   return [];
+}
+
+/**
+ * Opening balance is once per apartment. A meter row with kind zero/empty is a
+ * no-claim (additional meters OK). Conflicting debt/overpayment values for the
+ * same apartment are rejected — never summed or silently overwritten.
+ */
+export function collectApartmentOpeningBalanceConflicts(
+  rows: Record<string, string>[],
+): Map<number, string> {
+  const claims = new Map<string, { kind: string; amount: number; rowIndex: number }>();
+  const conflicts = new Map<number, string>();
+
+  rows.forEach((row, idx) => {
+    const apt = normApt(row.apartment_number);
+    if (!apt) return;
+    const kind = normalizeOpeningBalanceKind(row.opening_balance_kind);
+    if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(kind)) return;
+    if (kind === 'zero') return;
+
+    const amount = parseNonNegNumber(String(row.opening_balance_eur ?? '').trim());
+    if (amount == null || amount <= 0) return;
+
+    const prev = claims.get(apt);
+    if (!prev) {
+      claims.set(apt, { kind, amount, rowIndex: idx });
+      return;
+    }
+    if (prev.kind !== kind || prev.amount !== amount) {
+      conflicts.set(idx, 'opening_balance_conflict_same_apartment');
+    }
+  });
+
+  return conflicts;
 }
 
 export function validateWaterMeterRow(row: Record<string, string>): string[] {
@@ -190,6 +276,7 @@ function classifyMeterOpeningRows(
   const counters = { createCount: 0, updateCount: 0, skipCount: 0, errorCount: 0 };
   const previewRows: ImportPreviewRow[] = [];
   const serialsInFile = new Map<string, number>();
+  const balanceConflicts = collectApartmentOpeningBalanceConflicts(rows);
 
   rows.forEach((raw, idx) => {
     const rowNumber = idx + 2;
@@ -197,6 +284,8 @@ function classifyMeterOpeningRows(
     const apt = normApt(raw.apartment_number);
     const serial = normSerial(raw.meter_number);
     const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
+    const balanceConflict = balanceConflicts.get(idx);
+    if (balanceConflict) errors.push(balanceConflict);
 
     if (apt && !propertyId) errors.push('unknown_apartment');
     if (serial) {
@@ -359,176 +448,50 @@ export function electricityAssignPayloadsFromPreview(
   return out;
 }
 
-const WATER_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    'Водомери — начален импорт (IS-3)',
-    `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
-    'Ключ апартамент: apartment_number (от Книгата). property_id е забранен.',
-    'Полета: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD), opening_balance_kind (zero|debt|overpayment), opening_balance_eur.',
-    'Няколко водомера на апартамент: отделен ред за всеки meter_number. Начално салдо — веднъж на апартамент.',
-    'initial_reading + installed_at → assign_water_meter (инвентар).',
-    'ЗАБРАНЕНО: submit_water_reading / редове във water_readings (създават такси).',
-    'Съществуващ meter_number → SKIP. Без replace/overwrite.',
-    `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
-  ],
-  ru: [
-    'Водомеры — начальный импорт (IS-3)',
-    `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
-    'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
-    'Поля: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD), opening_balance_kind (zero|debt|overpayment), opening_balance_eur.',
-    'Несколько счётчиков на квартиру: отдельная строка на каждый meter_number. Начальное сальдо — один раз на квартиру.',
-    'initial_reading + installed_at → assign_water_meter (инвентаризация).',
-    'ЗАПРЕЩЕНО: submit_water_reading / строки water_readings (создают начисления).',
-    'Существующий meter_number → SKIP. Без replace/overwrite.',
-    `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
-  ],
-  en: [
-    'Water meters — opening import (IS-3)',
-    `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Sheet: meters.`,
-    'Apartment key: apartment_number (from Property Book). property_id forbidden.',
-    'Columns: apartment_number, meter_number, initial_reading, installed_at (YYYY-MM-DD), opening_balance_kind (zero|debt|overpayment), opening_balance_eur.',
-    'Multiple meters per apartment: one row per meter_number. Opening balance applies once per apartment.',
-    'initial_reading + installed_at map to assign_water_meter (inventory only).',
-    'FORBIDDEN: submit_water_reading / water_readings rows (they create charges).',
-    'Existing meter_number → SKIP. No replace/overwrite.',
-    `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
-  ],
-};
-
-const ELECTRICITY_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    'Електромери — начален импорт (IS-3)',
-    `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
-    'Ключ апартамент: apartment_number (от Книгата). property_id е забранен.',
-    'Полета: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at, opening_balance_kind, opening_balance_eur.',
-    'Базови показания ден/нощ → assign_electricity_meter (инвентар).',
-    'ЗАБРАНЕНО: submit_electricity_reading / meter_readings (създават такси).',
-    'Съществуващ meter_number → SKIP. Без replace/overwrite.',
-    `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
-  ],
-  ru: [
-    'Электросчётчики — начальный импорт (IS-3)',
-    `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Лист: meters.`,
-    'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
-    'Поля: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at, opening_balance_kind, opening_balance_eur.',
-    'Базовые день/ночь → assign_electricity_meter (инвентаризация).',
-    'ЗАПРЕЩЕНО: submit_electricity_reading / meter_readings (создают начисления).',
-    'Существующий meter_number → SKIP. Без replace/overwrite.',
-    `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
-  ],
-  en: [
-    'Electricity meters — opening import (IS-3)',
-    `schema_version: ${METERS_SETUP_SCHEMA_VERSION}. Sheet: meters.`,
-    'Apartment key: apartment_number (from Property Book). property_id forbidden.',
-    'Columns: apartment_number, meter_number, initial_day_reading, initial_night_reading, installed_at, opening_balance_kind, opening_balance_eur.',
-    'Day/night baselines map to assign_electricity_meter (inventory only).',
-    'FORBIDDEN: submit_electricity_reading / meter_readings rows (they create charges).',
-    'Existing meter_number → SKIP. No replace/overwrite.',
-    `opening_reading_row_commit=${OPENING_READING_ROW_COMMIT}`,
-  ],
-};
-
-function appendInstructionSheets(
-  wb: XLSX.WorkBook,
-  instructions: Record<'bg' | 'ru' | 'en', string[]>,
-) {
-  for (const lang of ['bg', 'ru', 'en'] as const) {
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet(instructions[lang].map((line) => [line])),
-      `instructions_${lang}`,
-    );
-  }
+export function buildWaterMeterIs3TemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(WATER_METERS_IMPORT_SPEC, toImportTemplateLocale(locale));
 }
 
-export function buildWaterMeterIs3TemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  const example = [
-    {
-      apartment_number: '12',
-      meter_number: 'W-12-001',
-      initial_reading: '0',
-      installed_at: '2026-01-15',
-      opening_balance_kind: 'zero',
-      opening_balance_eur: '',
-    },
-    {
-      apartment_number: '14',
-      meter_number: 'W-14-001',
-      initial_reading: '12.5',
-      installed_at: '2026-01-15',
-      opening_balance_kind: 'debt',
-      opening_balance_eur: '25.00',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(example, { header: [...WATER_METER_HEADERS] }),
-    'meters',
-  );
-  appendInstructionSheets(wb, WATER_INSTRUCTIONS);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
-}
-
-export function buildElectricityMeterIs3TemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  const example = [
-    {
-      apartment_number: '12',
-      meter_number: 'E-12-001',
-      initial_day_reading: '0',
-      initial_night_reading: '0',
-      installed_at: '2026-01-15',
-      opening_balance_kind: 'zero',
-      opening_balance_eur: '',
-    },
-    {
-      apartment_number: '14',
-      meter_number: 'E-14-001',
-      initial_day_reading: '100.5',
-      initial_night_reading: '40.2',
-      installed_at: '2026-01-15',
-      opening_balance_kind: 'overpayment',
-      opening_balance_eur: '10.00',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(example, { header: [...ELECTRICITY_METER_HEADERS] }),
-    'meters',
-  );
-  appendInstructionSheets(wb, ELECTRICITY_INSTRUCTIONS);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function buildElectricityMeterIs3TemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(ELECTRICITY_METERS_IMPORT_SPEC, toImportTemplateLocale(locale));
 }
 
 function downloadBuf(buf: ArrayBuffer, fileName: string) {
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadImportTemplateBuffer(buf, fileName);
 }
 
-export function downloadWaterMeterIs3Template(fileName = 'water_meters_opening_template.xlsx') {
-  downloadBuf(buildWaterMeterIs3TemplateBuffer(), fileName);
+export function downloadWaterMeterIs3Template(
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
+) {
+  const locale = toImportTemplateLocale(
+    typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx') ? 'ru' : localeOrFileName,
+  );
+  const name =
+    fileName ??
+    (typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx')
+      ? localeOrFileName
+      : localizedTemplateFileName(WATER_METERS_IMPORT_SPEC, locale));
+  downloadBuf(buildWaterMeterIs3TemplateBuffer(locale), name);
 }
 
 export function downloadElectricityMeterIs3Template(
-  fileName = 'electricity_meters_opening_template.xlsx',
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
 ) {
-  downloadBuf(buildElectricityMeterIs3TemplateBuffer(), fileName);
+  const locale = toImportTemplateLocale(
+    typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx') ? 'ru' : localeOrFileName,
+  );
+  const name =
+    fileName ??
+    (typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx')
+      ? localeOrFileName
+      : localizedTemplateFileName(ELECTRICITY_METERS_IMPORT_SPEC, locale));
+  downloadBuf(buildElectricityMeterIs3TemplateBuffer(locale), name);
 }
 
 export function buildMeterErrorReportXlsx(preview: ImportPreviewResult): ArrayBuffer {

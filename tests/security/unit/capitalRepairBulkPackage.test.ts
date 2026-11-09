@@ -29,6 +29,12 @@ describe('R1-CR FINAL · Capital Repair bulk packaging', () => {
     expect(sql).toMatch(/do nothing/i);
     expect(sql).toMatch(/skipped_existing/);
     expect(sql).toMatch(/Capital repair module is disabled/);
+    // 20261130333000: decision_date fixed to Jan 1 of billing year
+    expect(sql).toMatch(/make_date\(p_billing_year,\s*1,\s*1\)/);
+    // 20261130335000: launch-year guard on all charge paths in package
+    expect(sql).toMatch(/capital_repair_launch_year_blocks/);
+    expect(sql).toMatch(/launch_year_blocks_charge/);
+    expect(sql).toMatch(/complex_launch_year/);
     // No invented published tariff seeds in bulk file
     expect(sql).not.toMatch(/insert\s+into\s+public\.tariff_versions/i);
   });
@@ -71,6 +77,22 @@ describe('R1-CR FINAL · Capital Repair bulk packaging', () => {
       total: 10,
       created: 7,
       skipped_existing: 3,
+      not_applied: 0,
+      repriced: 0,
+    });
+  });
+
+  it('readBulkAccrualSummary accepts legacy skipped key from charge_capital_repair_bulk', () => {
+    const summary = readBulkAccrualSummary({
+      total: 55,
+      created: 0,
+      skipped: 55,
+      billing_year: 2027,
+    });
+    expect(summary).toEqual({
+      total: 55,
+      created: 0,
+      skipped_existing: 55,
       not_applied: 0,
       repriced: 0,
     });

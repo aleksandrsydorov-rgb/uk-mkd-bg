@@ -73,12 +73,18 @@ export function supportLedgerNet(
     // Lifecycle kinds (void/restore/payment_reversal) are audit events — not double-counted here.
     // IS-4 opening_obligation / opening_historical_settlement / opening_credit are inventarisation
     // (not operational payment) but still contribute to ledger net for reconciliation.
-    if (kind === 'charge' || kind === 'adjustment_debit' || kind === 'opening_obligation') {
+    if (
+      kind === 'charge' ||
+      kind === 'adjustment_debit' ||
+      kind === 'opening_obligation' ||
+      kind === 'late_penalty'
+    ) {
       net += amt;
     } else if (
       kind === 'payment' ||
       kind === 'adjustment_credit' ||
       kind === 'late_increase_waive' ||
+      kind === 'early_discount' ||
       kind === 'opening_historical_settlement' ||
       kind === 'opening_credit'
     ) {

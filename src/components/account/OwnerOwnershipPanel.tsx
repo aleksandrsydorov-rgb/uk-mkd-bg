@@ -165,7 +165,7 @@ export function OwnerOwnershipPanel({
       setJustSubmitted(true);
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(ownerVisibleError(err, t('err.transfer')));
+      else onError(ownerVisibleError(err, t('err.transfer'), t));
     } finally {
       setSubmitting(false);
     }
@@ -183,7 +183,7 @@ export function OwnerOwnershipPanel({
       setJustSubmitted(false);
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(ownerVisibleError(err, t('xfer.errCancel')));
+      else onError(ownerVisibleError(err, t('xfer.errCancel'), t));
     } finally {
       setSubmitting(false);
     }

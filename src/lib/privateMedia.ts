@@ -65,7 +65,11 @@ export function privateUploadRejectReason(bucket: string, file: File): 'type' | 
     if (IMAGE_MIMES.has(mime) || mime === 'application/pdf') return null;
     return 'type';
   }
-  if (bucket === REQUEST_PHOTOS_BUCKET || bucket === POLL_IMAGES_BUCKET) {
+  if (bucket === POLL_IMAGES_BUCKET) {
+    if (IMAGE_MIMES.has(mime) || mime === 'application/pdf') return null;
+    return 'type';
+  }
+  if (bucket === REQUEST_PHOTOS_BUCKET) {
     return IMAGE_MIMES.has(mime) ? null : 'type';
   }
   return null;

@@ -73,8 +73,74 @@ export type InternetWorkOrderRow = {
   completion_note: string | null;
 };
 
+export const INTERNET_BILLING_METHODS = ['package_plus_days', 'daily'] as const;
+
+export type InternetBillingMethod = (typeof INTERNET_BILLING_METHODS)[number];
+
+/** @deprecated Prefer InternetBillingMethod */
+export type InternetCalcMethod = InternetBillingMethod;
+
+export type InternetPeriodQuote = {
+  calendar_days: number;
+  package_count: number;
+  extra_days: number;
+  package_rate_eur: number;
+  day_rate_eur: number;
+  amount_eur: number;
+  tariff_version_id: string;
+  billing_method: InternetBillingMethod;
+};
+
+export function internetBillingMethodLabelKey(method: InternetBillingMethod): string {
+  if (method === 'daily') return 'admin.internetBillingDaily';
+  return 'admin.internetBillingPackagePlusDays';
+}
+
+/** Client preview only — server quote is authoritative. */
+export function previewInternetPeriodAmount(
+  calendarDays: number,
+  method: InternetBillingMethod,
+  packageRateEur: number,
+  dayRateEur: number,
+): { package_count: number; extra_days: number; amount_eur: number } {
+  if (!(calendarDays > 0) || !Number.isFinite(calendarDays)) {
+    return { package_count: 0, extra_days: 0, amount_eur: 0 };
+  }
+  if (method === 'daily') {
+    return {
+      package_count: 0,
+      extra_days: calendarDays,
+      amount_eur: Math.round(calendarDays * dayRateEur * 100) / 100,
+    };
+  }
+  const packageCount = Math.floor(calendarDays / 30);
+  const extraDays = calendarDays % 30;
+  return {
+    package_count: packageCount,
+    extra_days: extraDays,
+    amount_eur: Math.round((packageCount * packageRateEur + extraDays * dayRateEur) * 100) / 100,
+  };
+}
+
+/** Inclusive Sofia calendar days: end − start + 1. */
+export function internetCalendarDays(periodStart: string, periodEnd: string): number | null {
+  const start = String(periodStart ?? '').trim();
+  const end = String(periodEnd ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return null;
+  if (end < start) return null;
+  const a = Date.UTC(Number(start.slice(0, 4)), Number(start.slice(5, 7)) - 1, Number(start.slice(8, 10)));
+  const b = Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 1, Number(end.slice(8, 10)));
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
 export function canSeeInternetAdmin(role?: string | null) {
   return role === 'администрация' || role === 'бухгалтер';
+}
+
+export function canConfirmInternetPeriod(role?: string | null, active?: boolean | null) {
+  if (active !== true) return false;
+  const r = (role ?? '').trim().toLowerCase();
+  return r === 'администрация' || r === 'инженер';
 }
 
 export function internetStatusMessageKey(status: string): string {

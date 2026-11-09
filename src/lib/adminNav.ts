@@ -53,12 +53,17 @@ export type AdminNavFlags = {
   showSecurity: boolean;
   showCleaning: boolean;
   showInventory: boolean;
+  /** Utilities workplace: meters / readings (module ready + role). */
   showWater: boolean;
   showElectricity: boolean;
+  /** Finance workplace leaves for the same modules (ready + finance role). */
+  showWaterFinance: boolean;
+  showElectricityFinance: boolean;
   showSupportFee: boolean;
   showCapital: boolean;
   showInternet: boolean;
-  showElectricityFinance: boolean;
+  /** Finance workplace for internet (register / payment card). */
+  showInternetFinance: boolean;
   showExpenses: boolean;
   showBudget: boolean;
   showTariffs: boolean;
@@ -68,6 +73,8 @@ export type AdminNavFlags = {
   showAnnouncements: boolean;
   showPolls: boolean;
   showChat: boolean;
+  /** RC8+: General Meetings workplace (AdminDocumentsDecisions mode=meetings). */
+  showMeetings: boolean;
   showDocuments: boolean;
   showStaff: boolean;
   showSettings: boolean;
@@ -100,6 +107,10 @@ export function buildAdminNavGroups(f: AdminNavFlags): AdminNavGroup[] {
       items: nonempty([
         ...(f.showSupportFee ? (['такса'] as const) : []),
         ...(f.showCapital ? (['капремонт'] as const) : []),
+        // Same module surfaces as Utilities — finance entry opens the finance tab.
+        ...(f.showWaterFinance ? (['вода'] as const) : []),
+        ...(f.showElectricityFinance ? (['электроэнергия'] as const) : []),
+        ...(f.showInternetFinance ? (['интернет'] as const) : []),
         ...(f.showExpenses ? (['расходы'] as const) : []),
         ...(f.showBudget ? (['бюджет'] as const) : []),
         ...(f.showTariffs ? (['тарифы'] as const) : []),
@@ -111,8 +122,8 @@ export function buildAdminNavGroups(f: AdminNavFlags): AdminNavGroup[] {
       labelKey: 'menuUtilitiesMetering',
       items: nonempty([
         ...(f.showWater ? (['вода'] as const) : []),
-        // Water/electric meters (+ electricity billing tabs inside same section). No parallel ledger.
-        ...(f.showElectricity || f.showElectricityFinance ? (['электроэнергия'] as const) : []),
+        // Meters / readings entry into the same water & electricity modules.
+        ...(f.showElectricity ? (['электроэнергия'] as const) : []),
         ...(f.showInternet ? (['интернет'] as const) : []),
       ]),
     },
@@ -141,7 +152,10 @@ export function buildAdminNavGroups(f: AdminNavFlags): AdminNavGroup[] {
     {
       id: 'docs',
       labelKey: 'menuDocs',
-      items: nonempty([...(f.showDocuments ? (['документы'] as const) : [])]),
+      items: nonempty([
+        ...(f.showMeetings ? (['собрания'] as const) : []),
+        ...(f.showDocuments ? (['документы'] as const) : []),
+      ]),
     },
     {
       id: 'system',
@@ -189,6 +203,9 @@ export function buildStaffNavGroups(f: AdminNavFlags): AdminNavGroup[] {
       items: nonempty([
         ...(f.showSupportFee ? (['такса'] as const) : []),
         ...(f.showCapital ? (['капремонт'] as const) : []),
+        ...(f.showWaterFinance ? (['вода'] as const) : []),
+        ...(f.showElectricityFinance ? (['электроэнергия'] as const) : []),
+        ...(f.showInternetFinance ? (['интернет'] as const) : []),
         ...(f.showExpenses ? (['расходы'] as const) : []),
         ...(f.showBudget ? (['бюджет'] as const) : []),
         ...(f.showTariffs ? (['тарифы'] as const) : []),
@@ -202,7 +219,7 @@ export function buildStaffNavGroups(f: AdminNavFlags): AdminNavGroup[] {
         ...(f.showRequests ? (['заявки'] as const) : []),
         ...(f.showWorkOrders ? (['рабочие_задачи'] as const) : []),
         ...(f.showWater ? (['вода'] as const) : []),
-        ...(f.showElectricity || f.showElectricityFinance ? (['электроэнергия'] as const) : []),
+        ...(f.showElectricity ? (['электроэнергия'] as const) : []),
         ...(f.showInternet ? (['интернет'] as const) : []),
         ...(f.showCleaning ? (['уборка'] as const) : []),
         ...(f.showSecurity ? (['охрана'] as const) : []),
@@ -216,6 +233,7 @@ export function buildStaffNavGroups(f: AdminNavFlags): AdminNavGroup[] {
         ...(f.showAnnouncements ? (['объявления'] as const) : []),
         ...(f.showPolls ? (['опросы'] as const) : []),
         ...(f.showChat ? (['чат'] as const) : []),
+        ...(f.showMeetings ? (['собрания'] as const) : []),
         ...(f.showDocuments ? (['документы'] as const) : []),
       ]),
     },
@@ -238,4 +256,56 @@ export function buildStaffNavGroups(f: AdminNavFlags): AdminNavGroup[] {
 
 export function buildRoleNavGroups(f: AdminNavFlags): AdminNavGroup[] {
   return f.isComplexAdmin ? buildAdminNavGroups(f) : buildStaffNavGroups(f);
+}
+
+/** Same leaf label under Финансы and Коммунальные/учёт (or staff Maintenance). */
+export const DUAL_ENTRY_ADMIN_SECTIONS = ['вода', 'электроэнергия', 'интернет'] as const;
+export type DualEntryAdminSection = (typeof DUAL_ENTRY_ADMIN_SECTIONS)[number];
+
+export function isDualEntryAdminSection(
+  section: string | null | undefined,
+): section is DualEntryAdminSection {
+  return (
+    section === 'вода' || section === 'электроэнергия' || section === 'интернет'
+  );
+}
+
+/** Finance workplace for dual-entry modules is always `tab=finance`. */
+export function isAdminFinanceWorkplaceTab(tab: string | null | undefined): boolean {
+  return tab === 'finance';
+}
+
+/**
+ * Which top-level group owns the dual-entry leaf for the current URL tab.
+ * Finance wins only for `tab=finance`; otherwise utilities / maintenance.
+ */
+export function resolveDualEntryNavGroupId(args: {
+  section: string;
+  tab: string | null | undefined;
+  groups: ReadonlyArray<{ id: string; items: readonly string[] }>;
+}): string | null {
+  if (!isDualEntryAdminSection(args.section)) return null;
+  const preferred = isAdminFinanceWorkplaceTab(args.tab)
+    ? (['finance'] as const)
+    : (['utilities', 'maintenance'] as const);
+  for (const id of preferred) {
+    const group = args.groups.find((g) => g.id === id && g.items.includes(args.section));
+    if (group) return group.id;
+  }
+  return null;
+}
+
+/** Active leaf = section match, and for dual-entry also the group that matches the tab. */
+export function isAdminNavLeafActive(args: {
+  section: string;
+  groupId: string;
+  activeSection: string;
+  tab: string | null | undefined;
+}): boolean {
+  if (args.activeSection !== args.section) return false;
+  if (!isDualEntryAdminSection(args.section)) return true;
+  const onFinance = isAdminFinanceWorkplaceTab(args.tab);
+  if (args.groupId === 'finance') return onFinance;
+  if (args.groupId === 'utilities' || args.groupId === 'maintenance') return !onFinance;
+  return !onFinance;
 }

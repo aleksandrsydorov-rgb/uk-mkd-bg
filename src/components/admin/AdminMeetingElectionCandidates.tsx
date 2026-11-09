@@ -14,7 +14,7 @@ import {
   AdminPrimaryButton,
   AdminSecondaryButton,
 } from '@/components/admin/AdminUi';
-import { ownerVisibleError } from '@/lib/ownerError';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type OwnerOption = {
   picker_key: string;
@@ -168,7 +168,7 @@ export function AdminMeetingElectionCandidates({
     ]);
 
     if (ownersRes.error) {
-      onError(ownerVisibleError(ownersRes.error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(ownersRes.error, t, { context: 'load', fallback: t('admin.errGeneric') }));
       return;
     }
     setOwners(sortOwnerOptions((ownersRes.data ?? []) as OwnerOption[]));
@@ -242,7 +242,7 @@ export function AdminMeetingElectionCandidates({
     });
     setBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     await load();
@@ -264,7 +264,7 @@ export function AdminMeetingElectionCandidates({
     });
     setBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     if (electionType === 'control_board') setControlMode('board');
@@ -281,7 +281,7 @@ export function AdminMeetingElectionCandidates({
     });
     setBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     setControlMode('controller');

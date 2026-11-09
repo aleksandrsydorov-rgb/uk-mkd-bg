@@ -8,11 +8,15 @@ import { isMissingRelation } from '@/lib/polls';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import {
   formatEurAmount,
+  netSupportFeeAllocatedCredit,
+  netSupportFeeAllocatedPayments,
   sofiaCalendarYear,
+  supportFeeSettledTowardFinal,
   type SupportFeeAllocation,
   type SupportFeeAssessment,
   type SupportFeeYearPreview,
 } from '@/lib/supportFeeAnnual';
+import { canonicalSupportOutstanding, isActiveSupportAssessmentStatus } from '@/lib/supportFeeBalance';
 
 export function OwnerSupportFee({
   supabase,
@@ -71,18 +75,91 @@ export function OwnerSupportFee({
     return [...set].sort((a, b) => b - a);
   }, [assessments, preview]);
 
+  const totalOutstanding = useMemo(
+    () =>
+      canonicalSupportOutstanding(
+        assessments.map((a) => ({
+          property_id: propertyId,
+          remaining_due: a.remaining_due,
+          status: a.status,
+          billing_year: a.billing_year,
+        })),
+        propertyId,
+      ),
+    [assessments, propertyId],
+  );
+
+  const openingOutstanding = useMemo(
+    () =>
+      canonicalSupportOutstanding(
+        assessments
+          .filter((a) => Boolean((a as { opening_import?: boolean | null }).opening_import))
+          .map((a) => ({
+            property_id: propertyId,
+            remaining_due: a.remaining_due,
+            status: a.status,
+            billing_year: a.billing_year,
+          })),
+        propertyId,
+      ),
+    [assessments, propertyId],
+  );
+
   function statusLine(a: SupportFeeAssessment): string {
     if (a.status === 'paid' && a.pricing_rule === 'early_full_payment') {
       return `${t('account.sfPaidEarly')} · ${t('account.sfDiscountPct', { n: Number(a.discount_percent) })}`;
     }
     if (a.status === 'paid') return t('account.paid');
-    if (a.pricing_rule === 'late') return t('account.sfPriceAfterYearStart');
-    if (Number(a.remaining_due) > 0) return t('account.sfPartial');
-    return t('account.sfDue');
+    if (a.pricing_rule === 'late' && Number(a.remaining_due) > 0) {
+      return t('account.sfPriceAfterYearStart');
+    }
+    const settled = supportFeeSettledTowardFinal(Number(a.final_amount), Number(a.remaining_due));
+    if (Number(a.remaining_due) > 0 && settled > 0) return t('account.sfPartial');
+    if (Number(a.remaining_due) > 0) return t('account.sfDue');
+    return t('account.paid');
   }
 
   return (
     <div className="space-y-4">
+      <div className="rounded-[14px] border border-border bg-surface px-4 py-4">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+          {t('account.supportFee')}
+        </p>
+        <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+          <div>
+            <dt className="text-muted">{t('admin.feeOpeningDebt')}</dt>
+            <dd className="font-semibold tabular-nums">{formatEurAmount(openingOutstanding)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">
+              {t('admin.feeYearRemaining', {
+                year: String(openYear ?? assessments[0]?.billing_year ?? sofiaCalendarYear()),
+              })}
+            </dt>
+            <dd className="font-semibold tabular-nums">
+              {formatEurAmount(
+                (() => {
+                  const y = Number(openYear ?? assessments[0]?.billing_year ?? sofiaCalendarYear());
+                  return assessments
+                    .filter(
+                      (a) =>
+                        a.billing_year === y && isActiveSupportAssessmentStatus(a.status),
+                    )
+                    .reduce((s, a) => s + Math.max(0, Number(a.remaining_due) || 0), 0);
+                })(),
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted">{t('admin.feeTotalOutstanding')}</dt>
+            <dd className="font-semibold tabular-nums">{formatEurAmount(totalOutstanding)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">{t('account.sfCreditOnBalance')}</dt>
+            <dd className="font-semibold tabular-nums">{formatEurAmount(overpayment)}</dd>
+          </div>
+        </dl>
+      </div>
       {preview && preview.policy_enabled && !assessments.some((a) => a.billing_year === preview.billing_year) ? (
         <div className="rounded-[14px] border border-border bg-surface px-4 py-4">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
@@ -180,9 +257,33 @@ export function OwnerSupportFee({
                           {t('account.sfIncrease')} · +{Number(a.increase_percent).toFixed(0)}%
                         </span>
                         <span className="tabular-nums">
-                          +{formatEurAmount(Number(a.final_amount) - Number(a.base_amount))}
+                          +{formatEurAmount(
+                            Math.max(
+                              0,
+                              Number(a.late_amount ?? a.final_amount) - Number(a.base_amount),
+                            ),
+                          )}
                         </span>
                       </div>
+                      {a.penalty_waived_at ? (
+                        <div className="flex justify-between gap-3 text-accent">
+                          <span>
+                            {t('admin.sfHistPenaltyWaive')} · {Number(a.increase_percent).toFixed(0)}%
+                          </span>
+                          <span className="tabular-nums">
+                            −{formatEurAmount(
+                              Math.max(
+                                0,
+                                Number(a.late_amount ?? 0) - Number(a.final_amount),
+                              ) ||
+                                Math.max(
+                                  0,
+                                  Number(a.base_amount) * Number(a.increase_percent) / 100,
+                                ),
+                            )}
+                          </span>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                   <div className="flex justify-between gap-3 font-semibold">
@@ -190,37 +291,29 @@ export function OwnerSupportFee({
                     <span className="tabular-nums">{formatEurAmount(a.final_amount)}</span>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <span className="text-muted">{t('account.sfPaidLabel')}</span>
-                    <span className="tabular-nums">
-                      {formatEurAmount(Number(a.final_amount) - Number(a.remaining_due))}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted">{t('account.sfRemainingDue')}</span>
+                    <span className="text-muted">{t('admin.feeYearRemaining', { year: String(a.billing_year) })}</span>
                     <span className="tabular-nums">{formatEurAmount(a.remaining_due)}</span>
                   </div>
                   {(() => {
                     const allocs = allocations.filter((x) => x.assessment_id === a.id);
-                    const pay = allocs.filter((x) => x.allocation_type === 'payment').reduce((s, x) => s + Number(x.amount), 0);
-                    const cred = allocs.filter((x) => x.allocation_type === 'credit').reduce((s, x) => s + Number(x.amount), 0);
-                    const payAmt = pay || Number(a.applied_payment_amount);
-                    const credAmt = cred || Number(a.applied_credit_amount);
-                    if (payAmt <= 0 && credAmt <= 0) return null;
+                    const payAmt = netSupportFeeAllocatedPayments(allocs, Number(a.applied_payment_amount));
+                    const credAmt = netSupportFeeAllocatedCredit(allocs, Number(a.applied_credit_amount));
+                    const settled = supportFeeSettledTowardFinal(Number(a.final_amount), Number(a.remaining_due));
                     return (
-                    <div className="rounded-xl border border-border px-3 py-2">
+                    <div className="rounded-xl border border-border px-3 py-2 space-y-1">
                       <p className="text-xs uppercase tracking-wider text-muted">{t('account.sfHowPaid')}</p>
-                      {payAmt > 0 ? (
-                        <p className="mt-1 flex justify-between">
-                          <span>{t('account.sfPayments')}</span>
-                          <span className="tabular-nums">{formatEurAmount(payAmt)}</span>
-                        </p>
-                      ) : null}
-                      {credAmt > 0 ? (
-                        <p className="mt-1 flex justify-between">
-                          <span>{t('account.sfFromBalance')}</span>
-                          <span className="tabular-nums">{formatEurAmount(credAmt)}</span>
-                        </p>
-                      ) : null}
+                      <p className="flex justify-between gap-3">
+                        <span className="text-muted">{t('account.sfCashReceived')}</span>
+                        <span className="tabular-nums">{formatEurAmount(payAmt)}</span>
+                      </p>
+                      <p className="flex justify-between gap-3">
+                        <span className="text-muted">{t('account.sfCreditApplied')}</span>
+                        <span className="tabular-nums">{formatEurAmount(credAmt)}</span>
+                      </p>
+                      <p className="flex justify-between gap-3">
+                        <span className="text-muted">{t('account.sfSettledTowardYear')}</span>
+                        <span className="tabular-nums">{formatEurAmount(settled)}</span>
+                      </p>
                     </div>
                     );
                   })()}

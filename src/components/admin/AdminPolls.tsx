@@ -2,12 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/database.types';
+import type { Database, Json } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
+  MAX_POLL_ATTACHMENTS,
+  POLL_ATTACHMENT_ACCEPT,
+  pollAttachmentFromFile,
   pollDecisionLabel,
+  pollLegacyPhotoUrl,
   tallyPoll,
   type Poll,
+  type PollAttachment,
   type PollCategory,
   type PollOption,
   type PollVote,
@@ -21,6 +27,8 @@ import {
   validatePollCreateInput,
 } from '@/lib/pollsUi';
 import { PollDetails, PollOptionBars } from '@/components/PollPanel';
+import { PollAttachmentsView, PollPendingAttachments } from '@/components/PollAttachments';
+import { AppFilePicker, formatAcceptHint, formatFileSizeMb } from '@/components/ui/AppFilePicker';
 import {
   labelPollCategory,
   labelPollDecision,
@@ -28,7 +36,15 @@ import {
 } from '@/i18n/labels';
 import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { formatM3 } from '@/lib/utilities';
-import { messageForUploadError, POLL_IMAGES_BUCKET, pollImagePath, uploadPrivateFile } from '@/lib/privateMedia';
+import {
+  MAX_PRIVATE_UPLOAD_BYTES,
+  messageForUploadError,
+  POLL_IMAGES_BUCKET,
+  pollImagePath,
+  privateUploadRejectReason,
+  uploadPrivateFile,
+} from '@/lib/privateMedia';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import {
   AdminEmptyState,
   AdminPageHeader,
@@ -82,9 +98,13 @@ export function AdminPolls({
   const { t, locale } = useI18n();
   const [detailId, setDetailId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [showHistory, setShowHistory] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [pollPhoto, setPollPhoto] = useState<File | null>(null);
+  const [pollFiles, setPollFiles] = useState<File[]>([]);
+  /** Resume attachment upload for a poll already inserted (no duplicate poll row). */
+  const [resumePollId, setResumePollId] = useState<number | null>(null);
+  const [savedAttachments, setSavedAttachments] = useState<PollAttachment[]>([]);
   const [pollForm, setPollForm] = useState({
     title: '',
     body: '',
@@ -130,15 +150,66 @@ export function AdminPolls({
       created_by: 'УК',
       options: ['За', 'Против'],
     });
-    setPollPhoto(null);
+    setPollFiles([]);
+    setResumePollId(null);
+    setSavedAttachments([]);
     setDetailId(null);
     setShowForm(true);
+  }
+
+  function closeCreateForm() {
+    // Cancel does not delete an already-created poll or its saved attachments.
+    setShowForm(false);
+    setPollFiles([]);
+    setResumePollId(null);
+    setSavedAttachments([]);
   }
 
   useEffect(() => {
     if (createNonce > 0 && canManage) openCreate();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open only on external quick-action bump
   }, [createNonce]);
+
+  async function persistPollAttachments(
+    pollId: number,
+    prior: PollAttachment[],
+    files: File[],
+  ): Promise<{ saved: PollAttachment[]; failedNames: string[] }> {
+    const saved = [...prior];
+    const failedNames: string[] = [];
+    for (const file of files) {
+      const rejected = privateUploadRejectReason(POLL_IMAGES_BUCKET, file);
+      if (rejected) {
+        failedNames.push(file.name);
+        continue;
+      }
+      if (saved.length >= MAX_POLL_ATTACHMENTS) {
+        failedNames.push(file.name);
+        continue;
+      }
+      try {
+        const filePath = pollImagePath(pollId, file.name);
+        const storedPath = await uploadPrivateFile(
+          supabase,
+          POLL_IMAGES_BUCKET,
+          filePath,
+          file,
+        );
+        saved.push(pollAttachmentFromFile(file, storedPath));
+      } catch {
+        failedNames.push(file.name);
+      }
+    }
+    const { error: attErr } = await supabase
+      .from('polls')
+      .update({
+        attachments: saved as unknown as Json,
+        photo_url: pollLegacyPhotoUrl(saved),
+      })
+      .eq('id', pollId);
+    if (attErr) throw attErr;
+    return { saved, failedNames };
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,43 +222,84 @@ export function AdminPolls({
       onError(t(check.errorKey));
       return;
     }
+    if (savedAttachments.length + pollFiles.length > MAX_POLL_ATTACHMENTS) {
+      onError(t('admin.pollAttachmentsTooMany', { n: String(MAX_POLL_ATTACHMENTS) }));
+      return;
+    }
+    for (const file of pollFiles) {
+      const rejected = privateUploadRejectReason(POLL_IMAGES_BUCKET, file);
+      if (rejected === 'size') {
+        onError(t('err.uploadSize'));
+        return;
+      }
+      if (rejected === 'type') {
+        onError(t('err.uploadType'));
+        return;
+      }
+    }
+
     const title = pollForm.title.trim();
     const options = pollForm.options.map((o) => o.trim()).filter(Boolean);
     setBusy(true);
     try {
-      const { data, error } = await supabase
-        .from('polls')
-        .insert({
-          title,
-          body: pollForm.body.trim() || null,
-          category: pollForm.category,
-          status: 'открыт',
-          result: 'идёт',
-          voting_starts: pollForm.voting_starts || null,
-          deadline: pollForm.deadline || null,
-          budget_eur: pollForm.budget_eur ? Number(pollForm.budget_eur) : null,
-          created_by: pollForm.created_by.trim() || 'УК',
-        })
-        .select('id')
-        .single();
-      if (error) throw error;
-      const pollId = data.id as number;
-      const { error: optErr } = await supabase.from('poll_options').insert(
-        options.map((label, i) => ({ poll_id: pollId, label, sort_order: i })),
-      );
-      if (optErr) throw optErr;
-      if (pollPhoto) {
-        const filePath = pollImagePath(pollId, pollPhoto.name);
-        const storedPath = await uploadPrivateFile(supabase, POLL_IMAGES_BUCKET, filePath, pollPhoto);
-        await supabase.from('polls').update({ photo_url: storedPath }).eq('id', pollId);
+      let pollId = resumePollId;
+      if (pollId == null) {
+        const { data, error } = await supabase
+          .from('polls')
+          .insert({
+            title,
+            body: pollForm.body.trim() || null,
+            category: pollForm.category,
+            status: 'открыт',
+            result: 'идёт',
+            voting_starts: pollForm.voting_starts || null,
+            deadline: pollForm.deadline || null,
+            budget_eur: pollForm.budget_eur ? Number(pollForm.budget_eur) : null,
+            created_by: pollForm.created_by.trim() || 'УК',
+            attachments: [] as unknown as Json,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        pollId = data.id as number;
+        const { error: optErr } = await supabase.from('poll_options').insert(
+          options.map((label, i) => ({ poll_id: pollId!, label, sort_order: i })),
+        );
+        if (optErr) throw optErr;
+        setResumePollId(pollId);
       }
+
+      const pending = [...pollFiles];
+      const { saved, failedNames } = await persistPollAttachments(
+        pollId,
+        savedAttachments,
+        pending,
+      );
+      setSavedAttachments(saved);
+      setPollFiles([]);
+
+      if (failedNames.length > 0) {
+        setResumePollId(pollId);
+        onError(
+          t('admin.pollAttachmentsPartialFail', {
+            ok: String(saved.length),
+            fail: String(failedNames.length),
+            names: failedNames.slice(0, 3).join(', '),
+          }),
+        );
+        await onChanged();
+        return;
+      }
+
       setShowForm(false);
-      setPollPhoto(null);
+      setResumePollId(null);
+      setSavedAttachments([]);
+      setPollFiles([]);
       await onChanged();
     } catch (err: unknown) {
       onError(
         messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ??
-          (err instanceof Error ? err.message : t('admin.pollSaveFailed')),
+          toUserFacingMessage(err, t, { fallback: t('admin.pollSaveFailed') }),
       );
     } finally {
       setBusy(false);
@@ -208,7 +320,7 @@ export function AdminPolls({
       if (error) throw error;
       await onChanged();
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('admin.pollToggleFailed'));
+      onError(toUserFacingMessage(err, t, { fallback: t('admin.pollToggleFailed') }));
     } finally {
       setBusy(false);
     }
@@ -219,7 +331,13 @@ export function AdminPolls({
       onError(t('admin.errNoAccess'));
       return;
     }
-    if (!confirm(t('confirm.deletePoll'))) return;
+    const ok = await confirm({
+      title: t('confirm.deletePoll'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const { error } = await supabase.from('polls').delete().eq('id', id);
@@ -227,7 +345,7 @@ export function AdminPolls({
       setDetailId((cur) => (cur === id ? null : cur));
       await onChanged();
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('admin.pollDeleteFailed'));
+      onError(toUserFacingMessage(err, t, { fallback: t('admin.pollDeleteFailed') }));
     } finally {
       setBusy(false);
     }
@@ -235,6 +353,7 @@ export function AdminPolls({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <AdminPageHeader
         title={t('admin.polls')}
         secondary={t('admin.pollsLeadAdmin')}
@@ -308,13 +427,37 @@ export function AdminPolls({
               />
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-secondary">{t('admin.pollPhoto')}</label>
-            <input
-              type="file"
-              accept="image/*"
-              className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm file:text-secondary"
-              onChange={(e) => setPollPhoto(e.target.files?.[0] ?? null)}
+          <div className="space-y-2">
+            <AppFilePicker
+              label={t('admin.pollAttachments')}
+              accept={POLL_ATTACHMENT_ACCEPT}
+              multiple
+              resetInputAfterChange
+              disabled={busy || savedAttachments.length + pollFiles.length >= MAX_POLL_ATTACHMENTS}
+              hint={t('admin.pollAttachmentsHint', {
+                formats: formatAcceptHint(POLL_ATTACHMENT_ACCEPT),
+                size: formatFileSizeMb(MAX_PRIVATE_UPLOAD_BYTES),
+                n: String(MAX_POLL_ATTACHMENTS),
+              })}
+              onChange={(picked) => {
+                const room = MAX_POLL_ATTACHMENTS - savedAttachments.length - pollFiles.length;
+                if (room <= 0) return;
+                const added = picked.slice(0, room);
+                if (added.length) setPollFiles((prev) => [...prev, ...added]);
+              }}
+            />
+            {savedAttachments.length > 0 ? (
+              <div className="space-y-1">
+                <p className="text-xs text-secondary">{t('admin.pollAttachmentsSaved')}</p>
+                <PollAttachmentsView attachments={savedAttachments} />
+              </div>
+            ) : null}
+            <PollPendingAttachments
+              files={pollFiles}
+              disabled={busy}
+              onRemove={(index) =>
+                setPollFiles((prev) => prev.filter((_, i) => i !== index))
+              }
             />
           </div>
           <div className="space-y-2">
@@ -357,12 +500,16 @@ export function AdminPolls({
           </div>
           <div className="flex flex-wrap gap-2">
             <AdminPrimaryButton type="submit" disabled={busy}>
-              {busy ? t('common.saving') : t('admin.pollPublish')}
+              {busy
+                ? t('common.saving')
+                : resumePollId != null
+                  ? t('admin.pollAttachmentsRetry')
+                  : t('admin.pollPublish')}
             </AdminPrimaryButton>
             <AdminSecondaryButton
               type="button"
               disabled={busy}
-              onClick={() => setShowForm(false)}
+              onClick={closeCreateForm}
             >
               {t('common.cancel')}
             </AdminSecondaryButton>

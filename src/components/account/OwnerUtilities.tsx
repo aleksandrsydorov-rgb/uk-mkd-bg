@@ -36,6 +36,19 @@ import {
   type CurrentWaterTariffView,
   isUtilityTariffUnavailableMessage,
 } from '@/lib/utilities';
+import { buildWaterHistoryEntries, type WaterHistoryInput } from '@/lib/meterReadingHistory';
+import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
+import { labelAssessmentStatus } from '@/i18n/labels';
+import { LedgerPaymentReceiptCell } from '@/components/paymentReceipts/LedgerPaymentReceiptCell';
+import type { PaymentReceiptModule } from '@/lib/paymentReceipts/types';
+import {
+  capitalAssessmentDocumentDate,
+  capitalStandingDebt,
+  capitalStandingOverpay,
+  sumCapitalCashReceipts,
+  sumCapitalOpeningCredit,
+  sumCapitalOpeningObligation,
+} from '@/lib/capitalRepairUi';
 
 type Variant = 'finance' | 'meters';
 export type FinanceTab = 'support' | 'water' | 'electricity' | 'capital' | 'internet';
@@ -72,11 +85,15 @@ function LedgerList({
   titles,
   empty,
   dateLocale,
+  supabase,
+  receiptModule,
 }: {
   rows: Array<{ id: string; created_at: string; kind: string; amount_eur: number; note: string | null; assessment_id?: string | null }>;
   titles?: Map<string, string>;
   empty: string;
   dateLocale: string;
+  supabase?: SupabaseClient;
+  receiptModule?: PaymentReceiptModule;
 }) {
   const { t } = useI18n();
   if (rows.length === 0) {
@@ -87,17 +104,27 @@ function LedgerList({
       {rows.map((row) => {
         const title = row.assessment_id ? titles?.get(row.assessment_id) : undefined;
         return (
-          <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className="min-w-0 text-secondary">
-              {formatOwnerDate(row.created_at, dateLocale)}
-              {' · '}
-              {ledgerKindLabel(row.kind, t)}
-              {title ? ` · ${title}` : ''}
-              {row.note ? ` · ${row.note}` : ''}
-            </span>
-            <span className={row.kind === 'payment' || row.kind === 'opening_historical_settlement' || row.kind === 'adjustment_credit' || row.kind === 'opening_credit' ? 'text-accent' : 'text-warning'}>
-              {formatEur(Number(row.amount_eur))}
-            </span>
+          <div key={row.id} className="space-y-1 text-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="min-w-0 text-secondary">
+                {formatOwnerDate(row.created_at, dateLocale)}
+                {' · '}
+                {ledgerKindLabel(row.kind, t)}
+                {title ? ` · ${title}` : ''}
+                {row.note ? ` · ${row.note}` : ''}
+              </span>
+              <span className={row.kind === 'payment' || row.kind === 'opening_historical_settlement' || row.kind === 'adjustment_credit' || row.kind === 'opening_credit' ? 'text-accent' : 'text-warning'}>
+                {formatEur(Number(row.amount_eur))}
+              </span>
+            </div>
+            {supabase && receiptModule && row.kind === 'payment' ? (
+              <LedgerPaymentReceiptCell
+                supabase={supabase}
+                module={receiptModule}
+                ledgerId={String(row.id)}
+                kind={row.kind}
+              />
+            ) : null}
           </div>
         );
       })}
@@ -127,6 +154,7 @@ export function OwnerUtilities({
   electricLastDate = null,
   electricMeterNumber = null,
   onOpenFinance,
+  guestMode = false,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
@@ -149,6 +177,8 @@ export function OwnerUtilities({
   electricLastDate?: string | null;
   electricMeterNumber?: string | null;
   onOpenFinance?: (tab: FinanceTab) => void;
+  /** Guest session: meters via guest_list_meters_for_submit; no finance/history. */
+  guestMode?: boolean;
 }) {
   const { t, dateLocale, locale } = useI18n();
   const [waterLoading, setWaterLoading] = useState(true);
@@ -196,6 +226,61 @@ export function OwnerUtilities({
     setWaterBalanceLoading(true);
     setWaterBalanceFailed(false);
     try {
+      if (guestMode) {
+        const { data: guestMeters, error: guestErr } = await supabase.rpc('guest_list_meters_for_submit', {
+          p_property_id: propertyId,
+          p_utility: 'water',
+        });
+        if (guestErr) throw guestErr;
+        const list = (Array.isArray(guestMeters) ? guestMeters : []) as Array<{
+          meter_id?: string;
+          meter_number?: string;
+          initial_reading?: number | null;
+          last_value?: number | null;
+        }>;
+        const first = list[0];
+        if (first?.meter_id) {
+          const lastVal = first.last_value != null ? Number(first.last_value) : null;
+          const initial = Number(first.initial_reading ?? 0);
+          setMeter({
+            id: String(first.meter_id),
+            property_id: propertyId,
+            meter_number: String(first.meter_number ?? ''),
+            initial_reading: initial,
+            installed_at: todayIsoDate(),
+            retired_at: null,
+            replacement_reason: null,
+            assigned_by_email: null,
+            created_at: new Date().toISOString(),
+          } as WaterMeter);
+          setReadings(
+            lastVal != null && Number.isFinite(lastVal)
+              ? [
+                  {
+                    id: 'guest-last',
+                    property_id: propertyId,
+                    meter_id: String(first.meter_id),
+                    reading_date: todayIsoDate(),
+                    previous_value: initial,
+                    current_value: lastVal,
+                    consumption_m3: Math.max(0, lastVal - initial),
+                    status: 'active',
+                    created_at: new Date().toISOString(),
+                  } as WaterReading,
+                ]
+              : [],
+          );
+        } else {
+          setMeter(null);
+          setReadings([]);
+        }
+        setWaterLedger([]);
+        setWaterBalance(emptyBalance());
+        setWaterBalanceLoading(false);
+        setTariff(currentTariff ?? null);
+        return;
+      }
+
       const [meterRes, readingsRes, ledgerRes] = await Promise.all([
         supabase
           .from('water_meters')
@@ -276,7 +361,7 @@ export function OwnerUtilities({
     } finally {
       setWaterBalanceLoading(false);
     }
-  }, [propertyId, supabase, currentTariff]);
+  }, [propertyId, supabase, currentTariff, guestMode]);
 
   const loadCapital = useCallback(async () => {
     setCapitalLoading(true);
@@ -287,7 +372,7 @@ export function OwnerUtilities({
           .select('*')
           .eq('property_id', propertyId)
           .order('created_at', { ascending: false })
-          .limit(20),
+          .limit(200),
         supabase.from('capital_repair_assessments').select('*').order('created_at', { ascending: false }),
         supabase.rpc('get_capital_repair_balance', { p_property_id: propertyId }),
       ]);
@@ -435,12 +520,21 @@ export function OwnerUtilities({
   const chargesByAssessment = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of capitalLedger) {
-      if (row.kind === 'charge' && row.assessment_id) {
-        map.set(row.assessment_id, Number(row.amount_eur));
+      if ((row.kind === 'charge' || row.kind === 'opening_obligation') && row.assessment_id) {
+        map.set(row.assessment_id, (map.get(row.assessment_id) ?? 0) + Number(row.amount_eur));
       }
     }
     return map;
   }, [capitalLedger]);
+
+  const capitalCashReceipts = useMemo(() => sumCapitalCashReceipts(capitalLedger), [capitalLedger]);
+  const capitalOpeningCreditAmt = useMemo(() => sumCapitalOpeningCredit(capitalLedger), [capitalLedger]);
+  const capitalOpeningDebtAmt = useMemo(() => sumCapitalOpeningObligation(capitalLedger), [capitalLedger]);
+  const capitalDebtAmt = capitalStandingDebt(capitalBalance.balance_eur);
+  const capitalOverpayAmt = Math.max(
+    capitalStandingOverpay(capitalBalance.balance_eur),
+    capitalOpeningCreditAmt,
+  );
 
   function onFormChange() {
     if (!submitting) idempotencyKeyRef.current = null;
@@ -619,6 +713,7 @@ export function OwnerUtilities({
               {lastActive ? `${formatM3(Number(lastActive.consumption_m3), locale)} ${t('account.m3')}` : '—'}
             </div>
           </div>
+          {!guestMode ? (
           <div className={meterKpiCardClass}>
             <div className="text-[11px] text-muted">{t('account.utilTariff')}</div>
             <div className="mt-1 text-lg font-semibold text-foreground">
@@ -626,7 +721,8 @@ export function OwnerUtilities({
             </div>
             <div className="mt-0.5 text-[11px] text-muted">{t('account.perM3')}</div>
           </div>
-          {onOpenFinance ? (
+          ) : null}
+          {!guestMode && onOpenFinance ? (
             <MeterFinanceStatus
               balance={Number(waterBalance.balance_eur)}
               loading={waterBalanceLoading}
@@ -637,7 +733,7 @@ export function OwnerUtilities({
         </div>
       )}
 
-      {!meter && variant === 'meters' && onOpenFinance && (
+      {!meter && variant === 'meters' && !guestMode && onOpenFinance && (
         <div className={meterKpiGridClass}>
           <MeterFinanceStatus
             balance={Number(waterBalance.balance_eur)}
@@ -714,6 +810,24 @@ export function OwnerUtilities({
         </form>
       )}
 
+      {!guestMode && variant === 'meters' ? (
+        <div className="mt-6">
+          {waterLoading ? (
+            <p className="text-sm text-muted">{t('common.loading')}</p>
+          ) : (
+            <MeterReadingHistory
+              utility="water"
+              compact
+              emptyTitle={t('admin.noReadings')}
+              entries={buildWaterHistoryEntries(
+                readings as unknown as WaterHistoryInput[],
+                new Map(meter ? [[meter.id, meter.meter_number]] : []),
+              )}
+            />
+          )}
+        </div>
+      ) : null}
+      {!guestMode && variant === 'finance' ? (
       <div className="mt-6">
         <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.utilHistory')}</p>
         {waterLoading ? (
@@ -731,20 +845,11 @@ export function OwnerUtilities({
                   <th className="px-2 py-1 font-medium">{t('account.consumption')}</th>
                   <th className="px-2 py-1 font-medium">{t('account.utilTariff')}</th>
                   <th className="px-2 py-1 font-medium">{t('account.utilCharged')}</th>
-                  {variant === 'meters' ? (
-                    <th className="px-2 py-1 font-medium">{t('account.elSubmittedBy')}</th>
-                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {readings.map((row) => {
                   const reversed = row.status === 'reversed';
-                  const via =
-                    row.submitted_via === 'staff'
-                      ? t('account.elByStaff')
-                      : row.submitted_via === 'owner'
-                        ? t('account.elByOwner')
-                        : '—';
                   return (
                     <tr key={row.id} className={reversed ? 'text-muted' : 'text-secondary'}>
                       <td className="whitespace-nowrap px-2 py-1.5">
@@ -756,9 +861,6 @@ export function OwnerUtilities({
                       <td className="whitespace-nowrap px-2 py-1.5">{formatM3(Number(row.consumption_m3), locale)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{Number(row.tariff_eur_per_m3).toFixed(2)}</td>
                       <td className="whitespace-nowrap px-2 py-1.5">{formatEur(Number(row.charge_amount_eur))}</td>
-                      {variant === 'meters' ? (
-                        <td className="whitespace-nowrap px-2 py-1.5">{via}</td>
-                      ) : null}
                     </tr>
                   );
                 })}
@@ -767,6 +869,7 @@ export function OwnerUtilities({
           </div>
         )}
       </div>
+      ) : null}
     </div>
   );
 
@@ -822,6 +925,8 @@ export function OwnerUtilities({
                   rows={waterLedger}
                   empty={t('account.utilNoWaterLedger')}
                   dateLocale={dateLocale}
+                  supabase={supabase}
+                  receiptModule="water"
                 />
               )}
             </div>
@@ -941,6 +1046,8 @@ export function OwnerUtilities({
                   rows={electricityLedger}
                   empty={t('account.utilNoElLedger')}
                   dateLocale={dateLocale}
+                  supabase={supabase}
+                  receiptModule="electricity"
                 />
               )}
             </div>
@@ -961,22 +1068,37 @@ export function OwnerUtilities({
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.utilCharged')}</div>
-            <div className="mt-1 text-lg font-semibold">{formatEur(Number(capitalBalance.charged_eur))}</div>
+            <div className="mt-1 text-lg font-semibold" data-capital-kpi="charged">
+              {formatEur(Number(capitalBalance.charged_eur))}
+            </div>
+            {capitalOpeningDebtAmt > 0 ? (
+              <p className="mt-0.5 text-[10px] text-muted">
+                {t('account.utilCapitalOpeningIncl', { amount: formatEur(capitalOpeningDebtAmt) })}
+              </p>
+            ) : null}
           </div>
           <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
-            <div className="text-[11px] text-muted">{t('account.utilPaid')}</div>
-            <div className="mt-1 text-lg font-semibold">{formatEur(Number(capitalBalance.paid_eur))}</div>
+            <div className="text-[11px] text-muted">{t('account.utilCashReceipts')}</div>
+            <div className="mt-1 text-lg font-semibold" data-capital-kpi="cash">
+              {formatEur(capitalCashReceipts)}
+            </div>
           </div>
           <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.debt')}</div>
-            <div className={`mt-1 text-lg font-semibold ${capitalBalance.balance_eur > 0 ? 'text-danger' : 'text-muted'}`}>
-              {formatEur(Math.max(0, Number(capitalBalance.balance_eur)))}
+            <div
+              className={`mt-1 text-lg font-semibold ${capitalDebtAmt > 0 ? 'text-danger' : 'text-muted'}`}
+              data-capital-kpi="balance"
+            >
+              {formatEur(capitalDebtAmt)}
             </div>
           </div>
           <div className={`${compactKpiAlignClass} rounded-xl bg-background px-3 py-3`}>
             <div className="text-[11px] text-muted">{t('account.overpay')}</div>
-            <div className={`mt-1 text-lg font-semibold ${capitalBalance.balance_eur < 0 ? 'text-success' : 'text-muted'}`}>
-              {formatEur(Math.max(0, -Number(capitalBalance.balance_eur)))}
+            <div
+              className={`mt-1 text-lg font-semibold ${capitalOverpayAmt > 0 ? 'text-success' : 'text-muted'}`}
+              data-capital-kpi="overpay"
+            >
+              {formatEur(capitalOverpayAmt)}
             </div>
           </div>
         </div>
@@ -989,24 +1111,34 @@ export function OwnerUtilities({
             <p className="text-sm text-secondary">{t('account.utilNoCapital')}</p>
           ) : (
             <div className="space-y-2">
-              {assessments.map((a) => (
-                <div key={a.id} className="rounded-xl border border-border bg-background px-3 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">{a.title}</p>
-                      {a.description ? <p className="mt-0.5 text-xs text-secondary">{a.description}</p> : null}
-                      <p className="mt-1 text-xs text-muted">
-                        {a.decision_date ? `${t('account.utilDecision')}: ${formatOwnerDate(a.decision_date, dateLocale)}` : ''}
-                        {a.due_date ? ` · ${t('account.utilDue')}: ${formatOwnerDate(a.due_date, dateLocale)}` : ''}
-                        {` · ${a.status}`}
-                      </p>
+              {assessments.map((a) => {
+                const docDate = capitalAssessmentDocumentDate({
+                  decision_date: a.decision_date,
+                  title: a.title,
+                });
+                return (
+                  <div key={a.id} className="rounded-xl border border-border bg-background px-3 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{a.title}</p>
+                        {a.description ? <p className="mt-0.5 text-xs text-secondary">{a.description}</p> : null}
+                        <p className="mt-1 text-xs text-muted">
+                          {docDate ? `${t('account.utilDecision')}: ${formatOwnerDate(docDate, dateLocale)}` : ''}
+                          {docDate && a.due_date ? ' · ' : ''}
+                          {a.due_date ? `${t('account.utilDue')}: ${formatOwnerDate(a.due_date, dateLocale)}` : ''}
+                          {(docDate || a.due_date) ? ' · ' : ''}
+                          {labelAssessmentStatus(a.status, t)}
+                        </p>
+                      </div>
+                      {chargesByAssessment.has(a.id) ? (
+                        <p className="text-sm font-semibold text-foreground">
+                          {formatEur(chargesByAssessment.get(a.id) ?? 0)}
+                        </p>
+                      ) : null}
                     </div>
-                    {chargesByAssessment.has(a.id) ? (
-                      <p className="text-sm font-semibold text-foreground">{formatEur(chargesByAssessment.get(a.id) ?? 0)}</p>
-                    ) : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1021,6 +1153,8 @@ export function OwnerUtilities({
               titles={assessmentTitles}
               empty={t('account.utilNoCapital')}
               dateLocale={dateLocale}
+              supabase={supabase}
+              receiptModule="capital_repair"
             />
           )}
         </div>
@@ -1071,6 +1205,8 @@ export function OwnerUtilities({
                 rows={internetLedger}
                 empty={t('account.utilNoInternet')}
                 dateLocale={dateLocale}
+                supabase={supabase}
+                receiptModule="internet"
               />
             )}
           </div>

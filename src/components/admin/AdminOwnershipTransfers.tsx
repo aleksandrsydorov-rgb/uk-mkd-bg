@@ -17,6 +17,7 @@ import {
   type OwnershipChangeReason,
   type RosterOwnerForm,
 } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import { OwnershipRosterEditor } from '@/components/ownership/OwnershipRosterEditor';
 import { AdminOwnershipStage3Panel } from '@/components/admin/AdminOwnershipStage3Panel';
 import { AdminCertifiedExtracts } from '@/components/admin/AdminCertifiedExtracts';
@@ -35,6 +36,8 @@ import {
   AdminSecondaryButton,
   adminFieldClass,
 } from '@/components/admin/AdminUi';
+import { AppFilePicker, formatAcceptHint, formatFileSizeMb } from '@/components/ui/AppFilePicker';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import {
   OwnershipCompare,
   OwnershipHint,
@@ -111,6 +114,7 @@ export function AdminOwnershipTransfers({
   onError,
 }: Props) {
   const { t, locale } = useI18n();
+  const { prompt, dialog } = useAppConfirm(t('common.close'));
   const [busyId, setBusyId] = useState<number | null>(null);
   const [approveId, setApproveId] = useState<number | null>(null);
   const [roster, setRoster] = useState<RosterOwnerForm[]>([emptyRosterOwner()]);
@@ -334,7 +338,7 @@ export function AdminOwnershipTransfers({
       await onChanged();
     } catch (e: unknown) {
       if (isMissingRpcError(e)) onError(t('xfer.errMigrationRequired'));
-      else onError(e instanceof Error ? e.message : t('xfer.errApprove'));
+      else onError(toUserFacingMessage(e, t, { fallback: t('xfer.errApprove') }));
     } finally {
       setBusyId(null);
     }
@@ -360,7 +364,7 @@ export function AdminOwnershipTransfers({
       await onChanged();
     } catch (e: unknown) {
       if (isMissingRpcError(e)) onError(t('xfer.errMigrationRequired'));
-      else onError(e instanceof Error ? e.message : t('xfer.errSubmit'));
+      else onError(toUserFacingMessage(e, t, { fallback: t('xfer.errSubmit') }));
     } finally {
       setBusyId(null);
     }
@@ -371,23 +375,26 @@ export function AdminOwnershipTransfers({
       onError(t('xfer.errAdminOnly'));
       return;
     }
-    const reason = window.prompt(t('xfer.rejectReasonPrompt'));
-    if (reason == null) return;
-    if (!reason.trim()) {
-      onError(t('xfer.errRejectReason'));
-      return;
-    }
+    const r = await prompt({
+      title: t('admin.reject'),
+      confirmLabel: t('admin.reject'),
+      cancelLabel: t('common.cancel'),
+      promptLabel: t('xfer.rejectReasonPrompt'),
+      promptRequired: true,
+      tone: 'danger',
+    });
+    if (!r.ok) return;
     setBusyId(tr.id);
     try {
       const { error } = await supabase.rpc('admin_reject_owner_transfer', {
         p_transfer_id: tr.id,
-        p_reason: reason.trim(),
+        p_reason: r.value,
       });
       if (error) throw error;
       await onChanged();
     } catch (e: unknown) {
       if (isMissingRpcError(e)) onError(t('xfer.errMigrationRequired'));
-      else onError(e instanceof Error ? e.message : t('xfer.errReject'));
+      else onError(toUserFacingMessage(e, t, { fallback: t('xfer.errReject') }));
     } finally {
       setBusyId(null);
     }
@@ -446,7 +453,7 @@ export function AdminOwnershipTransfers({
       const owners = await fetchPropertyOwners(propertyId);
       setInitCurrentOwners(owners);
     } catch (err: unknown) {
-      setInitError(err instanceof Error ? err.message : t('xfer.errLoadCurrentOwners'));
+      setInitError(toUserFacingMessage(err, t, { context: 'load', fallback: t('xfer.errLoadCurrentOwners') }));
     } finally {
       setInitCurrentLoading(false);
     }
@@ -508,9 +515,7 @@ export function AdminOwnershipTransfers({
     } catch (err: unknown) {
       const message = isMissingRpcError(err)
         ? t('xfer.errMigrationRequired')
-        : err instanceof Error
-          ? err.message
-          : t('xfer.errSubmit');
+        : toUserFacingMessage(err, t, { fallback: t('xfer.errSubmit') });
       setInitError(message);
       onError(message);
     } finally {
@@ -523,7 +528,7 @@ export function AdminOwnershipTransfers({
       const owners = await fetchPropertyOwners(propertyId);
       setCorrRoster(targetOwnersToForms(owners));
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('xfer.errLoadCurrentOwners'));
+      onError(toUserFacingMessage(err, t, { context: 'load', fallback: t('xfer.errLoadCurrentOwners') }));
     }
   }
 
@@ -560,7 +565,7 @@ export function AdminOwnershipTransfers({
       await onChanged();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errCorrection'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errCorrection') }));
     } finally {
       setBusyId(null);
     }
@@ -637,7 +642,7 @@ export function AdminOwnershipTransfers({
       await onChanged();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errLinkedCorrection'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errLinkedCorrection') }));
     } finally {
       setBusyId(null);
     }
@@ -647,6 +652,7 @@ export function AdminOwnershipTransfers({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <AdminPageHeader
         title={t('admin.transfers')}
         secondary={t('xfer.adminLead', { n: pendingTotal })}
@@ -945,12 +951,15 @@ export function AdminOwnershipTransfers({
               propertyIdealParts={propertyIdealParts(Number(corrPropertyId) || 0)}
             />
             <OwnershipHint>{t('xfer.docsHintAdmin')}</OwnershipHint>
-            <input
-              className={adminFieldClass}
-              type="file"
+            <AppFilePicker
               accept=".pdf,image/*"
-              onChange={(e) => setCorrFile(e.target.files?.[0] ?? null)}
               required
+              files={corrFile ? [corrFile] : []}
+              hint={t('common.fileHintFormatsSize', {
+                formats: formatAcceptHint('.pdf,image/*'),
+                size: formatFileSizeMb(MAX_BUILDING_DOCUMENT_BYTES),
+              })}
+              onChange={(picked) => setCorrFile(picked[0] ?? null)}
             />
             <textarea
               className={adminFieldClass}
@@ -1045,12 +1054,15 @@ export function AdminOwnershipTransfers({
                 required
               />
             </div>
-            <input
-              className={adminFieldClass}
-              type="file"
+            <AppFilePicker
               accept=".pdf,image/*"
-              onChange={(e) => setLinkedFile(e.target.files?.[0] ?? null)}
               required
+              files={linkedFile ? [linkedFile] : []}
+              hint={t('common.fileHintFormatsSize', {
+                formats: formatAcceptHint('.pdf,image/*'),
+                size: formatFileSizeMb(MAX_BUILDING_DOCUMENT_BYTES),
+              })}
+              onChange={(picked) => setLinkedFile(picked[0] ?? null)}
             />
             <AdminInlineAlert tone="warning">{t('xfer.linkedImmutableNote')}</AdminInlineAlert>
             <AdminPrimaryButton type="submit" disabled={busyId === -3 || !linkedSourceId}>
@@ -1275,25 +1287,22 @@ export function AdminOwnershipTransfers({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label
-                            htmlFor={`xfer-doc-file-${tr.id}`}
-                            className="block text-xs font-medium text-foreground"
-                          >
-                            {t('xfer.supportingFile')}
-                          </label>
-                          <input
+                          <AppFilePicker
                             id={`xfer-doc-file-${tr.id}`}
-                            className={adminFieldClass}
-                            type="file"
+                            label={t('xfer.supportingFile')}
                             accept=".pdf,image/*"
-                            onChange={(e) => {
-                              setDocFile(e.target.files?.[0] ?? null);
+                            files={docFile ? [docFile] : []}
+                            hint={t('common.fileHintFormatsSize', {
+                              formats: formatAcceptHint('.pdf,image/*'),
+                              size: formatFileSizeMb(MAX_BUILDING_DOCUMENT_BYTES),
+                            })}
+                            onChange={(picked) => {
+                              setDocFile(picked[0] ?? null);
                               setUploadedPath(null);
                             }}
                           />
                         </div>
                       </div>
-                      {docFile ? <div className="text-xs text-muted">{docFile.name}</div> : null}
                       {!docFile && !uploadedPath ? (
                         <AdminInlineAlert tone="warning">{t('xfer.docUploadBlocked')}</AdminInlineAlert>
                       ) : (

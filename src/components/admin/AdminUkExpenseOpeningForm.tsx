@@ -104,7 +104,7 @@ export function AdminUkExpenseOpeningForm({
       if (error) throw error;
       await onDone();
     } catch (err: unknown) {
-      onError(ownerVisibleError(err, t('admin.expOpeningSaveFailed')));
+      onError(ownerVisibleError(err, t('admin.expOpeningSaveFailed'), t));
     } finally {
       busyRef.current = false;
       setBusy(false);

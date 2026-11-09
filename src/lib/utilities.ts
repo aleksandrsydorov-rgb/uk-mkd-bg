@@ -235,6 +235,9 @@ export type AdminRpcErrorKey =
   | 'admin.errInternetBusy'
   | 'admin.errInternetNotActive'
   | 'admin.errInternetPeriod'
+  | 'admin.errInternetPeriodOverlap'
+  | 'admin.errInternetBillingMethod'
+  | 'admin.errInternetPeriodDates'
   | 'admin.errInternetCancelTaken'
   | 'admin.errServiceLock'
   | 'admin.errLegacyTariffDisabled'
@@ -246,6 +249,10 @@ export type AdminRpcErrorKey =
   | 'admin.errCorrectionLatest'
   | 'admin.errCorrectionNotActive'
   | 'admin.errCorrectionAdjPosted'
+  | 'admin.elMixedBlock'
+  | 'admin.elUnknownBlock'
+  | 'admin.elNotLegalBlock'
+  | 'admin.elRateInvalid'
   | 'admin.errGeneric';
 
 /** True when utility tariff RPC reports no published tariff (fresh install / unpublished). */
@@ -269,7 +276,12 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('reading is not active')) return 'admin.errCorrectionNotActive';
   if (msg.includes('financial adjustment already posted')) return 'admin.errCorrectionAdjPosted';
   if (msg.includes('no capital repair tariff')) return 'admin.errCapitalTariff';
-  if (msg.includes('no internet tariff')) return 'admin.errInternetTariff';
+  if (msg.includes('no internet tariff') || msg.includes('package_30 and day rates are required')) {
+    return 'admin.errInternetTariff';
+  }
+  if (msg.includes('paid periods overlap')) return 'admin.errInternetPeriodOverlap';
+  if (msg.includes('billing method must be')) return 'admin.errInternetBillingMethod';
+  if (msg.includes('period end must be on or after')) return 'admin.errInternetPeriodDates';
   if (msg.includes('already connected or pending')) return 'admin.errInternetBusy';
   if (msg.includes('request_internet_extend: not active') || msg.includes('request_internet_disconnect: not active') || msg.includes('admin_internet_disconnect_debt: not active')) {
     return 'admin.errInternetNotActive';
@@ -297,6 +309,15 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('idempotency key conflict')) return 'admin.errIdempotency';
   if (msg.includes('water readings are disabled') || msg.includes('electricity readings are disabled')) return 'admin.errReadingsDisabled';
   if (msg.includes('not authorized') || msg.includes('permission denied')) return 'admin.errNoAccess';
+  if (msg.includes('mixed natural and legal')) return 'admin.elMixedBlock';
+  if (msg.includes('owner type cannot be determined')) return 'admin.elUnknownBlock';
+  if (msg.includes('legal-entity calculation does not apply')) return 'admin.elNotLegalBlock';
+  if (msg.includes('rate precision') || msg.includes('rate is required') || msg.includes('rate cannot be negative')) {
+    return 'admin.elRateInvalid';
+  }
+  if (msg.includes('confirmed rates cannot be changed') || msg.includes('confirmed snapshot is immutable')) {
+    return 'admin.errGeneric';
+  }
   return 'admin.errGeneric';
 }
 

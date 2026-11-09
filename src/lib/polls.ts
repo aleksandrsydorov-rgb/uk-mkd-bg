@@ -4,6 +4,17 @@ export type PollResult = 'идёт' | 'принято' | 'не принято';
 export type SuggestionStatus = 'новая' | 'принята' | 'отклонена';
 
 export const MAJORITY_SHARE = 0.51;
+/** Images + PDF per poll; same private bucket as legacy photo_url. */
+export const MAX_POLL_ATTACHMENTS = 5;
+/** Explicit extensions for the picker (no image/* / MIME jargon in hints). */
+export const POLL_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.heic,.bmp,.pdf';
+
+export type PollAttachment = {
+  path: string;
+  name: string;
+  size: number | null;
+  contentType: string;
+};
 
 export interface Poll {
   id: number;
@@ -15,10 +26,95 @@ export interface Poll {
   deadline: string | null;
   created_by: string | null;
   photo_url?: string | null;
+  /** Ordered attachments; falls back to photo_url when empty. */
+  attachments?: PollAttachment[] | null;
   budget_eur?: number | null;
   voting_starts?: string | null;
   result?: PollResult | string | null;
   result_option_id?: number | null;
+}
+
+export function isPollAttachmentPdf(att: {
+  path?: string | null;
+  name?: string | null;
+  contentType?: string | null;
+}): boolean {
+  const mime = String(att.contentType ?? '')
+    .toLowerCase()
+    .split(';')[0]
+    .trim();
+  if (mime === 'application/pdf') return true;
+  const source = `${att.name ?? ''} ${att.path ?? ''}`.toLowerCase();
+  return /\.pdf(?:$|\?)/.test(source);
+}
+
+export function isPollAttachmentImage(att: {
+  path?: string | null;
+  name?: string | null;
+  contentType?: string | null;
+}): boolean {
+  if (isPollAttachmentPdf(att)) return false;
+  const mime = String(att.contentType ?? '')
+    .toLowerCase()
+    .split(';')[0]
+    .trim();
+  if (mime.startsWith('image/')) return true;
+  const source = `${att.name ?? ''} ${att.path ?? ''}`.toLowerCase();
+  return /\.(png|jpe?g|gif|webp|heic|heif|bmp)(?:$|\?)/.test(source);
+}
+
+/** Normalize DB/legacy rows into a stable attachment list (max MAX_POLL_ATTACHMENTS). */
+export function pollAttachmentList(poll: {
+  photo_url?: string | null;
+  attachments?: PollAttachment[] | null | unknown;
+}): PollAttachment[] {
+  const raw = Array.isArray(poll.attachments) ? poll.attachments : [];
+  const fromJson: PollAttachment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const path = String(row.path ?? '').trim();
+    if (!path) continue;
+    const sizeRaw = row.size;
+    const size =
+      typeof sizeRaw === 'number' && Number.isFinite(sizeRaw)
+        ? sizeRaw
+        : sizeRaw == null
+          ? null
+          : Number(sizeRaw);
+    fromJson.push({
+      path,
+      name: String(row.name ?? path.split('/').pop() ?? 'file').trim() || 'file',
+      size: size != null && Number.isFinite(size) ? size : null,
+      contentType: String(row.contentType ?? row.content_type ?? '').trim() || 'application/octet-stream',
+    });
+  }
+  if (fromJson.length > 0) return fromJson.slice(0, MAX_POLL_ATTACHMENTS);
+  const legacy = String(poll.photo_url ?? '').trim();
+  if (!legacy) return [];
+  return [
+    {
+      path: legacy,
+      name: legacy.split('/').pop() || 'photo',
+      size: null,
+      contentType: isPollAttachmentPdf({ path: legacy }) ? 'application/pdf' : 'image/jpeg',
+    },
+  ];
+}
+
+/** First image path kept in photo_url for older UI; otherwise first attachment. */
+export function pollLegacyPhotoUrl(attachments: PollAttachment[]): string | null {
+  const image = attachments.find((a) => isPollAttachmentImage(a));
+  return (image ?? attachments[0])?.path ?? null;
+}
+
+export function pollAttachmentFromFile(file: File, path: string): PollAttachment {
+  return {
+    path,
+    name: file.name || path.split('/').pop() || 'file',
+    size: file.size,
+    contentType: (file.type || '').split(';')[0].trim() || 'application/octet-stream',
+  };
 }
 
 export interface PollOption {

@@ -35,6 +35,7 @@ import {
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 type PropertyOption = {
   id: number;
@@ -100,6 +101,7 @@ export function AdminServiceLock({
   staffRole: string;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const canSee = canSeeServiceLockAdmin(staffRole);
 
   const sorted = useMemo(
@@ -238,7 +240,14 @@ export function AdminServiceLock({
       setError(t('admin.serviceLockScopesRequired'));
       return;
     }
-    if (!confirm(t('admin.serviceLockConfirm'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('admin.serviceLockConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -264,7 +273,14 @@ export function AdminServiceLock({
     if (busy) return;
     const target = pid ?? (typeof propertyId === 'number' ? propertyId : null);
     if (!target) return;
-    if (!confirm(t('admin.serviceUnlockConfirm'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('admin.serviceUnlockConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'default',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -343,6 +359,7 @@ export function AdminServiceLock({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <AdminPageHeader title={t('admin.serviceLock')} secondary={t('admin.serviceLockLead')} />
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}

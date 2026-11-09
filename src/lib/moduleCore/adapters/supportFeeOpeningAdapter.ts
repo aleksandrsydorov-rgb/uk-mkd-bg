@@ -143,6 +143,6 @@ export const supportFeeOpeningAdapter: ModuleSetupAdapter = {
   },
 };
 
-export function downloadSupportFeeOpeningTemplate(): void {
-  downloadSupportFeeIs4Template();
+export function downloadSupportFeeOpeningTemplate(locale?: string): void {
+  downloadSupportFeeIs4Template(locale);
 }

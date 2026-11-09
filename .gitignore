@@ -43,5 +43,9 @@ next-env.d.ts
 # Supabase CLI temp artifacts (linked project cache, etc.)
 supabase/.temp/
 
+# Local agent/test artifacts (Tailwind v4 auto-scan + Turbopack must not watch these)
+/tmp/
+*.dump
+
 .vercel
 .env*

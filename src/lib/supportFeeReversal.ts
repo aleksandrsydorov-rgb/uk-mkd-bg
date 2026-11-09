@@ -389,12 +389,16 @@ export function supportLedgerKindLabelKey(kind: string | null | undefined): stri
       return 'admin.kindAdjCredit';
     case 'late_increase_waive':
       return 'admin.sfHistPenaltyWaive';
+    case 'early_discount':
+      return 'admin.sfHistDiscount';
+    case 'late_penalty':
+      return 'admin.sfHistPenalty';
     case 'opening_obligation':
       return 'admin.sfHistOpeningObligation';
     case 'opening_historical_settlement':
-      return 'admin.sfHistOpeningSettlement';
+      return 'admin.kindCreditOffset';
     case 'opening_credit':
-      return 'admin.sfHistOpeningCredit';
+      return 'admin.kindCreditOffset';
     default:
       return 'admin.kind';
   }

@@ -1,0 +1,155 @@
+import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+
+export const WATER_METERS_IMPORT_SPEC: ImportTemplateSpec = {
+  id: 'water_meters_opening',
+  fileBaseName: {
+    ru: 'шаблон-водомеры-начальные',
+    bg: 'shablon-vodomeri-nachalni',
+    en: 'water-meters-opening-template',
+  },
+  dataSheetName: {
+    ru: 'Счётчики',
+    bg: 'Водомери',
+    en: 'Meters',
+  },
+  legacySheetNames: ['meters'],
+  title: {
+    ru: 'Водомеры — начальный импорт',
+    bg: 'Водомери — начален импорт',
+    en: 'Water meters — opening import',
+  },
+  notes: {
+    ru: [
+      'Заполняйте только лист «Счётчики». Примеры в этой инструкции не импортируются.',
+      'Апартамент указывается номером из Книги собственности (не внутренний id).',
+      'Несколько счётчиков на один апартамент — отдельная строка на каждый номер.',
+      'Начальный остаток задаётся один раз на апартамент. На дополнительных счётчиках оставьте тип пустым или «ноль».',
+      'Дата установки: ГГГГ-ММ-ДД. Тип остатка: ноль / долг / переплата (или zero / debt / overpayment).',
+    ],
+    bg: [
+      'Попълвайте само листа «Водомери». Примерите тук не се импортират.',
+      'Апартаментът се посочва с номера от Книгата (не вътрешен id).',
+      'Няколко водомера за един апартамент — отделен ред за всеки номер.',
+      'Началното салдо е веднъж на апартамент. При допълнителни водомери оставете типа празен или «нула».',
+      'Дата: ГГГГ-ММ-ДД. Тип салдо: нула / дълг / преплата (или zero / debt / overpayment).',
+    ],
+    en: [
+      'Fill only the Meters sheet. Examples on this Instructions sheet are not imported.',
+      'Use the apartment number from the Property Book (not an internal id).',
+      'Multiple meters for one apartment: one row per meter number.',
+      'Opening balance applies once per apartment. On extra meters leave kind empty or “zero”.',
+      'Install date: YYYY-MM-DD. Balance kind: zero / debt / overpayment (localized words also accepted).',
+    ],
+  },
+  columns: [
+    {
+      key: 'apartment_number',
+      required: true,
+      format: 'text',
+      width: 16,
+      label: { ru: 'Апартамент', bg: 'Апартамент', en: 'Apartment' },
+      aliases: ['apartment', 'apt', 'кв', 'квартира'],
+      instruction: {
+        ru: 'Номер апартамента из Книги. Обязательно.',
+        bg: 'Номер на апартамента от Книгата. Задължително.',
+        en: 'Apartment number from the Property Book. Required.',
+      },
+      example: '12',
+    },
+    {
+      key: 'meter_number',
+      required: true,
+      format: 'text',
+      width: 20,
+      label: {
+        ru: 'Номер счётчика',
+        bg: 'Номер на водомер',
+        en: 'Meter number',
+      },
+      aliases: ['meter', 'serial', 'номер прибора', 'номер водомера', 'номер на водомер'],
+      instruction: {
+        ru: 'Заводской или учётный номер. Текст — ведущие нули сохраняются. Обязательно.',
+        bg: 'Сериен / отчетен номер. Текст — водещите нули се запазват. Задължително.',
+        en: 'Serial or registry number. Stored as text (leading zeros kept). Required.',
+      },
+      example: 'W-12-001',
+    },
+    {
+      key: 'initial_reading',
+      required: true,
+      format: 'number',
+      width: 18,
+      label: {
+        ru: 'Начальное показание',
+        bg: 'Начално показание',
+        en: 'Opening reading',
+      },
+      aliases: ['initial', 'reading', 'показание'],
+      instruction: {
+        ru: 'Показание на дату установки (≥ 0). Обязательно.',
+        bg: 'Показание към датата на монтаж (≥ 0). Задължительно.',
+        en: 'Reading at install date (≥ 0). Required.',
+      },
+      example: '12.5',
+    },
+    {
+      key: 'installed_at',
+      required: true,
+      format: 'date',
+      width: 16,
+      label: {
+        ru: 'Дата установки',
+        bg: 'Дата на монтаж',
+        en: 'Install date',
+      },
+      aliases: ['installed', 'install_date', 'date', 'дата монтажа', 'дата на монтаж'],
+      instruction: {
+        ru: 'Дата ГГГГ-ММ-ДД, не позже сегодня. Обязательно.',
+        bg: 'Дата ГГГГ-ММ-ДД, не по-късно от днес. Задължително.',
+        en: 'Date YYYY-MM-DD, not in the future. Required.',
+      },
+      example: '2026-01-15',
+    },
+    {
+      key: 'opening_balance_kind',
+      required: false,
+      format: 'text',
+      width: 22,
+      label: {
+        ru: 'Тип начального остатка',
+        bg: 'Тип начален остатък',
+        en: 'Opening balance type',
+      },
+      aliases: ['balance_kind', 'kind', 'тип остатка'],
+      instruction: {
+        ru: 'Пусто или «ноль» / «долг» / «переплата» (zero / debt / overpayment).',
+        bg: 'Празно или «нула» / «дълг» / «преплата» (zero / debt / overpayment).',
+        en: 'Empty or zero / debt / overpayment (localized words accepted).',
+      },
+      example: 'debt',
+    },
+    {
+      key: 'opening_balance_eur',
+      required: false,
+      format: 'money',
+      width: 22,
+      label: {
+        ru: 'Сумма начального остатка, EUR',
+        bg: 'Сума начален остатък, EUR',
+        en: 'Opening balance amount, EUR',
+      },
+      aliases: [
+        'opening_balance',
+        'amount',
+        'сумма начального остатка (eur)',
+        'сума начален остатък (eur)',
+      ],
+      instruction: {
+        ru: 'Сумма в EUR при долге или переплате (> 0). Для нуля оставьте пустым.',
+        bg: 'Сума в EUR при дълг или преплата (> 0). За нула оставете празно.',
+        en: 'EUR amount when debt/overpayment (> 0). Leave empty for zero.',
+      },
+      example: '25.00',
+    },
+  ],
+};

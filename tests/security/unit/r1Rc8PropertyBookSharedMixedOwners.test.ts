@@ -37,7 +37,7 @@ describe('R1-RC8 Property Book shared natural+legal', () => {
     expect(pkg).toMatch(/create or replace function public\.property_book_validate/);
   });
 
-  it('client classify accepts shared NP+LE and surfaces concrete sum codes', () => {
+  it('client classify rejects shared NP+LE and accepts same-type co-owners', () => {
     const preview = classifyPropertyBookOpeningRows(
       {
         objects: [
@@ -73,8 +73,45 @@ describe('R1-RC8 Property Book shared natural+legal', () => {
       [],
       { allowOverwrite: false, allowCreateMissing: true },
     );
-    expect(preview.errorCount).toBe(0);
-    expect(preview.createCount).toBeGreaterThan(0);
+    expect(preview.errorCount).toBeGreaterThan(0);
+    expect(preview.rows.some((r) => r.errors.includes('mixed_natural_legal_forbidden'))).toBe(true);
+
+    const twoLegal = classifyPropertyBookOpeningRows(
+      {
+        objects: [
+          {
+            apartment_number: '48',
+            purpose: 'апартамент',
+            area_sqm: '80',
+            ideal_parts_percent: '2',
+            ownership_type: 'shared',
+          },
+        ],
+        owners: [
+          {
+            apartment_number: '48',
+            entity_kind: 'legal_entity',
+            ownership_share_percent: '50',
+            ideal_parts_percent: '1',
+            entity_name: 'A',
+            eik_bulstat: '1',
+            email: 'a@example.com',
+          },
+          {
+            apartment_number: '48',
+            entity_kind: 'legal_entity',
+            ownership_share_percent: '50',
+            ideal_parts_percent: '1',
+            entity_name: 'B',
+            eik_bulstat: '2',
+            email: 'b@example.com',
+          },
+        ],
+      },
+      [],
+      { allowOverwrite: false, allowCreateMissing: true },
+    );
+    expect(twoLegal.errorCount).toBe(0);
   });
 
   it('merge preview attaches concrete RPC validation codes to apartments', () => {
@@ -101,11 +138,11 @@ describe('R1-RC8 Property Book shared natural+legal', () => {
           },
           {
             apartment_number: '47',
-            entity_kind: 'legal_entity',
+            entity_kind: 'natural_person',
             ownership_share_percent: '50',
             ideal_parts_percent: '0.5',
-            entity_name: 'Co',
-            eik_bulstat: '1',
+            first_name: 'C',
+            last_name: 'D',
             email: 'c@example.com',
           },
         ],

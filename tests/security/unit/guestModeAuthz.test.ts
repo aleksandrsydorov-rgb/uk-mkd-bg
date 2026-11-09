@@ -7,6 +7,7 @@ import {
   canOwnerInsertChat,
   guestAccessMatchesCaller,
   guestCabinetAllows,
+  guestCabinetAllowsWithPermissions,
   GUEST_MAX_ACTIVE_PER_PROPERTY,
   GUEST_RELATION_TYPES,
   isGuestAccessTemporallyValid,
@@ -52,14 +53,11 @@ describe('Guest Mode · relation categories', () => {
 });
 
 describe('Guest Mode · cabinet permissions', () => {
-  it('allows requests, security, services overview, and chat', () => {
-    expect(guestCabinetAllows('maintenance_requests')).toBe(true);
-    expect(guestCabinetAllows('security_requests')).toBe(true);
-    expect(guestCabinetAllows('available_services_overview')).toBe(true);
-    expect(guestCabinetAllows('guest_chat')).toBe(true);
-  });
-
-  it('denies meters, finance, voting, book edit, other apartments, polls, meetings', () => {
+  it('denies hard-coded cabinet allow-list — grants are per invite only', () => {
+    expect(guestCabinetAllows('maintenance_requests')).toBe(false);
+    expect(guestCabinetAllows('security_requests')).toBe(false);
+    expect(guestCabinetAllows('available_services_overview')).toBe(false);
+    expect(guestCabinetAllows('guest_chat')).toBe(false);
     expect(guestCabinetAllows('meter_readings')).toBe(false);
     expect(guestCabinetAllows('finance')).toBe(false);
     expect(guestCabinetAllows('owner_voting')).toBe(false);
@@ -68,6 +66,17 @@ describe('Guest Mode · cabinet permissions', () => {
     expect(guestCabinetAllows('polls')).toBe(false);
     expect(guestCabinetAllows('announcements')).toBe(false);
     expect(guestCabinetAllows('general_meetings')).toBe(false);
+  });
+
+  it('honours explicit invite permissions and keeps water ≠ electricity', () => {
+    const waterOnly = { 'water.submit_readings': true } as const;
+    expect(guestCabinetAllowsWithPermissions('water_submit', waterOnly)).toBe(true);
+    expect(guestCabinetAllowsWithPermissions('electricity_submit', waterOnly)).toBe(false);
+    expect(guestCabinetAllowsWithPermissions('guest_chat', waterOnly)).toBe(false);
+    expect(guestCabinetAllowsWithPermissions('finance', waterOnly)).toBe(false);
+    expect(
+      guestCabinetAllowsWithPermissions('guest_chat', { 'chat.with_uk': true }),
+    ).toBe(true);
   });
 });
 
@@ -194,6 +203,7 @@ describe('Guest Mode · limits and expiry', () => {
         valid_from: '2026-01-01T00:00:00Z',
         valid_until: null,
         email: 'g@example.com',
+        permissions: { 'chat.with_uk': true },
       },
       {
         access_id: 'a2',
@@ -203,6 +213,7 @@ describe('Guest Mode · limits and expiry', () => {
         valid_from: '2026-01-01T00:00:00Z',
         valid_until: '2026-11-01T00:00:00Z',
         email: 'g@example.com',
+        permissions: {},
       },
     ];
     expect(pickGuestAccessForProperty(rows, 20)?.access_id).toBe('a2');

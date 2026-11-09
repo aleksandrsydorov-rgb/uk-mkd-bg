@@ -1,4 +1,4 @@
-import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
+﻿import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
 import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningAdapter';
 import { internetOpeningAdapter } from '@/lib/moduleCore/adapters/internetOpeningAdapter';
 import { propertyBookOpeningAdapter } from '@/lib/moduleCore/adapters/propertyBookOpeningAdapter';
@@ -7,10 +7,30 @@ import { inventoryOpeningAdapter } from '@/lib/moduleCore/adapters/inventoryOpen
 import { supportFeeOpeningAdapter } from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
 import { ukExpensesOpeningAdapter } from '@/lib/moduleCore/adapters/ukExpensesOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
-import { clearModuleAdapterRegistry, registerModuleAdapter } from '@/lib/moduleCore/registry';
+import {
+  clearModuleAdapterRegistry,
+  getModuleAdapter,
+  registerModuleAdapter,
+} from '@/lib/moduleCore/registry';
 import type { ModuleSetupAdapter } from '@/lib/moduleCore/types';
 
-let bootstrapped = false;
+/**
+ * Module-local flag resets when this file is HMR-replaced. globalThis keeps the
+ * "already bootstrapped" signal aligned with the durable registry Map.
+ */
+const BOOT_GLOBAL_KEY = '__amadeus11_module_setup_bootstrapped__';
+
+type BootGlobal = typeof globalThis & {
+  [BOOT_GLOBAL_KEY]?: boolean;
+};
+
+function readBootstrapped(): boolean {
+  return (globalThis as BootGlobal)[BOOT_GLOBAL_KEY] === true;
+}
+
+function writeBootstrapped(value: boolean): void {
+  (globalThis as BootGlobal)[BOOT_GLOBAL_KEY] = value;
+}
 
 /** Thin adapters: declare setup policy without domain importers (IS-1). */
 function metadataAdapter(
@@ -55,9 +75,15 @@ function metadataAdapter(
 /**
  * Registers known setup policies. Lifecycle engine does not hardcode this list —
  * it only discovers whatever is registered here or by future modules.
+ *
+ * Safe to call repeatedly (admin remount, Initial Setup, Turbopack HMR):
+ * `registerModuleAdapter` is idempotent for the same logical registration and
+ * still throws when two different adapters claim one key.
  */
 export function bootstrapModuleSetupAdapters(): void {
-  if (bootstrapped) return;
+  // Fast path when this module instance and global registry already agree.
+  if (readBootstrapped() && getModuleAdapter('example_opening_roster')) return;
+
   registerModuleAdapter(exampleOpeningAdapter);
   // IS-2: Property Book opening adapter (canonical Book RPCs; no duplicate tables).
   registerModuleAdapter(propertyBookOpeningAdapter);
@@ -85,11 +111,12 @@ export function bootstrapModuleSetupAdapters(): void {
       dependencies: [],
     }),
   );
-  bootstrapped = true;
+  writeBootstrapped(true);
 }
 
 /** Vitest only */
 export function resetModuleSetupAdaptersForTests(): void {
   clearModuleAdapterRegistry();
-  bootstrapped = false;
+  writeBootstrapped(false);
 }
+

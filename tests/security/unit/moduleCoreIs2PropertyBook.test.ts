@@ -109,8 +109,19 @@ describe('IS-2 · validation + CREATE/UPDATE/SKIP/ERROR', () => {
   });
 
   it('new empty install: CREATE when allowCreateMissing', () => {
+    // Opening classifier still rejects mixed natural+legal on one apartment; use natural-only shared.
+    const naturalSharedOwners = [
+      naturalCoOwner,
+      {
+        ...naturalCoOwner,
+        first_name: 'Мария',
+        last_name: 'Георгиева',
+        ownership_share_percent: '40',
+        ideal_parts_percent: '0.8',
+      },
+    ];
     const preview = classifyPropertyBookOpeningRows(
-      { objects: [soleObject, sharedObjects], owners: [soleOwner, ...multiOwners] },
+      { objects: [soleObject, sharedObjects], owners: [soleOwner, ...naturalSharedOwners] },
       [],
       { allowOverwrite: false, allowCreateMissing: true },
     );
@@ -188,18 +199,47 @@ describe('IS-2 · validation + CREATE/UPDATE/SKIP/ERROR', () => {
 });
 
 describe('IS-2 · XLSX template BG/RU/EN', () => {
-  it('builds multi-sheet template with instruction locales', () => {
-    const buf = buildPropertyBookIs2TemplateBuffer();
+  it('builds localized multi-sheet template (objects + owners + instructions)', () => {
+    const buf = buildPropertyBookIs2TemplateBuffer('bg');
     expect(buf.byteLength).toBeGreaterThan(500);
-    const parsed = parsePropertyBookWorkbookBuffer(buf);
-    expect(parsed.objects.length).toBeGreaterThanOrEqual(1);
-    expect(parsed.owners.length).toBeGreaterThanOrEqual(1);
     const wb = XLSX.read(buf, { type: 'array' });
-    expect(wb.SheetNames).toContain('objects');
-    expect(wb.SheetNames).toContain('owners');
-    expect(wb.SheetNames).toContain('instructions_bg');
-    expect(wb.SheetNames).toContain('instructions_ru');
-    expect(wb.SheetNames).toContain('instructions_en');
+    expect(wb.SheetNames).toEqual(['Обекти', 'Собственици', 'Инструкция']);
+    const parsed = parsePropertyBookWorkbookBuffer(buf);
+    expect(parsed.objects).toEqual([]);
+    expect(parsed.owners).toEqual([]);
+  });
+
+  it('parses filled localized sheets back to canonical keys and still accepts legacy snake_case', () => {
+    for (const locale of ['ru', 'bg', 'en'] as const) {
+      const wb = XLSX.read(buildPropertyBookIs2TemplateBuffer(locale), { type: 'array' });
+      const [objName, ownName] = wb.SheetNames;
+      XLSX.utils.sheet_add_aoa(wb.Sheets[objName], [['12', '3']], { origin: 'A2' });
+      XLSX.utils.sheet_add_aoa(wb.Sheets[ownName], [['12']], { origin: 'A2' });
+      const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+      const parsed = parsePropertyBookWorkbookBuffer(buf);
+      expect(parsed.objects).toHaveLength(1);
+      expect(parsed.objects[0].apartment_number).toBe('12');
+      expect(parsed.objects[0].floor).toBe('3');
+      expect(parsed.owners).toHaveLength(1);
+      expect(parsed.owners[0].apartment_number).toBe('12');
+    }
+
+    const legacy = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      legacy,
+      XLSX.utils.aoa_to_sheet([['apartment_number', 'purpose'], ['7', 'апартамент']]),
+      'objects',
+    );
+    XLSX.utils.book_append_sheet(
+      legacy,
+      XLSX.utils.aoa_to_sheet([['apartment_number', 'entity_kind'], ['7', 'natural_person']]),
+      'owners',
+    );
+    const parsedLegacy = parsePropertyBookWorkbookBuffer(
+      XLSX.write(legacy, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer,
+    );
+    expect(parsedLegacy.objects[0].purpose).toBe('апартамент');
+    expect(parsedLegacy.owners[0].entity_kind).toBe('natural_person');
   });
 });
 

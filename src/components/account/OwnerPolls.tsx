@@ -4,8 +4,10 @@ import { useMemo, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { labelPollCategory, labelPollDecision } from '@/i18n/labels';
 import { PollOptionBars } from '@/components/PollPanel';
+import { PollAttachmentsView } from '@/components/PollAttachments';
 import {
   isPollAcceptingVotes,
+  pollAttachmentList,
   pollDecisionLabel,
   tallyFromAggregates,
   type Poll,
@@ -93,6 +95,7 @@ export function OwnerPolls({
           const start = poll.voting_starts ? formatOwnerDate(poll.voting_starts, dateLocale) : null;
           const end = poll.deadline ? formatOwnerDate(poll.deadline, dateLocale) : null;
           const myOption = options.find((o) => o.id === myVote?.option_id);
+          const attachments = pollAttachmentList(poll);
           return (
             <CompactCard key={poll.id}>
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -118,6 +121,9 @@ export function OwnerPolls({
               ) : null}
               {expanded ? (
                 <div className="mt-3 space-y-3 border-t border-border pt-3">
+                  {attachments.length > 0 ? (
+                    <PollAttachmentsView attachments={attachments} alt={poll.title} />
+                  ) : null}
                   {poll.body ? <p className="text-sm text-secondary whitespace-pre-wrap">{poll.body}</p> : null}
                   {open && end ? (
                     <p className="text-xs text-muted">{t('account.pollUntil', { d: end })}</p>

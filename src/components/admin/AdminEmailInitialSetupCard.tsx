@@ -17,6 +17,7 @@ import {
 } from '@/lib/emailCore';
 import { validateEmailSetupDraft } from '@/lib/email/setupValidation';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -54,7 +55,7 @@ export function AdminEmailInitialSetupCard({ supabase, t, canManage = true }: Pr
         setMissing(true);
         setSettings(null);
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
       }
     } finally {
       setLoading(false);
@@ -101,7 +102,7 @@ export function AdminEmailInitialSetupCard({ supabase, t, canManage = true }: Pr
       setLocale(next.template_locale);
       setSuccess(t('admin.emailIsSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setSaving(false);
     }

@@ -10,8 +10,9 @@ import {
 } from '@/components/admin/AdminUi';
 import { AdminEmailSettings } from '@/components/admin/AdminEmailSettings';
 import { AdminNotificationPolicyPanel } from '@/components/admin/AdminNotificationPolicyPanel';
-import { AdminModuleCatalogPanel } from '@/components/admin/AdminModuleCatalogPanel';
-import type { BuildingModuleV2Row } from '@/lib/modules';
+import { AdminBuildingProfile } from '@/components/admin/AdminBuildingProfile';
+import { AdminInitialSetup } from '@/components/admin/AdminInitialSetup';
+import { parseModuleCatalogFilter } from '@/components/admin/AdminModuleCatalogPanel';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 
@@ -40,9 +41,8 @@ type Props = {
   supabase: SupabaseClient<Database>;
   canManageCriticalAccess: boolean;
   canChangeBuildingModules: boolean;
-  moduleCatalog: BuildingModuleV2Row[];
-  moduleSavingKey: string | null;
-  onToggleModule: (key: string, enabled: boolean) => void;
+  moduleFilter?: string | null;
+  onModulesChanged?: () => void;
   activeTab: SettingsTabId;
   onTabChange: (tab: SettingsTabId) => void;
   onNavigateSection: (section: string) => void;
@@ -83,9 +83,8 @@ export function AdminSettingsHub({
   supabase,
   canManageCriticalAccess,
   canChangeBuildingModules,
-  moduleCatalog,
-  moduleSavingKey,
-  onToggleModule,
+  moduleFilter = 'all',
+  onModulesChanged,
   activeTab,
   onTabChange,
   onNavigateSection,
@@ -219,33 +218,26 @@ export function AdminSettingsHub({
             ) : null}
           </div>
         </section>
+        <AdminBuildingProfile
+          supabase={supabase}
+          t={t}
+          canEdit={canManageCriticalAccess}
+        />
       </div>
     );
   } else if (activeTab === 'modules') {
-    body = (
-      <AdminModuleCatalogPanel
-        catalog={moduleCatalog}
-        canChange={canChangeBuildingModules}
-        savingKey={moduleSavingKey}
-        onToggle={onToggleModule}
+    body = canChangeBuildingModules ? (
+      <AdminInitialSetup
+        supabase={supabase}
         t={t}
-        onOpenModuleSettings={(key) => {
-          const map: Record<string, string> = {
-            tariffs: 'тарифы',
-            support_fee: 'такса',
-            capital_repair: 'капремонт',
-            water: 'вода',
-            electricity: 'электроэнергия',
-            internet: 'интернет',
-            inventory: 'инвентарь',
-            security: 'охрана',
-            cleaning: 'уборка',
-            budget: 'бюджет',
-          };
-          const section = map[key];
-          if (section) onNavigateSection(section);
-        }}
+        defaultFilter={parseModuleCatalogFilter(moduleFilter)}
+        embedded
+        onModulesChanged={onModulesChanged}
       />
+    ) : (
+      <div className={`${adminCardClass} px-4 py-5`}>
+        <p className="text-sm text-muted">{t('admin.feeAdminOnlyRate')}</p>
+      </div>
     );
   } else if (activeTab === 'access') {
     body = (

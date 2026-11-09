@@ -93,6 +93,18 @@ export const electricityOpeningAdapter: ModuleSetupAdapter = {
             example: '2026-01-15',
             labelKey: 'is3ColInstalledAt',
           },
+          {
+            key: 'opening_balance_kind',
+            required: false,
+            example: 'zero',
+            labelKey: 'is3ColOpeningBalanceKind',
+          },
+          {
+            key: 'opening_balance_eur',
+            required: false,
+            example: '55.00',
+            labelKey: 'is3ColOpeningBalanceEur',
+          },
         ],
       },
     },
@@ -108,6 +120,6 @@ export const electricityOpeningAdapter: ModuleSetupAdapter = {
   },
 };
 
-export function downloadElectricityOpeningTemplate(): void {
-  downloadElectricityMeterIs3Template();
+export function downloadElectricityOpeningTemplate(locale?: string): void {
+  downloadElectricityMeterIs3Template(locale);
 }

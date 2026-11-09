@@ -12,9 +12,11 @@ import {
 
 describe('Task 12 · Capital Repair UI helpers', () => {
   it('recognizes tabs and filters ledger kinds without changing amounts', () => {
-    expect(isCapitalAdminTab('overview')).toBe(true);
-    expect(isCapitalAdminTab('charge')).toBe(true);
-    expect(isCapitalAdminTab('apartment')).toBe(true);
+    expect(isCapitalAdminTab('register')).toBe(true);
+    expect(isCapitalAdminTab('charges')).toBe(true);
+    expect(isCapitalAdminTab('payments')).toBe(true);
+    expect(isCapitalAdminTab('overview')).toBe(false);
+    expect(isCapitalAdminTab('operations')).toBe(false);
     expect(isCapitalAdminTab('other')).toBe(false);
 
     const rows = [

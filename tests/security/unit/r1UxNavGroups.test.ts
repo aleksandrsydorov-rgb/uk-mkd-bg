@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAdminNavGroups,
   buildStaffNavGroups,
+  isAdminNavLeafActive,
+  resolveDualEntryNavGroupId,
   type AdminNavFlags,
 } from '@/lib/adminNav';
 
@@ -18,10 +20,12 @@ const allOn: AdminNavFlags = {
   showInventory: true,
   showWater: true,
   showElectricity: true,
+  showWaterFinance: true,
+  showElectricityFinance: true,
+  showInternetFinance: true,
   showSupportFee: true,
   showCapital: true,
   showInternet: true,
-  showElectricityFinance: true,
   showExpenses: true,
   showBudget: true,
   showTariffs: true,
@@ -31,6 +35,7 @@ const allOn: AdminNavFlags = {
   showAnnouncements: true,
   showPolls: true,
   showChat: true,
+  showMeetings: true,
   showDocuments: true,
   showStaff: true,
   showSettings: true,
@@ -53,30 +58,56 @@ describe('R1-UX admin/staff navigation groups', () => {
       'system',
     ]);
     expect(groups).toHaveLength(8);
-    // Meetings never appear as a nav leaf.
+    // RC8+: Meetings is a docs leaf when enabled; decisions stay out of top nav.
     const leaves = groups.flatMap((g) => g.items);
-    expect(leaves).not.toContain('собрания');
+    expect(leaves).toContain('собрания');
     expect(leaves).not.toContain('решения');
-    // Electricity lives under utilities, not a parallel finance meter ledger.
+    expect(groups.find((g) => g.id === 'docs')?.items).toEqual(['собрания', 'документы']);
+    // Same modules appear in Finance (finance tab) and Utilities (meters tab).
     expect(groups.find((g) => g.id === 'utilities')?.items).toContain('электроэнергия');
+    expect(groups.find((g) => g.id === 'utilities')?.items).toContain('вода');
+    expect(groups.find((g) => g.id === 'finance')?.items).toContain('электроэнергия');
+    expect(groups.find((g) => g.id === 'finance')?.items).toContain('вода');
+  });
+
+  it('omits water/electricity from finance when only utilities flags are on', () => {
+    const groups = buildAdminNavGroups({
+      ...allOn,
+      showWaterFinance: false,
+      showElectricityFinance: false,
+    });
+    expect(groups.find((g) => g.id === 'finance')?.items).not.toContain('вода');
     expect(groups.find((g) => g.id === 'finance')?.items).not.toContain('электроэнергия');
+    expect(groups.find((g) => g.id === 'utilities')?.items).toContain('вода');
+    expect(groups.find((g) => g.id === 'utilities')?.items).toContain('электроэнергия');
   });
 
   it('admin omits empty groups when modules/permissions are off', () => {
     const groups = buildAdminNavGroups({
       ...allOn,
+      showMeetings: false,
       showDocuments: false,
       showAnnouncements: false,
       showPolls: false,
       showChat: false,
       showWater: false,
       showElectricity: false,
+      showWaterFinance: false,
       showElectricityFinance: false,
       showInternet: false,
     });
     expect(groups.find((g) => g.id === 'docs')).toBeUndefined();
     expect(groups.find((g) => g.id === 'comms')).toBeUndefined();
     expect(groups.find((g) => g.id === 'utilities')).toBeUndefined();
+  });
+
+  it('admin shows Meetings alone under docs when documents module is off', () => {
+    const groups = buildAdminNavGroups({
+      ...allOn,
+      showMeetings: true,
+      showDocuments: false,
+    });
+    expect(groups.find((g) => g.id === 'docs')?.items).toEqual(['собрания']);
   });
 
   it('staff nav is capability-filtered and capped at 6 groups', () => {
@@ -103,14 +134,17 @@ describe('R1-UX admin/staff navigation groups', () => {
       showWorkOrders: false,
       showWater: false,
       showElectricity: false,
+      showWaterFinance: false,
       showElectricityFinance: false,
       showInternet: false,
+      showInternetFinance: false,
       showCleaning: false,
       showSecurity: false,
       showInventory: false,
       showAnnouncements: false,
       showPolls: false,
       showChat: false,
+      showMeetings: false,
       showDocuments: false,
       showStaff: false,
       showSettings: true,
@@ -134,9 +168,11 @@ describe('R1-UX admin/staff navigation groups', () => {
       showInventory: false,
       showWater: false,
       showElectricity: false,
+      showWaterFinance: false,
       showSupportFee: false,
       showCapital: false,
       showInternet: false,
+      showInternetFinance: false,
       showElectricityFinance: false,
       showExpenses: false,
       showBudget: false,
@@ -147,6 +183,7 @@ describe('R1-UX admin/staff navigation groups', () => {
       showAnnouncements: false,
       showPolls: false,
       showChat: false,
+      showMeetings: false,
       showDocuments: false,
       showStaff: false,
       showSettings: false,
@@ -155,5 +192,59 @@ describe('R1-UX admin/staff navigation groups', () => {
       showUserActivation: false,
     });
     expect(emptyish.map((g) => g.id)).toEqual(['overview']);
+  });
+
+  it('dual-entry active leaf follows section + finance/utilities group, not the other twin', () => {
+    const groups = buildAdminNavGroups(allOn);
+    expect(resolveDualEntryNavGroupId({ section: 'вода', tab: 'finance', groups })).toBe('finance');
+    expect(resolveDualEntryNavGroupId({ section: 'вода', tab: 'overview', groups })).toBe('utilities');
+    expect(resolveDualEntryNavGroupId({ section: 'электроэнергия', tab: 'meter', groups })).toBe(
+      'utilities',
+    );
+    expect(resolveDualEntryNavGroupId({ section: 'интернет', tab: 'finance', groups })).toBe('finance');
+    expect(resolveDualEntryNavGroupId({ section: 'интернет', tab: 'operations', groups })).toBe(
+      'utilities',
+    );
+
+    expect(
+      isAdminNavLeafActive({
+        section: 'вода',
+        groupId: 'finance',
+        activeSection: 'вода',
+        tab: 'finance',
+      }),
+    ).toBe(true);
+    expect(
+      isAdminNavLeafActive({
+        section: 'вода',
+        groupId: 'utilities',
+        activeSection: 'вода',
+        tab: 'finance',
+      }),
+    ).toBe(false);
+    expect(
+      isAdminNavLeafActive({
+        section: 'вода',
+        groupId: 'utilities',
+        activeSection: 'вода',
+        tab: 'overview',
+      }),
+    ).toBe(true);
+    expect(
+      isAdminNavLeafActive({
+        section: 'вода',
+        groupId: 'finance',
+        activeSection: 'вода',
+        tab: 'overview',
+      }),
+    ).toBe(false);
+  });
+
+  it('staff dual-entry metering group is maintenance, not utilities', () => {
+    const groups = buildStaffNavGroups({ ...allOn, isComplexAdmin: false });
+    expect(resolveDualEntryNavGroupId({ section: 'вода', tab: 'readings', groups })).toBe(
+      'maintenance',
+    );
+    expect(resolveDualEntryNavGroupId({ section: 'вода', tab: 'finance', groups })).toBe('finance');
   });
 });

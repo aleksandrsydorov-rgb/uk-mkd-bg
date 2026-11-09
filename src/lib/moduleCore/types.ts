@@ -73,6 +73,8 @@ export type ImportPreviewRow = {
   operation: ImportRowOperation;
   data: Record<string, string>;
   errors: string[];
+  /** Soft incompleteness — row remains importable. */
+  warnings?: string[];
   matchKey?: string;
 };
 
@@ -83,6 +85,8 @@ export type ImportPreviewResult = {
   updateCount: number;
   skipCount: number;
   errorCount: number;
+  warningCount?: number;
+  clarificationCount?: number;
 };
 
 export type ModuleSetupAdapter = {

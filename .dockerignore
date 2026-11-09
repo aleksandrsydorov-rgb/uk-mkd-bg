@@ -19,6 +19,10 @@ coverage
 .env.*
 !.env.example
 !.env.docker.example
+**/*.pem
+**/id_rsa*
+**/id_ed25519*
+**/.ssh
 
 # Local / cloud tooling
 .vercel
@@ -33,6 +37,16 @@ tmp
 docs
 # scripts/ required: src/lib/firstBootInvite.ts imports scripts/lib/firstBootInvite.mjs
 agent-transcripts
+
+# Local verification / demo artifacts (keep on host, never bake)
+.local-screenshots
+.local-verify
+.release
+release
+public/receipt-review
+**/*backup*
+**/*.dump
+**/*.sql.gz
 
 # OS junk
 $null

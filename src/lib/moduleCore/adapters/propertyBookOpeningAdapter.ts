@@ -97,6 +97,6 @@ export const propertyBookOpeningAdapter: ModuleSetupAdapter = {
 };
 
 /** Browser download of canonical multi-sheet Book template + BG/RU/EN instructions. */
-export function downloadPropertyBookOpeningTemplate(): void {
-  downloadPropertyBookIs2Template('property_book_opening_template.xlsx');
+export function downloadPropertyBookOpeningTemplate(locale?: string): void {
+  downloadPropertyBookIs2Template(locale);
 }

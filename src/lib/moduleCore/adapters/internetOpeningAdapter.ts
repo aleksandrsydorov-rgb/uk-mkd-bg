@@ -7,13 +7,13 @@ import {
 import { PROPERTY_BOOK_MODULE_KEY } from '@/lib/moduleCore/adapters/propertyBookOpening';
 
 /**
- * IS-5 Internet opening adapter.
- * Inventarisation via import_internet_opening_state — no connect WO / payments.
+ * IS-5 Internet opening adapter (v1.1 first-run template).
+ * Inventarisation via admin_import_internet_opening / import_internet_opening_state.
  */
 export const internetOpeningAdapter: ModuleSetupAdapter = {
   registration: {
     moduleKey: INTERNET_MODULE_KEY,
-    version: '1.0.0',
+    version: '1.1.0',
     nameKey: 'is5InternetName',
     descriptionKey: 'is5InternetDesc',
     dependencies: [PROPERTY_BOOK_MODULE_KEY],
@@ -32,6 +32,7 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
       'no_overwrite_existing_subscriptions',
       'q2_paid_through_next_charge_safe',
       'q5_pending_wo_blocked',
+      'explicit_correction_confirm',
     ],
     setup: {
       schemaVersion: INTERNET_SETUP_SCHEMA_VERSION,
@@ -42,6 +43,7 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
         'admin_confirm',
         'conflict_manual_reconcile',
         'manual_admin_or_verified',
+        'none_confirmed_or_imported',
       ],
       steps: [
         {
@@ -77,16 +79,10 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is5ColApartment',
           },
           {
-            key: 'tariff_code',
+            key: 'connection_state',
             required: true,
-            example: 'internet',
-            labelKey: 'is5ColTariffCode',
-          },
-          {
-            key: 'status',
-            required: true,
-            example: 'active',
-            labelKey: 'is5ColStatus',
+            example: 'Подключён',
+            labelKey: 'is5ColConnectionState',
           },
           {
             key: 'connection_date',
@@ -95,16 +91,16 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is5ColConnectionDate',
           },
           {
-            key: 'transition_date',
-            required: true,
+            key: 'paid_period_start',
+            required: false,
             example: '2026-01-01',
-            labelKey: 'is5ColTransitionDate',
+            labelKey: 'is5ColPaidPeriodStart',
           },
           {
-            key: 'paid_through',
+            key: 'paid_period_end',
             required: false,
-            example: '2025-12-31',
-            labelKey: 'is5ColPaidThrough',
+            example: '2026-10-31',
+            labelKey: 'is5ColPaidPeriodEnd',
           },
           {
             key: 'opening_debt',
@@ -119,16 +115,10 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is5ColOpeningCredit',
           },
           {
-            key: 'source_reference',
-            required: false,
-            example: 'ISP-LEDGER-2026',
-            labelKey: 'is5ColSourceRef',
-          },
-          {
-            key: 'notes',
+            key: 'comment',
             required: false,
             example: '',
-            labelKey: 'is5ColNotes',
+            labelKey: 'is5ColComment',
           },
         ],
       },
@@ -145,6 +135,6 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
   },
 };
 
-export function downloadInternetOpeningTemplate(): void {
-  downloadInternetIs5Template();
+export function downloadInternetOpeningTemplate(locale?: string): void {
+  downloadInternetIs5Template(locale);
 }

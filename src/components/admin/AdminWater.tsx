@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { labelLedgerKind, labelReadingStatus } from '@/i18n/labels';
+import { labelLedgerKind } from '@/i18n/labels';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
@@ -12,7 +12,6 @@ import {
   canAssignWaterMeter,
   canCorrectWaterReading,
   canManageWaterFinance,
-  canManageWaterTariff,
   canSeeWaterAdmin,
   canSubmitWaterStaff,
   currentWaterTariffViewFromCore,
@@ -34,6 +33,8 @@ import {
   type WaterReading,
   type CurrentWaterTariffView,
 } from '@/lib/utilities';
+import { buildWaterHistoryEntries, type WaterHistoryInput } from '@/lib/meterReadingHistory';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import { parseRatesJson } from '@/lib/tariffs';
 import {
   AdminPageHeader,
@@ -49,6 +50,21 @@ import {
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
+import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
+import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
+import {
+  emptyReceiptPayFields,
+  PaymentReceiptPayFields,
+  type PaymentReceiptPayFieldValues,
+} from '@/components/paymentReceipts/PaymentReceiptPayFields';
+import { PaymentSuccessBanner } from '@/components/paymentReceipts/PaymentReceiptActions';
+import { LedgerPaymentReceiptCell } from '@/components/paymentReceipts/LedgerPaymentReceiptCell';
+import {
+  finishReceiptForPayment,
+  ledgerIdFromPaymentRpc,
+  prepareReceiptIntentFromFields,
+} from '@/lib/paymentReceipts/afterPayment';
+import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 
 type PropertyOption = {
   id: number;
@@ -77,6 +93,8 @@ export function AdminWater({
   onSaveWaterMode,
   tab,
   onTabChange,
+  focusPropertyId,
+  onPropertyChange,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
@@ -87,11 +105,12 @@ export function AdminWater({
   onSaveWaterMode?: (mode: WaterMode) => void;
   tab?: string | null;
   onTabChange?: (tab: AdminUtilityTab) => void;
+  focusPropertyId?: number | '';
+  onPropertyChange?: (id: number | '') => void;
 }) {
   const { t, locale } = useI18n();
   const canSee = canSeeWaterAdmin(staffRole);
   const canMeter = canAssignWaterMeter(staffRole);
-  const canTariff = canManageWaterTariff(staffRole);
   const canFinance = canManageWaterFinance(staffRole);
   const canSubmit = canSubmitWaterStaff(staffRole, staffActive);
   const waterTabs = useMemo(() => {
@@ -100,10 +119,10 @@ export function AdminWater({
       { id: 'meter', label: t('admin.utilTabMeter') },
       { id: 'readings', label: t('admin.utilTabReadings') },
     ];
-    if (canTariff) items.push({ id: 'tariff', label: t('admin.utilTabTariff') });
+    // finance stays URL-routable from Финансы nav; not shown in metering chrome.
     if (canFinance) items.push({ id: 'finance', label: t('admin.utilTabFinance') });
     return items;
-  }, [t, canTariff, canFinance]);
+  }, [t, canFinance]);
   const allowedWaterTabs = useMemo(() => waterTabs.map((item) => item.id), [waterTabs]);
 
   const sorted = useMemo(
@@ -114,7 +133,17 @@ export function AdminWater({
     [properties],
   );
 
-  const [propertyId, setPropertyId] = useState<number | ''>(sorted[0]?.id ?? '');
+  const [propertyId, setPropertyId] = useState<number | ''>(
+    focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : sorted[0]?.id ?? '',
+  );
+  useEffect(() => {
+    if (focusPropertyId == null || focusPropertyId === '') return;
+    setPropertyId((current) => (current === focusPropertyId ? current : focusPropertyId));
+  }, [focusPropertyId]);
+  function selectProperty(id: number | '') {
+    setPropertyId(id);
+    onPropertyChange?.(id);
+  }
   const [meters, setMeters] = useState<WaterMeter[]>([]);
   const [tariff, setTariff] = useState<CurrentWaterTariffView | null>(null);
   const [readings, setReadings] = useState<WaterReading[]>([]);
@@ -139,6 +168,9 @@ export function AdminWater({
 
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
+  const [payReceiptFields, setPayReceiptFields] = useState<PaymentReceiptPayFieldValues>(emptyReceiptPayFields);
+  const [lastPayReceipt, setLastPayReceipt] = useState<PaymentReceiptRow | null>(null);
+  const [lastPayAmountLabel, setLastPayAmountLabel] = useState<string | null>(null);
   const [submitValue, setSubmitValue] = useState('');
   const [submitDate, setSubmitDate] = useState(todayIsoDate());
   const [submitBusy, setSubmitBusy] = useState(false);
@@ -157,8 +189,11 @@ export function AdminWater({
   const correctKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
-    if (propertyId === '' && sorted[0]) setPropertyId(sorted[0].id);
-  }, [propertyId, sorted]);
+    // Finance register allows an empty selection; do not force apt #1 back into the URL.
+    if (activeTab === 'finance') return;
+    if (propertyId === '' && sorted[0]) selectProperty(sorted[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once when list arrives
+  }, [propertyId, sorted, activeTab]);
 
   useEffect(() => {
     if (!staffRole) return;
@@ -175,10 +210,15 @@ export function AdminWater({
   }
 
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
-  const meterById = useMemo(() => new Map(meters.map((m) => [m.id, m])), [meters]);
   const lastReading = lastActiveReading(
     activeMeter ? readings.filter((r) => r.meter_id === activeMeter.id) : readings,
   );
+  const historyEntries = useMemo(() => {
+    const meterNumbers = new Map(meters.map((m) => [m.id, m.meter_number]));
+    const rows = readings as unknown as WaterHistoryInput[];
+    // All meters for the apartment: replaced devices keep their own history rows.
+    return buildWaterHistoryEntries(rows, meterNumbers);
+  }, [readings, meters]);
   const correctTarget =
     correctReadingId != null ? readings.find((r) => r.id === correctReadingId) ?? null : null;
   const correctParsed = parseWaterVolume(String(correctValue));
@@ -197,7 +237,7 @@ export function AdminWater({
     });
     setTariffLoading(false);
     if (qErr) {
-      setError(t(mapAdminRpcError(qErr.message)));
+      setError(toUserFacingMessage(qErr, t, { context: 'load', fallback: t('common.errLoad') }));
       setTariff(null);
       return;
     }
@@ -237,7 +277,7 @@ export function AdminWater({
       .eq('property_id', pid)
       .order('reading_date', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(30);
+      .limit(200);
 
     if (canFinance) {
       const [metersRes, readingsRes, ledgerRes, balanceRes] = await Promise.all([
@@ -252,8 +292,12 @@ export function AdminWater({
         supabase.rpc('get_water_balance', { p_property_id: pid }),
       ]);
       setMeterLoading(false);
-      if (metersRes.error && !isMissingRelation(metersRes.error, 'water_meters')) setError(t(mapAdminRpcError(metersRes.error.message)));
-      if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) setError(t(mapAdminRpcError(readingsRes.error.message)));
+      if (metersRes.error && !isMissingRelation(metersRes.error, 'water_meters')) {
+        setError(toUserFacingMessage(metersRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
+      }
+      if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) {
+        setError(toUserFacingMessage(readingsRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
+      }
       setMeters((metersRes.data ?? []) as WaterMeter[]);
       setReadings((readingsRes.data ?? []) as WaterReading[]);
       if (!ledgerRes.error) setLedger((ledgerRes.data ?? []) as WaterLedger[]);
@@ -271,8 +315,12 @@ export function AdminWater({
 
     const [metersRes, readingsRes] = await Promise.all([meterQ, readingQ]);
     setMeterLoading(false);
-    if (metersRes.error && !isMissingRelation(metersRes.error, 'water_meters')) setError(t(mapAdminRpcError(metersRes.error.message)));
-    if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) setError(t(mapAdminRpcError(readingsRes.error.message)));
+    if (metersRes.error && !isMissingRelation(metersRes.error, 'water_meters')) {
+      setError(toUserFacingMessage(metersRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
+    }
+    if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) {
+      setError(toUserFacingMessage(readingsRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
+    }
     setMeters((metersRes.data ?? []) as WaterMeter[]);
     setReadings((readingsRes.data ?? []) as WaterReading[]);
     setLedger([]);
@@ -292,9 +340,18 @@ export function AdminWater({
     setError(null);
   }
 
-  function rpcFail(message: string | undefined) {
+  function rpcFail(message: string | undefined, opts?: { context?: 'finance' | 'generic' }) {
     setSuccess(null);
-    setError(t(mapAdminRpcError(message ?? '')));
+    setError(
+      toUserFacingMessage(
+        { message: message ?? '' },
+        t,
+        {
+          context: opts?.context ?? 'generic',
+          fallback: t(mapAdminRpcError(message ?? '')),
+        },
+      ),
+    );
   }
 
   async function handleAssign(e: React.FormEvent) {
@@ -376,28 +433,52 @@ export function AdminWater({
 
   async function handlePay(e: React.FormEvent) {
     e.preventDefault();
-    if (propertyId === '' || !canFinance) return;
+    if (propertyId === '' || !canFinance || payBusy) return;
     const amount = Number(payAmount);
     if (!(amount > 0) || Number.isNaN(amount)) {
       setError(t('admin.errAmount'));
       return;
     }
     setPayBusy(true);
-    const { error: rpcErr } = await supabase.rpc('record_water_payment', {
+    setLastPayReceipt(null);
+    const idem = payKeyRef.current;
+    const intentErr = await prepareReceiptIntentFromFields(supabase, idem, payReceiptFields);
+    if (intentErr) {
+      setPayBusy(false);
+      setError(
+        toUserFacingMessage(intentErr, t, {
+          context: 'finance',
+          fallback: t('admin.errReceiptPrepare'),
+        }),
+      );
+      return;
+    }
+    const { data: payData, error: rpcErr } = await supabase.rpc('record_water_payment', {
       p_property_id: Number(propertyId),
       p_amount_eur: amount,
       p_note: payNote.trim() || null,
-      p_idempotency_key: payKeyRef.current,
+      p_idempotency_key: idem,
     });
-    setPayBusy(false);
     if (rpcErr) {
-      rpcFail(rpcErr.message);
+      setPayBusy(false);
+      rpcFail(rpcErr.message, { context: 'finance' });
       return;
     }
+    const ledgerId = ledgerIdFromPaymentRpc(payData);
+    const amountLabel = formatEur(amount, locale);
+    setLastPayAmountLabel(amountLabel);
+    const finished = await finishReceiptForPayment(supabase, 'water', ledgerId);
+    setLastPayReceipt(finished.receipt);
     payKeyRef.current = crypto.randomUUID();
     setPayAmount('');
     setPayNote('');
-    flash(t('admin.okWaterPay'));
+    setPayReceiptFields(emptyReceiptPayFields());
+    setPayBusy(false);
+    if (finished.pdfError && finished.receipt) {
+      flash(t('receipt.paySavedPdfFailed'));
+    } else {
+      flash(t('receipt.payRegistered', { amount: amountLabel }));
+    }
     void import('@/lib/email/eventProducers')
       .then(({ notifyPropertyOwnersEvent }) =>
         notifyPropertyOwnersEvent(supabase, {
@@ -409,6 +490,10 @@ export function AdminWater({
       )
       .catch(() => undefined);
     await loadPropertyWater();
+  }
+
+  function goFillUk() {
+    window.location.assign('/admin?section=%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B9%D0%BA%D0%B8');
   }
 
   async function handleSubmitReading(e: React.FormEvent) {
@@ -520,12 +605,36 @@ export function AdminWater({
     );
   }
 
+  if (activeTab === 'finance') {
+    if (!canFinance) {
+      return (
+        <AdminCard>
+          <p className="text-sm text-secondary">{t('admin.waterNoAccess')}</p>
+        </AdminCard>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        <AdminPageHeader title={t('admin.water')} secondary={t('admin.utilFinRegisterLead')} />
+        <AdminUtilityFinanceWorkplace
+          service="water"
+          supabase={supabase}
+          properties={sorted}
+          canOperate={canFinance}
+          focusPropertyId={focusPropertyId}
+          onPropertyChange={selectProperty}
+        />
+      </div>
+    );
+  }
+
   const tone = balanceTone(balance.balance_eur);
   const statusLabel =
     tone === 'debt' ? t('admin.balDebt') : tone === 'over' ? t('admin.balOver') : t('admin.balSettled');
   const waterModeLabel =
     waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
+  const meteringTabs = waterTabs.filter((item) => item.id !== 'finance');
 
   return (
     <div className="space-y-4">
@@ -560,7 +669,7 @@ export function AdminWater({
           properties={sorted}
           value={propertyId}
           onChange={(id) => {
-            setPropertyId(id);
+            selectProperty(id);
             setSuccess(null);
             setError(null);
             closeWaterCorrection();
@@ -568,10 +677,10 @@ export function AdminWater({
         />
       </AdminCard>
 
-      {error && <AdminInlineAlert tone="danger">{error}</AdminInlineAlert>}
-      {success && <AdminInlineAlert tone="success">{success}</AdminInlineAlert>}
+      {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
+      {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
 
-      <AdminTabBar tabs={waterTabs} active={activeTab} onChange={(id) => selectTab(id as AdminUtilityTab)} />
+      <AdminTabBar tabs={meteringTabs} active={activeTab} onChange={(id) => selectTab(id as AdminUtilityTab)} />
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -591,8 +700,7 @@ export function AdminWater({
           <AdminMetricCard
             label={t('admin.currentTariff')}
             value={tariff ? formatEur(Number(tariff.price_eur_per_m3), locale) : '—'}
-            secondary={tariff ? undefined : t('admin.noTariff')}
-            onClick={canTariff ? () => selectTab('tariff') : undefined}
+            secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
           />
           {canFinance && (
             <AdminMetricCard
@@ -600,7 +708,6 @@ export function AdminWater({
               value={formatEur(Math.abs(balance.balance_eur), locale)}
               secondary={statusLabel}
               alert={tone === 'debt'}
-              onClick={() => selectTab('finance')}
             />
           )}
         </div>
@@ -757,7 +864,7 @@ export function AdminWater({
                 properties={sorted}
                 value={propertyId}
                 onChange={(id) => {
-                  setPropertyId(id);
+                  selectProperty(id);
                   setSuccess(null);
                   setError(null);
                 }}
@@ -792,66 +899,8 @@ export function AdminWater({
         </div>
       )}
 
-      {activeTab === 'tariff' && canTariff && (
-        <div className={adminCardClass + ' p-4 md:p-5'}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.tariffTitle')}</p>
-          {tariffLoading ? (
-            <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
-          ) : (
-            <p className="mt-2 text-2xl font-semibold text-foreground">
-              {tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / m³` : t('admin.noTariff')}
-            </p>
-          )}
-          {tariff && (
-            <p className="mt-1 text-sm text-muted">
-              {t('admin.validFrom')}: {formatOwnerDate(tariff.valid_from)}
-            </p>
-          )}
-          <p className="mt-4 text-sm text-secondary">{t('admin.tariffManageInCore')}</p>
-        </div>
-      )}
-
-      {activeTab === 'finance' && canFinance && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className={adminCardClass + ' p-4 md:p-5'}>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterBalance')}</p>
-            {meterLoading ? (
-              <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
-            ) : (
-              <>
-                <p className={`mt-2 text-2xl font-semibold ${tone === 'debt' ? 'text-danger' : tone === 'over' ? 'text-success' : 'text-foreground'}`}>
-                  {formatEur(Math.abs(balance.balance_eur), locale)}
-                </p>
-                <p className="text-sm text-secondary">{statusLabel}</p>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                  <dt className="text-muted">{t('admin.charged')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.charged_eur, locale)}</dd>
-                  <dt className="text-muted">{t('admin.paid')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.paid_eur, locale)}</dd>
-                  <dt className="text-muted">{t('admin.adjDebit')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.adjustments_debit_eur, locale)}</dd>
-                  <dt className="text-muted">{t('admin.adjCredit')}</dt>
-                  <dd className="tabular-nums">{formatEur(balance.adjustments_credit_eur, locale)}</dd>
-                </dl>
-              </>
-            )}
-          </div>
-          <div className={adminCardClass + ' p-4 md:p-5'}>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterPayment')}</p>
-            <form onSubmit={handlePay} className="mt-4 space-y-3">
-              <input className={fieldClass} type="number" min="0.01" step="0.01" placeholder={t('admin.amountEur')} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} required />
-              <input className={fieldClass} placeholder={t('admin.noteOptional')} value={payNote} onChange={(e) => setPayNote(e.target.value)} />
-              <button type="submit" disabled={payBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
-                {payBusy ? t('common.saving') : t('admin.recordPayment')}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {activeTab === 'readings' && (
-      <div className={adminCardClass + ' p-4 md:p-5'}>
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.readingHistory')}</p>
+      <div className={adminCardClass + ' space-y-4 p-4 md:p-5'}>
         {correctTarget &&
           canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
             <AdminMeterCorrectionPanel
@@ -889,107 +938,35 @@ export function AdminWater({
               onCancel={closeWaterCorrection}
             />
           )}
-        {readings.length === 0 ? (
-          <div className="mt-3">
-            <AdminEmptyState title={t('admin.noReadings')} />
-          </div>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted">
-                  <th className="py-2 pr-3">{t('admin.date')}</th>
-                  <th className="py-2 pr-3">{t('admin.meterNumber')}</th>
-                  <th className="py-2 pr-3">{t('admin.prev')}</th>
-                  <th className="py-2 pr-3">{t('admin.current')}</th>
-                  <th className="py-2 pr-3">{t('admin.consumption')}</th>
-                  <th className="py-2 pr-3">{t('admin.tariff')}</th>
-                  <th className="py-2 pr-3">{t('admin.charge')}</th>
-                  <th className="py-2 pr-3">{t('admin.status')}</th>
-                  <th className="py-2 pr-3">{t('account.elSubmittedBy')}</th>
-                  <th className="py-2 pr-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {readings.map((row) => {
-                  const reversed = row.status === 'reversed';
-                  const isLatestCorrectable =
-                    lastReading?.id === row.id && row.status === 'active';
-                  const rowHasCharge = waterReadingHasCharge(row);
-                  const showCorrect =
-                    isLatestCorrectable &&
-                    canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
-                  return (
-                    <tr key={row.id} className={`border-t border-border ${reversed ? 'text-muted line-through' : ''}`}>
-                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.reading_date)}</td>
-                      <td className="py-2 pr-3">{meterById.get(row.meter_id)?.meter_number ?? '—'}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.previous_value), locale)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.current_value), locale)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.consumption_m3), locale)} {t('account.m3')}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.tariff_eur_per_m3), locale)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.charge_amount_eur), locale)}</td>
-                      <td className="py-2 pr-3">{labelReadingStatus(row.status, t)}</td>
-                      <td className="py-2 pr-3">
-                        {row.submitted_via === 'staff'
-                          ? t('account.elByStaff')
-                          : row.submitted_via === 'owner'
-                            ? t('account.elByOwner')
-                            : '—'}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {showCorrect ? (
-                          <button
-                            type="button"
-                            className="text-sm text-accent hover:underline"
-                            onClick={() => openWaterCorrection(row)}
-                          >
-                            {t('admin.meterCorrectionAction')}
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <MeterReadingHistory
+          utility="water"
+          entries={historyEntries}
+          title={t('admin.readingHistory')}
+          emptyTitle={t('admin.noReadings')}
+          rowActions={(entry) => {
+            const row = readings.find((r) => String(r.id) === entry.actionKey);
+            if (!row) return null;
+            const isLatestCorrectable =
+              lastReading?.id === row.id && row.status === 'active';
+            const rowHasCharge = waterReadingHasCharge(row);
+            const showCorrect =
+              isLatestCorrectable &&
+              canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
+            if (!showCorrect) return null;
+            return (
+              <button
+                type="button"
+                className="text-sm text-accent hover:underline"
+                onClick={() => openWaterCorrection(row)}
+              >
+                {t('admin.meterCorrectionAction')}
+              </button>
+            );
+          }}
+        />
       </div>
       )}
 
-      {activeTab === 'finance' && canFinance && (
-        <div className={adminCardClass + ' p-4 md:p-5'}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterLedger')}</p>
-          {ledger.length === 0 ? (
-            <div className="mt-3">
-              <AdminEmptyState title={t('admin.noWaterLedger')} />
-            </div>
-          ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[28rem] text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted">
-                    <th className="py-2 pr-3">{t('admin.date')}</th>
-                    <th className="py-2 pr-3">{t('admin.kind')}</th>
-                    <th className="py-2 pr-3">{t('admin.amount')}</th>
-                    <th className="py-2 pr-3">{t('admin.note')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledger.map((row) => (
-                    <tr key={row.id} className="border-t border-border">
-                      <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.created_at)}</td>
-                      <td className="py-2 pr-3">{labelLedgerKind(row.kind, t)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur), locale)}</td>
-                      <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

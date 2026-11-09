@@ -105,6 +105,7 @@ export const MODULE_CATEGORIES = [
   'utilities',
   'communication',
   'documents',
+  'complex_owners',
   'services',
   'commercial',
 ] as const;
@@ -268,6 +269,7 @@ export function moduleLabelMessageKey(key: string): string | null {
     commercial_rentals: 'moduleCommercialRentals',
     guest_mode: 'moduleGuestMode',
     residence_status: 'moduleResidenceStatus',
+    uk_expenses: 'moduleUkExpenses',
   };
   return map[key] ?? null;
 }
@@ -278,6 +280,7 @@ export function moduleCategoryMessageKey(category: string): string | null {
     utilities: 'moduleCategoryUtilities',
     communication: 'moduleCategoryCommunication',
     documents: 'moduleCategoryDocuments',
+    complex_owners: 'moduleCategoryComplexOwners',
     services: 'moduleCategoryServices',
     commercial: 'moduleCategoryCommercial',
   };

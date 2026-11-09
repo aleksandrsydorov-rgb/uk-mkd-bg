@@ -136,6 +136,6 @@ export const ukExpensesOpeningAdapter: ModuleSetupAdapter = {
   },
 };
 
-export function downloadUkExpensesOpeningTemplate(): void {
-  downloadUkExpensesIs6aTemplate();
+export function downloadUkExpensesOpeningTemplate(locale?: string): void {
+  downloadUkExpensesIs6aTemplate(locale);
 }

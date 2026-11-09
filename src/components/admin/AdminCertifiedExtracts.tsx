@@ -6,6 +6,7 @@ import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   AdminCard,
   AdminEmptyState,
@@ -13,6 +14,7 @@ import {
   AdminPrimaryButton,
   AdminSecondaryButton,
 } from '@/components/admin/AdminUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 type ExtractRow = Database['public']['Tables']['property_book_extracts']['Row'];
 
@@ -30,6 +32,7 @@ export function AdminCertifiedExtracts({
   onError,
 }: Props) {
   const { t, locale } = useI18n();
+  const { prompt, dialog } = useAppConfirm(t('common.close'));
   const [rows, setRows] = useState<ExtractRow[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
@@ -38,7 +41,7 @@ export function AdminCertifiedExtracts({
     if (!canManage) return;
     const { data, error } = await supabase.rpc('admin_list_certified_extract_requests');
     if (error) {
-      if (!isMissingRpcError(error)) onError(error.message);
+      if (!isMissingRpcError(error)) onError(toUserFacingMessage(error, t, { context: 'load', fallback: t('xfer.errExtract') }));
       return;
     }
     setRows((data as ExtractRow[]) ?? []);
@@ -59,30 +62,33 @@ export function AdminCertifiedExtracts({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errExtract'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errExtract') }));
     } finally {
       setBusyId(null);
     }
   }
 
   async function reject(id: number) {
-    const reason = window.prompt(t('xfer.rejectReasonPrompt'));
-    if (reason == null) return;
-    if (!reason.trim()) {
-      onError(t('xfer.errRejectReason'));
-      return;
-    }
+    const r = await prompt({
+      title: t('admin.reject'),
+      confirmLabel: t('admin.reject'),
+      cancelLabel: t('common.cancel'),
+      promptLabel: t('xfer.rejectReasonPrompt'),
+      promptRequired: true,
+      tone: 'danger',
+    });
+    if (!r.ok) return;
     setBusyId(id);
     try {
       const { error } = await supabase.rpc('admin_reject_certified_extract', {
         p_extract_id: id,
-        p_reason: reason.trim(),
+        p_reason: r.value,
       });
       if (error) throw error;
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errExtract'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errExtract') }));
     } finally {
       setBusyId(null);
     }
@@ -94,6 +100,7 @@ export function AdminCertifiedExtracts({
 
   return (
     <AdminCard>
+      {dialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-secondary">
           {t('xfer.certifiedAdminTitle')} ({pending})

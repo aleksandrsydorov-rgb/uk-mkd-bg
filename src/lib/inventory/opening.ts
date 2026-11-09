@@ -7,6 +7,17 @@
 import * as XLSX from 'xlsx';
 import type { ImportPreviewResult, ImportPreviewRow, ImportRowOperation } from '@/lib/moduleCore/types';
 import { sanitizeSpreadsheetCell } from '@/lib/moduleCore/xlsxEngine';
+import {
+  INVENTORY_IMPORT_SPEC,
+  buildLocalizedImportWorkbook,
+  columnHeaderCandidates,
+  downloadImportTemplateBuffer,
+  findImportDataSheet,
+  localizedTemplateFileName,
+  normalizeImportHeader,
+  toImportTemplateLocale,
+  type ImportTemplateLocale,
+} from '@/lib/importTemplates';
 import { INVENTORY_MODULE_KEY } from './admin';
 import { INV1_CONDITIONS, INV1_OWNERSHIP_KINDS, INV1_TRACKING_TYPES } from './inv1Schema';
 
@@ -59,13 +70,111 @@ export type ExistingInventoryStockRef = {
 };
 
 export type InventoryOpeningClassifyContext = {
+  /** code/name (normalized) → category id */
   categoriesByCode: Map<string, string>;
+  /** code/name (normalized) → location id */
   locationsByCode: Map<string, string>;
+  /** Display labels for matched catalog entries (id → label). */
+  categoryLabelsById?: Map<string, string>;
+  locationLabelsById?: Map<string, string>;
   units: Set<string>;
   assetsByNumber: Map<string, ExistingInventoryAssetRef>;
   stockBySku: Map<string, ExistingInventoryStockRef>;
   sourceRefsSeen: Set<string>;
+  /** When true (default), unknown category/location become create-warnings, not hard errors. */
+  allowCreateCatalog?: boolean;
 };
+
+/** Normalize catalog keys: trim, lower-case, collapse spaces (no duplicate by case/whitespace). */
+export function normalizeInventoryCatalogKey(raw: string): string {
+  return String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/** Slug for auto-generated codes when creating categories/locations/SKUs. */
+export function slugifyInventoryCatalogCode(raw: string, fallback: string): string {
+  const base = normalizeInventoryCatalogKey(raw)
+    .replace(/[^a-z0-9а-яёіїґ\u0400-\u04ff]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return base || fallback;
+}
+
+/** Friendly XLSX header labels (written into the template). */
+export const INVENTORY_OPENING_FRIENDLY_HEADERS: Record<InventoryOpeningHeader, string> = {
+  tracking_type: 'Тип (оборудование / расходники)',
+  category_code: 'Категория',
+  item_name: 'Название',
+  inventory_number: 'Инвентарный номер',
+  serial_number: 'Серийный номер',
+  sku_code: 'Артикул',
+  ownership_kind: 'Собственность',
+  location_code: 'Место хранения',
+  condition: 'Состояние',
+  quantity: 'Количество',
+  unit_code: 'Единица',
+  opening_qty: 'Начальный остаток',
+  estimated_value_eur: 'Оценка, €',
+  source_ref: 'Источник',
+  notes: 'Примечание',
+};
+
+const FRIENDLY_HEADER_ALIASES: Record<string, InventoryOpeningHeader> = (() => {
+  const map: Record<string, InventoryOpeningHeader> = {};
+  for (const key of INVENTORY_OPENING_HEADERS) {
+    map[key] = key;
+    map[INVENTORY_OPENING_FRIENDLY_HEADERS[key].toLowerCase()] = key;
+  }
+  const extra: Record<string, InventoryOpeningHeader> = {
+    тип: 'tracking_type',
+    type: 'tracking_type',
+    'item type': 'tracking_type',
+    category: 'category_code',
+    категория: 'category_code',
+    name: 'item_name',
+    название: 'item_name',
+    'inventory number': 'inventory_number',
+    'inv. number': 'inventory_number',
+    'инв. номер': 'inventory_number',
+    serial: 'serial_number',
+    sku: 'sku_code',
+    ownership: 'ownership_kind',
+    location: 'location_code',
+    'storage place': 'location_code',
+    место: 'location_code',
+    condition: 'condition',
+    qty: 'quantity',
+    unit: 'unit_code',
+    'opening qty': 'opening_qty',
+    value: 'estimated_value_eur',
+    source: 'source_ref',
+    note: 'notes',
+    notes: 'notes',
+  };
+  for (const [k, v] of Object.entries(extra)) map[k] = v;
+  return map;
+})();
+
+/** normalizeImportHeader(candidate) → key for every spec label (ru/bg/en), key and alias. */
+const SPEC_HEADER_ALIASES: Map<string, InventoryOpeningHeader> = (() => {
+  const map = new Map<string, InventoryOpeningHeader>();
+  for (const col of INVENTORY_IMPORT_SPEC.columns) {
+    for (const cand of columnHeaderCandidates(col)) {
+      if (!map.has(cand)) map.set(cand, col.key as InventoryOpeningHeader);
+    }
+  }
+  return map;
+})();
+
+export function resolveInventoryOpeningHeader(raw: string): InventoryOpeningHeader | null {
+  const key = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return FRIENDLY_HEADER_ALIASES[key] ?? SPEC_HEADER_ALIASES.get(normalizeImportHeader(String(raw ?? ''))) ?? null;
+}
 
 export const INVENTORY_OPENING_FORBIDDEN_FINANCE = [
   'uk_expenses',
@@ -106,20 +215,80 @@ export function normalizeOwnershipKind(raw: string): string | null {
   const aliases: Record<string, string> = {
     CONDO: 'CONDOMINIUM',
     ET: 'CONDOMINIUM',
+    COMPLEX: 'CONDOMINIUM',
+    КОМПЛЕКС: 'CONDOMINIUM',
+    СГРАДА: 'CONDOMINIUM',
     УК: 'MANAGEMENT_COMPANY',
     UK: 'MANAGEMENT_COMPANY',
     MC: 'MANAGEMENT_COMPANY',
+    'УПРАВЛЯЮЩАЯ_КОМПАНИЯ': 'MANAGEMENT_COMPANY',
+    УПРАВЛЕНИЕ: 'MANAGEMENT_COMPANY',
     THIRD: 'THIRD_PARTY',
+    'ТРЕТЬЯ_СТОРОНА': 'THIRD_PARTY',
+    ТРЕТИ: 'THIRD_PARTY',
   };
-  return aliases[t] ?? null;
+  if (aliases[t]) return aliases[t]!;
+  const lower = raw.trim().toLowerCase();
+  if (/комплекс|condo|сград/i.test(lower)) return 'CONDOMINIUM';
+  if (/управл|management|\bук\b/i.test(lower)) return 'MANAGEMENT_COMPANY';
+  if (/трет|third/i.test(lower)) return 'THIRD_PARTY';
+  return null;
 }
 
 export function normalizeTrackingType(raw: string): string | null {
   const t = raw.trim().toUpperCase().replace(/\s+/g, '_');
   if ((INV1_TRACKING_TYPES as readonly string[]).includes(t)) return t;
+  const aliases: Record<string, string> = {
+    ASSET: 'INDIVIDUAL_ASSET',
+    INDIVIDUAL: 'INDIVIDUAL_ASSET',
+    EQUIPMENT: 'INDIVIDUAL_ASSET',
+    'ОБОРУДОВАНИЕ': 'INDIVIDUAL_ASSET',
+    'ОБЗАВЕЖДАНЕ': 'INDIVIDUAL_ASSET',
+    'ТЕХНИКА': 'INDIVIDUAL_ASSET',
+    STOCK: 'QUANTITY_STOCK',
+    CONSUMABLE: 'QUANTITY_STOCK',
+    CONSUMABLES: 'QUANTITY_STOCK',
+    QTY: 'QUANTITY_STOCK',
+    QUANTITY: 'QUANTITY_STOCK',
+    'РАСХОДНИКИ': 'QUANTITY_STOCK',
+    'РАЗХОДНИ': 'QUANTITY_STOCK',
+    'МАТЕРИАЛЫ': 'QUANTITY_STOCK',
+  };
+  const compact = raw.trim().toUpperCase().replace(/\s+/g, '_');
+  if (aliases[compact]) return aliases[compact]!;
+  const lower = raw.trim().toLowerCase();
+  if (aliases[lower.toUpperCase().replace(/\s+/g, '_')]) {
+    return aliases[lower.toUpperCase().replace(/\s+/g, '_')]!;
+  }
+  // Cyrillic phrases without underscore
+  if (/оборуд|equipment|техника|обзавежд/i.test(raw)) return 'INDIVIDUAL_ASSET';
+  if (/расход|разход|consum|материал|stock/i.test(raw)) return 'QUANTITY_STOCK';
   if (t === 'ASSET' || t === 'INDIVIDUAL' || t === 'EQUIPMENT') return 'INDIVIDUAL_ASSET';
   if (t === 'STOCK' || t === 'CONSUMABLE' || t === 'QTY' || t === 'QUANTITY') return 'QUANTITY_STOCK';
   return null;
+}
+
+export function normalizeCondition(raw: string): string | null {
+  const t = raw.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!t) return 'good';
+  if ((INV1_CONDITIONS as readonly string[]).includes(t)) return t;
+  const aliases: Record<string, string> = {
+    новый: 'new',
+    нова: 'new',
+    ново: 'new',
+    нов: 'new',
+    хорошее: 'good',
+    доброе: 'good',
+    добро: 'good',
+    удовлетворительное: 'fair',
+    среднее: 'fair',
+    удовлетворително: 'fair',
+    плохое: 'poor',
+    лошо: 'poor',
+    неисправно: 'unserviceable',
+    списано: 'unserviceable',
+  };
+  return aliases[t] ?? null;
 }
 
 export function parseOptionalNonNegNumber(raw: string | undefined): number | null {
@@ -141,14 +310,14 @@ export function validateInventoryOpeningRow(row: Record<string, string>): string
 
   if (tracking === 'INDIVIDUAL_ASSET') {
     if (!String(row.inventory_number ?? '').trim()) errors.push('required:inventory_number');
-    const cond = String(row.condition ?? '').trim().toLowerCase();
-    if (cond && !(INV1_CONDITIONS as readonly string[]).includes(cond)) {
+    const condRaw = String(row.condition ?? '').trim();
+    if (condRaw && !normalizeCondition(condRaw)) {
       errors.push('invalid:condition');
     }
   }
 
   if (tracking === 'QUANTITY_STOCK') {
-    if (!String(row.sku_code ?? '').trim()) errors.push('required:sku_code');
+    // sku_code may be auto-generated during classify when empty
     if (!String(row.unit_code ?? '').trim()) errors.push('required:unit_code');
     const opening =
       parseOptionalNonNegNumber(row.opening_qty) ?? parseOptionalNonNegNumber(row.quantity);
@@ -168,12 +337,14 @@ export function classifyInventoryOpeningRows(
   rows: Record<string, string>[],
   ctx: InventoryOpeningClassifyContext,
 ): ImportPreviewResult & { conflictCount: number } {
+  const allowCreate = ctx.allowCreateCatalog !== false;
   const counters = {
     createCount: 0,
     updateCount: 0,
     skipCount: 0,
     errorCount: 0,
     conflictCount: 0,
+    warningCount: 0,
   };
   const previewRows: ImportPreviewRow[] = [];
   const numbersInFile = new Map<string, number>();
@@ -183,48 +354,74 @@ export function classifyInventoryOpeningRows(
   rows.forEach((raw, idx) => {
     const rowNumber = idx + 2;
     const errors = validateInventoryOpeningRow(raw);
+    const warnings: string[] = [];
     const tracking = normalizeTrackingType(raw.tracking_type ?? '') ?? '';
     const ownership = normalizeOwnershipKind(raw.ownership_kind ?? '') ?? '';
     const name = String(raw.item_name ?? '').trim();
     const invNumber = String(raw.inventory_number ?? '').trim();
-    const sku = String(raw.sku_code ?? '').trim();
+    let sku = String(raw.sku_code ?? '').trim();
     const unit = String(raw.unit_code ?? '').trim();
-    const locationCode = String(raw.location_code ?? '').trim().toLowerCase();
-    const categoryCode = String(raw.category_code ?? '').trim().toLowerCase();
+    const locationRaw = String(raw.location_code ?? '').trim();
+    const categoryRaw = String(raw.category_code ?? '').trim();
+    const locationKey = normalizeInventoryCatalogKey(locationRaw);
+    const categoryKey = normalizeInventoryCatalogKey(categoryRaw);
     const sourceRef = String(raw.source_ref ?? '').trim();
-    const condition = String(raw.condition ?? 'good').trim().toLowerCase() || 'good';
+    const condition = normalizeCondition(String(raw.condition ?? '').trim()) || 'good';
     const openingQty =
       parseOptionalNonNegNumber(raw.opening_qty) ?? parseOptionalNonNegNumber(raw.quantity);
     const estimated = parseOptionalNonNegNumber(raw.estimated_value_eur);
 
+    if (tracking === 'QUANTITY_STOCK' && !sku && name) {
+      sku = `AUTO-${slugifyInventoryCatalogCode(name, `row-${rowNumber}`)}`;
+      warnings.push('auto:sku_code');
+    }
+
     let categoryId: string | null = null;
     let locationId: string | null = null;
+    let willCreateCategory = false;
+    let willCreateLocation = false;
 
-    if (categoryCode) {
-      categoryId = ctx.categoriesByCode.get(categoryCode) ?? null;
-      if (categoryId == null) errors.push('unknown:category_code');
+    if (categoryKey) {
+      categoryId = ctx.categoriesByCode.get(categoryKey) ?? null;
+      if (categoryId == null) {
+        if (allowCreate) {
+          willCreateCategory = true;
+          warnings.push('will_create:category');
+        } else {
+          errors.push('unknown:category_code');
+        }
+      }
     }
-    if (locationCode) {
-      locationId = ctx.locationsByCode.get(locationCode) ?? null;
-      if (locationId == null) errors.push('unknown:location_code');
+    if (locationKey) {
+      locationId = ctx.locationsByCode.get(locationKey) ?? null;
+      if (locationId == null) {
+        if (allowCreate) {
+          willCreateLocation = true;
+          warnings.push('will_create:location');
+        } else {
+          errors.push('unknown:location_code');
+        }
+      }
     }
 
     if (tracking === 'QUANTITY_STOCK' && unit) {
-      if (!ctx.units.has(unit)) errors.push('unknown:unit_code');
+      if (!ctx.units.has(unit) && !ctx.units.has(unit.toLowerCase())) {
+        errors.push('unknown:unit_code');
+      }
     }
 
     if (tracking === 'INDIVIDUAL_ASSET' && invNumber) {
-      const key = invNumber.toLowerCase();
+      const key = normalizeInventoryCatalogKey(invNumber);
       if (numbersInFile.has(key)) errors.push('duplicate_in_file:inventory_number');
       else numbersInFile.set(key, rowNumber);
     }
     if (tracking === 'QUANTITY_STOCK' && sku) {
-      const key = sku.toLowerCase();
+      const key = normalizeInventoryCatalogKey(sku);
       if (skusInFile.has(key)) errors.push('duplicate_in_file:sku_code');
       else skusInFile.set(key, rowNumber);
     }
     if (sourceRef) {
-      const key = sourceRef.toLowerCase();
+      const key = normalizeInventoryCatalogKey(sourceRef);
       if (sourcesInFile.has(key) || ctx.sourceRefsSeen.has(key)) {
         errors.push('duplicate:source_ref');
       } else sourcesInFile.set(key, rowNumber);
@@ -235,7 +432,7 @@ export function classifyInventoryOpeningRows(
 
     if (errors.length === 0) {
       if (tracking === 'INDIVIDUAL_ASSET') {
-        const existing = ctx.assetsByNumber.get(invNumber.toLowerCase());
+        const existing = ctx.assetsByNumber.get(normalizeInventoryCatalogKey(invNumber));
         if (!existing) {
           operation = 'create';
           previewClass = 'CREATE';
@@ -254,7 +451,7 @@ export function classifyInventoryOpeningRows(
           errors.push('conflict:inventory_number');
         }
       } else {
-        const existing = ctx.stockBySku.get(sku.toLowerCase());
+        const existing = ctx.stockBySku.get(normalizeInventoryCatalogKey(sku));
         if (!existing) {
           operation = 'create';
           previewClass = 'CREATE';
@@ -272,7 +469,6 @@ export function classifyInventoryOpeningRows(
           existing.ownershipKind === ownership &&
           !existing.hasOpeningMovement
         ) {
-          // SKU exists without opening — allow OPENING movement (CREATE path)
           operation = 'create';
           previewClass = 'CREATE';
         } else {
@@ -291,13 +487,22 @@ export function classifyInventoryOpeningRows(
     } else {
       bump(counters, operation);
     }
+    counters.warningCount += warnings.length;
+
+    const categoryLabel =
+      (categoryId && ctx.categoryLabelsById?.get(categoryId)) || categoryRaw || '';
+    const locationLabel =
+      (locationId && ctx.locationLabelsById?.get(locationId)) || locationRaw || '';
 
     previewRows.push({
       rowNumber,
       operation,
       matchKey:
-        tracking === 'INDIVIDUAL_ASSET' ? invNumber.toLowerCase() : sku.toLowerCase() || undefined,
+        tracking === 'INDIVIDUAL_ASSET'
+          ? normalizeInventoryCatalogKey(invNumber)
+          : normalizeInventoryCatalogKey(sku) || undefined,
       errors: previewClass === 'SKIP' ? [] : errors,
+      warnings: warnings.length ? warnings : undefined,
       data: {
         ...Object.fromEntries(
           INVENTORY_OPENING_HEADERS.map((h) => [h, sanitizeSpreadsheetCell(String(raw[h] ?? ''))]),
@@ -305,8 +510,21 @@ export function classifyInventoryOpeningRows(
         tracking_type: tracking,
         ownership_kind: ownership,
         condition,
+        sku_code: sku,
+        category_code: categoryRaw,
+        location_code: locationRaw,
+        category_label: categoryLabel,
+        location_label: locationLabel,
         category_id: categoryId ?? '',
         location_id: locationId ?? '',
+        will_create_category: willCreateCategory ? 'true' : '',
+        will_create_location: willCreateLocation ? 'true' : '',
+        catalog_code_category: willCreateCategory
+          ? slugifyInventoryCatalogCode(categoryRaw, `cat-${rowNumber}`)
+          : '',
+        catalog_code_location: willCreateLocation
+          ? slugifyInventoryCatalogCode(locationRaw, `loc-${rowNumber}`)
+          : '',
         opening_qty: openingQty != null ? String(openingQty) : '',
         estimated_value_eur: estimated != null ? String(estimated) : '',
         preview_class: previewClass,
@@ -322,182 +540,28 @@ export function classifyInventoryOpeningRows(
     updateCount: counters.updateCount,
     skipCount: counters.skipCount,
     errorCount: counters.errorCount,
+    warningCount: counters.warningCount,
     conflictCount: counters.conflictCount,
   };
 }
 
-const INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    `AMADEUS 11 · Inventory opening template · schema_version ${INVENTORY_SETUP_SCHEMA_VERSION}`,
-    `Sheet: ${INVENTORY_OPENING_SHEET}. Meta sheet lists schema_version.`,
-    'tracking_type: INDIVIDUAL_ASSET | QUANTITY_STOCK',
-    'Assets require inventory_number. Stock requires sku_code, unit_code, opening_qty.',
-    'ownership_kind: CONDOMINIUM | MANAGEMENT_COMPANY | THIRD_PARTY',
-    'category_code / location_code match catalog codes (not UUIDs).',
-    'estimated_value_eur is informational only — no finance postings.',
-    'Preview is read-only. Commit uses Inventory RPCs only.',
-    'Empty inventory is valid. Import is optional. Physical inventory is optional.',
-  ],
-  ru: [
-    `AMADEUS 11 · Шаблон начального инвентаря · schema_version ${INVENTORY_SETUP_SCHEMA_VERSION}`,
-    `Лист: ${INVENTORY_OPENING_SHEET}. Лист meta содержит schema_version.`,
-    'tracking_type: INDIVIDUAL_ASSET | QUANTITY_STOCK',
-    'Активы требуют inventory_number. Склад — sku_code, unit_code, opening_qty.',
-    'ownership_kind: CONDOMINIUM | MANAGEMENT_COMPANY | THIRD_PARTY',
-    'category_code / location_code — коды каталога (не UUID).',
-    'estimated_value_eur только информационно — без финансовых проводок.',
-    'Preview только для чтения. Commit через Inventory RPC.',
-    'Пустой инвентарь допустим. Импорт необязателен. Физ. инвентаризация необязательна.',
-  ],
-  en: [
-    `AMADEUS 11 · Inventory opening template · schema_version ${INVENTORY_SETUP_SCHEMA_VERSION}`,
-    `Sheet: ${INVENTORY_OPENING_SHEET}. Meta sheet lists schema_version.`,
-    'tracking_type: INDIVIDUAL_ASSET | QUANTITY_STOCK',
-    'Assets require inventory_number. Stock requires sku_code, unit_code, opening_qty.',
-    'ownership_kind: CONDOMINIUM | MANAGEMENT_COMPANY | THIRD_PARTY',
-    'category_code / location_code match catalog codes (not UUIDs).',
-    'estimated_value_eur is informational only — no finance postings.',
-    'Preview is read-only. Commit uses Inventory RPCs only.',
-    'Empty inventory is valid. Import is optional. Physical inventory is optional.',
-  ],
-};
 
-function appendInstructionSheets(wb: XLSX.WorkBook) {
-  for (const lang of ['bg', 'ru', 'en'] as const) {
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet(INSTRUCTIONS[lang].map((line) => [line])),
-      `instructions_${lang}`,
-    );
-  }
-}
-
-export function buildInventoryOpeningTemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.aoa_to_sheet([
-      ['schema_version', INVENTORY_SETUP_SCHEMA_VERSION],
-      ['module', INVENTORY_MODULE_KEY],
-      ['sheet', INVENTORY_OPENING_SHEET],
-    ]),
-    'meta',
-  );
-
-  const examples = [
-    {
-      tracking_type: 'INDIVIDUAL_ASSET',
-      category_code: 'tools',
-      item_name: 'Hammer drill',
-      inventory_number: 'INV-TOOL-001',
-      serial_number: 'SN-HD-7788',
-      sku_code: '',
-      ownership_kind: 'CONDOMINIUM',
-      location_code: 'warehouse',
-      condition: 'good',
-      quantity: '',
-      unit_code: '',
-      opening_qty: '',
-      estimated_value_eur: '120.00',
-      source_ref: 'OPEN-ASSET-001',
-      notes: 'equipment example',
-    },
-    {
-      tracking_type: 'INDIVIDUAL_ASSET',
-      category_code: 'cleaning',
-      item_name: 'Floor scrubber',
-      inventory_number: 'INV-CLN-010',
-      serial_number: '',
-      sku_code: '',
-      ownership_kind: 'MANAGEMENT_COMPANY',
-      location_code: 'basement',
-      condition: 'fair',
-      quantity: '',
-      unit_code: '',
-      opening_qty: '',
-      estimated_value_eur: '800',
-      source_ref: 'OPEN-ASSET-002',
-      notes: 'cleaning machine',
-    },
-    {
-      tracking_type: 'INDIVIDUAL_ASSET',
-      category_code: 'furniture',
-      item_name: 'Lobby sofa',
-      inventory_number: 'INV-FURN-003',
-      serial_number: '',
-      sku_code: '',
-      ownership_kind: 'CONDOMINIUM',
-      location_code: 'lobby',
-      condition: 'good',
-      quantity: '',
-      unit_code: '',
-      opening_qty: '',
-      estimated_value_eur: '',
-      source_ref: 'OPEN-ASSET-003',
-      notes: 'furniture',
-    },
-    {
-      tracking_type: 'QUANTITY_STOCK',
-      category_code: 'consumables',
-      item_name: 'Trash bags 120L',
-      inventory_number: '',
-      serial_number: '',
-      sku_code: 'SKU-BAG-120',
-      ownership_kind: 'MANAGEMENT_COMPANY',
-      location_code: 'warehouse',
-      condition: '',
-      quantity: '200',
-      unit_code: 'pcs',
-      opening_qty: '200',
-      estimated_value_eur: '',
-      source_ref: 'OPEN-STOCK-001',
-      notes: 'consumables',
-    },
-    {
-      tracking_type: 'QUANTITY_STOCK',
-      category_code: 'tools',
-      item_name: 'Cable ties',
-      inventory_number: '',
-      serial_number: '',
-      sku_code: 'SKU-TIE-100',
-      ownership_kind: 'CONDOMINIUM',
-      location_code: 'warehouse',
-      condition: '',
-      quantity: '50',
-      unit_code: 'pcs',
-      opening_qty: '50',
-      estimated_value_eur: '0.10',
-      source_ref: 'OPEN-STOCK-002',
-      notes: 'tools consumable',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(examples, { header: [...INVENTORY_OPENING_HEADERS] }),
-    INVENTORY_OPENING_SHEET,
-  );
-  appendInstructionSheets(wb);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function buildInventoryOpeningTemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(INVENTORY_IMPORT_SPEC, toImportTemplateLocale(locale));
 }
 
 export function downloadInventoryOpeningTemplate(
-  fileName = 'inventory_opening_template_v1.xlsx',
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
 ): void {
-  const buf = buildInventoryOpeningTemplateBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const isFileName = typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx');
+  const locale = toImportTemplateLocale(isFileName ? 'ru' : localeOrFileName);
+  const name =
+    fileName ??
+    (isFileName ? (localeOrFileName as string) : localizedTemplateFileName(INVENTORY_IMPORT_SPEC, locale));
+  downloadImportTemplateBuffer(buildInventoryOpeningTemplateBuffer(locale), name);
 }
 
 export function readInventoryOpeningSchemaVersion(buffer: ArrayBuffer): string | null {
@@ -531,8 +595,9 @@ export function parseInventoryOpeningXlsxBuffer(
 ):
   | { ok: true; rows: Record<string, string>[]; schemaVersion: string }
   | { ok: false; error: string } {
-  const version = readInventoryOpeningSchemaVersion(buffer);
-  if (version == null) return { ok: false, error: 'missing_schema_version' };
+  // Localized templates have no meta sheet → treated as the current schema version.
+  const metaVersion = readInventoryOpeningSchemaVersion(buffer);
+  const version = metaVersion ?? INVENTORY_SETUP_SCHEMA_VERSION;
   if (version !== INVENTORY_SETUP_SCHEMA_VERSION) {
     return { ok: false, error: `unsupported_schema_version:${version}` };
   }
@@ -547,8 +612,7 @@ export function parseInventoryOpeningXlsxBuffer(
   } catch {
     return { ok: false, error: 'parse_failed' };
   }
-  const sheet =
-    book.Sheets[INVENTORY_OPENING_SHEET] ?? book.Sheets[book.SheetNames.find((n) => n !== 'meta' && !n.startsWith('instructions_')) ?? ''] ;
+  const sheet = findImportDataSheet(book, INVENTORY_IMPORT_SPEC);
   if (!sheet) return { ok: false, error: 'sheet_missing' };
   const rowsRaw = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(sheet, {
     header: 1,
@@ -556,21 +620,31 @@ export function parseInventoryOpeningXlsxBuffer(
     raw: false,
   });
   if (!rowsRaw.length) return { ok: false, error: 'empty_sheet' };
-  const headerRow = (rowsRaw[0] ?? []).map((h) => String(h ?? '').trim().toLowerCase());
-  const missing = INVENTORY_OPENING_HEADERS.filter((h) => !headerRow.includes(h));
-  // Allow subset: require tracking_type, item_name, ownership_kind at minimum
-  for (const req of ['tracking_type', 'item_name', 'ownership_kind'] as const) {
-    if (!headerRow.includes(req)) return { ok: false, error: `missing_headers:${req}` };
-  }
-  void missing;
+  const headerCells = (rowsRaw[0] ?? []).map((h) => String(h ?? '').trim());
+  const resolved = headerCells.map((h) => resolveInventoryOpeningHeader(h));
+  const colIndex = new Map<InventoryOpeningHeader, number>();
+  resolved.forEach((key, idx) => {
+    if (key && !colIndex.has(key)) colIndex.set(key, idx);
+  });
+  const missingReq = (['tracking_type', 'item_name', 'ownership_kind'] as const).filter(
+    (req) => !colIndex.has(req),
+  );
+  if (missingReq.length) return { ok: false, error: `missing_headers:${missingReq.join(',')}` };
   const out: Record<string, string>[] = [];
   for (let i = 1; i < rowsRaw.length; i += 1) {
     const line = rowsRaw[i] ?? [];
     const rec: Record<string, string> = {};
     let any = false;
     for (const col of INVENTORY_OPENING_HEADERS) {
-      const idx = headerRow.indexOf(col);
-      const raw = idx >= 0 ? String(line[idx] ?? '').trim() : '';
+      const idx = colIndex.get(col);
+      let raw = idx != null ? String(line[idx] ?? '').trim() : '';
+      if (col === 'tracking_type' && raw) {
+        raw = normalizeTrackingType(raw) ?? raw;
+      } else if (col === 'ownership_kind' && raw) {
+        raw = normalizeOwnershipKind(raw) ?? raw;
+      } else if (col === 'condition' && raw) {
+        raw = normalizeCondition(raw) ?? raw;
+      }
       rec[col] = raw;
       if (raw) any = true;
     }
@@ -613,12 +687,10 @@ export function downloadInventoryOpeningErrorReport(preview: ImportPreviewResult
   URL.revokeObjectURL(url);
 }
 
-/** Empty / manual setup completion flags (no import required). */
+/**
+ * Opening setup is complete when the admin either confirmed an empty registry
+ * or finished a successful import. Physical stocktake is not part of setup.
+ */
 export function inventorySetupManualComplete(draft: Record<string, unknown>): boolean {
-  return (
-    draft.confirmed === true ||
-    draft.skip_import === true ||
-    draft.empty_inventory_ok === true ||
-    draft.start_physical_inventory === true
-  );
+  return draft.empty_inventory_ok === true || draft.import_committed === true;
 }

@@ -95,6 +95,11 @@ function fieldLabel(key: string, t: PropertyBookHistoryTranslate): string {
   return i18nKey ? t(i18nKey) : key.replace(/_/g, ' ');
 }
 
+/** User-facing Property Book / import field label (never returns raw enum/SQL keys when mapped). */
+export function propertyBookFieldLabel(key: string, t: PropertyBookHistoryTranslate): string {
+  return fieldLabel(key, t);
+}
+
 function ownerDisplayName(snapshot: Record<string, unknown>, t: PropertyBookHistoryTranslate): string {
   const entity = displayScalar(snapshot.entity_name, t);
   if (entity !== t('admin.bookHistEmptyValue')) return entity;

@@ -136,18 +136,10 @@ describe('R1 module catalog implemented parity', () => {
   });
 
   it('Settings cleaning deep-link uses уборка not клиник', () => {
-    const panel = readFileSync(
-      path.join(process.cwd(), 'src/components/admin/AdminModuleCatalogPanel.tsx'),
-      'utf8',
-    );
-    const hub = readFileSync(
-      path.join(process.cwd(), 'src/components/admin/AdminSettingsHub.tsx'),
-      'utf8',
-    );
-    expect(panel).toMatch(/cleaning:\s*'уборка'/);
-    expect(hub).toMatch(/cleaning:\s*'уборка'/);
-    expect(panel).not.toMatch(/cleaning:\s*'клининг'/);
-    expect(hub).not.toMatch(/cleaning:\s*'клининг'/);
+    // Deep-links moved into the shared module workspace; keep the canonical section key.
+    const adminPage = readFileSync(path.join(process.cwd(), 'src/app/admin/page.tsx'), 'utf8');
+    expect(adminPage).toMatch(/['"]уборка['"]/);
+    expect(adminPage).not.toMatch(/['"]клининг['"]/);
   });
 
   it('MANIFEST includes parity package file and migration', () => {

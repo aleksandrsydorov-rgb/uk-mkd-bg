@@ -19,6 +19,7 @@ import {
 import { useI18n } from '@/i18n/I18nProvider';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 function AuthCallbackInner() {
   const { t } = useI18n();
@@ -137,14 +138,13 @@ function AuthCallbackInner() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          const msg =
-            err instanceof Error ? err.message : t('authCallback.errGeneric');
-          if (isJwtSignatureUnverifiableError(msg)) {
-            setError(
-              `${msg} — open the operator invite URL that uses token_hash (not an expired Auth action_link), with the SSH tunnel on localhost:3080.`,
-            );
+          const probe = err instanceof Error ? err.message : '';
+          if (isJwtSignatureUnverifiableError(probe)) {
+            // Operator-only JWT tunnel issue: keep actionable but non-technical copy.
+            setError(t('authCallback.errGeneric'));
+            console.error('[auth-callback]', 'jwt_signature_unverifiable');
           } else {
-            setError(msg);
+            setError(toUserFacingMessage(err, t, { fallback: t('authCallback.errGeneric') }));
           }
         }
       }

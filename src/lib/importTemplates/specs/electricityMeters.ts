@@ -1,0 +1,162 @@
+import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+
+export const ELECTRICITY_METERS_IMPORT_SPEC: ImportTemplateSpec = {
+  id: 'electricity_meters_opening',
+  fileBaseName: {
+    ru: 'шаблон-электросчётчики-начальные',
+    bg: 'shablon-elektromeri-nachalni',
+    en: 'electricity-meters-opening-template',
+  },
+  dataSheetName: {
+    ru: 'Счётчики',
+    bg: 'Електромери',
+    en: 'Meters',
+  },
+  legacySheetNames: ['meters'],
+  title: {
+    ru: 'Электросчётчики — начальный импорт',
+    bg: 'Електромери — начален импорт',
+    en: 'Electricity meters — opening import',
+  },
+  notes: {
+    ru: [
+      'Заполняйте только лист «Счётчики». Примеры в инструкции не импортируются.',
+      'Нужны показания день и ночь. Начальный остаток — один раз на апартамент.',
+      'Дата установки: ГГГГ-ММ-ДД.',
+    ],
+    bg: [
+      'Попълвайте само листа «Електромери». Примерите в инструкцията не се импортират.',
+      'Нужни са показания ден и нощ. Началното салдо е веднъж на апартамент.',
+      'Дата на монтаж: ГГГГ-ММ-ДД.',
+    ],
+    en: [
+      'Fill only the Meters sheet. Examples on Instructions are not imported.',
+      'Day and night readings are required. Opening balance once per apartment.',
+      'Install date: YYYY-MM-DD.',
+    ],
+  },
+  columns: [
+    {
+      key: 'apartment_number',
+      required: true,
+      format: 'text',
+      width: 16,
+      label: { ru: 'Апартамент', bg: 'Апартамент', en: 'Apartment' },
+      aliases: ['apartment', 'apt'],
+      instruction: {
+        ru: 'Номер апартамента из Книги. Обязательно.',
+        bg: 'Номер на апартамента от Книгата. Задължително.',
+        en: 'Apartment number from the Property Book. Required.',
+      },
+      example: '12',
+    },
+    {
+      key: 'meter_number',
+      required: true,
+      format: 'text',
+      width: 20,
+      label: {
+        ru: 'Номер счётчика',
+        bg: 'Номер на електромер',
+        en: 'Meter number',
+      },
+      aliases: ['meter', 'номер электромера', 'номер на електромер', 'номер прибора'],
+      instruction: {
+        ru: 'Номер счётчика (текст). Обязательно.',
+        bg: 'Номер на електромера (текст). Задължително.',
+        en: 'Meter number as text. Required.',
+      },
+      example: 'E-12-001',
+    },
+    {
+      key: 'initial_day_reading',
+      required: true,
+      format: 'number',
+      width: 16,
+      label: {
+        ru: 'Начальное показание (день)',
+        bg: 'Начално (ден)',
+        en: 'Opening reading (day)',
+      },
+      aliases: ['initial_day', 'day', 'день'],
+      instruction: {
+        ru: 'Дневное показание ≥ 0. Обязательно.',
+        bg: 'Дневно показание ≥ 0. Задължително.',
+        en: 'Day reading ≥ 0. Required.',
+      },
+      example: '100.5',
+    },
+    {
+      key: 'initial_night_reading',
+      required: true,
+      format: 'number',
+      width: 16,
+      label: {
+        ru: 'Начальное показание (ночь)',
+        bg: 'Начално (нощ)',
+        en: 'Opening reading (night)',
+      },
+      aliases: ['initial_night', 'night', 'ночь', 'нощ'],
+      instruction: {
+        ru: 'Ночное показание ≥ 0. Обязательно.',
+        bg: 'Нощно показание ≥ 0. Задължително.',
+        en: 'Night reading ≥ 0. Required.',
+      },
+      example: '40.2',
+    },
+    {
+      key: 'installed_at',
+      required: true,
+      format: 'date',
+      width: 16,
+      label: {
+        ru: 'Дата установки',
+        bg: 'Дата на монтаж',
+        en: 'Install date',
+      },
+      aliases: ['installed', 'install_date', 'дата монтажа'],
+      instruction: {
+        ru: 'Дата ГГГГ-ММ-ДД. Обязательно.',
+        bg: 'Дата ГГГГ-ММ-ДД. Задължително.',
+        en: 'Date YYYY-MM-DD. Required.',
+      },
+      example: '2026-01-15',
+    },
+    {
+      key: 'opening_balance_kind',
+      required: false,
+      format: 'text',
+      width: 22,
+      label: {
+        ru: 'Тип начального остатка',
+        bg: 'Тип начален остатък',
+        en: 'Opening balance type',
+      },
+      aliases: ['balance_kind', 'kind'],
+      instruction: {
+        ru: 'Пусто / ноль / долг / переплата.',
+        bg: 'Празно / нула / дълг / преплата.',
+        en: 'Empty / zero / debt / overpayment.',
+      },
+      example: 'overpayment',
+    },
+    {
+      key: 'opening_balance_eur',
+      required: false,
+      format: 'money',
+      width: 22,
+      label: {
+        ru: 'Сумма начального остатка, EUR',
+        bg: 'Сума начален остатък, EUR',
+        en: 'Opening balance amount, EUR',
+      },
+      aliases: ['opening_balance', 'amount', 'сумма начального остатка (eur)'],
+      instruction: {
+        ru: 'Сумма EUR при долге/переплате.',
+        bg: 'Сума EUR при дълг/преплата.',
+        en: 'EUR amount for debt/overpayment.',
+      },
+      example: '10.00',
+    },
+  ],
+};

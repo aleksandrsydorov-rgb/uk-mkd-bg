@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Keep Turbopack/PostCSS away from local dumps and agent artifacts under /tmp. */
+@source not "../../tmp";
 
 :root {
   --background: #f4f5f7;
@@ -107,6 +109,20 @@ select:focus {
   textarea,
   select {
     font-size: inherit;
+  }
+}
+
+/** Property Book / Apartments info fields: equal columns, 40px gutter. */
+.admin-info-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 40px;
+}
+
+@media (min-width: 768px) {
+  .admin-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

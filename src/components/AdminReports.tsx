@@ -53,6 +53,7 @@ import type { Translate } from '@/i18n/translate';
 import { AdminPageHeader, AdminCard, AdminFilterBar, AdminInlineAlert, AdminPrimaryButton, adminFieldClass } from '@/components/admin/AdminUi';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { emptyBalance, formatEur, type UtilityBalance } from '@/lib/utilities';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 type Request = Database['public']['Tables']['requests']['Row'];
@@ -447,7 +448,7 @@ export function AdminReports({
     try {
       await downloadHtmlAsPdf(filename, html);
     } catch (e: unknown) {
-      setPdfError(e instanceof Error ? e.message : t('err.sendShort'));
+      setPdfError(toUserFacingMessage(e, t, { fallback: t('err.sendShort') }));
     } finally {
       setBusy(null);
     }

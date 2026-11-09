@@ -135,6 +135,10 @@ export function classifySupportFeeHistoryKind(kind: string | null | undefined): 
       return 'reversal';
     case 'late_increase_waive':
       return 'penalty_waive';
+    case 'early_discount':
+      return 'discount_context';
+    case 'late_penalty':
+      return 'penalty_context';
     case 'adjustment_debit':
     case 'adjustment_credit':
       return 'correction';
@@ -194,9 +198,9 @@ export function supportFeeHistoryKindLabelKey(kind: SupportFeeHistoryKind): stri
     case 'opening_obligation':
       return 'admin.sfHistOpeningObligation';
     case 'opening_settlement':
-      return 'admin.sfHistOpeningSettlement';
+      return 'admin.kindCreditOffset';
     case 'opening_credit':
-      return 'admin.sfHistOpeningCredit';
+      return 'admin.kindCreditOffset';
     default:
       return 'admin.kind';
   }

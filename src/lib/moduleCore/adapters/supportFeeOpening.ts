@@ -6,6 +6,14 @@
 import * as XLSX from 'xlsx';
 import type { ImportPreviewResult, ImportPreviewRow, ImportRowOperation } from '@/lib/moduleCore/types';
 import { sanitizeSpreadsheetCell } from '@/lib/moduleCore/xlsxEngine';
+import {
+  SUPPORT_FEE_IMPORT_SPEC,
+  buildLocalizedImportWorkbook,
+  downloadImportTemplateBuffer,
+  localizedTemplateFileName,
+  toImportTemplateLocale,
+  type ImportTemplateLocale,
+} from '@/lib/importTemplates';
 
 export const SUPPORT_FEE_MODULE_KEY = 'support_fee';
 export const SUPPORT_FEE_SETUP_SCHEMA_VERSION = '1.0';
@@ -363,140 +371,22 @@ export function supportFeeOpeningPayloadsFromPreview(
   return out;
 }
 
-function appendInstructionSheets(
-  wb: XLSX.WorkBook,
-  instructions: Record<'bg' | 'ru' | 'en', string[]>,
-) {
-  for (const lang of ['bg', 'ru', 'en'] as const) {
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet(instructions[lang].map((line) => [line])),
-      `instructions_${lang}`,
-    );
-  }
-}
-
-const SF_INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    'Такса поддръжка — начален импорт (IS-4)',
-    `schema_version: ${SUPPORT_FEE_SETUP_SCHEMA_VERSION}. Лист: opening_balances.`,
-    'Ключ апартамент: apartment_number (от Книгата). property_id е забранен.',
-    'Полета: apartment_number, billing_year, obligation_type=support_fee,',
-    'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference, notes.',
-    'Правило: assessed = historically_paid + remaining_debt.',
-    'historically_paid НЕ създава payment / allocation.',
-    'Без early/late преизчисление. Без фиктивни плащания и без бъдещ тариф.',
-    'Дълг XOR преплата; двете 0 = потвърден нулев остатък. source_reference е задължителен.',
-    'Съществуващо задължение → CONFLICT (без overwrite). Повторен идентичен импорт → SKIP.',
-    'Всяка квартира от Книгата трябва да има ред за периода. opening_overpayment: ≤1 ненулев ред/ап.',
-  ],
-  ru: [
-    'Такса поддержки — начальный импорт (IS-4 / first-run)',
-    `schema_version: ${SUPPORT_FEE_SETUP_SCHEMA_VERSION}. Лист: opening_balances.`,
-    'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
-    'Поля: apartment_number, billing_year, obligation_type=support_fee,',
-    'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference (основание), notes.',
-    'Правило: assessed = historically_paid + remaining_debt.',
-    'historically_paid НЕ создаёт payment / allocation. Тариф не требуется.',
-    'Долг XOR переплата; оба 0 = подтверждённый ноль. source_reference обязателен.',
-    'Существующее обязательство → CONFLICT. Повтор идентичного → SKIP.',
-    'Каждая квартира Книги должна иметь строку за период. opening_overpayment: ≤1 ненулевая/кв.',
-  ],
-  en: [
-    'Support Fee — opening import (IS-4 / first-run)',
-    `schema_version: ${SUPPORT_FEE_SETUP_SCHEMA_VERSION}. Sheet: opening_balances.`,
-    'Apartment key: apartment_number (from Property Book). property_id forbidden.',
-    'Columns: apartment_number, billing_year, obligation_type=support_fee,',
-    'assessed_amount, historically_paid_amount, remaining_debt, opening_overpayment,',
-    'transition_date, source_reference (basis), notes.',
-    'Rule: assessed = historically_paid + remaining_debt.',
-    'historically_paid does NOT create payment / allocation. No future tariff required.',
-    'Debt XOR overpayment; both 0 = confirmed zero. source_reference required.',
-    'Existing obligation → CONFLICT. Identical re-import → SKIP.',
-    'Every Book apartment must have a row for the period. opening_overpayment: ≤1 non-zero/apt.',
-  ],
-};
-
-export function buildSupportFeeIs4TemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  const example = [
-    {
-      apartment_number: '101',
-      billing_year: '2025',
-      obligation_type: 'support_fee',
-      assessed_amount: '400',
-      historically_paid_amount: '400',
-      remaining_debt: '0',
-      opening_overpayment: '0',
-      transition_date: '2026-01-01',
-      source_reference: 'OPENING-LEDGER-2026',
-      notes: 'fully paid / confirmed basis required',
-    },
-    {
-      apartment_number: '101',
-      billing_year: '2025',
-      obligation_type: 'support_fee',
-      assessed_amount: '400',
-      historically_paid_amount: '250',
-      remaining_debt: '150',
-      opening_overpayment: '0',
-      transition_date: '2026-01-01',
-      source_reference: 'OPENING-LEDGER-2026',
-      notes: 'partially paid',
-    },
-    {
-      apartment_number: '102',
-      billing_year: '2025',
-      obligation_type: 'support_fee',
-      assessed_amount: '0',
-      historically_paid_amount: '0',
-      remaining_debt: '0',
-      opening_overpayment: '0',
-      transition_date: '2026-01-01',
-      source_reference: 'OPENING-LEDGER-2026',
-      notes: 'confirmed zero',
-    },
-    {
-      apartment_number: '103',
-      billing_year: '2025',
-      obligation_type: 'support_fee',
-      assessed_amount: '0',
-      historically_paid_amount: '0',
-      remaining_debt: '0',
-      opening_overpayment: '25',
-      transition_date: '2026-01-01',
-      source_reference: 'OPENING-LEDGER-2026',
-      notes: 'opening overpayment only (no debt)',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(example, { header: [...SUPPORT_FEE_OPENING_HEADERS] }),
-    'opening_balances',
-  );
-  appendInstructionSheets(wb, SF_INSTRUCTIONS);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function buildSupportFeeIs4TemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(SUPPORT_FEE_IMPORT_SPEC, toImportTemplateLocale(locale));
 }
 
 export function downloadSupportFeeIs4Template(
-  fileName = 'support_fee_opening_template.xlsx',
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
 ): void {
-  const buf = buildSupportFeeIs4TemplateBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const isFileName = typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx');
+  const locale = toImportTemplateLocale(isFileName ? 'ru' : localeOrFileName);
+  const name =
+    fileName ??
+    (isFileName ? (localeOrFileName as string) : localizedTemplateFileName(SUPPORT_FEE_IMPORT_SPEC, locale));
+  downloadImportTemplateBuffer(buildSupportFeeIs4TemplateBuffer(locale), name);
 }
 
 export function buildSupportFeeErrorReportXlsx(preview: ImportPreviewResult): ArrayBuffer {

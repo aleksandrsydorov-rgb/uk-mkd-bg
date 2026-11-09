@@ -4,13 +4,89 @@ import type { ModuleRegistration, ModuleSetupAdapter } from '@/lib/moduleCore/ty
  * In-process adapter registry. Lifecycle engine discovers modules via this
  * contract — never a hardcoded fixed list of 12/35 keys inside transitions.
  * Catalog UX keys remain in src/lib/modules.ts (building_modules source of truth).
+ *
+ * Survives Turbopack/Next HMR of sibling modules via globalThis so re-bootstrap
+ * does not see an empty Map while callers still hold old registrations (or the
+ * inverse). Re-registering the same logical adapter is idempotent; a different
+ * adapter under the same key still throws.
  */
-const adapters = new Map<string, ModuleSetupAdapter>();
+const REGISTRY_GLOBAL_KEY = '__amadeus11_module_setup_adapters__';
+
+type RegistryGlobal = typeof globalThis & {
+  [REGISTRY_GLOBAL_KEY]?: Map<string, ModuleSetupAdapter>;
+};
+
+function adaptersMap(): Map<string, ModuleSetupAdapter> {
+  const g = globalThis as RegistryGlobal;
+  if (!g[REGISTRY_GLOBAL_KEY]) {
+    g[REGISTRY_GLOBAL_KEY] = new Map();
+  }
+  return g[REGISTRY_GLOBAL_KEY]!;
+}
+
+/** Stable identity of a registration for idempotent re-bootstrap / HMR. */
+export function moduleRegistrationFingerprint(reg: ModuleRegistration): string {
+  return JSON.stringify({
+    moduleKey: reg.moduleKey,
+    version: reg.version,
+    nameKey: reg.nameKey,
+    descriptionKey: reg.descriptionKey,
+    dependencies: reg.dependencies ?? [],
+    requiredRoles: reg.requiredRoles ?? [],
+    requiresInitialSetup: reg.requiresInitialSetup === true,
+    activationPrerequisites: reg.activationPrerequisites ?? [],
+    setup: reg.setup
+      ? {
+          schemaVersion: reg.setup.schemaVersion,
+          importMethods: reg.setup.importMethods ?? [],
+          idempotent: reg.setup.idempotent === true,
+          completionCriteria: reg.setup.completionCriteria ?? [],
+          steps: (reg.setup.steps ?? []).map((s) => ({
+            id: s.id,
+            titleKey: s.titleKey,
+            fields: (s.fields ?? []).map((f) => ({
+              key: f.key,
+              required: f.required === true,
+              valueType: f.valueType,
+            })),
+          })),
+          xlsx: reg.setup.xlsx
+            ? {
+                schemaVersion: reg.setup.xlsx.schemaVersion,
+                sheetName: reg.setup.xlsx.sheetName,
+                maxRows: reg.setup.xlsx.maxRows,
+                maxBytes: reg.setup.xlsx.maxBytes,
+                columns: (reg.setup.xlsx.columns ?? []).map((c) => ({
+                  key: c.key,
+                  required: c.required === true,
+                  labelKey: c.labelKey,
+                })),
+              }
+            : null,
+        }
+      : null,
+  });
+}
+
+function sameAdapter(existing: ModuleSetupAdapter, next: ModuleSetupAdapter): boolean {
+  if (existing === next) return true;
+  return (
+    moduleRegistrationFingerprint(existing.registration) ===
+    moduleRegistrationFingerprint(next.registration)
+  );
+}
 
 export function registerModuleAdapter(adapter: ModuleSetupAdapter): void {
   const key = adapter.registration.moduleKey.trim();
   if (!key) throw new Error('moduleCore: moduleKey required');
-  if (adapters.has(key)) {
+  const adapters = adaptersMap();
+  const prior = adapters.get(key);
+  if (prior) {
+    if (sameAdapter(prior, adapter)) {
+      // Idempotent: repeated bootstrap / HMR / Strict Mode remount.
+      adapters.set(key, adapter);
+      return;
+    }
     throw new Error(`moduleCore: duplicate registration for ${key}`);
   }
   adapters.set(key, adapter);
@@ -18,15 +94,15 @@ export function registerModuleAdapter(adapter: ModuleSetupAdapter): void {
 
 /** Test/dev helper — not used in production paths. */
 export function clearModuleAdapterRegistry(): void {
-  adapters.clear();
+  adaptersMap().clear();
 }
 
 export function getModuleAdapter(moduleKey: string): ModuleSetupAdapter | null {
-  return adapters.get(moduleKey) ?? null;
+  return adaptersMap().get(moduleKey) ?? null;
 }
 
 export function listRegisteredModuleAdapters(): ModuleSetupAdapter[] {
-  return [...adapters.values()].sort((a, b) =>
+  return [...adaptersMap().values()].sort((a, b) =>
     a.registration.moduleKey.localeCompare(b.registration.moduleKey),
   );
 }

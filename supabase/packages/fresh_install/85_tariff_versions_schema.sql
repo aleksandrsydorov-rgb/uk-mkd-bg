@@ -393,6 +393,18 @@ begin
     raise exception 'Assessment not found.';
   end if;
 
+  -- Launch-year guard (20261130335000): no NEW charges for year <= complex_launch_year.
+  -- Helper may be absent on very early slices; soft-fail to allow if undefined.
+  begin
+    if public.capital_repair_launch_year_blocks(p_billing_year) then
+      raise exception 'charge_capital_repair: launch_year_blocks_charge'
+        using errcode = 'P0001';
+    end if;
+  exception
+    when undefined_function then
+      null;
+  end;
+
   select r.amount_eur into v_amount
   from public.resolve_capital_tariff_for_year(p_billing_year) as r;
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   FirstRunCapitalRepair,
@@ -8,13 +8,14 @@ import {
   FirstRunFinish,
   FirstRunSupportFee,
 } from '@/components/admin/FirstRunFinance';
-import styles from '@/components/admin/FirstRunFrame.module.css';
 import {
   apartmentCountMismatchInfo,
   complexFormToPayload,
   complexToForm,
+  validateComplexFormWithIban,
   completeFirstRunStage,
   fetchFirstRunState,
+  emptyModuleChoice,
   firstMetersStage,
   hasApartmentCountMismatch,
   importCapitalRepairOpening,
@@ -25,20 +26,29 @@ import {
   metersSelectedToDraft,
   nextAfterMetersStage,
   normalizeFirstRunErrors,
+  moduleChoiceToDraft,
   parseMetersSelected,
+  parseModuleChoice,
+  previousVisibleStage,
   resolveFirstRunResumeStage,
+  stageAfterCapitalRepairOpening,
+  stageAfterModuleSave,
+  readTariffPrep,
+  isFirstRunTariffPrepared,
   saveFirstRunProgress,
-  validateComplexForm,
   validateMetersSelection,
   visibleFirstRunStages,
   BUDGET_MODULE_KEY,
   firstRunBudgetDraftPayload,
   type FirstRunBudgetDraft,
   type FirstRunComplexForm,
+  type FirstRunModuleChoice,
   type FirstRunErrorRow,
   type FirstRunMeterUtility,
   type FirstRunStageKey,
+  type FirstRunStageRow,
   type FirstRunState,
+  type FirstRunTariffPrepMap,
   type MetersSelection,
 } from '@/lib/firstRun';
 import { buildPropertyBookIs2TemplateBuffer } from '@/lib/moduleCore/adapters/propertyBookOpening';
@@ -61,17 +71,51 @@ import { capitalRepairOpeningAdapter } from '@/lib/moduleCore/adapters/capitalRe
 import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
-import { parsePropertyBookWorkbook, type PropertyBookWorkbookPayload } from '@/lib/propertyBookAdmin';
+import {
+  parsePropertyBookWorkbook,
+  propertyBookTemplateFileName,
+  type PropertyBookWorkbookPayload,
+} from '@/lib/propertyBookAdmin';
+import {
+  CAPITAL_REPAIR_IMPORT_SPEC,
+  ELECTRICITY_METERS_IMPORT_SPEC,
+  SUPPORT_FEE_IMPORT_SPEC,
+  WATER_METERS_IMPORT_SPEC,
+  aliasesFromSpec,
+  localizedTemplateFileName,
+} from '@/lib/importTemplates';
+import { useI18n } from '@/i18n/I18nProvider';
 import type { Database } from '@/lib/database.types';
-import { AdminFirstRunTariffs } from '@/components/admin/AdminFirstRunTariffs';
-import { AdminFirstRunBudget } from '@/components/admin/AdminFirstRunBudget';
+import {
+  AdminFirstRunTariffs,
+  type FirstRunTariffsNavHandle,
+} from '@/components/admin/AdminFirstRunTariffs';
+import {
+  AdminFirstRunInternetOpening,
+  type FirstRunInternetNavHandle,
+} from '@/components/admin/AdminFirstRunInternetOpening';
+import {
+  AdminFirstRunBudget,
+  type FirstRunBudgetNavHandle,
+} from '@/components/admin/AdminFirstRunBudget';
+import {
+  AdminFirstRunOpeningExpenses,
+  type FirstRunOpeningNavHandle,
+} from '@/components/admin/AdminFirstRunOpeningExpenses';
 import { FirstRunFrame, FirstRunWelcome } from '@/components/admin/FirstRunFrame';
 import {
   FirstRunBookImport,
-  FirstRunComplexCard,
   FirstRunMetersImport,
   FirstRunMetersSelectForm,
+  FirstRunModulesSelect,
 } from '@/components/admin/FirstRunSteps';
+import type { FirstRunTariffPrepHandle } from '@/components/admin/FirstRunTariffPrepBlock';
+import { FirstRunComplexProfile } from '@/components/admin/FirstRunComplexProfile';
+import { FirstRunStatusBanner } from '@/components/admin/FirstRunStatusBanner';
+import { isValidIban } from '@/lib/iban';
+import { buildingModulesFromV2Rows, type BuildingModuleV2Row } from '@/lib/modules';
+import { toUserFacingMessage } from '@/lib/userFacingError';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -85,12 +129,16 @@ const PROPERTY_BOOK_MODULE = 'property_book';
 type BookDryRun = {
   ok: boolean;
   errors: unknown[];
+  warnings: unknown[];
   newCount: number;
   existingCount: number;
   changesCount: number;
   skippedIdenticalCount: number;
   requiresOverwriteConfirmation: boolean;
   bookEmptyAutoCreate: boolean;
+  importableCount: number;
+  clarificationCount: number;
+  blockingErrorCount: number;
 };
 
 type MetersDryRun = {
@@ -152,25 +200,84 @@ function errorsFromRpcDetails(err: { details?: string | null } | null | undefine
   }
 }
 
+
+function moduleXlsxLabels(
+  schema: { columns: { labelKey: string }[] },
+  t: (k: string) => string,
+): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const col of schema.columns) {
+    labels[col.labelKey] = t(`admin.${col.labelKey}`);
+  }
+  return labels;
+}
+
+const MODULE_XLSX_IMPORT_SPECS = [
+  WATER_METERS_IMPORT_SPEC,
+  ELECTRICITY_METERS_IMPORT_SPEC,
+  SUPPORT_FEE_IMPORT_SPEC,
+  CAPITAL_REPAIR_IMPORT_SPEC,
+];
+
+/** Localized (ru/bg/en) + legacy BG meter headers + snake_case keys so any UI locale parses exported files. */
+function moduleXlsxHeaderAliases(schema: { columns: { key: string }[] }): Record<string, string[]> {
+  const aliases: Record<string, string[]> = {};
+  for (const col of schema.columns) aliases[col.key] = [col.key];
+  const bg: Record<string, string> = {
+    apartment_number: 'Апартамент',
+    meter_number: 'Номер на водомер',
+    initial_reading: 'Начално показание',
+    initial_day_reading: 'Начално (ден)',
+    initial_night_reading: 'Начално (нощ)',
+    installed_at: 'Дата на монтаж',
+    opening_balance_kind: 'Тип начален остатък',
+    opening_balance_eur: 'Сума начален остатък (EUR)',
+  };
+  for (const [key, label] of Object.entries(bg)) {
+    if (aliases[key]) aliases[key] = [...aliases[key], label];
+  }
+  if (aliases.meter_number) aliases.meter_number = [...aliases.meter_number, 'Номер на електромер'];
+  for (const spec of MODULE_XLSX_IMPORT_SPECS) {
+    for (const [key, list] of Object.entries(aliasesFromSpec(spec))) {
+      if (!aliases[key]) continue;
+      aliases[key] = [...new Set([...aliases[key], ...list])];
+    }
+  }
+  return aliases;
+}
+
 export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
+  const { locale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [state, setState] = useState<FirstRunState | null>(null);
   const [stage, setStage] = useState<FirstRunStageKey>('welcome');
+  /** Welcome was completed. Revisiting it only switches the screen. */
+  const [welcomePassed, setWelcomePassed] = useState(false);
   /** When editing the complex card from a later step, return there after save. */
-  const [returnStage, setReturnStage] = useState<FirstRunStageKey | null>(null);
+  const budgetNavRef = useRef<FirstRunBudgetNavHandle | null>(null);
+  const openingNavRef = useRef<FirstRunOpeningNavHandle | null>(null);
+  const tariffNavRef = useRef<FirstRunTariffPrepHandle | null>(null);
+  const tariffsStepNavRef = useRef<FirstRunTariffsNavHandle | null>(null);
+  const internetNavRef = useRef<FirstRunInternetNavHandle | null>(null);
 
   const [form, setForm] = useState<FirstRunComplexForm>(() => complexToForm(null));
   const [formErrors, setFormErrors] = useState<string[]>([]);
 
   const [selection, setSelection] = useState<MetersSelection>({ water: false, electricity: false });
-  const [selectionChosen, setSelectionChosen] = useState(false);
+  const [moduleChoice, setModuleChoice] = useState<FirstRunModuleChoice>(() => emptyModuleChoice());
+  const [moduleCatalog, setModuleCatalog] = useState<BuildingModuleV2Row[]>([]);
 
   const [bookPayload, setBookPayload] = useState<PropertyBookWorkbookPayload | null>(null);
   const [bookDry, setBookDry] = useState<BookDryRun | null>(null);
   const [bookCommitted, setBookCommitted] = useState(false);
+  const [bookCommitSummary, setBookCommitSummary] = useState<{
+    clarificationCount: number;
+    importableCount: number | null;
+  } | null>(null);
 
   const [meterRows, setMeterRows] = useState<Record<string, string>[] | null>(null);
   const [meterDry, setMeterDry] = useState<MetersDryRun | null>(null);
@@ -199,9 +306,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     if (!next) return;
     setState(next);
     setForm(complexToForm(next.complex));
-    const sel = parseMetersSelected(next.draft);
+    const choice = parseModuleChoice(next.draft);
+    const sel = { water: choice.water, electricity: choice.electricity };
+    setModuleChoice(choice);
     setSelection(sel);
-    setSelectionChosen(sel.water || sel.electricity);
   }, []);
 
   // Resume: load server state and jump to first_run_stage.
@@ -215,7 +323,12 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setError(t('admin.firstRunErrLoad'));
       } else {
         applyState(result.state);
-        setStage(resolveFirstRunResumeStage(result.state));
+        const resumed = resolveFirstRunResumeStage(result.state);
+        setStage(resumed);
+        const welcomeDone =
+          result.state?.stages.some((row) => row.stage_key === 'welcome' && row.status === 'complete') ??
+          false;
+        setWelcomePassed(welcomeDone || resumed !== 'welcome');
       }
       setLoading(false);
     })();
@@ -225,25 +338,304 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resume once per mount (t identity may change).
   }, [supabase, applyState]);
 
-  function resetImportUi() {
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc('get_building_modules_v2');
+      if (cancelled || error || !data) return;
+      setModuleCatalog(buildingModulesFromV2Rows(data as BuildingModuleV2Row[]).catalog);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  // Rehydrate committed import flags from stage rows after resume / route moves.
+  useEffect(() => {
+    if (loading || !state) return;
+    const rows = state.stages;
+    setBookCommitted(stageIsComplete('property_book', rows));
+    setMeterCommitted(
+      stage === 'meters_electricity'
+        ? stageIsComplete('meters_electricity', rows)
+        : stageIsComplete('meters_water', rows),
+    );
+    setSfCommitted(stageIsComplete('support_fee_opening', rows));
+    const crDraft = asObj(rows.find((row) => row.stage_key === 'capital_repair_opening')?.draft);
+    const draftRoot = asObj(state.draft);
+    const crOpeningDraft = asObj(draftRoot.capital_repair_opening);
+    const crAptsDone =
+      stageIsComplete('capital_repair_opening', rows) ||
+      crDraft.apartments_committed === true ||
+      crOpeningDraft.apartments_committed === true;
+    const crFundDone =
+      stageIsComplete('capital_repair_opening', rows) ||
+      crDraft.fund_cash_committed === true ||
+      crOpeningDraft.fund_cash_committed === true ||
+      draftRoot.fund_cash_committed === true ||
+      draftRoot.capital_repair_fund_cash_committed === true;
+    setCrCommitted(crAptsDone);
+    setCrFundOk(crFundDone);
+    // stageIsComplete closes over state; rows/stage are the inputs that matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, state, stage]);
+
+  // CR apartment import + fund cash live in tables before the stage is marked complete.
+  // Restore UI locks from those rows so reload does not lose a saved opening.
+  useEffect(() => {
+    if (loading || stage !== 'capital_repair_opening') return;
+    let cancelled = false;
+    void (async () => {
+      type CrOpeningClient = {
+        from: (table: 'capital_repair_opening_imports' | 'capital_repair_fund_cash_opening') => {
+          select: (
+            columns: string,
+            opts?: { count?: 'exact'; head?: boolean },
+          ) => {
+            limit: (n: number) => PromiseLike<{
+              data:
+                | {
+                    balance_eur?: number | null;
+                    as_of_date?: string | null;
+                    source_reference?: string | null;
+                    notes?: string | null;
+                  }[]
+                | null;
+              count: number | null;
+              error: { message?: string } | null;
+            }>;
+          } & PromiseLike<{ count: number | null; error: { message?: string } | null }>;
+        };
+      };
+      const crClient = supabase as unknown as CrOpeningClient;
+      const [importsRes, fundRes] = await Promise.all([
+        crClient.from('capital_repair_opening_imports').select('property_id', { count: 'exact', head: true }),
+        crClient
+          .from('capital_repair_fund_cash_opening')
+          .select('balance_eur, as_of_date, source_reference, notes')
+          .limit(1),
+      ]);
+      if (cancelled) return;
+      if ((importsRes.count ?? 0) > 0) setCrCommitted(true);
+      const fundRow = Array.isArray(fundRes.data) ? fundRes.data[0] : null;
+      if (fundRow) {
+        setCrFundOk(true);
+        const bal = fundRow.balance_eur;
+        if (bal != null && String(crFundBalance).trim() === '') setCrFundBalance(String(bal));
+        if (fundRow.as_of_date && !crFundDate.trim()) setCrFundDate(String(fundRow.as_of_date));
+        if (fundRow.source_reference && !crFundSource.trim()) setCrFundSource(String(fundRow.source_reference));
+        if (fundRow.notes && !crFundNotes.trim()) setCrFundNotes(String(fundRow.notes));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally omit fund field state: only seed empty fields once on resume.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, stage, supabase]);
+
+  const legacyChoiceApplied = useRef(false);
+  useEffect(() => {
+    if (legacyChoiceApplied.current || !state || moduleCatalog.length === 0) return;
+    legacyChoiceApplied.current = true;
+    if (Object.prototype.hasOwnProperty.call(state.draft, 'modules_selected')) return;
+    if (state.first_run_stage === 'welcome' || state.first_run_stage === 'modules_select') return;
+    const enabled = new Set(
+      moduleCatalog.filter((row) => row.enabled === true).map((row) => row.module_key),
+    );
+    setModuleChoice((current) => ({
+      ...current,
+      water: current.water || enabled.has('water'),
+      electricity: current.electricity || enabled.has('electricity'),
+      budget: current.budget || enabled.has('budget'),
+      extra: Array.from(
+        new Set([
+          ...current.extra,
+          ...[...enabled].filter(
+            (key) =>
+              !['water', 'electricity', 'budget', 'tariffs', 'support_fee', 'capital_repair', 'property_book', 'platform_support', 'user_activation', 'residence_status'].includes(key),
+          ),
+        ]),
+      ),
+    }));
+  }, [moduleCatalog, state]);
+
+  function stageIsComplete(key: FirstRunStageKey, rows: FirstRunStageRow[] | undefined = state?.stages): boolean {
+    return rows?.some((row) => row.stage_key === key && row.status === 'complete') ?? false;
+  }
+
+  /** Clear transient file/dry-run UI. Keep confirmed imports from stage status. */
+  function resetImportUi(nextStage?: FirstRunStageKey) {
     setBookPayload(null);
     setBookDry(null);
-    setBookCommitted(false);
     setMeterRows(null);
     setMeterDry(null);
-    setMeterCommitted(false);
     setSfRows(null);
     setSfDry(null);
-    setSfCommitted(false);
+    setCrRows(null);
+    setCrDry(null);
     setErrorRows([]);
     setCountMismatch(null);
     setNote(null);
     setError(null);
+
+    const rows = state?.stages;
+    setBookCommitted(stageIsComplete('property_book', rows));
+    setMeterCommitted(
+      nextStage === 'meters_electricity'
+        ? stageIsComplete('meters_electricity', rows)
+        : stageIsComplete('meters_water', rows),
+    );
+    setSfCommitted(stageIsComplete('support_fee_opening', rows));
+    const crDraft = asObj(rows?.find((row) => row.stage_key === 'capital_repair_opening')?.draft);
+    const draftRoot = asObj(state?.draft);
+    const crOpeningDraft = asObj(draftRoot.capital_repair_opening);
+    setCrCommitted(
+      stageIsComplete('capital_repair_opening', rows) ||
+        crDraft.apartments_committed === true ||
+        crOpeningDraft.apartments_committed === true,
+    );
+    setCrFundOk(
+      stageIsComplete('capital_repair_opening', rows) ||
+        crDraft.fund_cash_committed === true ||
+        crOpeningDraft.fund_cash_committed === true ||
+        draftRoot.fund_cash_committed === true ||
+        draftRoot.capital_repair_fund_cash_committed === true,
+    );
   }
 
   function goStage(next: FirstRunStageKey) {
-    resetImportUi();
+    resetImportUi(next);
     setStage(next);
+  }
+
+  async function saveTariffPrep(stageKey: FirstRunStageKey, next: FirstRunTariffPrepMap) {
+    applyState(
+      await saveFirstRunProgress(supabase, {
+        stage: stageKey,
+        draft: { tariff_prep: next },
+      }),
+    );
+  }
+
+  async function persistDraftBeforeBack(): Promise<boolean> {
+    try {
+      if (stage === 'modules_select') {
+        applyState(
+          await saveFirstRunProgress(supabase, {
+            stage: 'modules_select',
+            draft: moduleChoiceToDraft(moduleChoice),
+          }),
+        );
+        return true;
+      }
+      if (stage === 'complex_card') {
+        applyState(
+          await saveFirstRunProgress(supabase, {
+            stage: 'complex_card',
+            complex: complexFormToPayload(form, { asDraft: true }),
+          }),
+        );
+        return true;
+      }
+      if (
+        stage === 'meters_water' ||
+        stage === 'meters_electricity' ||
+        stage === 'support_fee_opening' ||
+        stage === 'capital_repair_opening'
+      ) {
+        const ok = (await tariffNavRef.current?.persistDraft()) ?? true;
+        if (!ok) {
+          return confirm({
+            title: t('common.discardChangesTitle'),
+            description: t('admin.firstRunLeaveWithoutSave'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+        }
+        return true;
+      }
+      if (stage === 'tariffs') {
+        const ok = (await tariffsStepNavRef.current?.persistDraft()) ?? true;
+        if (!ok) {
+          return confirm({
+            title: t('common.discardChangesTitle'),
+            description: t('admin.firstRunLeaveWithoutSave'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+        }
+        return true;
+      }
+      if (stage === 'internet_opening') {
+        const ok = (await internetNavRef.current?.persistDraft()) ?? true;
+        if (!ok) {
+          return confirm({
+            title: t('common.discardChangesTitle'),
+            description: t('admin.firstRunLeaveWithoutSave'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+        }
+        return true;
+      }
+      if (stage === 'budget') {
+        const ok = (await budgetNavRef.current?.persistDraft()) ?? true;
+        if (!ok) {
+          return confirm({
+            title: t('common.discardChangesTitle'),
+            description: t('admin.firstRunLeaveWithoutSave'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+        }
+        return true;
+      }
+      if (stage === 'uk_expenses_opening') {
+        const ok = (await openingNavRef.current?.persistDraft()) ?? true;
+        if (!ok) {
+          return confirm({
+            title: t('common.discardChangesTitle'),
+            description: t('admin.firstRunLeaveWithoutSave'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+        }
+        return true;
+      }
+      return true;
+    } catch (err: unknown) {
+      setError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+      return confirm({
+        title: t('common.discardChangesTitle'),
+        description: t('admin.firstRunLeaveWithoutSave'),
+        confirmLabel: t('common.leaveWithoutSaving'),
+        cancelLabel: t('common.continueEditing'),
+        tone: 'danger',
+      });
+    }
+  }
+
+  async function handleWizardBack() {
+    if (busy) return;
+    if (stage === 'welcome') return;
+
+    if (stage === 'budget' && budgetNavRef.current?.handleBack()) {
+      return;
+    }
+
+    const saved = await persistDraftBeforeBack();
+    if (!saved) return;
+
+    const prev = previousVisibleStage(visibleFirstRunStages(moduleChoice), stage);
+    if (!prev) return;
+    if (prev === 'welcome') setWelcomePassed(true);
+    goStage(prev);
   }
 
   async function run(fn: () => Promise<void>) {
@@ -252,7 +644,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     try {
       await fn();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -278,34 +670,56 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   // ---------------------------------------------------------------------------
 
   async function onStartSetup() {
+    if (welcomePassed) {
+      const modulesDone = state?.stages.some(
+        (row) => row.stage_key === 'modules_select' && row.status === 'complete',
+      );
+      setStage(modulesDone ? 'complex_card' : 'modules_select');
+      return;
+    }
     await run(async () => {
-      applyState(await completeFirstRunStage(supabase, { stage: 'welcome', nextStage: 'complex_card' }));
-      goStage('complex_card');
+      applyState(await completeFirstRunStage(supabase, { stage: 'welcome', nextStage: 'modules_select' }));
+      setWelcomePassed(true);
+      goStage('modules_select');
     });
   }
 
+  // Autosave incomplete complex/UK/bank draft while on this stage (restored after re-login).
+  useEffect(() => {
+    if (loading || stage !== 'complex_card' || busy) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const next = await saveFirstRunProgress(supabase, {
+            stage: 'complex_card',
+            complex: complexFormToPayload(form, { asDraft: true }),
+          });
+          if (next) setState(next);
+        } catch {
+          // Draft failures stay silent; Continue shows field errors.
+        }
+      })();
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [form, stage, loading, busy, supabase]);
+
   async function onSaveComplex() {
-    const errs = validateComplexForm(form);
+    const errs = validateComplexFormWithIban(form, isValidIban);
     setFormErrors(errs);
     if (errs.length > 0) {
       setError(t('admin.firstRunComplexInvalid'));
       return;
     }
     await run(async () => {
-      const next: FirstRunStageKey = returnStage && returnStage !== 'complex_card' ? returnStage : 'property_book';
       await saveFirstRunProgress(supabase, {
         stage: 'complex_card',
         complex: complexFormToPayload(form),
       });
-      applyState(await completeFirstRunStage(supabase, { stage: 'complex_card', nextStage: next }));
-      setReturnStage(null);
-      goStage(next);
+      applyState(
+        await completeFirstRunStage(supabase, { stage: 'complex_card', nextStage: 'property_book' }),
+      );
+      goStage('property_book');
     });
-  }
-
-  function editComplexFrom(from: FirstRunStageKey) {
-    setReturnStage(from);
-    goStage('complex_card');
   }
 
   // ---------------------------------------------------------------------------
@@ -313,21 +727,20 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   // ---------------------------------------------------------------------------
 
   async function onBookFile(file: File | null) {
+    // Confirmed import is a saved stage — do not reopen the write path.
+    if (bookCommitted) return;
     setBookPayload(null);
     setBookDry(null);
-    setBookCommitted(false);
+    setBookCommitSummary(null);
     setErrorRows([]);
     setCountMismatch(null);
+    setError(null);
     setNote(null);
     if (!file) return;
     await run(async () => {
       const payload = await parsePropertyBookWorkbook(file);
       if (payload.objects.length === 0) {
         setError(t('admin.is2PropertyBookEmptyObjects'));
-        return;
-      }
-      if (payload.owners.length === 0) {
-        setError(t('admin.is2PropertyBookEmptyOwners'));
         return;
       }
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
@@ -340,17 +753,22 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       if (rpcErr) throw new Error(rpcErr.message);
       const res = asObj(data);
       const errors = Array.isArray(res.errors) ? res.errors : [];
+      const warnings = Array.isArray(res.warnings) ? res.warnings : [];
       setBookDry({
         ok: res.ok === true && errors.length === 0,
         errors,
+        warnings,
         newCount: arrLen(res.new_properties),
         existingCount: arrLen(res.existing_properties),
         changesCount: arrLen(res.changes),
         skippedIdenticalCount: arrLen(res.skipped_identical_property_ids),
         requiresOverwriteConfirmation: res.requires_overwrite_confirmation === true,
         bookEmptyAutoCreate: res.book_empty_auto_create === true,
+        importableCount: Number(res.importable_count ?? 0) || 0,
+        clarificationCount: Number(res.clarification_count ?? warnings.length) || 0,
+        blockingErrorCount: Number(res.blocking_error_count ?? errors.length) || 0,
       });
-      setErrorRows(normalizeFirstRunErrors(errors));
+      setErrorRows(normalizeFirstRunErrors([...errors, ...warnings]));
       setCountMismatch(apartmentCountMismatchInfo(errors));
       setBookPayload(payload);
     });
@@ -358,7 +776,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   async function onBookCommit() {
     if (!bookPayload || !bookDry || !bookDry.ok) return;
-    if (!window.confirm(t('admin.firstRunBookConfirm'))) return;
     await run(async () => {
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
         p_objects: bookPayload.objects,
@@ -382,12 +799,17 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setCountMismatch(apartmentCountMismatchInfo(errs));
         throw new Error(t('admin.is2PropertyBookImportFailed'));
       }
+      const importableRaw = Number(res.importable_count);
+      setBookCommitSummary({
+        clarificationCount: Number(res.clarification_count ?? 0) || 0,
+        importableCount: Number.isFinite(importableRaw) ? importableRaw : null,
+      });
       setBookCommitted(true);
-      setNote(t('admin.firstRunBookActivating'));
+      setNote(null);
       // SETUP_IN_PROGRESS → READY → ACTIVE (idempotent when already ACTIVE).
       await activateModule(PROPERTY_BOOK_MODULE);
-      applyState(await completeFirstRunStage(supabase, { stage: 'property_book', nextStage: 'meters_select' }));
-      setNote(t('admin.firstRunBookCommitted'));
+      const next = firstMetersStage({ water: moduleChoice.water, electricity: moduleChoice.electricity });
+      applyState(await completeFirstRunStage(supabase, { stage: 'property_book', nextStage: next }));
     });
   }
 
@@ -411,7 +833,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           draft,
         }),
       );
-      setSelectionChosen(true);
       goStage(firstMetersStage(selection));
     });
   }
@@ -443,7 +864,12 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     await run(async () => {
       const schema = metersSchema(utility);
       if (!schema) throw new Error(t('admin.errGeneric'));
-      const parsed = parseModuleXlsxBuffer(await file.arrayBuffer(), schema);
+      const parsed = parseModuleXlsxBuffer(
+        await file.arrayBuffer(),
+        schema,
+        moduleXlsxLabels(schema, t),
+        moduleXlsxHeaderAliases(schema),
+      );
       if (!parsed.ok) {
         setError(parsed.error);
         return;
@@ -469,7 +895,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   async function onMetersCommit(utility: FirstRunMeterUtility) {
     if (!meterRows || !meterDry || !meterDry.ok) return;
-    if (!window.confirm(t('admin.firstRunMetersConfirm'))) return;
+    const prep = readTariffPrep(state?.draft);
+    if (!isFirstRunTariffPrepared(utility, prep)) {
+      setError(t('admin.firstRunOpeningLockedUntilTariff'));
+      return;
+    }
     const stageKey: 'meters_water' | 'meters_electricity' =
       utility === 'water' ? 'meters_water' : 'meters_electricity';
     await run(async () => {
@@ -512,7 +942,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       const buf = await file.arrayBuffer();
       const schema = supportFeeOpeningAdapter.registration.setup?.xlsx;
       if (!schema) throw new Error(t('admin.errGeneric'));
-      const parsed = parseModuleXlsxBuffer(buf, schema);
+      const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
       if (!parsed.ok) {
         setError(parsed.error);
         return;
@@ -547,7 +977,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   async function onSfCommit() {
     if (!sfRows || !sfDry || !sfDry.ok) return;
-    if (!window.confirm(t('admin.firstRunSfConfirm'))) return;
+    const prep = readTariffPrep(state?.draft);
+    if (!isFirstRunTariffPrepared('support_fee', prep)) {
+      setError(t('admin.firstRunOpeningLockedUntilTariff'));
+      return;
+    }
     await run(async () => {
       const { data, error: rpcErr } = await importSupportFeeOpening(supabase, sfRows, false);
       if (rpcErr) {
@@ -595,7 +1029,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       const buf = await file.arrayBuffer();
       const schema = capitalRepairOpeningAdapter.registration.setup?.xlsx;
       if (!schema) throw new Error(t('admin.errGeneric'));
-      const parsed = parseModuleXlsxBuffer(buf, schema);
+      const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
       if (!parsed.ok) {
         setError(parsed.error);
         return;
@@ -630,7 +1064,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   async function onCrCommit() {
     if (!crRows || !crDry || !crDry.ok) return;
-    if (!window.confirm(t('admin.firstRunCrConfirm'))) return;
+    const prep = readTariffPrep(state?.draft);
+    if (!isFirstRunTariffPrepared('capital_repair', prep)) {
+      setError(t('admin.firstRunOpeningLockedUntilTariff'));
+      return;
+    }
     await run(async () => {
       const { data, error: rpcErr } = await importCapitalRepairOpening(supabase, crRows, false);
       if (rpcErr) {
@@ -644,6 +1082,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         throw new Error(t('admin.firstRunCrImportFailed'));
       }
       setCrCommitted(true);
+      applyState(
+        await saveFirstRunProgress(supabase, {
+          stage: 'capital_repair_opening',
+          draft: {
+            capital_repair_opening: { apartments_committed: true },
+            apartments_committed: true,
+          },
+        }),
+      );
       setNote(t('admin.firstRunCrAptsCommitted'));
     });
   }
@@ -654,7 +1101,14 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       setError(t('admin.firstRunCrFundInvalid'));
       return;
     }
-    if (!window.confirm(t('admin.firstRunCrFundConfirm'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('admin.firstRunCrFundConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'default',
+    });
+    if (!ok) return;
     await run(async () => {
       const { data, error: rpcErr } = await setCapitalRepairFundCashOpening(supabase, {
         balanceEur: bal,
@@ -669,6 +1123,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         throw new Error(t('admin.firstRunCrFundFailed'));
       }
       setCrFundOk(true);
+      applyState(
+        await saveFirstRunProgress(supabase, {
+          stage: 'capital_repair_opening',
+          draft: {
+            capital_repair_opening: { fund_cash_committed: true },
+            fund_cash_committed: true,
+          },
+        }),
+      );
       setNote(t('admin.firstRunCrFundCommitted'));
     });
   }
@@ -678,10 +1141,12 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     await run(async () => {
       setNote(t('admin.firstRunCrActivating'));
       await activateModule(CAPITAL_REPAIR_MODULE_KEY);
+      // Same sequence as server coerce: installed modules from saved draft, not a fixed "tariffs" jump.
+      const next = stageAfterCapitalRepairOpening(parseModuleChoice(state?.draft));
       applyState(
         await completeFirstRunStage(supabase, {
           stage: 'capital_repair_opening',
-          nextStage: 'tariffs',
+          nextStage: next,
           draft: {
             capital_repair_opening: {
               apartments_committed: true,
@@ -691,7 +1156,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         }),
       );
       setNote(t('admin.firstRunCrCommitted'));
-      goStage('tariffs');
+      goStage(next);
     });
   }
 
@@ -699,14 +1164,39 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   // tariffs → budget → complete
   // ---------------------------------------------------------------------------
 
-  async function onTariffsContinue() {
+  async function onSaveModules() {
+    await run(async () => {
+      const draft = moduleChoiceToDraft(moduleChoice);
+      const next = stageAfterModuleSave(moduleChoice, state?.stages);
+      await saveFirstRunProgress(supabase, { stage: 'modules_select', draft });
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'modules_select',
+          nextStage: next,
+          draft,
+        }),
+      );
+      goStage(next);
+    });
+  }
+
+  async function onInternetOpeningContinue(none: boolean) {
     await run(async () => {
       applyState(
         await completeFirstRunStage(supabase, {
-          stage: 'tariffs',
-          nextStage: 'budget',
+          stage: 'internet_opening',
+          nextStage: 'tariffs',
+          draft: { internet_opening_none: none },
         }),
       );
+      setNote(t('admin.firstRunInternetOpeningCommitted'));
+      goStage('tariffs');
+    });
+  }
+
+  async function onTariffsContinue() {
+    await run(async () => {
+      applyState(await completeFirstRunStage(supabase, { stage: 'tariffs', nextStage: 'budget' }));
       setNote(t('admin.firstRunTariffsCommitted'));
       goStage('budget');
     });
@@ -718,11 +1208,25 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       applyState(
         await completeFirstRunStage(supabase, {
           stage: 'budget',
-          nextStage: 'complete',
+          nextStage: 'uk_expenses_opening',
           draft: firstRunBudgetDraftPayload(payload),
         }),
       );
       setNote(t('admin.firstRunBudgetCommitted'));
+      goStage('uk_expenses_opening');
+    });
+  }
+
+  async function onOpeningContinue(none: boolean) {
+    await run(async () => {
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'uk_expenses_opening',
+          nextStage: 'complete',
+          draft: { uk_expenses_opening_none: none },
+        }),
+      );
+      setNote(t('admin.firstRunOpeningCommitted'));
       goStage('complete');
     });
   }
@@ -742,15 +1246,20 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   // render
   // ---------------------------------------------------------------------------
 
-  const visibleStages = useMemo(
-    () => visibleFirstRunStages(selectionChosen ? selection : null),
-    [selection, selectionChosen],
-  );
+  const visibleStages = useMemo(() => visibleFirstRunStages(moduleChoice), [moduleChoice]);
+  const lockedOff = (state?.stages ?? [])
+    .filter((row) => row.status === 'complete')
+    .map((row) =>
+      row.stage_key === 'meters_water' ? 'water' : row.stage_key === 'meters_electricity' ? 'electricity' : row.stage_key === 'budget' ? 'budget' : '',
+    )
+    .filter(Boolean);
 
   const stageLabel = (key: FirstRunStageKey): string => {
     switch (key) {
       case 'welcome':
         return t('admin.firstRunStageWelcome');
+      case 'modules_select':
+        return t('admin.firstRunStageModules');
       case 'complex_card':
         return t('admin.firstRunStageComplex');
       case 'property_book':
@@ -767,8 +1276,12 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         return t('admin.firstRunStageCapitalRepair');
       case 'tariffs':
         return t('admin.firstRunStageTariffs');
+      case 'internet_opening':
+        return t('admin.firstRunStageInternetOpening');
       case 'budget':
         return t('admin.firstRunStageBudget');
+      case 'uk_expenses_opening':
+        return t('admin.firstRunStageOpeningExpenses');
       default:
         return t('admin.firstRunStageComplete');
     }
@@ -787,29 +1300,52 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       stage={stage}
       stageRows={state?.stages}
       stageLabel={stageLabel}
+      showBack={stage !== 'welcome'}
+      backDisabled={busy}
+      onBack={() => void handleWizardBack()}
     >
-      {error ? <FirstRunErrorNote raw={error} t={t} /> : null}
-      {note ? <div className={styles.okNote}>{note}</div> : null}
+      {dialog}
+      {error &&
+      stage !== 'property_book' &&
+      stage !== 'meters_water' &&
+      stage !== 'meters_electricity' &&
+      stage !== 'support_fee_opening' &&
+      stage !== 'capital_repair_opening' ? (
+        <FirstRunErrorNote raw={error} t={t} />
+      ) : null}
+      {note &&
+      stage !== 'property_book' &&
+      stage !== 'meters_water' &&
+      stage !== 'meters_electricity' &&
+      stage !== 'support_fee_opening' &&
+      stage !== 'capital_repair_opening' ? (
+        <FirstRunStatusBanner tone="success" title={note} />
+      ) : null}
 
       {stage === 'welcome' ? (
-        <FirstRunWelcome t={t} busy={busy} onStart={() => void onStartSetup()} />
+        <FirstRunWelcome t={t} busy={busy} resume={welcomePassed} onStart={() => void onStartSetup()} />
+      ) : null}
+
+      {stage === 'modules_select' ? (
+        <FirstRunModulesSelect
+          t={t}
+          choice={moduleChoice}
+          catalog={moduleCatalog}
+          lockedOff={lockedOff}
+          busy={busy}
+          onChange={setModuleChoice}
+          onSave={() => void onSaveModules()}
+        />
       ) : null}
 
       {stage === 'complex_card' ? (
-        <FirstRunComplexCard
+        <FirstRunComplexProfile
           t={t}
           form={form}
           formErrors={formErrors}
           busy={busy}
-          showBack={returnStage != null}
           onChange={setForm}
           onSave={() => void onSaveComplex()}
-          onBack={() => {
-            const back = returnStage;
-            if (!back) return;
-            setReturnStage(null);
-            goStage(back);
-          }}
         />
       ) : null}
 
@@ -822,12 +1358,17 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           errorRows={errorRows}
           countMismatch={countMismatch ?? (state?.complex.apartment_count != null ? { expected: state.complex.apartment_count, actual: null } : null)}
           committed={bookCommitted}
+          commitSummary={bookCommitSummary}
+          error={error}
           needsComplexFix={bookNeedsComplexFix}
-          onDownload={() => downloadXlsx(buildPropertyBookIs2TemplateBuffer(), 'property_book_opening_template.xlsx')}
+          onDownload={() =>
+            downloadXlsx(buildPropertyBookIs2TemplateBuffer(locale), propertyBookTemplateFileName(locale))
+          }
           onFile={(file) => void onBookFile(file)}
           onCommit={() => void onBookCommit()}
-          onContinue={() => goStage('meters_select')}
-          onEditComplex={() => editComplexFrom('property_book')}
+          onContinue={() =>
+            goStage(firstMetersStage({ water: moduleChoice.water, electricity: moduleChoice.electricity }))
+          }
         />
       ) : null}
 
@@ -841,7 +1382,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           onWater={(checked) => setSelection({ ...selection, water: checked })}
           onElectricity={(checked) => setSelection({ ...selection, electricity: checked })}
           onContinue={() => void onMetersSelectContinue()}
-          onEditComplex={() => editComplexFrom('meters_select')}
         />
       ) : null}
 
@@ -854,11 +1394,21 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           rows={meterRows}
           errorRows={errorRows}
           committed={meterCommitted}
-          onDownload={() => downloadXlsx(buildWaterMeterIs3TemplateBuffer(), 'water_meters_opening_template.xlsx')}
+          error={error}
+          supabase={supabase}
+          tariffPrep={readTariffPrep(state?.draft)}
+          tariffNavRef={tariffNavRef}
+          onSaveTariffPrep={(next) => saveTariffPrep('meters_water', next)}
+          onTariffBusy={setBusy}
+          onDownload={() =>
+            downloadXlsx(
+              buildWaterMeterIs3TemplateBuffer(locale),
+              localizedTemplateFileName(WATER_METERS_IMPORT_SPEC, locale),
+            )
+          }
           onFile={(file) => void onMetersFile('water', file)}
           onCommit={() => void onMetersCommit('water')}
           onContinue={() => onMetersContinue('water')}
-          onEditComplex={() => editComplexFrom('meters_water')}
         />
       ) : null}
       {stage === 'meters_electricity' ? (
@@ -870,13 +1420,21 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           rows={meterRows}
           errorRows={errorRows}
           committed={meterCommitted}
+          error={error}
+          supabase={supabase}
+          tariffPrep={readTariffPrep(state?.draft)}
+          tariffNavRef={tariffNavRef}
+          onSaveTariffPrep={(next) => saveTariffPrep('meters_electricity', next)}
+          onTariffBusy={setBusy}
           onDownload={() =>
-            downloadXlsx(buildElectricityMeterIs3TemplateBuffer(), 'electricity_meters_opening_template.xlsx')
+            downloadXlsx(
+              buildElectricityMeterIs3TemplateBuffer(locale),
+              localizedTemplateFileName(ELECTRICITY_METERS_IMPORT_SPEC, locale),
+            )
           }
           onFile={(file) => void onMetersFile('electricity', file)}
           onCommit={() => void onMetersCommit('electricity')}
           onContinue={() => onMetersContinue('electricity')}
-          onEditComplex={() => editComplexFrom('meters_electricity')}
         />
       ) : null}
 
@@ -890,8 +1448,16 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           canCommit={Boolean(sfDry?.ok && sfRows)}
           note={note}
           error={error}
+          supabase={supabase}
+          tariffPrep={readTariffPrep(state?.draft)}
+          tariffNavRef={tariffNavRef}
+          onSaveTariffPrep={(next) => saveTariffPrep('support_fee_opening', next)}
+          onTariffBusy={setBusy}
           onDownload={() =>
-            downloadXlsx(buildSupportFeeIs4TemplateBuffer(), 'support_fee_opening_template.xlsx')
+            downloadXlsx(
+              buildSupportFeeIs4TemplateBuffer(locale),
+              localizedTemplateFileName(SUPPORT_FEE_IMPORT_SPEC, locale),
+            )
           }
           onFile={(file) => void onSfFile(file)}
           onCommit={() => void onSfCommit()}
@@ -914,8 +1480,16 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           notes={crFundNotes}
           note={note}
           error={error}
+          supabase={supabase}
+          tariffPrep={readTariffPrep(state?.draft)}
+          tariffNavRef={tariffNavRef}
+          onSaveTariffPrep={(next) => saveTariffPrep('capital_repair_opening', next)}
+          onTariffBusy={setBusy}
           onDownload={() =>
-            downloadXlsx(buildCapitalRepairIs8TemplateBuffer(), 'capital_repair_opening_template.xlsx')
+            downloadXlsx(
+              buildCapitalRepairIs8TemplateBuffer(locale),
+              localizedTemplateFileName(CAPITAL_REPAIR_IMPORT_SPEC, locale),
+            )
           }
           onFile={(file) => void onCrFile(file)}
           onCommit={() => void onCrCommit()}
@@ -932,10 +1506,32 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         <AdminFirstRunTariffs
           supabase={supabase}
           t={t}
-          selection={selectionChosen ? selection : { water: true, electricity: true }}
+          selection={moduleChoice}
+          prep={readTariffPrep(state?.draft)}
           busy={busy}
           onBusy={setBusy}
+          onSavePrep={(next) => saveTariffPrep('tariffs', next)}
           onContinue={onTariffsContinue}
+          onGoToStage={goStage}
+          onNavHandle={(handle) => {
+            tariffsStepNavRef.current = handle;
+          }}
+        />
+      ) : null}
+
+      {stage === 'internet_opening' ? (
+        <AdminFirstRunInternetOpening
+          supabase={supabase}
+          t={t}
+          draft={state?.draft ?? {}}
+          busy={busy}
+          onBusy={setBusy}
+          tariffPrep={readTariffPrep(state?.draft)}
+          onSaveTariffPrep={(next) => saveTariffPrep('internet_opening', next)}
+          onContinue={onInternetOpeningContinue}
+          onNavHandle={(handle) => {
+            internetNavRef.current = handle;
+          }}
         />
       ) : null}
 
@@ -948,6 +1544,24 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           onBusy={setBusy}
           onState={applyState}
           onContinue={onBudgetContinue}
+          onNavHandle={(handle) => {
+            budgetNavRef.current = handle;
+          }}
+        />
+      ) : null}
+
+      {stage === 'uk_expenses_opening' ? (
+        <AdminFirstRunOpeningExpenses
+          supabase={supabase}
+          t={t}
+          draft={state?.draft ?? {}}
+          busy={busy}
+          onBusy={setBusy}
+          onContinue={onOpeningContinue}
+          onState={applyState}
+          onNavHandle={(handle) => {
+            openingNavRef.current = handle;
+          }}
         />
       ) : null}
 

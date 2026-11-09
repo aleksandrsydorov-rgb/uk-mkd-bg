@@ -7,6 +7,14 @@ import * as XLSX from 'xlsx';
 import { EXPENSE_PENDING } from '@/lib/expenses';
 import type { ImportPreviewResult, ImportPreviewRow, ImportRowOperation } from '@/lib/moduleCore/types';
 import { sanitizeSpreadsheetCell } from '@/lib/moduleCore/xlsxEngine';
+import {
+  UK_EXPENSES_IMPORT_SPEC,
+  buildLocalizedImportWorkbook,
+  downloadImportTemplateBuffer,
+  localizedTemplateFileName,
+  toImportTemplateLocale,
+  type ImportTemplateLocale,
+} from '@/lib/importTemplates';
 
 /** Platform-service setup key (not a UX toggle module). */
 export const UK_EXPENSES_SETUP_KEY = 'uk_expenses';
@@ -349,105 +357,22 @@ export function ukExpenseOpeningPayloadsFromPreview(
   return out;
 }
 
-const INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    'Разходи на УС — начален исторически импорт (IS-6a)',
-    `schema_version: ${UK_EXPENSES_SETUP_SCHEMA_VERSION}. Лист: expenses.`,
-    'source_ref е задължителен уникален ключ. Не използвайте само title+date+amount.',
-    'Редовете се създават само като „на проверке“ — без автоматична публикация.',
-    'opening_import = true → не влизат в оперативното изпълнение на бюджета.',
-    'category_code е по желание; неизвестен код → ERROR (без тихо присвояване).',
-    'Без AP / фактури към доставчици / плащания. Без Support Fee / Internet opening.',
-    'Идентичен source_ref → SKIP. Разминаване → CONFLICT. Без overwrite.',
-    'Импортът е незадължителен — може да се пропусне и да се ползва Admin UI.',
-  ],
-  ru: [
-    'Расходы УК — начальный исторический импорт (IS-6a)',
-    `schema_version: ${UK_EXPENSES_SETUP_SCHEMA_VERSION}. Лист: expenses.`,
-    'source_ref — обязательный уникальный ключ. Не используйте только title+date+amount.',
-    'Строки создаются только со статусом «на проверке» — без автопубликации.',
-    'opening_import = true → не входят в операционное исполнение бюджета.',
-    'category_code необязателен; неизвестный код → ERROR (без тихого назначения).',
-    'Без AP / счетов поставщикам / платежей. Без Support Fee / Internet opening.',
-    'Идентичный source_ref → SKIP. Расхождение → CONFLICT. Без overwrite.',
-    'Импорт необязателен — можно пропустить и использовать Admin UI.',
-  ],
-  en: [
-    'UK expenses — historical opening import (IS-6a)',
-    `schema_version: ${UK_EXPENSES_SETUP_SCHEMA_VERSION}. Sheet: expenses.`,
-    'source_ref is the required unique key. Do not rely on title+date+amount alone.',
-    'Rows are created as pending review only — no automatic publication.',
-    'opening_import = true → excluded from operational budget execution.',
-    'category_code is optional; unknown code → ERROR (no silent assignment).',
-    'No AP / supplier invoices / payments. No Support Fee / Internet opening RPCs.',
-    'Identical source_ref → SKIP. Mismatch → CONFLICT. Never overwrite.',
-    'Import is optional — skip and use Admin expense UI after launch if preferred.',
-  ],
-};
-
-function appendInstructionSheets(
-  wb: XLSX.WorkBook,
-  instructions: Record<'bg' | 'ru' | 'en', string[]>,
-) {
-  for (const lang of ['bg', 'ru', 'en'] as const) {
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet(instructions[lang].map((line) => [line])),
-      `instructions_${lang}`,
-    );
-  }
-}
-
-export function buildUkExpensesIs6aTemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  const example = [
-    {
-      source_ref: 'EXP-2025-001',
-      title: 'Cleaning Q4 2025',
-      expense_date: '2025-11-15',
-      amount_eur: '120.00',
-      category_code: 'cleaning',
-      transition_date: '2026-01-01',
-      source_document: 'INV-7788',
-      notes: 'historical archival',
-    },
-    {
-      source_ref: 'EXP-2025-002',
-      title: 'Elevator service',
-      expense_date: '2025-08-01',
-      amount_eur: '350.50',
-      category_code: '',
-      transition_date: '2026-01-01',
-      source_document: '',
-      notes: 'no category — archival only',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(example, { header: [...UK_EXPENSE_OPENING_HEADERS] }),
-    'expenses',
-  );
-  appendInstructionSheets(wb, INSTRUCTIONS);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function buildUkExpensesIs6aTemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(UK_EXPENSES_IMPORT_SPEC, toImportTemplateLocale(locale));
 }
 
 export function downloadUkExpensesIs6aTemplate(
-  fileName = 'uk_expenses_opening_template.xlsx',
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
 ): void {
-  const buf = buildUkExpensesIs6aTemplateBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const isFileName = typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx');
+  const locale = toImportTemplateLocale(isFileName ? 'ru' : localeOrFileName);
+  const name =
+    fileName ??
+    (isFileName ? (localeOrFileName as string) : localizedTemplateFileName(UK_EXPENSES_IMPORT_SPEC, locale));
+  downloadImportTemplateBuffer(buildUkExpensesIs6aTemplateBuffer(locale), name);
 }
 
 export function buildUkExpensesErrorReportXlsx(preview: ImportPreviewResult): ArrayBuffer {

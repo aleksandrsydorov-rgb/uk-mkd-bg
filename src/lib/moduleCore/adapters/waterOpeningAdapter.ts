@@ -87,6 +87,18 @@ export const waterOpeningAdapter: ModuleSetupAdapter = {
             example: '2026-01-15',
             labelKey: 'is3ColInstalledAt',
           },
+          {
+            key: 'opening_balance_kind',
+            required: false,
+            example: 'zero',
+            labelKey: 'is3ColOpeningBalanceKind',
+          },
+          {
+            key: 'opening_balance_eur',
+            required: false,
+            example: '25.00',
+            labelKey: 'is3ColOpeningBalanceEur',
+          },
         ],
       },
     },
@@ -102,6 +114,6 @@ export const waterOpeningAdapter: ModuleSetupAdapter = {
   },
 };
 
-export function downloadWaterOpeningTemplate(): void {
-  downloadWaterMeterIs3Template();
+export function downloadWaterOpeningTemplate(locale?: string): void {
+  downloadWaterMeterIs3Template(locale);
 }

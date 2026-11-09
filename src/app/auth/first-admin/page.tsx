@@ -10,6 +10,7 @@ import {
   INITIAL_SETUP_ADMIN_PATH,
   isValidBootstrapToken,
 } from '@/lib/firstBoot';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 function FirstAdminInner() {
   const { t } = useI18n();
@@ -85,13 +86,7 @@ function FirstAdminInner() {
 
       router.replace(INITIAL_SETUP_ADMIN_PATH);
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'message' in err
-          ? String((err as { message: unknown }).message)
-          : err instanceof Error
-            ? err.message
-            : t('authFirstAdmin.errGeneric');
-      setError(msg);
+      setError(toUserFacingMessage(err, t, { fallback: t('authFirstAdmin.errGeneric') }));
     } finally {
       setBusy(false);
     }

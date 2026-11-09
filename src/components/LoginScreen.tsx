@@ -8,6 +8,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { createClient } from '@/lib/supabase/client';
 import { normalizeEmail } from '@/lib/email';
 import { buildAuthCallbackUrl } from '@/lib/auth/emailConfirmation';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 export function LoginScreen({
   email,
@@ -53,7 +54,7 @@ export function LoginScreen({
       if (error) throw error;
       setResetInfo(t('login.resetSent'));
     } catch (err: unknown) {
-      setResetError(err instanceof Error ? err.message : t('login.resetFailed'));
+      setResetError(toUserFacingMessage(err, t, { fallback: t('login.resetFailed') }));
     } finally {
       setResetBusy(false);
     }
@@ -62,7 +63,9 @@ export function LoginScreen({
   const fields = (
     <form onSubmit={onSubmit} className={embedded ? 'login-embed-form' : 'space-y-4'}>
       <div>
-        <label className={embedded ? 'login-embed-label' : 'text-sm text-secondary'}>Email</label>
+        <label className={embedded ? 'login-embed-label' : 'text-sm text-secondary'}>
+          {t('login.emailLabel')}
+        </label>
         <input
           className={
             embedded
@@ -77,7 +80,9 @@ export function LoginScreen({
         />
       </div>
       <div>
-        <label className={embedded ? 'login-embed-label' : 'text-sm text-secondary'}>Password</label>
+        <label className={embedded ? 'login-embed-label' : 'text-sm text-secondary'}>
+          {t('login.passwordLabel')}
+        </label>
         <input
           className={
             embedded

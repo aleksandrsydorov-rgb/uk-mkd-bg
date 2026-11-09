@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { labelGenericRecordStatus } from '@/i18n/labels';
 import {
   AdminCard,
   AdminInlineAlert,
@@ -11,12 +12,14 @@ import {
   AdminSecondaryButton,
   adminFieldClass,
 } from '@/components/admin/AdminUi';
+import { AppFilePicker, formatAcceptHint, formatFileSizeMb } from '@/components/ui/AppFilePicker';
 import {
   BUILDING_DOCUMENTS_BUCKET,
   MAX_BUILDING_DOCUMENT_BYTES,
   buildPrivateStoragePath,
 } from '@/lib/buildingDocuments';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type PropertyOpt = {
   id: number;
@@ -194,13 +197,14 @@ export function AdminOwnershipStage3Panel({
         .order('created_at', { ascending: false }),
     ]);
 
-    if (ownersRes.error) onError(ownersRes.error.message);
-    else setOwners((ownersRes.data ?? []) as BookOwner[]);
+    if (ownersRes.error) {
+      onError(toUserFacingMessage(ownersRes.error, t, { context: 'load', fallback: t('admin.errGeneric') }));
+    } else setOwners((ownersRes.data ?? []) as BookOwner[]);
 
     if (!debtRes.error && debtRes.data && typeof debtRes.data === 'object') {
       setDebt(debtRes.data as DebtStatus);
     } else if (debtRes.error && !isMissingRpcError(debtRes.error)) {
-      onError(debtRes.error.message);
+      onError(toUserFacingMessage(debtRes.error, t, { context: 'load', fallback: t('admin.errGeneric') }));
     }
 
     if (!settingsRes.error && settingsRes.data) {
@@ -210,7 +214,7 @@ export function AdminOwnershipStage3Panel({
 
     if (!liabRes.error) setLiabilities((liabRes.data ?? []) as Liability[]);
     if (!guestRes.error) setGuests((guestRes.data ?? []) as GuestAccess[]);
-  }, [pid, supabase, onError]);
+  }, [pid, supabase, onError, t]);
 
   useEffect(() => {
     if (open && pid) void reload();
@@ -243,7 +247,7 @@ export function AdminOwnershipStage3Panel({
       await onChanged();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errPendingInheritance'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errPendingInheritance') }));
     } finally {
       setBusy(false);
     }
@@ -265,7 +269,7 @@ export function AdminOwnershipStage3Panel({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errGuestGrant'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errGuestGrant') }));
     } finally {
       setBusy(false);
     }
@@ -282,7 +286,7 @@ export function AdminOwnershipStage3Panel({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errGuestRevoke'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errGuestRevoke') }));
     } finally {
       setBusy(false);
     }
@@ -318,7 +322,7 @@ export function AdminOwnershipStage3Panel({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errLiabilityConfirm'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errLiabilityConfirm') }));
     } finally {
       setBusy(false);
     }
@@ -340,7 +344,7 @@ export function AdminOwnershipStage3Panel({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errLiabilityConfirm'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errLiabilityConfirm') }));
     } finally {
       setBusy(false);
     }
@@ -381,7 +385,7 @@ export function AdminOwnershipStage3Panel({
       await onChanged();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errRepresentative'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errRepresentative') }));
     } finally {
       setBusy(false);
     }
@@ -414,7 +418,7 @@ export function AdminOwnershipStage3Panel({
             <option value="">{t('xfer.pickProperty')}</option>
             {properties.map((p) => (
               <option key={p.id} value={p.id}>
-                {t('picker.apt', { n: p.apartment_number ?? p.id })} (#{p.id})
+                {t('picker.apt', { n: p.apartment_number ?? p.id })}
               </option>
             ))}
           </select>
@@ -497,11 +501,14 @@ export function AdminOwnershipStage3Panel({
                       value={deathDocDate}
                       onChange={(e) => setDeathDocDate(e.target.value)}
                     />
-                    <input
-                      className={adminFieldClass}
-                      type="file"
+                    <AppFilePicker
                       accept=".pdf,image/*"
-                      onChange={(e) => setDeathFile(e.target.files?.[0] ?? null)}
+                      files={deathFile ? [deathFile] : []}
+                      hint={t('common.fileHintFormatsSize', {
+                        formats: formatAcceptHint('.pdf,image/*'),
+                        size: formatFileSizeMb(MAX_BUILDING_DOCUMENT_BYTES),
+                      })}
+                      onChange={(picked) => setDeathFile(picked[0] ?? null)}
                     />
                   </div>
                 )}
@@ -541,7 +548,14 @@ export function AdminOwnershipStage3Panel({
                       className="flex flex-wrap items-center justify-between gap-2 text-xs text-secondary"
                     >
                       <span>
-                        {g.email} · {g.status}
+                        {g.email} ·{' '}
+                        {(() => {
+                          const key = `account.guestStatus_${String(g.status ?? '').toLowerCase()}`;
+                          const labeled = t(key);
+                          return labeled !== key
+                            ? labeled
+                            : labelGenericRecordStatus(g.status, t);
+                        })()}
                         {g.valid_until ? ` · ${g.valid_until}` : ''}
                       </span>
                       <AdminSecondaryButton
@@ -720,12 +734,15 @@ export function AdminOwnershipStage3Panel({
                       onChange={(e) => setRepDocDate(e.target.value)}
                       required
                     />
-                    <input
-                      className={adminFieldClass}
-                      type="file"
+                    <AppFilePicker
                       accept=".pdf,image/*"
-                      onChange={(e) => setRepFile(e.target.files?.[0] ?? null)}
                       required
+                      files={repFile ? [repFile] : []}
+                      hint={t('common.fileHintFormatsSize', {
+                        formats: formatAcceptHint('.pdf,image/*'),
+                        size: formatFileSizeMb(MAX_BUILDING_DOCUMENT_BYTES),
+                      })}
+                      onChange={(picked) => setRepFile(picked[0] ?? null)}
                     />
                   </div>
                   <AdminPrimaryButton type="submit" disabled={busy}>

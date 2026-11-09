@@ -755,6 +755,7 @@ export interface Database {
           deadline: string | null;
           created_by: string | null;
           photo_url: string | null;
+          attachments: Json;
           budget_eur: number | null;
           voting_starts: string | null;
           result: string;
@@ -770,6 +771,7 @@ export interface Database {
           deadline?: string | null;
           created_by?: string | null;
           photo_url?: string | null;
+          attachments?: Json;
           budget_eur?: number | null;
           voting_starts?: string | null;
           result?: string;
@@ -785,6 +787,7 @@ export interface Database {
           deadline?: string | null;
           created_by?: string | null;
           photo_url?: string | null;
+          attachments?: Json;
           budget_eur?: number | null;
           voting_starts?: string | null;
           result?: string;
@@ -909,6 +912,7 @@ export interface Database {
           photo_url: string | null;
           created_by_role: string | null;
           created_by_email: string | null;
+          guest_access_id: string | null;
         };
         Insert: {
           id?: number;
@@ -924,6 +928,7 @@ export interface Database {
           photo_url?: string | null;
           created_by_role?: string | null;
           created_by_email?: string | null;
+          guest_access_id?: string | null;
         };
         Update: {
           id?: number;
@@ -939,6 +944,7 @@ export interface Database {
           photo_url?: string | null;
           created_by_role?: string | null;
           created_by_email?: string | null;
+          guest_access_id?: string | null;
         };
         Relationships: [];
       };
@@ -1415,6 +1421,7 @@ export interface Database {
           status: string;
           created_by_email: string;
           created_at: string;
+          permissions: Json;
         };
         Insert: {
           id?: string;
@@ -1426,6 +1433,7 @@ export interface Database {
           status?: string;
           created_by_email: string;
           created_at?: string;
+          permissions?: Json;
         };
         Update: {
           id?: string;
@@ -1437,6 +1445,7 @@ export interface Database {
           status?: string;
           created_by_email?: string;
           created_at?: string;
+          permissions?: Json;
         };
         Relationships: [];
       };
@@ -2309,6 +2318,7 @@ export interface Database {
           recorded_by_email: string;
           idempotency_key: string;
           created_at: string;
+          calculation_basis: string;
         };
         Insert: {
           id?: string;
@@ -2327,6 +2337,7 @@ export interface Database {
           recorded_by_email: string;
           idempotency_key: string;
           created_at?: string;
+          calculation_basis?: string;
         };
         Update: {
           id?: string;
@@ -2345,6 +2356,7 @@ export interface Database {
           recorded_by_email?: string;
           idempotency_key?: string;
           created_at?: string;
+          calculation_basis?: string;
         };
         Relationships: [];
       };
@@ -2721,6 +2733,10 @@ export interface Database {
           recorded_by_email: string | null;
           idempotency_key: string;
           created_at: string;
+          area_sqm_snapshot: number | null;
+          rate_eur_per_sqm_year_snapshot: number | null;
+          tariff_version_id: string | null;
+          subject_kind: string | null;
         };
         Insert: {
           id?: string;
@@ -2732,6 +2748,10 @@ export interface Database {
           recorded_by_email?: string | null;
           idempotency_key: string;
           created_at?: string;
+          area_sqm_snapshot?: number | null;
+          rate_eur_per_sqm_year_snapshot?: number | null;
+          tariff_version_id?: string | null;
+          subject_kind?: string | null;
         };
         Update: {
           id?: string;
@@ -2743,6 +2763,10 @@ export interface Database {
           recorded_by_email?: string | null;
           idempotency_key?: string;
           created_at?: string;
+          area_sqm_snapshot?: number | null;
+          rate_eur_per_sqm_year_snapshot?: number | null;
+          tariff_version_id?: string | null;
+          subject_kind?: string | null;
         };
         Relationships: [];
       };
@@ -2802,6 +2826,7 @@ export interface Database {
           billing_day: number | null;
           billing_anchor_date: string | null;
           next_charge_on: string | null;
+          billing_mode: string;
           opening_import: boolean;
           opening_transition_date: string | null;
           opening_paid_through: string | null;
@@ -2823,6 +2848,7 @@ export interface Database {
           billing_day?: number | null;
           billing_anchor_date?: string | null;
           next_charge_on?: string | null;
+          billing_mode?: string;
           opening_import?: boolean;
           opening_transition_date?: string | null;
           opening_paid_through?: string | null;
@@ -2844,6 +2870,7 @@ export interface Database {
           billing_day?: number | null;
           billing_anchor_date?: string | null;
           next_charge_on?: string | null;
+          billing_mode?: string;
           opening_import?: boolean;
           opening_transition_date?: string | null;
           opening_paid_through?: string | null;
@@ -2851,6 +2878,69 @@ export interface Database {
           opening_notes?: string | null;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      internet_paid_periods: {
+        Row: {
+          id: string;
+          property_id: number;
+          subscription_id: string;
+          period_start: string;
+          period_end: string;
+          billing_method: string;
+          calendar_days: number;
+          package_count: number;
+          extra_days: number;
+          package_rate_eur: number;
+          day_rate_eur: number;
+          amount_eur: number;
+          tariff_version_id: string | null;
+          ledger_id: string | null;
+          opening_import: boolean;
+          recorded_by_email: string | null;
+          idempotency_key: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          property_id: number;
+          subscription_id: string;
+          period_start: string;
+          period_end: string;
+          billing_method: string;
+          calendar_days: number;
+          package_count: number;
+          extra_days: number;
+          package_rate_eur: number;
+          day_rate_eur: number;
+          amount_eur: number;
+          tariff_version_id?: string | null;
+          ledger_id?: string | null;
+          opening_import?: boolean;
+          recorded_by_email?: string | null;
+          idempotency_key: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          property_id?: number;
+          subscription_id?: string;
+          period_start?: string;
+          period_end?: string;
+          billing_method?: string;
+          calendar_days?: number;
+          package_count?: number;
+          extra_days?: number;
+          package_rate_eur?: number;
+          day_rate_eur?: number;
+          amount_eur?: number;
+          tariff_version_id?: string | null;
+          ledger_id?: string | null;
+          opening_import?: boolean;
+          recorded_by_email?: string | null;
+          idempotency_key?: string;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -5108,6 +5198,14 @@ export interface Database {
         Args: { p_period: string };
         Returns: Json;
       };
+      support_fee_launch_context: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      support_fee_year_charge_context: {
+        Args: { p_billing_year: number };
+        Returns: Json;
+      };
       upsert_support_fee_annual_policy: {
         Args: {
           p_billing_year: number;
@@ -5437,6 +5535,65 @@ export interface Database {
           charge_created: boolean;
         }[];
       };
+      quote_electricity_legal_charge: {
+        Args: {
+          p_day_reading_id: number;
+          p_night_reading_id: number;
+          p_day_rate: number;
+          p_night_rate: number;
+        };
+        Returns: {
+          consumption_day: number;
+          consumption_night: number;
+          day_amount_eur: number;
+          night_amount_eur: number;
+          total_amount_eur: number;
+        }[];
+      };
+      confirm_electricity_legal_charge: {
+        Args: {
+          p_day_reading_id: number;
+          p_night_reading_id: number;
+          p_day_rate: number;
+          p_night_rate: number;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          charge_id: string;
+          property_id: number;
+          day_reading_id: number;
+          night_reading_id: number;
+          day_tariff_eur_per_kwh: number;
+          night_tariff_eur_per_kwh: number;
+          day_amount_eur: number;
+          night_amount_eur: number;
+          total_amount_eur: number;
+          charge_created: boolean;
+          recorded_by_email: string;
+          confirmed_at: string;
+        }[];
+      };
+      admin_list_pending_electricity_readings: {
+        Args: Record<string, never>;
+        Returns: {
+          day_reading_id: number;
+          night_reading_id: number;
+          property_id: number;
+          apartment_number: string;
+          meter_number: string | null;
+          reading_date: string;
+          previous_day: number;
+          previous_day_date: string | null;
+          current_day: number;
+          previous_night: number;
+          previous_night_date: string | null;
+          current_night: number;
+          consumption_day: number;
+          consumption_night: number;
+          composition: string;
+          block_reason: string | null;
+        }[];
+      };
       set_electricity_tariff: {
         Args: {
           p_day_price_eur_per_kwh: number;
@@ -5512,6 +5669,22 @@ export interface Database {
         };
         Returns: string;
       };
+      capital_repair_launch_context: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      capital_repair_year_charge_context: {
+        Args: { p_billing_year: number };
+        Returns: Json;
+      };
+      capital_repair_min_charge_year: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      capital_repair_launch_year_blocks: {
+        Args: { p_billing_year: number };
+        Returns: boolean;
+      };
       charge_capital_repair: {
         Args: {
           p_property_id: number;
@@ -5529,6 +5702,21 @@ export interface Database {
           created_at: string;
         }[];
       };
+      capital_repair_charge_amount_for_year: {
+        Args: {
+          p_property_id: number;
+          p_billing_year: number;
+        };
+        Returns: {
+          tariff_version_id: string;
+          valid_from: string;
+          subject_kind: string;
+          area_sqm: number;
+          rate_eur_per_sqm_year: number;
+          amount_eur: number;
+          apartment_number: string | null;
+        }[];
+      };
       get_applicable_capital_tariff: {
         Args: {
           p_billing_year?: number | null;
@@ -5537,7 +5725,11 @@ export interface Database {
           tariff_version_id: string;
           valid_from: string;
           amount_eur: number;
+          rate_natural_eur: number;
+          rate_legal_eur: number;
           billing_year: number;
+          currency: string;
+          unit_code: string;
         }[];
       };
       get_applicable_internet_tariff: {
@@ -5559,6 +5751,46 @@ export interface Database {
           month_rate_eur: number;
           amount_eur: number;
           tariff_version_id: string;
+        }[];
+      };
+      compute_internet_period_quote: {
+        Args: {
+          p_period_start: string;
+          p_period_end: string;
+          p_billing_method: string;
+          p_on_date?: string | null;
+        };
+        Returns: {
+          calendar_days: number;
+          package_count: number;
+          extra_days: number;
+          package_rate_eur: number;
+          day_rate_eur: number;
+          amount_eur: number;
+          tariff_version_id: string;
+          billing_method: string;
+        }[];
+      };
+      confirm_internet_paid_period: {
+        Args: {
+          p_property_id: number;
+          p_period_start: string;
+          p_period_end: string;
+          p_billing_method: string;
+          p_idempotency_key: string;
+        };
+        Returns: {
+          period_id: string;
+          subscription_id: string;
+          ledger_id: string | null;
+          calendar_days: number;
+          package_count: number;
+          extra_days: number;
+          package_rate_eur: number;
+          day_rate_eur: number;
+          amount_eur: number;
+          billing_method: string;
+          charge_created: boolean;
         }[];
       };
       compute_internet_monthly_amount: {
@@ -5941,6 +6173,10 @@ export interface Database {
           adjustments_amount_eur: number;
           actual_amount_eur: number;
           remaining_amount_eur: number;
+          opening_amount_eur: number;
+          operational_amount_eur: number;
+          total_expenses_eur: number;
+          plan_remainder_eur: number;
         }[];
       };
       owner_get_budget_year: {
@@ -6142,9 +6378,39 @@ export interface Database {
           ideal_parts_percent: number | null;
           ownership_type: string | null;
           owner_count: number;
+          owner_phone: string | null;
+          owner_phone_secondary: string | null;
           book_complete: boolean;
+          needs_clarification: boolean;
+          clarification: Record<string, unknown>;
           validation: Record<string, unknown>;
         }[];
+      };
+      admin_record_property_book_clarification_request: {
+        Args: {
+          p_property_id: number;
+          p_registry_people_id?: number | null;
+          p_channel?: string;
+          p_message_text?: string | null;
+          p_missing_codes?: string[];
+        };
+        Returns: Record<string, unknown>;
+      };
+      admin_list_property_book_clarification_requests: {
+        Args: { p_property_id: number; p_limit?: number };
+        Returns: Json;
+      };
+      owner_property_book_clarification_status: {
+        Args: { p_property_id: number };
+        Returns: Record<string, unknown>;
+      };
+      owner_update_own_registry_contact: {
+        Args: { p_property_id: number; p_patch: Json };
+        Returns: Record<string, unknown>;
+      };
+      property_book_clarification_issues: {
+        Args: { p_property_id: number };
+        Returns: Record<string, unknown>;
       };
       admin_get_property_book: {
         Args: { p_property_id: number };
@@ -6625,6 +6891,32 @@ export interface Database {
       guest_mode_module_enabled: {
         Args: Record<string, never>;
         Returns: boolean;
+      };
+      guest_list_meters_for_submit: {
+        Args: { p_property_id: number; p_utility: string };
+        Returns: Json;
+      };
+      admin_reply_chat_message: {
+        Args: {
+          p_property_id: number;
+          p_message: string;
+          p_guest_access_id?: string | null;
+          p_photo_url?: string | null;
+          p_file_name?: string | null;
+        };
+        Returns: Database['public']['Tables']['chat_messages']['Row'];
+      };
+      admin_assert_internet_rates_publishable: {
+        Args: { p_rates: Json };
+        Returns: undefined;
+      };
+      resolve_internet_legacy_monthly_rate: {
+        Args: { p_on_date?: string | null };
+        Returns: {
+          tariff_version_id: string;
+          valid_from: string;
+          month_rate_eur: number;
+        }[];
       };
       gm_freeze_notice_snapshot: {
         Args: { p_meeting_id: string };

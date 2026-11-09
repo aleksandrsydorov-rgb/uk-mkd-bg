@@ -19,7 +19,7 @@ import {
   AdminSecondaryButton,
   StatusBadge,
 } from '@/components/admin/AdminUi';
-import { ownerVisibleError } from '@/lib/ownerError';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 function MeetingFileSlotMini({
   type,
@@ -116,7 +116,7 @@ export function AdminMeetingInvitationDispatch({
       p_meeting_id: meeting.id,
     });
     if (error) {
-      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(error, t, { context: 'load', fallback: t('admin.errGeneric') }));
       return;
     }
     setReady(parseInvitationDispatchReady(data));
@@ -142,7 +142,7 @@ export function AdminMeetingInvitationDispatch({
         }),
       );
     } catch (e: unknown) {
-      onError(e instanceof Error ? e.message : String(e));
+      onError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setLocalBusy(false);
     }
@@ -159,7 +159,7 @@ export function AdminMeetingInvitationDispatch({
     });
     setLocalBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     await onReload();
@@ -175,7 +175,7 @@ export function AdminMeetingInvitationDispatch({
     });
     setLocalBusy(false);
     if (error) {
-      onError(ownerVisibleError(error.message, t('admin.errGeneric')));
+      onError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     const row = (data ?? {}) as { sent?: number; skipped?: number; already_sent?: boolean };

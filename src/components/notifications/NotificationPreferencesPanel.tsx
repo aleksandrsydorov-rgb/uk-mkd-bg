@@ -16,6 +16,7 @@ import {
   saveMyNotificationPrefs,
 } from '@/lib/email/notificationPrefsClient';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type Props = {
   supabase: SupabaseClient<Database>;
@@ -54,7 +55,7 @@ export function NotificationPreferencesPanel({
       if (isMissingRpcError(err)) {
         setMissing(true);
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
       }
     } finally {
       setLoading(false);
@@ -99,7 +100,7 @@ export function NotificationPreferencesPanel({
       setComplexEvents(next.complex.events);
       setSuccess(t('notify.prefsSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setSaving(false);
     }
@@ -179,7 +180,9 @@ export function NotificationPreferencesPanel({
                       }
                     />
                     <span>
-                      <span className="font-mono text-xs text-foreground">{ev.eventKey}</span>
+                      <span className="text-sm text-foreground">
+                        {t(`notify.event.${ev.eventKey}`)}
+                      </span>
                       {locked ? (
                         <span className="ml-2 text-xs text-muted">{t('notify.lockedSecurity')}</span>
                       ) : null}
@@ -198,8 +201,8 @@ export function NotificationPreferencesPanel({
             <ul className="max-h-56 space-y-1 overflow-auto text-xs text-secondary">
               {previews.map((p) => (
                 <li key={p.eventKey} className="flex flex-wrap gap-x-2">
-                  <code className="text-foreground">{p.eventKey}</code>
-                  <span>{p.effective}</span>
+                  <span className="text-foreground">{t(`notify.event.${p.eventKey}`)}</span>
+                  <span>{t(`notify.delivery.${p.effective}`)}</span>
                   {p.lockedSecurity ? <span>({t('notify.lockedSecurity')})</span> : null}
                   {p.blockedByComplex ? <span className="text-danger">{t('notify.disabledByAdmin')}</span> : null}
                 </li>

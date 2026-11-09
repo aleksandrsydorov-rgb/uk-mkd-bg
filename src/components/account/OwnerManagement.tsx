@@ -18,6 +18,7 @@ import {
   StatusBadge,
   TextLinkButton,
 } from '@/components/account/ownerUi';
+import { AppFilePicker } from '@/components/ui/AppFilePicker';
 
 export type ManagementTab = 'заявки' | 'объявления' | 'расходы' | 'чат';
 
@@ -126,7 +127,8 @@ export function OwnerManagement({
     setFile: (f: File | null) => void;
     sending: boolean;
     onSend: (e: FormEvent) => void;
-    fileRef: RefObject<HTMLInputElement | null>;
+    /** @deprecated unused — attach uses AppFilePicker */
+    fileRef?: RefObject<HTMLInputElement | null>;
     scrollRef: RefObject<HTMLDivElement | null>;
     apartmentNumber: string | number | null | undefined;
     ownerName: string | null | undefined;
@@ -471,33 +473,15 @@ export function OwnerManagement({
             </div>
           ) : null}
           <form onSubmit={chat.onSend} className="shrink-0 border-t border-border px-3 py-2.5">
-            {chat.file ? (
-              <div className="mb-2 flex items-center gap-2 text-sm text-secondary">
-                <span className="min-w-0 flex-1 truncate">📎 {chat.file.name}</span>
-                <button type="button" className="text-xs" onClick={() => chat.setFile(null)}>
-                  {t('account.removeFile')}
-                </button>
-              </div>
-            ) : null}
             <div className="flex items-end gap-2">
-              <input
-                ref={chat.fileRef}
-                type="file"
-                className="hidden"
+              <AppFilePicker
+                variant="icon"
                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                onChange={(e) => chat.setFile(e.target.files?.[0] ?? null)}
-              />
-              <button
-                type="button"
-                onClick={() => chat.fileRef.current?.click()}
                 disabled={chat.sending}
+                files={chat.file ? [chat.file] : []}
                 aria-label={t('account.attachFile')}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-secondary hover:bg-hover"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                </svg>
-              </button>
+                onChange={(picked) => chat.setFile(picked[0] ?? null)}
+              />
               <input
                 className="min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 py-2.5 text-sm"
                 value={chat.input}

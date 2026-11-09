@@ -117,6 +117,29 @@ export function bookOwnershipIsAuthoritative(people: PropertyRegistryPerson[]): 
   return activeBookOwners(people).length > 0;
 }
 
+export type OwnershipComposition = 'natural' | 'legal' | 'mixed' | 'unknown' | 'empty';
+
+/** sole_trader counts as natural. A natural person together with a legal entity is mixed. */
+export function ownershipComposition(
+  kinds: Array<string | null | undefined>,
+): OwnershipComposition {
+  let legal = 0;
+  let natural = 0;
+  let other = 0;
+  for (const raw of kinds) {
+    const kind = String(raw ?? '').trim().toLowerCase();
+    if (!kind) continue;
+    if (kind === 'legal_entity') legal += 1;
+    else if (kind === 'natural_person' || kind === 'sole_trader') natural += 1;
+    else other += 1;
+  }
+  if (other > 0) return 'unknown';
+  if (legal > 0 && natural > 0) return 'mixed';
+  if (legal > 0) return 'legal';
+  if (natural > 0) return 'natural';
+  return 'empty';
+}
+
 /**
  * Detects stale portal mirror vs Book (display/ops risk only — does not grant access).
  * Book mutation paths call property_book_sync_portal_owner_fields to refresh the mirror.

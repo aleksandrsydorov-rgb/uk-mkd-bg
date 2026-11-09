@@ -128,6 +128,7 @@ export {
 export {
   INVENTORY_SETUP_SCHEMA_VERSION,
   INVENTORY_OPENING_HEADERS,
+  INVENTORY_OPENING_FRIENDLY_HEADERS,
   INVENTORY_OPENING_SHEET,
   buildInventoryOpeningTemplateBuffer,
   downloadInventoryOpeningTemplate,
@@ -138,6 +139,8 @@ export {
   validateInventoryOpeningRow,
   inventorySetupManualComplete,
   inventoryOpeningMentionsFinance,
+  normalizeInventoryCatalogKey,
+  slugifyInventoryCatalogCode,
   INVENTORY_OPENING_FORBIDDEN_FINANCE,
   type InventoryOpeningClassifyContext,
   type ExistingInventoryAssetRef,
@@ -145,15 +148,55 @@ export {
 } from './opening';
 
 export {
+  groupInventoryOpeningPreviewByCategory,
+  inventoryOpeningCatalogCreates,
+  inventoryOpeningUniqueCategoryCount,
+  inventoryOpeningWarningCount,
+  type InventoryPreviewCategoryGroup,
+} from './openingPreview';
+
+export { presentInventoryOpeningIssue } from './openingMessages';
+
+export {
+  presentInventoryCommitDetail,
+  isInventoryCatalogCreateWarning,
+} from './openingLabels';
+
+export {
+  presentInventoryCondition,
+  presentInventoryUnit,
+  presentInventoryOwnership,
+  presentInventoryAssetStatus,
+  presentInventoryMovement,
+  presentInventoryMoveAction,
+  presentInventoryLocationKind,
+  presentInventorySessionStatus,
+  presentInventoryTracking,
+  presentInventoryMaintenanceKind,
+  presentInventoryFindingStatus,
+  presentInventoryEventKind,
+  INVENTORY_LOCATION_KINDS,
+  INVENTORY_UNIT_CODES,
+  INVENTORY_MAINT_KINDS,
+} from './labels';
+
+export {
   commitInventoryOpeningBatch,
   inventoryCommitAuditPayload,
   filterPreviewForInventoryRetry,
   retryCandidatesFromInventoryBatch,
+  unsavedInventoryCommitOutcomes,
+  inventoryCommitUiSummary,
+  inventoryCommitConfirmedSavedCount,
+  inventoryCommitBatchFromAuditPreview,
+  reconcileInventoryCommitWithServer,
   mergeInventoryCommitBatches,
   inventoryOpeningIdempotencyKey,
   classifyInventoryOpeningCommitError,
   INVENTORY_COMMIT_OUTCOMES,
   type InventoryCommitBatchResult,
   type InventoryCommitRowResult,
+  type InventoryCommitUiSummary,
   type InventoryOpeningImportFns,
+  type InventoryServerPresence,
 } from './openingCommit';

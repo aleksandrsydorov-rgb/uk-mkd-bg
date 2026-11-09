@@ -1,5 +1,5 @@
 export type ElectricityMode = 'owner_and_staff' | 'staff_only';
-export type ElectricitySource = 'owner' | 'staff';
+export type ElectricitySource = 'owner' | 'staff' | 'system';
 
 export const DEFAULT_ELECTRICITY_MODE: ElectricityMode = 'owner_and_staff';
 
@@ -16,6 +16,8 @@ export type MeterReadingRow = {
   electricity_meter_id?: string | null;
   status?: string | null;
   reading_kind?: string | null;
+  reversal_reason?: string | null;
+  photo_url?: string | null;
 };
 
 export type ElectricityMeter = {
@@ -49,6 +51,8 @@ export type ElectricityPair = {
   night_reading_id: number | null;
   status: string | null;
   reading_kind: string | null;
+  reversal_reason: string | null;
+  photo_url: string | null;
 };
 
 export type ElectricitySubmitResult = {
@@ -314,13 +318,16 @@ export function pairElectricityReadings(
     const dayRow = list.find((r) => r.meter_type === 'electricity_day') ?? null;
     const nightRow = list.find((r) => r.meter_type === 'electricity_night') ?? null;
     const sample = dayRow ?? nightRow!;
+    const readingKind = dayRow?.reading_kind ?? nightRow?.reading_kind ?? null;
     const sourceRaw = sample.submitted_source;
     const source: ElectricitySource | null =
-      sourceRaw === 'owner' || sourceRaw === 'staff'
+      sourceRaw === 'owner' || sourceRaw === 'staff' || sourceRaw === 'system'
         ? sourceRaw
-        : sample.submitted_by
-          ? 'staff'
-          : null;
+        : readingKind === 'opening'
+          ? 'system'
+          : sample.submitted_by
+            ? 'staff'
+            : null;
     const meterId = dayRow?.electricity_meter_id ?? nightRow?.electricity_meter_id ?? null;
     const dayStatus = dayRow?.status ?? null;
     const nightStatus = nightRow?.status ?? null;
@@ -328,6 +335,12 @@ export function pairElectricityReadings(
       dayStatus === 'reversed' || nightStatus === 'reversed'
         ? 'reversed'
         : dayStatus ?? nightStatus ?? 'active';
+    const reason =
+      dayRow?.reversal_reason?.trim() ||
+      nightRow?.reversal_reason?.trim() ||
+      null;
+    const photo =
+      dayRow?.photo_url?.trim() || nightRow?.photo_url?.trim() || null;
     return {
       key,
       reading_date: sample.reading_date ?? '',
@@ -345,7 +358,9 @@ export function pairElectricityReadings(
       day_reading_id: dayRow?.id ?? null,
       night_reading_id: nightRow?.id ?? null,
       status,
-      reading_kind: dayRow?.reading_kind ?? nightRow?.reading_kind ?? null,
+      reading_kind: readingKind,
+      reversal_reason: reason,
+      photo_url: photo,
     };
   });
 
@@ -355,19 +370,28 @@ export function pairElectricityReadings(
     return String(a.created_at).localeCompare(String(b.created_at));
   });
 
+  // Per-meter chain only — never bridge consumption across a replacement.
+  // Opening rows are visible but do not contribute consumption.
   let prevDay: number | null = null;
   let prevNight: number | null = null;
   let prevMeterId: string | null | undefined = undefined;
   for (const pair of pairs) {
-    const meter = pair.electricity_meter_id ? meterById.get(pair.electricity_meter_id) : undefined;
     if (prevMeterId !== pair.electricity_meter_id) {
-      prevDay = meter ? Number(meter.initial_day_reading) : null;
-      prevNight = meter ? Number(meter.initial_night_reading) : null;
+      prevDay = null;
+      prevNight = null;
     }
     pair.prevDay = prevDay;
     pair.prevNight = prevNight;
-    pair.consumptionDay = pair.day != null && prevDay != null ? Number((pair.day - prevDay).toFixed(3)) : null;
-    pair.consumptionNight = pair.night != null && prevNight != null ? Number((pair.night - prevNight).toFixed(3)) : null;
+    const opening = pair.reading_kind === 'opening';
+    if (opening) {
+      pair.consumptionDay = null;
+      pair.consumptionNight = null;
+    } else {
+      pair.consumptionDay =
+        pair.day != null && prevDay != null ? Number((pair.day - prevDay).toFixed(3)) : null;
+      pair.consumptionNight =
+        pair.night != null && prevNight != null ? Number((pair.night - prevNight).toFixed(3)) : null;
+    }
     if (pair.day != null) prevDay = pair.day;
     if (pair.night != null) prevNight = pair.night;
     prevMeterId = pair.electricity_meter_id;

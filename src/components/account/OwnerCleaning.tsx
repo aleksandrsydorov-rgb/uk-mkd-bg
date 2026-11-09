@@ -86,7 +86,7 @@ export function OwnerCleaning({
         })),
       );
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('err.loadApt')));
+      setError(ownerVisibleError(e, t('err.loadApt'), t));
     } finally {
       setLoading(false);
     }
@@ -119,7 +119,7 @@ export function OwnerCleaning({
       setPreferredDate('');
       await load();
     } catch (err: unknown) {
-      setError(ownerVisibleError(err, t('err.loadApt')));
+      setError(ownerVisibleError(err, t('err.loadApt'), t));
     } finally {
       setBusy(false);
     }
@@ -137,7 +137,7 @@ export function OwnerCleaning({
       setOk(t('account.cleanCancelled'));
       await load();
     } catch (err: unknown) {
-      setError(ownerVisibleError(err, t('err.loadApt')));
+      setError(ownerVisibleError(err, t('err.loadApt'), t));
     } finally {
       setBusy(false);
     }

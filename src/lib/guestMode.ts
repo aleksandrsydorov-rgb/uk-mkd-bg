@@ -3,6 +3,13 @@
  * Server/RLS remains authoritative — these never grant access alone.
  */
 
+import {
+  guestHasLocalAction,
+  parseGuestPermissions,
+  type GuestActionKey,
+  type GuestPermissions,
+} from '@/lib/guestPermissions';
+
 export const GUEST_RELATION_TYPES = [
   'living_with_owner',
   'co_owner',
@@ -22,23 +29,45 @@ export type GuestCabinetPermission =
   | 'available_services_overview'
   | 'guest_chat'
   | 'meter_readings'
+  | 'water_submit'
+  | 'electricity_submit'
   | 'finance'
   | 'owner_voting'
   | 'property_book_edit'
   | 'other_apartments'
   | 'polls'
   | 'announcements'
+  | 'documents'
   | 'general_meetings';
 
-const GUEST_ALLOWED: ReadonlySet<GuestCabinetPermission> = new Set([
-  'maintenance_requests',
-  'security_requests',
-  'available_services_overview',
-  'guest_chat',
-]);
+const CABINET_TO_ACTION: Partial<Record<GuestCabinetPermission, GuestActionKey>> = {
+  maintenance_requests: 'requests.own',
+  security_requests: 'security.own',
+  available_services_overview: 'services.overview',
+  guest_chat: 'chat.with_uk',
+  water_submit: 'water.submit_readings',
+  electricity_submit: 'electricity.submit_readings',
+  announcements: 'announcements.guest_audience',
+  documents: 'documents.guest_audience',
+};
 
+/**
+ * @deprecated Prefer guestCabinetAllowsWithPermissions — hard-coded allow-list
+ * must not be used as access control after per-invite permissions.
+ */
 export function guestCabinetAllows(permission: GuestCabinetPermission): boolean {
-  return GUEST_ALLOWED.has(permission);
+  void permission;
+  // Per-invite grants only — never a hard-coded allow-list.
+  return false;
+}
+
+export function guestCabinetAllowsWithPermissions(
+  permission: GuestCabinetPermission,
+  perms: GuestPermissions | null | undefined,
+): boolean {
+  const action = CABINET_TO_ACTION[permission];
+  if (!action) return false;
+  return guestHasLocalAction(perms, action);
 }
 
 /**
@@ -142,7 +171,14 @@ export type GuestAccessContext = {
   valid_from: string;
   valid_until: string | null;
   email: string;
+  permissions: GuestPermissions;
 };
+
+export function guestContextPermissions(
+  ctx: GuestAccessContext | null | undefined,
+): GuestPermissions {
+  return ctx?.permissions ?? parseGuestPermissions(null);
+}
 
 export function pickGuestAccessForProperty(
   contexts: GuestAccessContext[],

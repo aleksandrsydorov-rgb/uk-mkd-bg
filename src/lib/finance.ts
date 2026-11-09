@@ -6,7 +6,10 @@ export type SupportFeeKind =
   | 'adjustment_debit'
   | 'adjustment_credit'
   | 'payment_reversal'
-  | 'assessment_void';
+  | 'assessment_void'
+  | 'early_discount'
+  | 'late_penalty'
+  | 'late_increase_waive';
 
 export interface BuildingSettings {
   id: number;
@@ -29,6 +32,7 @@ export interface SupportFeeEntry {
   idempotency_key?: string | null;
   reverses_ledger_id?: number | null;
   reversal_reason?: string | null;
+  effective_at?: string | null;
 }
 
 function roundMoney(n: number) {

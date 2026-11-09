@@ -9,6 +9,7 @@ import { normalizeEmail } from '@/lib/email';
 import { useI18n } from '@/i18n/I18nProvider';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { BrandMark } from '@/components/BrandMark';
+import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { isMissingRelation } from '@/lib/polls';
@@ -38,9 +39,11 @@ import {
   adminCardClass,
   adminFieldClass,
 } from '@/components/admin/AdminUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 function GuardCabinetInner() {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const router = useRouter();
   const [supabase] = useState(() => createBrowserClient());
   const [authReady, setAuthReady] = useState(false);
@@ -200,7 +203,13 @@ function GuardCabinetInner() {
   }
 
   async function closeShift() {
-    if (!confirm(t('guard.closeConfirm'))) return;
+    const ok = await confirm({
+      title: t('guard.closeConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -401,6 +410,7 @@ function GuardCabinetInner() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {dialog}
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
@@ -533,23 +543,22 @@ function GuardCabinetInner() {
                             <p className="text-sm text-secondary">{rowDetail(row)}</p>
 
                             {showPhotoInput(row) ? (
-                              <label className="grid gap-1 text-xs text-secondary">
-                                {t('guard.photoOptional')}
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  disabled={busy}
-                                  className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-surface-secondary file:px-3 file:py-1.5 file:text-sm"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0] ?? null;
-                                    setPhotoById((prev) => ({ ...prev, [row.id]: file }));
-                                  }}
-                                />
-                                {photoById[row.id] ? (
-                                  <span className="text-muted">{photoById[row.id]?.name}</span>
-                                ) : null}
-                              </label>
+                              <AppFilePicker
+                                label={t('guard.photoOptional')}
+                                accept="image/*"
+                                capture="environment"
+                                disabled={busy}
+                                files={photoById[row.id] ? [photoById[row.id]!] : []}
+                                hint={t('common.fileHintFormats', {
+                                  formats: formatAcceptHint('image/*', t),
+                                })}
+                                onChange={(picked) => {
+                                  setPhotoById((prev) => ({
+                                    ...prev,
+                                    [row.id]: picked[0] ?? null,
+                                  }));
+                                }}
+                              />
                             ) : null}
 
                             <div className="flex flex-wrap gap-2">{renderActions(row)}</div>

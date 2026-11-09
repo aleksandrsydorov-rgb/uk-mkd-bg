@@ -281,7 +281,7 @@ export function OwnerOccupancy({
       setOwnerChangeOpen(false);
       flash();
     } catch (err: unknown) {
-      setOwnerChangeError(ownerVisibleError(err, t('err.save')));
+      setOwnerChangeError(ownerVisibleError(err, t('err.save'), t));
     } finally {
       setOwnerChangeSaving(false);
     }
@@ -312,7 +312,7 @@ export function OwnerOccupancy({
       });
       flash();
     } catch (err) {
-      setStatusError(ownerVisibleError(err, t('err.status')));
+      setStatusError(ownerVisibleError(err, t('err.status'), t));
     }
   }
 
@@ -344,7 +344,7 @@ export function OwnerOccupancy({
       flash();
     } catch (err) {
       setGuestError(
-        ownerVisibleError(err, editingGuestId != null ? t('err.updateGuest') : t('err.addGuest')),
+        ownerVisibleError(err, editingGuestId != null ? t('err.updateGuest') : t('err.addGuest'), t),
       );
     }
   }
@@ -385,7 +385,7 @@ export function OwnerOccupancy({
       setPetOpen(false);
       flash();
     } catch (err) {
-      setPetError(ownerVisibleError(err, t('err.save')));
+      setPetError(ownerVisibleError(err, t('err.save'), t));
     }
   }
 
@@ -767,7 +767,7 @@ export function OwnerOccupancy({
                             }
                           })
                           .catch((err) =>
-                            setGuestError(ownerVisibleError(err, t('err.removeGuest'))),
+                            setGuestError(ownerVisibleError(err, t('err.removeGuest'), t)),
                           );
                       }}
                     />
@@ -879,7 +879,7 @@ export function OwnerOccupancy({
                     onYes={() => {
                       void onRemovePet(pet.id)
                         .then(() => setPendingPetId(null))
-                        .catch((err) => setPetError(ownerVisibleError(err, t('err.delete'))));
+                        .catch((err) => setPetError(ownerVisibleError(err, t('err.delete'), t)));
                     }}
                   />
                 ) : null}

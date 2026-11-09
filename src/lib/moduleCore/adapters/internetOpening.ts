@@ -6,13 +6,34 @@
 import * as XLSX from 'xlsx';
 import type { ImportPreviewResult, ImportPreviewRow, ImportRowOperation } from '@/lib/moduleCore/types';
 import { sanitizeSpreadsheetCell } from '@/lib/moduleCore/xlsxEngine';
+import {
+  INTERNET_IMPORT_SPEC,
+  buildLocalizedImportWorkbook,
+  downloadImportTemplateBuffer,
+  localizedTemplateFileName,
+  toImportTemplateLocale,
+  type ImportTemplateLocale,
+} from '@/lib/importTemplates';
 
 export const INTERNET_MODULE_KEY = 'internet';
-export const INTERNET_SETUP_SCHEMA_VERSION = '1.0';
+export const INTERNET_SETUP_SCHEMA_VERSION = '1.1';
 export const INTERNET_TARIFF_KEY = 'internet';
 export const INTERNET_OPENING_STATUSES = ['active', 'inactive'] as const;
 
+/** User-facing first-run template columns (v1.1). Legacy aliases still accepted when parsing. */
 export const INTERNET_OPENING_HEADERS = [
+  'apartment_number',
+  'connection_state',
+  'connection_date',
+  'paid_period_start',
+  'paid_period_end',
+  'opening_debt',
+  'opening_credit',
+  'comment',
+] as const;
+
+/** Legacy IS-5 headers kept for older workbooks / Initial Setup. */
+export const INTERNET_OPENING_HEADERS_LEGACY = [
   'apartment_number',
   'tariff_code',
   'status',
@@ -163,48 +184,123 @@ export function internetOpeningBalanceEffect(debt: number, credit: number): numb
   return roundMoney(debt - credit);
 }
 
+/** Map user-facing connection labels to canonical active|inactive. Suspended is not in the model. */
+export function normalizeInternetConnectionState(raw: string | undefined | null): string | null {
+  const v = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е');
+  if (!v) return null;
+  if (
+    v === 'active' ||
+    v === 'connected' ||
+    v === 'подключен' ||
+    v === 'подключён' ||
+    v === 'включен' ||
+    v === 'активен'
+  ) {
+    return 'active';
+  }
+  if (
+    v === 'inactive' ||
+    v === 'disconnected' ||
+    v === 'отключен' ||
+    v === 'отключён' ||
+    v === 'изключен' ||
+    v === 'неактивен'
+  ) {
+    return 'inactive';
+  }
+  return null;
+}
+
+/**
+ * Normalize a spreadsheet row to a canonical opening shape.
+ * Accepts v1.1 columns and legacy IS-5 aliases.
+ */
+export function normalizeInternetOpeningRow(row: Record<string, string>): Record<string, string> {
+  const status =
+    normalizeInternetConnectionState(row.connection_state) ||
+    normalizeInternetConnectionState(row.status) ||
+    String(row.connection_state || row.status || '')
+      .trim()
+      .toLowerCase();
+  const paidEnd = String(row.paid_period_end ?? row.paid_through ?? '').trim();
+  const paidStart = String(row.paid_period_start ?? '').trim();
+  const credit = String(row.opening_credit ?? row.opening_overpayment ?? '').trim();
+  const comment = String(row.comment ?? row.notes ?? '').trim();
+  const tariff = String(row.tariff_code ?? '').trim().toLowerCase() || INTERNET_TARIFF_KEY;
+  return {
+    ...row,
+    apartment_number: String(row.apartment_number ?? '').trim(),
+    connection_state: status,
+    status,
+    tariff_code: tariff,
+    connection_date: String(row.connection_date ?? '').trim(),
+    transition_date: String(row.transition_date ?? '').trim(),
+    paid_period_start: paidStart,
+    paid_period_end: paidEnd,
+    paid_through: paidEnd,
+    opening_debt: String(row.opening_debt ?? '').trim(),
+    opening_credit: credit,
+    comment,
+    notes: comment,
+    source_reference: String(row.source_reference ?? '').trim(),
+  };
+}
+
 export function validateInternetOpeningRow(row: Record<string, string>): string[] {
   const errors: string[] = [];
-  if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
+  const n = normalizeInternetOpeningRow(row);
+  if (!n.apartment_number) errors.push('required:apartment_number');
 
-  const tariff = String(row.tariff_code ?? '')
-    .trim()
-    .toLowerCase();
-  if (!tariff) errors.push('required:tariff_code');
-  else if (tariff !== INTERNET_TARIFF_KEY) errors.push('unsupported:tariff_code');
+  const tariff = n.tariff_code.toLowerCase();
+  if (tariff && tariff !== INTERNET_TARIFF_KEY) errors.push('unsupported:tariff_code');
 
-  const status = String(row.status ?? '')
-    .trim()
-    .toLowerCase();
-  if (!status) errors.push('required:status');
+  const status = n.status;
+  if (!status) errors.push('required:connection_state');
   else if (!INTERNET_OPENING_STATUSES.includes(status as (typeof INTERNET_OPENING_STATUSES)[number])) {
-    errors.push('unsupported:status');
+    errors.push('unsupported:connection_state');
   }
 
-  const td = parseRequiredIsoDate(row.transition_date, 'transition_date');
-  if (!td.ok) errors.push(td.error);
-  else {
-    const todayIso = new Date().toISOString().slice(0, 10);
-    if (td.iso > todayIso) errors.push('invalid:transition_date_future');
+  const tdRaw = n.transition_date;
+  if (tdRaw) {
+    const td = parseOptionalIsoDate(tdRaw);
+    if (!td.ok) errors.push('invalid:transition_date');
+    else if (td.iso) {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      if (td.iso > todayIso) errors.push('invalid:transition_date_future');
+    }
   }
 
-  const conn = parseOptionalIsoDate(row.connection_date);
+  const conn = parseOptionalIsoDate(n.connection_date);
   if (!conn.ok) errors.push('invalid:connection_date');
-  else if (conn.iso && td.ok && conn.iso > td.iso) {
-    errors.push('invalid:connection_date_after_transition');
+
+  const paidStart = parseOptionalIsoDate(n.paid_period_start);
+  const paidEnd = parseOptionalIsoDate(n.paid_period_end);
+  if (!paidStart.ok) errors.push('invalid:paid_period_start');
+  if (!paidEnd.ok) errors.push('invalid:paid_period_end');
+  if (paidStart.ok && paidStart.iso && paidEnd.ok && !paidEnd.iso) {
+    errors.push('required:paid_period_end');
+  }
+  if (paidStart.ok && paidStart.iso && paidEnd.ok && paidEnd.iso && paidStart.iso > paidEnd.iso) {
+    errors.push('invalid:paid_period_order');
+  }
+  if (
+    conn.ok &&
+    conn.iso &&
+    paidEnd.ok &&
+    paidEnd.iso &&
+    paidEnd.iso < conn.iso
+  ) {
+    errors.push('invalid:paid_through_before_connection');
   }
 
-  const paid = parseOptionalIsoDate(row.paid_through);
-  if (!paid.ok) errors.push('invalid:paid_through');
-
-  if (status === 'active') {
-    if (!paid.ok || paid.iso == null) errors.push('required:paid_through');
-  }
-
-  const debt = parseNonNegMoney(row.opening_debt);
-  const credit = parseNonNegMoney(row.opening_credit);
+  const debt = parseNonNegMoney(n.opening_debt);
+  const credit = parseNonNegMoney(n.opening_credit);
   if (debt == null) errors.push('invalid:opening_debt');
   if (credit == null) errors.push('invalid:opening_credit');
+  // Debt and overpayment may both be present: separate opening_debit / opening_credit (no netting).
 
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
@@ -245,9 +341,11 @@ export function classifyInternetOpeningRows(
     conflictCount: 0,
   };
   const previewRows: ImportPreviewRow[] = [];
-  const aptInFile = new Map<string, number>();
+  /** First row per apartment carries subscription fields; later rows may add paid periods. */
+  const aptPrimary = new Map<string, { rowNumber: number; status: string; debt: number; credit: number }>();
 
-  rows.forEach((raw, idx) => {
+  rows.forEach((rawIn, idx) => {
+    const raw = normalizeInternetOpeningRow(rawIn);
     const rowNumber = idx + 2;
     const errors = validateInternetOpeningRow(raw);
     const apt = normApt(raw.apartment_number);
@@ -257,34 +355,49 @@ export function classifyInternetOpeningRows(
       .toLowerCase();
     const debt = parseNonNegMoney(raw.opening_debt) ?? 0;
     const credit = parseNonNegMoney(raw.opening_credit) ?? 0;
-    const td = parseRequiredIsoDate(raw.transition_date, 'transition_date');
+    const td = raw.transition_date
+      ? parseOptionalIsoDate(raw.transition_date)
+      : ({ ok: true, iso: ctx.sofiaTodayIso } as const);
     const conn = parseOptionalIsoDate(raw.connection_date);
     const paid = parseOptionalIsoDate(raw.paid_through);
+    const paidStart = parseOptionalIsoDate(raw.paid_period_start);
 
     if (apt && propertyId == null) errors.push('unknown_apartment');
-    if (apt && aptInFile.has(apt)) errors.push('duplicate_in_file:apartment');
-    else if (apt) aptInFile.set(apt, rowNumber);
+    if (apt) {
+      const prior = aptPrimary.get(apt);
+      if (!prior) {
+        aptPrimary.set(apt, { rowNumber, status, debt, credit });
+      } else if (
+        (status && prior.status && status !== prior.status) ||
+        debt !== prior.debt ||
+        credit !== prior.credit
+      ) {
+        errors.push('conflict:same_apartment_rows');
+      }
+    }
 
     if (!ctx.internetTariffConfigured) errors.push('tariff_not_configured');
 
     let nextChargeOn = '';
     let billingDay: number | null = null;
     if (errors.length === 0 && td.ok && propertyId != null) {
-      const connIso = conn.ok && conn.iso ? conn.iso : td.iso;
-      billingDay = internetBillingDayFromDate(connIso);
-      if (status === 'active' && paid.ok && paid.iso) {
-        if (paid.iso < connIso) errors.push('invalid:paid_through_before_connection');
+      const connIso = conn.ok && conn.iso ? conn.iso : null;
+      if (connIso) billingDay = internetBillingDayFromDate(connIso);
+      else if (paid.ok && paid.iso) billingDay = internetBillingDayFromDate(paid.iso);
+      if (status === 'active' && paid.ok && paid.iso && billingDay != null) {
+        if (connIso && paid.iso < connIso) errors.push('invalid:paid_through_before_connection');
         else {
           const n = nextChargeAfterPaidThrough({
             paidThrough: paid.iso,
             billingDay,
             sofiaTodayIso: ctx.sofiaTodayIso,
           });
-          if (!n.ok) errors.push(n.error);
-          else nextChargeOn = n.nextChargeOn;
+          // Expired paid-through is a warning path on server (next_charge null), not a hard client block.
+          if (n.ok) nextChargeOn = n.nextChargeOn;
         }
       }
     }
+    void paidStart;
 
     if (propertyId != null && ctx.pendingWoPropertyIds.has(propertyId)) {
       errors.push('blocked:pending_internet_work_order');
@@ -354,8 +467,10 @@ export function classifyInternetOpeningRows(
         opening_credit: String(credit),
         resolved_property_id: propertyId != null ? String(propertyId) : '',
         preview_class: previewClass,
-        transition_date: td.ok ? td.iso : String(raw.transition_date ?? ''),
+        transition_date: td.ok && td.iso ? td.iso : String(raw.transition_date ?? ''),
         connection_date: conn.ok && conn.iso ? conn.iso : String(raw.connection_date ?? ''),
+        paid_period_start: paidStart.ok && paidStart.iso ? paidStart.iso : String(raw.paid_period_start ?? ''),
+        paid_period_end: paid.ok && paid.iso ? paid.iso : String(raw.paid_period_end ?? ''),
         paid_through: paid.ok && paid.iso ? paid.iso : String(raw.paid_through ?? ''),
         next_charge_on: nextChargeOn,
         billing_day: billingDay != null ? String(billingDay) : '',
@@ -453,121 +568,22 @@ export function internetOpeningPayloadsFromPreview(
   return out;
 }
 
-const INSTRUCTIONS: Record<'bg' | 'ru' | 'en', string[]> = {
-  bg: [
-    'Интернет — начален импорт (IS-5)',
-    `schema_version: ${INTERNET_SETUP_SCHEMA_VERSION}. Лист: subscriptions.`,
-    'Ключ апартамент: apartment_number (от Книгата). property_id е забранен.',
-    'tariff_code трябва да е internet (каноничен Tariff Core ключ).',
-    'status: active | inactive. pending_* са забранени.',
-    'active изисква paid_through. next_charge_on се изчислява от месечните правила.',
-    'paid_through НЕ създава payment. Без request_internet_connect / work orders.',
-    'Съществуващ абонамент → CONFLICT. Идентичен opening → SKIP.',
-    'Незавършена internet work order → BLOCKED.',
-  ],
-  ru: [
-    'Интернет — начальный импорт (IS-5)',
-    `schema_version: ${INTERNET_SETUP_SCHEMA_VERSION}. Лист: subscriptions.`,
-    'Ключ квартиры: apartment_number (из Книги). property_id запрещён.',
-    'tariff_code должен быть internet (канонический ключ Tariff Core).',
-    'status: active | inactive. pending_* запрещены.',
-    'active требует paid_through. next_charge_on считается по месячным правилам.',
-    'paid_through НЕ создаёт payment. Без request_internet_connect / work orders.',
-    'Существующая подписка → CONFLICT. Идентичный opening → SKIP.',
-    'Незавершённый internet work order → BLOCKED.',
-  ],
-  en: [
-    'Internet — opening import (IS-5)',
-    `schema_version: ${INTERNET_SETUP_SCHEMA_VERSION}. Sheet: subscriptions.`,
-    'Apartment key: apartment_number (from Property Book). property_id forbidden.',
-    'tariff_code must be internet (canonical Tariff Core key).',
-    'status: active | inactive. pending_* forbidden.',
-    'active requires paid_through. next_charge_on follows monthly billing rules.',
-    'paid_through does NOT create payment rows. No request_internet_connect / work orders.',
-    'Existing subscription → CONFLICT. Identical opening → SKIP.',
-    'Unfinished internet work order → BLOCKED.',
-  ],
-};
-
-function appendInstructionSheets(
-  wb: XLSX.WorkBook,
-  instructions: Record<'bg' | 'ru' | 'en', string[]>,
-) {
-  for (const lang of ['bg', 'ru', 'en'] as const) {
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet(instructions[lang].map((line) => [line])),
-      `instructions_${lang}`,
-    );
-  }
-}
-
-export function buildInternetIs5TemplateBuffer(): ArrayBuffer {
-  const wb = XLSX.utils.book_new();
-  const example = [
-    {
-      apartment_number: '101',
-      tariff_code: 'internet',
-      status: 'active',
-      connection_date: '2025-06-01',
-      transition_date: '2026-01-01',
-      paid_through: '2026-10-31',
-      opening_debt: '0',
-      opening_credit: '0',
-      source_reference: 'ISP-LEDGER-2026',
-      notes: 'paid through Oct 2026 — next_charge after today',
-    },
-    {
-      apartment_number: '102',
-      tariff_code: 'internet',
-      status: 'active',
-      connection_date: '2024-03-15',
-      transition_date: '2026-01-01',
-      paid_through: '2026-11-30',
-      opening_debt: '25.00',
-      opening_credit: '0',
-      source_reference: 'ISP-LEDGER-2026',
-      notes: 'opening debt',
-    },
-    {
-      apartment_number: '103',
-      tariff_code: 'internet',
-      status: 'inactive',
-      connection_date: '',
-      transition_date: '2026-01-01',
-      paid_through: '',
-      opening_debt: '0',
-      opening_credit: '10.00',
-      source_reference: 'ISP-LEDGER-2026',
-      notes: 'inactive with opening credit',
-    },
-  ].map((row) =>
-    Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, sanitizeSpreadsheetCell(String(v))]),
-    ),
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(example, { header: [...INTERNET_OPENING_HEADERS] }),
-    'subscriptions',
-  );
-  appendInstructionSheets(wb, INSTRUCTIONS);
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function buildInternetIs5TemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(INTERNET_IMPORT_SPEC, toImportTemplateLocale(locale));
 }
 
 export function downloadInternetIs5Template(
-  fileName = 'internet_opening_template.xlsx',
+  localeOrFileName?: ImportTemplateLocale | string,
+  fileName?: string,
 ): void {
-  const buf = buildInternetIs5TemplateBuffer();
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const isFileName = typeof localeOrFileName === 'string' && localeOrFileName.endsWith('.xlsx');
+  const locale = toImportTemplateLocale(isFileName ? 'ru' : localeOrFileName);
+  const name =
+    fileName ??
+    (isFileName ? (localeOrFileName as string) : localizedTemplateFileName(INTERNET_IMPORT_SPEC, locale));
+  downloadImportTemplateBuffer(buildInternetIs5TemplateBuffer(locale), name);
 }
 
 export function buildInternetErrorReportXlsx(preview: ImportPreviewResult): ArrayBuffer {

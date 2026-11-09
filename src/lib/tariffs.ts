@@ -6,8 +6,14 @@
 export const TARIFF_KEYS = ['support_fee', 'capital_repair', 'water', 'electricity', 'internet'] as const;
 export type TariffKey = (typeof TARIFF_KEYS)[number];
 
-export const TARIFF_TABS = ['current', 'scheduled', 'history'] as const;
+export const TARIFF_TABS = ['current', 'scheduled', 'history', 'annual_policy'] as const;
 export type TariffTab = (typeof TARIFF_TABS)[number];
+
+export function parseTariffTab(raw: string | null | undefined): TariffTab {
+  return (TARIFF_TABS as readonly string[]).includes(String(raw ?? ''))
+    ? (raw as TariffTab)
+    : 'current';
+}
 
 export type TariffListRow = {
   tariff_id: string;

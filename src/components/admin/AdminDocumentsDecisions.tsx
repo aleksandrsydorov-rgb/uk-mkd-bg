@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { toUserFacingMessage } from '@/lib/userFacingError';
+import { redactDiagnostic } from '@/lib/firstRunUserMessage';
 import type { Translate } from '@/i18n/translate';
 import { isMissingRelation, tallyPoll, isPollReadyForMeetingAgenda, buildPollRatificationAgenda, type Poll, type PollOption, type PollVote } from '@/lib/polls';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
@@ -36,6 +38,11 @@ import {
 } from '@/lib/buildingDocuments';
 import { AdminMeetingConduct } from '@/components/admin/AdminMeetingConduct';
 import { AdminMeetingCorePanel } from '@/components/admin/AdminMeetingCorePanel';
+import {
+  AppFilePicker,
+  formatAcceptHint,
+  formatFileSizeMb,
+} from '@/components/ui/AppFilePicker';
 import { AdminMeetingElectionCandidates } from '@/components/admin/AdminMeetingElectionCandidates';
 import { AdminMeetingInvitationDispatch } from '@/components/admin/AdminMeetingInvitationDispatch';
 import {
@@ -62,6 +69,7 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import { MAJORITY_PRESETS, labelAttendanceStatus, labelMajorityRule, labelMeetingWorkflowStatus } from '@/lib/generalMeetingWorkflow';
 import { buildInvitationDraft, isMandatoryAgendaItem, labelMandatoryAgendaTemplate, labelMeetingType, mandatoryAgendaForType, matchesMandatoryTemplate, parseMeetingElectionReady } from '@/lib/meetingCore';
 
@@ -133,6 +141,8 @@ function MeetingFileSlot({
   );
 }
 
+type MeetingLeaveGuard = (nextSection: string) => boolean;
+
 export function AdminDocumentsDecisions({
   supabase,
   properties,
@@ -141,6 +151,8 @@ export function AdminDocumentsDecisions({
   meetingsEnabled = true,
   documentsEnabled = true,
   mode,
+  onRegisterLeaveGuard,
+  onLeaveConfirmed,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
@@ -150,8 +162,12 @@ export function AdminDocumentsDecisions({
   documentsEnabled?: boolean;
   /** Lock UI to one section (hides other list blocks). */
   mode?: 'meetings' | 'decisions' | 'documents';
+  /** Sync leave check for admin sidebar navigation while create form is open. */
+  onRegisterLeaveGuard?: (guard: MeetingLeaveGuard | null) => void;
+  onLeaveConfirmed?: (nextSection: string) => void;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog: confirmDialog } = useAppConfirm(t('common.close'));
   const showMeetings = mode ? mode === 'meetings' : meetingsEnabled;
   const showDecisionsList = mode === 'decisions';
   const showDocuments = mode ? mode === 'documents' : documentsEnabled;
@@ -171,20 +187,28 @@ export function AdminDocumentsDecisions({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const pendingDiscardRef = useRef<null | { type: 'close' } | { type: 'leave'; section: string } | { type: 'openMeeting'; id: string }>(null);
 
-  const emptyForm = {
-    title: t('docs.generalMeeting'),
-    description: '',
-    meeting_date: '',
-    meeting_time: '18:30',
-    location: '',
-    meeting_mode: 'in_person',
-    meeting_type: 'EXTRAORDINARY',
-    is_urgent: false,
-    absentee_voting_enabled: false,
-    online_meeting_url: '',
-  };
-  const [form, setForm] = useState(emptyForm);
+  const buildEmptyForm = useCallback(
+    () => ({
+      title: t('docs.generalMeeting'),
+      description: '',
+      meeting_date: '',
+      meeting_time: '18:30',
+      location: '',
+      meeting_mode: 'in_person',
+      meeting_type: 'EXTRAORDINARY',
+      is_urgent: false,
+      absentee_voting_enabled: false,
+      online_meeting_url: '',
+    }),
+    [t],
+  );
+  const defaultAgendaTemplateKeys = useCallback(
+    (meetingType: string) => mandatoryAgendaForType(meetingType).map((row) => row.key),
+    [],
+  );
+  const [form, setForm] = useState(buildEmptyForm);
   const [dialog, setDialog] = useState<null | 'reschedule' | 'cancel'>(null);
   const [rescheduleForm, setRescheduleForm] = useState({
     meeting_date: '',
@@ -198,7 +222,7 @@ export function AdminDocumentsDecisions({
   const [agendaDescription, setAgendaDescription] = useState('');
   const [agendaProposed, setAgendaProposed] = useState('');
   const [agendaTemplateKeys, setAgendaTemplateKeys] = useState<string[]>(() =>
-    mandatoryAgendaForType('EXTRAORDINARY').map((row) => row.key),
+    defaultAgendaTemplateKeys('EXTRAORDINARY'),
   );
   const [sourcePollId, setSourcePollId] = useState<number | ''>('');
   const [majorityRule, setMajorityRule] = useState('more_than_50_represented_ideal_parts');
@@ -230,7 +254,7 @@ export function AdminDocumentsDecisions({
         setMeetings([]);
         return;
       }
-      setError(m.error.message);
+      setError(toUserFacingMessage(m.error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     setMeetings((m.data as GeneralMeeting[]) ?? []);
@@ -241,7 +265,7 @@ export function AdminDocumentsDecisions({
     if (!doc.error) setDocs((doc.data as BuildingDocument[]) ?? []);
     if (!v.error) setVotes((v.data as MeetingVoteRecord[]) ?? []);
     if (!pollsRes.error) setPolls((pollsRes.data as Poll[]) ?? []);
-    else if (!isMissingRelation(pollsRes.error, 'polls')) setError(pollsRes.error.message);
+    else if (!isMissingRelation(pollsRes.error, 'polls')) setError(toUserFacingMessage(pollsRes.error, t, { fallback: t('admin.errGeneric') }));
     if (!optRes.error) setPollOptions((optRes.data as PollOption[]) ?? []);
     if (!pollVotesRes.error) setPollVotes((pollVotesRes.data as PollVote[]) ?? []);
   }, [supabase]);
@@ -517,14 +541,127 @@ export function AdminDocumentsDecisions({
     return missing.length;
   }
 
-  function startNewMeeting() {
+  function resetCreateForm() {
+    setShowCreate(false);
     setSelectedId(null);
-    setForm(emptyForm);
+    setForm(buildEmptyForm());
+    setAgendaTemplateKeys(defaultAgendaTemplateKeys('EXTRAORDINARY'));
+    setAgendaTitle('');
+    setAgendaDescription('');
+    setAgendaProposed('');
     setDialog(null);
+    setError(null);
+    setBusy(false);
+    setPendingFileType(null);
+    if (meetingFileInputRef.current) meetingFileInputRef.current.value = '';
+    setDetailTab('info');
+    pendingDiscardRef.current = null;
   }
 
+  function openCreateForm() {
+    resetCreateForm();
+    setShowCreate(true);
+  }
+
+  const createDirty = useMemo(() => {
+    if (!showCreate) return false;
+    const baseline = buildEmptyForm();
+    const formDirty =
+      form.title !== baseline.title ||
+      form.description !== baseline.description ||
+      form.meeting_date !== baseline.meeting_date ||
+      form.meeting_time !== baseline.meeting_time ||
+      form.location !== baseline.location ||
+      form.meeting_mode !== baseline.meeting_mode ||
+      form.meeting_type !== baseline.meeting_type ||
+      form.is_urgent !== baseline.is_urgent ||
+      form.absentee_voting_enabled !== baseline.absentee_voting_enabled ||
+      form.online_meeting_url !== baseline.online_meeting_url;
+    const baselineKeys = defaultAgendaTemplateKeys(form.meeting_type || 'EXTRAORDINARY');
+    // Keys auto-sync when type changes; only count divergence from the type's defaults.
+    const keysVsTypeDirty =
+      agendaTemplateKeys.length !== baselineKeys.length ||
+      [...agendaTemplateKeys].sort().join('|') !== [...baselineKeys].sort().join('|');
+    return formDirty || keysVsTypeDirty || Boolean(agendaTitle.trim() || agendaDescription.trim() || agendaProposed.trim());
+  }, [
+    showCreate,
+    form,
+    agendaTemplateKeys,
+    agendaTitle,
+    agendaDescription,
+    agendaProposed,
+    buildEmptyForm,
+    defaultAgendaTemplateKeys,
+  ]);
+
+  useEffect(() => {
+    if (!createDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [createDirty]);
+
+  function applyPendingDiscard() {
+    const pending = pendingDiscardRef.current;
+    pendingDiscardRef.current = null;
+    resetCreateForm();
+    if (pending?.type === 'leave') {
+      onLeaveConfirmed?.(pending.section);
+      return;
+    }
+    if (pending?.type === 'openMeeting') {
+      setSelectedId(pending.id);
+      setDetailTab('info');
+    }
+  }
+
+  async function requestDiscardCreate(pending: NonNullable<typeof pendingDiscardRef.current>) {
+    if (!showCreate || !createDirty) {
+      pendingDiscardRef.current = pending;
+      applyPendingDiscard();
+      return;
+    }
+    const ok = await confirm({
+      title: t('common.discardChangesTitle'),
+      description: t('docs.meetingUnsavedLeave'),
+      confirmLabel: t('docs.meetingDiscardLeave'),
+      cancelLabel: t('docs.meetingContinueEditing'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    pendingDiscardRef.current = pending;
+    applyPendingDiscard();
+  }
+
+  function requestCloseCreate() {
+    void requestDiscardCreate({ type: 'close' });
+  }
+
+  useEffect(() => {
+    if (!onRegisterLeaveGuard) return;
+    onRegisterLeaveGuard((nextSection) => {
+      if (!showCreate) return true;
+      if (!createDirty) {
+        resetCreateForm();
+        return true;
+      }
+      void requestDiscardCreate({ type: 'leave', section: nextSection });
+      return false;
+    });
+    return () => onRegisterLeaveGuard(null);
+    // resetCreateForm closes over latest setters; guard must track dirty/showCreate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow deps
+  }, [onRegisterLeaveGuard, showCreate, createDirty]);
+
   async function createMeeting() {
-    if (!canWrite || !form.meeting_date) return;
+    if (!canWrite) return;
+    if (!form.meeting_date) {
+      setError(t('docs.meetingDateRequired'));
+      return;
+    }
     setBusy(true);
     setError(null);
     const meetingType = form.is_urgent ? 'URGENT' : form.meeting_type || 'EXTRAORDINARY';
@@ -546,21 +683,23 @@ export function AdminDocumentsDecisions({
       .single();
     if (insErr) {
       setBusy(false);
-      setError(insErr.message);
+      setError(toUserFacingMessage(insErr, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     const created = data as GeneralMeeting;
-    setSelectedId(created.id);
     if (form.meeting_mode === 'hybrid' && form.online_meeting_url.trim()) {
       await supabase.rpc('set_general_meeting_online_url', { p_meeting_id: created.id, p_url: form.online_meeting_url.trim() });
     }
     try {
       await seedMandatoryAgenda(created.id, meetingType, agendaTemplateKeys);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
+      await load();
+      return;
     }
     setBusy(false);
-    setDetailTab('agenda');
+    resetCreateForm();
     await load();
   }
 
@@ -588,7 +727,7 @@ export function AdminDocumentsDecisions({
       await supabase.rpc('set_general_meeting_online_url', { p_meeting_id: selected.id, p_url: form.online_meeting_url.trim() });
     }
     setBusy(false);
-    if (updErr) setError(updErr.message);
+    if (updErr) setError(toUserFacingMessage(updErr, t, { fallback: t('admin.errGeneric') }));
     else {
       try {
         await seedMandatoryAgenda(selected.id, form.is_urgent ? 'URGENT' : form.meeting_type, agendaTemplateKeys);
@@ -613,17 +752,25 @@ export function AdminDocumentsDecisions({
       .eq('id', selected.id)
       .eq('status', 'published');
     setBusy(false);
-    if (updErr) setError(updErr.message);
+    if (updErr) setError(toUserFacingMessage(updErr, t, { fallback: t('admin.errGeneric') }));
     else await load();
   }
 
   async function deleteDraft() {
     if (!canWrite || !selected || selected.status !== 'draft') return;
+    const ok = await confirm({
+      title: t('docs.deleteDraft'),
+      description: t('docs.deleteDraftConfirm'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     const { error: delErr } = await supabase.from('general_meetings').delete().eq('id', selected.id).eq('status', 'draft');
     setBusy(false);
-    if (delErr) setError(delErr.message);
+    if (delErr) setError(toUserFacingMessage(delErr, t, { fallback: t('admin.errGeneric') }));
     else {
       setSelectedId(null);
       await load();
@@ -643,7 +790,7 @@ export function AdminDocumentsDecisions({
       p_reason: cancelReason.trim(),
     });
     setBusy(false);
-    if (rpcErr) setError(rpcErr.message);
+    if (rpcErr) setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.errGeneric') }));
     else {
       setDialog(null);
       setCancelReason('');
@@ -668,7 +815,7 @@ export function AdminDocumentsDecisions({
       p_reason: rescheduleForm.reason.trim(),
     });
     setBusy(false);
-    if (rpcErr) setError(rpcErr.message);
+    if (rpcErr) setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.errGeneric') }));
     else {
       setDialog(null);
       const created = data as GeneralMeeting | null;
@@ -687,7 +834,7 @@ export function AdminDocumentsDecisions({
       .eq('id', itemId)
       .eq('meeting_id', selected.id);
     setBusy(false);
-    if (updErr) setError(updErr.message);
+    if (updErr) setError(toUserFacingMessage(updErr, t, { fallback: t('admin.errGeneric') }));
     else {
       setAgenda((prev) => prev.map((row) => (row.id === itemId ? { ...row, majority_rule: nextRule } : row)));
     }
@@ -705,14 +852,14 @@ export function AdminDocumentsDecisions({
       .eq('meeting_id', selected.id);
     if (delErr) {
       setBusy(false);
-      setError(delErr.message);
+      setError(toUserFacingMessage(delErr, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     try {
       await reorderAgendaMandatoryFirst(selected.id, meetingType);
       await load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -744,7 +891,7 @@ export function AdminDocumentsDecisions({
       decision_category: sourcePollId === '' ? 'custom' : 'poll_ratification',
       source_poll_id: sourcePollId === '' ? null : sourcePollId,
     });
-    if (insErr) setError(insErr.message);
+    if (insErr) setError(toUserFacingMessage(insErr, t, { fallback: t('admin.errGeneric') }));
     else {
       setAgendaTitle('');
       setAgendaDescription('');
@@ -787,7 +934,7 @@ export function AdminDocumentsDecisions({
       decision_text: decisionForm.text.trim(),
       protocol_result: decisionForm.result,
     });
-    if (insErr) setError(insErr.message);
+    if (insErr) setError(toUserFacingMessage(insErr, t, { fallback: t('admin.errGeneric') }));
     else {
       setDecisionForm({ number: '', title: '', text: '', result: 'adopted' });
       await load();
@@ -804,7 +951,7 @@ export function AdminDocumentsDecisions({
       representative_name: partForm.representative.trim() || null,
       attendance_mode: partForm.attendance,
     });
-    if (insErr) setError(insErr.message);
+    if (insErr) setError(toUserFacingMessage(insErr, t, { fallback: t('admin.errGeneric') }));
     else {
       await supabase.rpc('refresh_meeting_represented_parts', { p_meeting_id: selected.id });
       setPartForm({ property_id: '', name: '', representation: 'self', representative: '', attendance: 'in_person' });
@@ -835,7 +982,7 @@ export function AdminDocumentsDecisions({
       .from(BUILDING_DOCUMENTS_BUCKET)
       .upload(built.storagePath, file, { upsert: false });
     if (up.error) {
-      console.error('[docs upload]', up.error.message);
+      console.error('[docs upload]', redactDiagnostic(up.error.message));
       setBusy(false);
       setError(t('docs.uploadFailed'));
       return;
@@ -855,7 +1002,7 @@ export function AdminDocumentsDecisions({
       .select('*')
       .single();
     if (docErr) {
-      console.error('[docs upload]', docErr.message);
+      console.error('[docs upload]', redactDiagnostic(docErr.message));
       await removeOrphanStorage(built.storagePath);
       setBusy(false);
       setError(t('docs.uploadFailed'));
@@ -868,7 +1015,7 @@ export function AdminDocumentsDecisions({
       title: built.originalName,
     });
     if (linkErr) {
-      console.error('[docs upload]', linkErr.message);
+      console.error('[docs upload]', redactDiagnostic(linkErr.message));
       await supabase.from('building_documents').delete().eq('id', built.objectId).eq('status', 'draft');
       await removeOrphanStorage(built.storagePath);
       setBusy(false);
@@ -899,7 +1046,7 @@ export function AdminDocumentsDecisions({
       .from(BUILDING_DOCUMENTS_BUCKET)
       .upload(built.storagePath, file, { upsert: false });
     if (up.error) {
-      console.error('[docs upload]', up.error.message);
+      console.error('[docs upload]', redactDiagnostic(up.error.message));
       setBusy(false);
       setError(t('docs.uploadFailed'));
       return;
@@ -915,7 +1062,7 @@ export function AdminDocumentsDecisions({
       document_date: docForm.document_date || null,
     });
     if (docErr) {
-      console.error('[docs upload]', docErr.message);
+      console.error('[docs upload]', redactDiagnostic(docErr.message));
       await removeOrphanStorage(built.storagePath);
       setBusy(false);
       setError(t('docs.uploadFailed'));
@@ -943,6 +1090,14 @@ export function AdminDocumentsDecisions({
 
   async function removeDraftMeetingFile(link: MeetingFileLink, doc: BuildingDocument | undefined) {
     if (!canWrite || !doc || doc.status !== 'draft') return;
+    const ok = await confirm({
+      title: t('common.delete'),
+      description: link.title || doc.title || t('docs.fileOther'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     const { error: linkErr } = await supabase.from('general_meeting_files').delete().eq('id', link.id);
     if (linkErr) {
       setError(t('docs.uploadFailed'));
@@ -957,7 +1112,7 @@ export function AdminDocumentsDecisions({
     setBusy(true);
     const { error: rpcErr } = await supabase.rpc(name, { p_meeting_id: id });
     setBusy(false);
-    if (rpcErr) setError(rpcErr.message);
+    if (rpcErr) setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.errGeneric') }));
     else {
       if (name === 'publish_general_meeting') {
         void import('@/lib/email/eventProducers')
@@ -983,7 +1138,7 @@ export function AdminDocumentsDecisions({
     });
     if (readyErr) {
       setBusy(false);
-      setError(readyErr.message);
+      setError(toUserFacingMessage(readyErr, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     const ready = parseMeetingElectionReady(readyRaw);
@@ -1002,7 +1157,7 @@ export function AdminDocumentsDecisions({
       p_body_en: null,
     });
     setBusy(false);
-    if (rpcErr) setError(rpcErr.message);
+    if (rpcErr) setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.errGeneric') }));
     else await load();
   }
 
@@ -1011,7 +1166,7 @@ export function AdminDocumentsDecisions({
     const { error: rpcErr } = await supabase.rpc('mark_general_meeting_held', {
       p_meeting_id: selected.id,
     });
-    if (rpcErr) setError(rpcErr.message);
+    if (rpcErr) setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.errGeneric') }));
     else await load();
   }
 
@@ -1087,14 +1242,19 @@ export function AdminDocumentsDecisions({
           <AdminSecondaryButton type="button" onClick={() => { setSelectedId(null); setDetailTab('info'); setShowCreate(false); }}>
             {t('common.back')}
           </AdminSecondaryButton>
+        ) : showCreate && canWrite && showMeetings ? (
+          <AdminSecondaryButton type="button" onClick={requestCloseCreate}>
+            {t('common.cancel')}
+          </AdminSecondaryButton>
         ) : canWrite && showMeetings ? (
-          <AdminPrimaryButton type="button" onClick={() => { startNewMeeting(); setShowCreate(true); }}>
+          <AdminPrimaryButton type="button" onClick={openCreateForm}>
             {t('docs.newMeeting')}
           </AdminPrimaryButton>
         ) : undefined}
       />
       {!canWrite ? <AdminInlineAlert tone="warning">{t('docs.noWrite')}</AdminInlineAlert> : null}
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
+      {confirmDialog}
 
       {!selected ? (
         <>
@@ -1143,11 +1303,12 @@ export function AdminDocumentsDecisions({
                     <button type="button" disabled={busy} onClick={() => void createMeeting()} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                       {t('docs.createMeeting')}
                     </button>
-                    <AdminSecondaryButton type="button" onClick={() => setShowCreate(false)}>{t('common.cancel')}</AdminSecondaryButton>
+                    <AdminSecondaryButton type="button" onClick={requestCloseCreate}>{t('common.cancel')}</AdminSecondaryButton>
                   </div>
                 </div>
               </AdminCard>
-            ) : null}
+            ) : (
+              <>
             <AdminFilterBar>
               <input className={adminFieldClass} placeholder={t('common.search')} value={meetingSearch} onChange={(e) => setMeetingSearch(e.target.value)} />
             </AdminFilterBar>
@@ -1163,7 +1324,7 @@ export function AdminDocumentsDecisions({
                     const ideal = formatIdealPartsPercent(m.represented_ideal_parts_percent, locale);
                     const when = `${formatOwnerDate(m.meeting_date, locale)}${m.meeting_time ? ` · ${m.meeting_time.slice(0, 5)}` : ''}`;
                     return (
-                      <button key={m.id} type="button" onClick={() => { setSelectedId(m.id); setDetailTab('info'); setShowCreate(false); }} className="w-full rounded-[14px] border border-border bg-surface p-3 text-left shadow-card">
+                      <button key={m.id} type="button" onClick={() => requestDiscardCreate({ type: 'openMeeting', id: m.id })} className="w-full rounded-[14px] border border-border bg-surface p-3 text-left shadow-card">
                         <div className="flex items-start justify-between gap-2">
                           <span className="text-xs text-muted">{when}</span>
                           <StatusBadge label={labelMeetingWorkflowStatus(m, t, isUpcomingMeeting(m))} tone={meetingTone(m)} />
@@ -1208,7 +1369,7 @@ export function AdminDocumentsDecisions({
                               {ideal ? <div className="text-xs text-muted">{t('docs.representedRaw', { n: ideal })}</div> : null}
                             </td>
                             <td className={adminTableCellClass}>
-                              <button type="button" className={adminBtnTertiaryClass} onClick={() => { setSelectedId(m.id); setDetailTab('info'); setShowCreate(false); }}>
+                              <button type="button" className={adminBtnTertiaryClass} onClick={() => requestDiscardCreate({ type: 'openMeeting', id: m.id })}>
                                 {t('docs.gmDetails')}
                               </button>
                             </td>
@@ -1218,6 +1379,8 @@ export function AdminDocumentsDecisions({
                     </tbody>
                   </table>
                 </AdminTableShell>
+              </>
+            )}
               </>
             )}
           </section>
@@ -1290,11 +1453,16 @@ export function AdminDocumentsDecisions({
                     <option value="other">{t('docs.catOther')}</option>
                   </select>
                   <input type="date" className={adminFieldClass} value={docForm.document_date} onChange={(e) => setDocForm({ ...docForm, document_date: e.target.value })} />
-                  <input
-                    type="file"
-                    className="text-sm"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
+                  <AppFilePicker
+                    className="sm:col-span-2"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                    resetInputAfterChange
+                    hint={t('common.fileHintFormatsSize', {
+                      formats: formatAcceptHint('.pdf,.doc,.docx,.jpg,.jpeg,.png'),
+                      size: formatFileSizeMb(MAX_BUILDING_DOCUMENT_BYTES),
+                    })}
+                    onChange={(picked) => {
+                      const file = picked[0];
                       if (file) void uploadHouseDoc(file);
                     }}
                   />
@@ -1374,7 +1542,7 @@ export function AdminDocumentsDecisions({
                       className={adminBtnSecondaryClass}
                       onClick={async () => {
                         const { error: pubErr } = await supabase.rpc('publish_building_document', { p_document_id: selectedDoc.id });
-                        if (pubErr) setError(pubErr.message);
+                        if (pubErr) setError(toUserFacingMessage(pubErr, t, { fallback: t('admin.errGeneric') }));
                         else await load();
                       }}
                     >
@@ -1389,7 +1557,7 @@ export function AdminDocumentsDecisions({
                       className="text-sm text-danger hover:underline"
                       onClick={async () => {
                         const { error: archErr } = await supabase.rpc('archive_building_document', { p_document_id: selectedDoc.id });
-                        if (archErr) setError(archErr.message);
+                        if (archErr) setError(toUserFacingMessage(archErr, t, { fallback: t('admin.errGeneric') }));
                         else await load();
                       }}
                     >
@@ -1470,7 +1638,7 @@ export function AdminDocumentsDecisions({
                           await load();
                           setDetailTab('agenda');
                         } catch (e: unknown) {
-                          setError(e instanceof Error ? e.message : String(e));
+                          setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
                         } finally {
                           setBusy(false);
                         }
@@ -1616,7 +1784,7 @@ export function AdminDocumentsDecisions({
                           await load();
                           if (n === 0) setError(null);
                         } catch (e: unknown) {
-                          setError(e instanceof Error ? e.message : String(e));
+                          setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
                         } finally {
                           setBusy(false);
                         }

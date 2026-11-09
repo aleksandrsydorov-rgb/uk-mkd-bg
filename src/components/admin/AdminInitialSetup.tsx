@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   AdminCard,
   AdminPageHeader,
@@ -11,7 +12,8 @@ import {
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
-import { AdminEmailInitialSetupCard } from '@/components/admin/AdminEmailInitialSetupCard';
+import { AdminInventoryOpeningPanel } from '@/components/admin/AdminInventoryOpeningPanel';
+import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
 import {
   CAPITAL_REPAIR_MODULE_KEY,
   CAPITAL_REPAIR_SETUP_SCHEMA_VERSION,
@@ -73,9 +75,13 @@ import {
   downloadWaterOpeningTemplate,
   filterPreviewForInventoryRetry,
   inventoryCommitAuditPayload,
+  inventoryCommitBatchFromAuditPreview,
+  inventoryCommitConfirmedSavedCount,
+  inventoryCommitUiSummary,
   inventoryOpeningIdempotencyKey,
   mergeInventoryCommitBatches,
   parseInventoryOpeningXlsxBuffer,
+  reconcileInventoryCommitWithServer,
   retryCandidatesFromInventoryBatch,
   commitMeterInventoryBatch,
   filterPreviewForCrRetry,
@@ -111,7 +117,6 @@ import {
   sfCommitAuditPayload,
   ukExpenseCommitAuditPayload,
   classifySfOpeningErrorMessage,
-  evaluateAllTariffSetupGates,
   evaluateTariffSetupGate,
   propertyBookBlocksDependentSetup,
   type CrCommitBatchResult,
@@ -126,16 +131,146 @@ import {
   type ExistingInventoryStockRef,
   type ModuleLifecycleState,
   type TariffListSnapshot,
-  type ModuleTariffReadiness,
 } from '@/lib/moduleCore';
-import { isRelease1DistributionExcluded, moduleLabelMessageKey } from '@/lib/modules';
+import {
+  isRelease1DistributionExcluded,
+  moduleLabelMessageKey,
+  type BuildingModuleV2Row,
+} from '@/lib/modules';
+import {
+  buildModuleSetupCatalog,
+  moduleWizardSteps,
+  type ModuleWizardStepId,
+} from '@/lib/moduleSetupCatalog';
+import { moduleVisual } from '@/lib/moduleVisuals';
+import {
+  AdminModuleCatalogPanel,
+  isMandatoryBuildingModule,
+  parseModuleCatalogFilter,
+  type ModuleCatalogFilterId,
+} from '@/components/admin/AdminModuleCatalogPanel';
 import {
   parsePropertyBookWorkbook,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
 import { sofiaTodayIsoDate } from '@/lib/tariffs';
+import { FIRST_RUN_LOCKED_MODULES } from '@/lib/firstRun';
+import { presentImportCommitOutcome } from '@/lib/firstRunUserMessage';
+import { useI18n } from '@/i18n/I18nProvider';
+import {
+  CAPITAL_REPAIR_IMPORT_SPEC,
+  ELECTRICITY_METERS_IMPORT_SPEC,
+  INTERNET_IMPORT_SPEC,
+  INVENTORY_IMPORT_SPEC,
+  SUPPORT_FEE_IMPORT_SPEC,
+  UK_EXPENSES_IMPORT_SPEC,
+  WATER_METERS_IMPORT_SPEC,
+  aliasesFromSpec,
+  missingColumnsMessage,
+  toImportTemplateLocale,
+  type ImportColumnDef,
+  type ImportTemplateLocale,
+  type ImportTemplateSpec,
+} from '@/lib/importTemplates';
+import { LOCALE_META } from '@/i18n/config';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/lib/database.types';
+
+function moduleXlsxLabels(
+  schema: { columns: { labelKey: string }[] },
+  t: (k: string) => string,
+): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const col of schema.columns) {
+    labels[col.labelKey] = t(`admin.${col.labelKey}`);
+  }
+  return labels;
+}
+
+/** Localized import specs whose headers (ru/bg/en labels + legacy aliases) are accepted on upload. */
+const MODULE_XLSX_IMPORT_SPECS: ImportTemplateSpec[] = [
+  WATER_METERS_IMPORT_SPEC,
+  ELECTRICITY_METERS_IMPORT_SPEC,
+  SUPPORT_FEE_IMPORT_SPEC,
+  CAPITAL_REPAIR_IMPORT_SPEC,
+  INTERNET_IMPORT_SPEC,
+  UK_EXPENSES_IMPORT_SPEC,
+  INVENTORY_IMPORT_SPEC,
+];
+const MODULE_XLSX_SPEC_ALIASES = MODULE_XLSX_IMPORT_SPECS.map((spec) => aliasesFromSpec(spec));
+
+/** Extra header aliases so localized (ru/bg/en) and legacy templates parse under any UI locale. */
+function moduleXlsxHeaderAliases(schema: { columns: { key: string; labelKey: string }[] }): Record<string, string[]> {
+  const aliases: Record<string, string[]> = {};
+  for (const col of schema.columns) {
+    aliases[col.key] = [col.key];
+  }
+  for (const bag of MODULE_XLSX_SPEC_ALIASES) {
+    for (const [key, list] of Object.entries(bag)) {
+      if (!aliases[key]) continue;
+      const merged = new Set(aliases[key]);
+      for (const a of list) merged.add(a);
+      aliases[key] = [...merged];
+    }
+  }
+  // Stable BG labels from dedicated meter templates
+  const bgMeter: Record<string, string> = {
+    apartment_number: 'Апартамент',
+    meter_number: 'Номер на водомер',
+    initial_reading: 'Начално показание',
+    initial_day_reading: 'Начално (ден)',
+    initial_night_reading: 'Начално (нощ)',
+    installed_at: 'Дата на монтаж',
+    opening_balance_kind: 'Тип начален остатък',
+    opening_balance_eur: 'Сума начален остатък (EUR)',
+  };
+  const elMeterNumber = 'Номер на електромер';
+  for (const [key, label] of Object.entries(bgMeter)) {
+    aliases[key] = [...(aliases[key] ?? [key]), label];
+  }
+  aliases.meter_number = [...(aliases.meter_number ?? []), elMeterNumber];
+  return aliases;
+}
+
+/** Column definitions by key across module specs (first spec wins for ambiguous keys). */
+function moduleXlsxColumnDefsByKey(keys: string[]): ImportColumnDef[] {
+  const out: ImportColumnDef[] = [];
+  for (const key of keys) {
+    for (const spec of MODULE_XLSX_IMPORT_SPECS) {
+      const col = spec.columns.find((c) => c.key === key);
+      if (col) {
+        out.push(col);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+function presentModuleXlsxParseError(
+  error: string,
+  t: (k: string) => string,
+  locale?: ImportTemplateLocale | string,
+): string {
+  const code = error.trim();
+  if (code.startsWith('missing_headers:')) {
+    const base = t('admin.isXlsxMissingHeaders');
+    const keys = code
+      .slice('missing_headers:'.length)
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean);
+    const defs = moduleXlsxColumnDefsByKey(keys);
+    if (!defs.length) return base;
+    return `${base} ${missingColumnsMessage(defs, toImportTemplateLocale(locale))}`;
+  }
+  if (code === 'empty_sheet' || code === 'sheet_missing') return t('admin.isXlsxEmptySheet');
+  if (code === 'invalid_file_type') return t('admin.isXlsxInvalidType');
+  if (code === 'invalid_file_size') return t('admin.isXlsxInvalidSize');
+  if (code === 'row_limit') return t('admin.isXlsxRowLimit');
+  if (code === 'parse_failed') return t('admin.isXlsxParseFailed');
+  return t('admin.isXlsxParseFailed');
+}
 
 type LifecycleRow = {
   installation_key: string;
@@ -151,19 +286,18 @@ type LifecycleRow = {
 type Props = {
   supabase: SupabaseClient<Database>;
   t: (key: string) => string;
+  /** Catalog filter when no wizard is open. */
+  defaultFilter?: ModuleCatalogFilterId;
+  /** Hide the standalone page header when embedded under Settings. */
+  embedded?: boolean;
+  /** Refresh parent nav / building_modules after enable/disable. */
+  onModulesChanged?: () => void;
 };
 
 // R1-RC8: complex card + Property Book + meters live in the mandatory first-run wizard.
-// This hub is for module activation after first-run completes.
-const IS1_WIZARD_STEPS = ['modules', 'finance', 'notify', 'ready'] as const;
-type Is1WizardStep = (typeof IS1_WIZARD_STEPS)[number];
-const IS1_WIZARD_STORAGE_KEY = 'amadeus.is1.wizardStep';
-
-function parseIs1WizardStep(raw: string | null | undefined): Is1WizardStep {
-  const v = String(raw ?? '').trim();
-  if ((IS1_WIZARD_STEPS as readonly string[]).includes(v)) return v as Is1WizardStep;
-  return 'modules';
-}
+// This hub is for connecting / finishing modules after first-run completes.
+const MODULE_SETUP_SELECTED_KEY = 'amadeus.moduleSetup.selected';
+const MODULE_SETUP_STEP_KEY = 'amadeus.moduleSetup.step';
 
 function syntheticLifecycleRow(moduleKey: string): LifecycleRow {
   return {
@@ -178,19 +312,38 @@ function syntheticLifecycleRow(moduleKey: string): LifecycleRow {
   };
 }
 
-export function AdminInitialSetup({ supabase, t }: Props) {
+export function AdminInitialSetup({
+  supabase,
+  t,
+  defaultFilter = 'all',
+  embedded = false,
+  onModulesChanged,
+}: Props) {
+  const { locale } = useI18n();
+  const dateLocale = LOCALE_META[locale].dates;
   const [rows, setRows] = useState<LifecycleRow[]>([]);
+  const [buildingCatalog, setBuildingCatalog] = useState<BuildingModuleV2Row[]>([]);
+  const [firstRunCompleted, setFirstRunCompleted] = useState(false);
+  const [completedFirstRunStages, setCompletedFirstRunStages] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [catalogFilter, setCatalogFilter] = useState<ModuleCatalogFilterId>(() =>
+    parseModuleCatalogFilter(defaultFilter),
+  );
+  const [moduleSavingKey, setModuleSavingKey] = useState<string | null>(null);
+  const [pendingEnableKey, setPendingEnableKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [wizardStep, setWizardStep] = useState<Is1WizardStep>(() => {
-    if (typeof window === 'undefined') return 'modules';
+  const [successNote, setSuccessNote] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
     try {
-      return parseIs1WizardStep(window.sessionStorage.getItem(IS1_WIZARD_STORAGE_KEY));
+      return window.sessionStorage.getItem(MODULE_SETUP_SELECTED_KEY);
     } catch {
-      return 'modules';
+      return null;
     }
   });
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [moduleStep, setModuleStep] = useState<ModuleWizardStepId>('data');
   const [busy, setBusy] = useState(false);
   const [draftConfirmed, setDraftConfirmed] = useState(false);
   const [verifiedExisting, setVerifiedExisting] = useState(false);
@@ -215,6 +368,12 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   );
   const [inventoryCommitResult, setInventoryCommitResult] =
     useState<InventoryCommitBatchResult | null>(null);
+  const [inventoryPath, setInventoryPath] = useState<'choose' | 'import' | 'empty'>('choose');
+  const [inventoryImportCommitted, setInventoryImportCommitted] = useState(false);
+  /** Data saved but lifecycle not yet READY (invalid jump / failed setup completion). */
+  const [inventorySetupCompletionPending, setInventorySetupCompletionPending] = useState(false);
+  /** While restoring commit summary from server after refresh. */
+  const [inventoryRestoreLoading, setInventoryRestoreLoading] = useState(false);
   const [pendingCrPreview, setPendingCrPreview] = useState<ImportPreviewResult | null>(null);
   const [crCommitResult, setCrCommitResult] = useState<CrCommitBatchResult | null>(null);
   const [tariffSnapshots, setTariffSnapshots] = useState<TariffListSnapshot[]>([]);
@@ -223,16 +382,47 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     bootstrapModuleSetupAdapters();
   }, []);
 
+  useEffect(() => {
+    setCatalogFilter(parseModuleCatalogFilter(defaultFilter));
+  }, [defaultFilter]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    const sb = supabase as SupabaseClient<Database> & {
+      rpc: (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+    };
+
+    // Align lifecycle with completed first-run stages (idempotent; never flips enabled).
+    await sb.rpc('admin_reconcile_first_run_module_lifecycle');
+
     const { data, error: err } = await supabase.rpc('admin_list_module_lifecycle');
     if (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
       setRows([]);
     } else {
       setRows((data as LifecycleRow[]) ?? []);
     }
+
+    const { data: catalogRows } = await supabase.rpc('get_building_modules_v2');
+    setBuildingCatalog((catalogRows as BuildingModuleV2Row[] | null) ?? []);
+
+    const { data: frRaw } = await sb.rpc('admin_get_first_run_state');
+    const fr = frRaw as {
+      first_run_status?: string | null;
+      completed_at?: string | null;
+      stages?: Array<{ stage_key?: string; status?: string }> | null;
+    } | null;
+    const frDone =
+      fr?.first_run_status === 'complete' ||
+      (typeof fr?.completed_at === 'string' && fr.completed_at.length > 0);
+    setFirstRunCompleted(frDone);
+    const doneStages = new Set<string>();
+    for (const stage of fr?.stages ?? []) {
+      if (stage?.status === 'complete' && stage.stage_key) doneStages.add(String(stage.stage_key));
+    }
+    setCompletedFirstRunStages(doneStages);
 
     // IS-7a: read-only Tariff Core snapshot for setup gates (no publish / no module activation).
     const { data: tariffRows, error: tariffErr } = await supabase.rpc('list_tariffs', {
@@ -261,7 +451,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     }
 
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, t]);
 
   useEffect(() => {
     void load();
@@ -269,11 +459,36 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
   useEffect(() => {
     try {
-      window.sessionStorage.setItem(IS1_WIZARD_STORAGE_KEY, wizardStep);
+      if (selectedKey) window.sessionStorage.setItem(MODULE_SETUP_SELECTED_KEY, selectedKey);
+      else window.sessionStorage.removeItem(MODULE_SETUP_SELECTED_KEY);
     } catch {
-      /* ignore quota / private mode */
+      /* ignore */
     }
-  }, [wizardStep]);
+  }, [selectedKey]);
+
+  useEffect(() => {
+    if (!selectedKey) return;
+    const steps = moduleWizardSteps(selectedKey);
+    try {
+      const saved = window.sessionStorage.getItem(MODULE_SETUP_STEP_KEY);
+      if (saved && (steps as string[]).includes(saved)) {
+        setModuleStep(saved as ModuleWizardStepId);
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setModuleStep(steps[0] ?? 'activate');
+  }, [selectedKey]);
+
+  useEffect(() => {
+    if (!selectedKey) return;
+    try {
+      window.sessionStorage.setItem(MODULE_SETUP_STEP_KEY, moduleStep);
+    } catch {
+      /* ignore */
+    }
+  }, [moduleStep, selectedKey]);
 
   const registeredExtra = listRegisteredModuleAdapters().filter(
     (a) => !rows.some((r) => r.module_key === a.registration.moduleKey),
@@ -300,10 +515,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
   const isCapitalRepair = selectedKey === CAPITAL_REPAIR_MODULE_KEY;
   const isInventory = selectedKey === INVENTORY_MODULE_KEY;
 
-  const tariffReadiness = useMemo(
-    () => evaluateAllTariffSetupGates(tariffSnapshots),
-    [tariffSnapshots],
-  );
   const selectedTariffReady = useMemo(
     () => (selectedKey ? evaluateTariffSetupGate(selectedKey, tariffSnapshots) : null),
     [selectedKey, tariffSnapshots],
@@ -314,23 +525,43 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     return pb.state === 'READY' || pb.state === 'ACTIVE' || pb.state === 'SETUP_IN_PROGRESS';
   }, [displayRows]);
 
-  const wizardStepIndex = IS1_WIZARD_STEPS.indexOf(wizardStep);
-  const wizardStepMeta = useMemo(() => {
-    const modulesInProgress = displayRows.some(
-      (r) =>
-        r.state === 'SETUP_IN_PROGRESS' ||
-        r.state === 'READY' ||
-        r.state === 'ACTIVE' ||
-        r.has_setup_draft,
-    );
-    const financeReady = tariffReadiness.some((r) => r.importReady || r.billingReady);
-    return {
-      modules: modulesInProgress ? 'active' : 'pending',
-      finance: financeReady ? 'active' : 'pending',
-      notify: 'optional' as const,
-      ready: 'pending' as const,
-    } as const;
-  }, [displayRows, tariffReadiness]);
+  const setupCatalog = useMemo(
+    () =>
+      buildModuleSetupCatalog({
+        lifecycle: displayRows,
+        buildingCatalog,
+        firstRunCompleted,
+        completedFirstRunStages,
+        includeComplete: true,
+        includeTariffs: true,
+      }),
+    [displayRows, buildingCatalog, firstRunCompleted, completedFirstRunStages],
+  );
+
+  const catalogByKey = useMemo(() => {
+    const map = new Map(setupCatalog.map((row) => [row.moduleKey, row]));
+    return map;
+  }, [setupCatalog]);
+
+  // One-shot: drop restored/session selection once catalog proves the module is complete.
+  useEffect(() => {
+    if (loading || !selectedKey) return;
+    const row = catalogByKey.get(selectedKey);
+    if (row?.status !== 'complete') return;
+    setSelectedKey(null);
+    setPendingEnableKey(null);
+    try {
+      window.sessionStorage.removeItem(MODULE_SETUP_SELECTED_KEY);
+      window.sessionStorage.removeItem(MODULE_SETUP_STEP_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, [loading, selectedKey, catalogByKey]);
+
+  const wizardSteps = useMemo(
+    () => (selectedKey ? moduleWizardSteps(selectedKey) : []),
+    [selectedKey],
+  );
 
   const labelFor = (moduleKey: string) => {
     const msg = moduleLabelMessageKey(moduleKey);
@@ -358,6 +589,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     setPendingUkExpensePreview(null);
     setPendingInventoryPreview(null);
     setInventoryCommitResult(null);
+    setInventoryPath('choose');
+    setInventoryImportCommitted(false);
+    setInventorySetupCompletionPending(false);
+    setInventoryRestoreLoading(false);
     setUkExpenseCommitResult(null);
     setPendingCrPreview(null);
     setCrCommitResult(null);
@@ -674,8 +909,192 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     };
   }
 
-  async function transition(to: ModuleLifecycleState, reason?: string) {
-    if (!selectedKey) return;
+  function openModule(moduleKey: string) {
+    const row = catalogByKey.get(moduleKey);
+    // One-shot: completed modules never reopen the initial wizard (URL/session restore included).
+    if (row?.status === 'complete') {
+      setSelectedKey(null);
+      setPendingEnableKey(null);
+      try {
+        window.sessionStorage.removeItem(MODULE_SETUP_SELECTED_KEY);
+        window.sessionStorage.removeItem(MODULE_SETUP_STEP_KEY);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    setSelectedKey(moduleKey);
+    setError(null);
+    setSuccessNote(null);
+    resetImportUi();
+    setDraftConfirmed(false);
+    setVerifiedExisting(false);
+    setSkipHistoricalExpenses(false);
+    setAllowCreateMissing(false);
+    if (moduleKey === INVENTORY_MODULE_KEY) {
+      setInventoryRestoreLoading(true);
+      setInventorySetupCompletionPending(false);
+      void (async () => {
+        try {
+          const { data, error: progErr } = await supabase.rpc('admin_get_module_setup_progress', {
+            p_module_key: moduleKey,
+          });
+          if (progErr || !data) return;
+          const draft = (data as { draft?: Record<string, unknown> | null }).draft ?? null;
+          if (!draft || typeof draft !== 'object') return;
+
+          const life =
+            (await fetchModuleLifecycleState(moduleKey)) ??
+            (catalogByKey.get(moduleKey)?.state as ModuleLifecycleState | undefined) ??
+            null;
+          const lifeReady =
+            life === 'READY' || life === 'ACTIVE' || life === 'SUSPENDED';
+
+          if (draft.import_committed === true) {
+            setInventoryImportCommitted(true);
+            setInventoryPath('import');
+            setVerifiedExisting(false);
+            const savedPreview = draft.preview as ImportPreviewResult | undefined;
+            if (savedPreview?.rows?.length) {
+              setPreview(savedPreview);
+              setPendingInventoryPreview(savedPreview);
+            }
+            if (typeof draft.batch_id === 'string' && draft.batch_id) {
+              setBatchId(draft.batch_id);
+            }
+            const reconciled = await restoreInventoryCommitSummary({
+              draft,
+              requireCommitted: true,
+            });
+            if (reconciled) {
+              setInventoryCommitResult(reconciled);
+              const saved = inventoryCommitConfirmedSavedCount(reconciled);
+              const total = reconciled.rows.length || saved;
+              setPreviewNote(
+                t('admin.inv6ImportSuccessBanner').replace('{n}', String(saved || total)),
+              );
+            }
+            if (!lifeReady) {
+              setInventorySetupCompletionPending(true);
+              setError(t('admin.inv6DataSavedSetupIncomplete'));
+              setModuleStep('data');
+            } else {
+              setInventorySetupCompletionPending(false);
+              setModuleStep('activate');
+            }
+          } else if (draft.empty_inventory_ok === true) {
+            // Only when explicitly confirmed — never auto-pick empty from a zero counter.
+            setInventoryPath('empty');
+            setVerifiedExisting(true);
+            if (!lifeReady) {
+              setInventorySetupCompletionPending(true);
+              setError(t('admin.inv6DataSavedSetupIncomplete'));
+              setModuleStep('data');
+            } else {
+              setModuleStep('activate');
+            }
+          } else if (draft.last_commit && typeof draft.last_commit === 'object') {
+            // Partial import: restore from draft + prove against server.
+            setInventoryPath('import');
+            setModuleStep('data');
+            const savedPreview = draft.preview as ImportPreviewResult | undefined;
+            if (savedPreview?.rows?.length) {
+              setPreview(savedPreview);
+              setPendingInventoryPreview(savedPreview);
+            }
+            if (typeof draft.batch_id === 'string' && draft.batch_id) {
+              setBatchId(draft.batch_id);
+            }
+            const reconciled = await restoreInventoryCommitSummary({ draft });
+            if (reconciled) {
+              setInventoryCommitResult(reconciled);
+              const ui = inventoryCommitUiSummary(reconciled);
+              setPreviewNote(
+                [
+                  t('admin.inv6SavedOfTotal')
+                    .replace('{saved}', String(inventoryCommitConfirmedSavedCount(reconciled)))
+                    .replace('{total}', String(ui.total || inventoryCommitConfirmedSavedCount(reconciled))),
+                  t('admin.inv6AlreadySaved').replace('{n}', String(ui.alreadySaved)),
+                  t('admin.inv6NotSaved').replace('{n}', String(ui.notSaved)),
+                ].join(' · '),
+              );
+              if (!reconciled.fullySuccessful) {
+                setError(t('admin.inv6PartialNotFullySuccessful'));
+              }
+            }
+          }
+        } catch {
+          /* ignore restore failures — wizard stays at choose */
+        } finally {
+          setInventoryRestoreLoading(false);
+        }
+      })();
+    }
+  }
+
+  function backToCatalog() {
+    setSelectedKey(null);
+    setPendingEnableKey(null);
+    setError(null);
+    setSuccessNote(null);
+    resetImportUi();
+    try {
+      window.sessionStorage.removeItem(MODULE_SETUP_STEP_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function setBuildingEnabled(moduleKey: string, enabled: boolean): Promise<boolean> {
+    if (isMandatoryBuildingModule(moduleKey) && !enabled) {
+      setError(t('admin.errNoAccess'));
+      return false;
+    }
+    setModuleSavingKey(moduleKey);
+    setError(null);
+    try {
+      const { error: enableErr } = await supabase.rpc('set_building_module_enabled', {
+        p_module_key: moduleKey,
+        p_enabled: enabled,
+      });
+      if (enableErr) throw enableErr;
+      await load();
+      onModulesChanged?.();
+      return true;
+    } catch (e: unknown) {
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
+      return false;
+    } finally {
+      setModuleSavingKey(null);
+    }
+  }
+
+  async function handleCatalogToggle(moduleKey: string, enabled: boolean) {
+    if ((FIRST_RUN_LOCKED_MODULES as readonly string[]).includes(moduleKey)) return;
+    const row = catalogByKey.get(moduleKey);
+    if (!row) return;
+
+    if (!enabled) {
+      setPendingEnableKey(null);
+      await setBuildingEnabled(moduleKey, false);
+      return;
+    }
+
+    // Already configured (first-run or prior activation): enable UX only.
+    if (row.status === 'complete') {
+      setPendingEnableKey(null);
+      await setBuildingEnabled(moduleKey, true);
+      return;
+    }
+
+    // First enable of an unconfigured / incomplete module → wizard; toggle stays off
+    // until activateAndEnable succeeds on the server.
+    setPendingEnableKey(moduleKey);
+    openModule(moduleKey);
+  }
+
+  async function transition(to: ModuleLifecycleState, reason?: string): Promise<boolean> {
+    if (!selectedKey) return false;
     if (
       selectedKey === PROPERTY_BOOK_MODULE_KEY &&
       (to === 'READY' || to === 'ACTIVE')
@@ -684,12 +1103,12 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         p_limit: 1,
       });
       if (listErr) {
-        setError(listErr.message);
-        return;
+        setError(toUserFacingMessage(listErr, t, { fallback: t('admin.errGeneric') }));
+        return false;
       }
       if (!Array.isArray(bookRows) || bookRows.length === 0) {
         setError(t('admin.is2PropertyBookEmptyBlocksReady'));
-        return;
+        return false;
       }
     }
     setBusy(true);
@@ -701,10 +1120,232 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     });
     setBusy(false);
     if (err) {
-      setError(err.message);
-      return;
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
+      return false;
     }
     await load();
+    return true;
+  }
+
+  async function fetchModuleLifecycleState(
+    moduleKey: string,
+  ): Promise<ModuleLifecycleState | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const { data, error: stErr } = await sb
+      .from('module_lifecycle')
+      .select('state')
+      .eq('module_key', moduleKey)
+      .maybeSingle();
+    if (stErr || !data?.state) return null;
+    return String(data.state) as ModuleLifecycleState;
+  }
+
+  /**
+   * Strict server sequence only:
+   * DISABLED → SETUP_REQUIRED → SETUP_IN_PROGRESS → READY.
+   * Never jumps SETUP_REQUIRED → READY.
+   */
+  async function advanceModuleLifecycleToReady(
+    moduleKey: string,
+    reason: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    let state =
+      (await fetchModuleLifecycleState(moduleKey)) ??
+      ((catalogByKey.get(moduleKey)?.state as ModuleLifecycleState | undefined) ?? null);
+    if (!state) {
+      return { ok: false, message: t('admin.errGeneric') };
+    }
+    if (state === 'READY' || state === 'ACTIVE' || state === 'SUSPENDED') {
+      return { ok: true };
+    }
+
+    const run = async (to: ModuleLifecycleState, stepReason: string) => {
+      const { error: err } = await supabase.rpc('admin_transition_module_lifecycle', {
+        p_module_key: moduleKey,
+        p_to_state: to,
+        p_reason: stepReason,
+      });
+      if (err) throw err;
+      state = to;
+    };
+
+    try {
+      if (state === 'DISABLED') {
+        await run('SETUP_REQUIRED', `${reason}:begin_setup`);
+      }
+      if (state === 'SETUP_REQUIRED') {
+        await run('SETUP_IN_PROGRESS', `${reason}:setup_in_progress`);
+      }
+      if (state === 'SETUP_IN_PROGRESS') {
+        await run('READY', reason);
+      }
+      const finalState = (await fetchModuleLifecycleState(moduleKey)) ?? state;
+      if (
+        finalState !== 'READY' &&
+        finalState !== 'ACTIVE' &&
+        finalState !== 'SUSPENDED'
+      ) {
+        return {
+          ok: false,
+          message: t('admin.inv6SetupCompletionFailed'),
+        };
+      }
+      await load();
+      return { ok: true };
+    } catch (e: unknown) {
+      await load();
+      return {
+        ok: false,
+        message: toUserFacingMessage(e, t, { fallback: t('admin.inv6SetupCompletionFailed') }),
+      };
+    }
+  }
+
+  async function loadLatestInventoryCommitAudit(): Promise<InventoryCommitBatchResult | null> {
+    const { data, error: batErr } = await supabase.rpc('admin_list_module_import_batches', {
+      p_module_key: INVENTORY_MODULE_KEY,
+      p_limit: 20,
+    });
+    if (batErr || !data) return null;
+    const rows = Array.isArray(data) ? data : [];
+    const commitBatch = rows.find((r) => {
+      if (!r || typeof r !== 'object') return false;
+      const name = String((r as { file_name?: string }).file_name ?? '');
+      return name.startsWith('inventory-opening-commit-');
+    }) as { preview?: Record<string, unknown> } | undefined;
+    if (!commitBatch?.preview) return null;
+    return inventoryCommitBatchFromAuditPreview(commitBatch.preview);
+  }
+
+  async function restoreInventoryCommitSummary(args: {
+    draft: Record<string, unknown>;
+    requireCommitted?: boolean;
+  }): Promise<InventoryCommitBatchResult | null> {
+    const presence = await loadInventoryServerPresence();
+    const savedPreview = args.draft.preview as ImportPreviewResult | undefined;
+    let batch: InventoryCommitBatchResult | null = null;
+    if (args.draft.last_commit && typeof args.draft.last_commit === 'object') {
+      const raw = args.draft.last_commit as Record<string, unknown>;
+      batch =
+        inventoryCommitBatchFromAuditPreview(raw) ??
+        (Array.isArray(raw.rows) ? (raw as unknown as InventoryCommitBatchResult) : null);
+    }
+    if (!batch) {
+      batch = await loadLatestInventoryCommitAudit();
+    }
+    if (!batch) {
+      // Last resort: presence-only summary (no per-row excel mapping).
+      const confirmed = presence.assetNumbers.size + presence.stockBySku.size;
+      if (confirmed <= 0) return null;
+      return {
+        rows: [],
+        createdCount: 0,
+        skippedExistingCount: confirmed,
+        conflictCount: 0,
+        failedCount: 0,
+        notProcessedCount: 0,
+        fullySuccessful: true,
+        stoppedEarly: false,
+        financeTouched: false,
+      };
+    }
+    const previewRows =
+      savedPreview?.rows ??
+      batch.rows.map((r) => ({
+        rowNumber: r.rowNumber,
+        matchKey: r.matchKey,
+        data: {
+          tracking_type: r.trackingType,
+          inventory_number: r.trackingType === 'INDIVIDUAL_ASSET' ? r.matchKey : '',
+          sku_code: r.trackingType === 'QUANTITY_STOCK' ? r.matchKey : '',
+          opening_qty: '1',
+        },
+      }));
+    return reconcileInventoryCommitWithServer(batch, previewRows, presence);
+  }
+
+  /**
+   * Activate lifecycle and enable UX access together.
+   * If enabling building_modules fails after ACTIVE, roll lifecycle back to READY.
+   */
+  async function activateAndEnable() {
+    if (!selectedKey || !selected) return;
+    setSuccessNote(null);
+    setError(null);
+    setBusy(true);
+    try {
+      let state = selected.state as ModuleLifecycleState;
+      const needsSetup = adapter?.registration.requiresInitialSetup === true;
+
+      if (state === 'DISABLED') {
+        if (needsSetup) {
+          const { error: beginErr } = await supabase.rpc('admin_transition_module_lifecycle', {
+            p_module_key: selectedKey,
+            p_to_state: 'SETUP_REQUIRED',
+            p_reason: 'begin_setup',
+          });
+          if (beginErr) throw beginErr;
+          await load();
+          setModuleStep(wizardSteps.includes('data') ? 'data' : 'confirm');
+          setError(t('admin.moduleSetupActivateBlocked'));
+          return;
+        }
+        const { error: readyErr } = await supabase.rpc('admin_transition_module_lifecycle', {
+          p_module_key: selectedKey,
+          p_to_state: 'READY',
+          p_reason: 'no_setup_required',
+        });
+        if (readyErr) throw readyErr;
+        state = 'READY';
+      }
+
+      if (state === 'SETUP_REQUIRED' || state === 'SETUP_IN_PROGRESS') {
+        setError(t('admin.moduleSetupActivateBlocked'));
+        return;
+      }
+
+      if (state === 'READY' || state === 'SUSPENDED') {
+        const { error: activeErr } = await supabase.rpc('admin_transition_module_lifecycle', {
+          p_module_key: selectedKey,
+          p_to_state: 'ACTIVE',
+          p_reason: 'admin_confirm_activate',
+        });
+        if (activeErr) throw activeErr;
+        state = 'ACTIVE';
+      }
+
+      if (state !== 'ACTIVE') {
+        setError(t('admin.moduleSetupActivateBlocked'));
+        return;
+      }
+
+      const { error: enableErr } = await supabase.rpc('set_building_module_enabled', {
+        p_module_key: selectedKey,
+        p_enabled: true,
+      });
+      if (enableErr) {
+        await supabase.rpc('admin_transition_module_lifecycle', {
+          p_module_key: selectedKey,
+          p_to_state: 'READY',
+          p_reason: 'rollback_enable_failed',
+        });
+        throw enableErr;
+      }
+
+      setSuccessNote(
+        t('admin.moduleSetupActivateSuccess').replace('{module}', labelFor(selectedKey)),
+      );
+      setPendingEnableKey(null);
+      await load();
+      onModulesChanged?.();
+      window.setTimeout(() => backToCatalog(), 1200);
+    } catch (err: unknown) {
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
+      await load();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function loadUkExpenseClassifyContext() {
@@ -747,12 +1388,45 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     };
   }
 
+  async function loadInventoryServerPresence() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const [{ data: assetRows }, { data: stockRows }, { data: openingMoves }] = await Promise.all([
+      sb.from('inventory_assets').select('inventory_number'),
+      sb.from('inventory_stock_items').select('id, sku_code'),
+      sb
+        .from('inventory_stock_movements')
+        .select('stock_item_id')
+        .eq('movement_type', 'OPENING'),
+    ]);
+    const openingSet = new Set(
+      ((openingMoves as { stock_item_id: string }[] | null) ?? []).map((m) =>
+        String(m.stock_item_id),
+      ),
+    );
+    const stockBySku = new Map<string, { stockItemId: string; hasOpeningMovement: boolean }>();
+    for (const s of (stockRows as { id: string; sku_code: string }[] | null) ?? []) {
+      stockBySku.set(String(s.sku_code), {
+        stockItemId: String(s.id),
+        hasOpeningMovement: openingSet.has(String(s.id)),
+      });
+    }
+    return {
+      assetNumbers: new Set(
+        ((assetRows as { inventory_number: string }[] | null) ?? []).map((a) =>
+          String(a.inventory_number),
+        ),
+      ),
+      stockBySku,
+    };
+  }
+
   async function loadInventoryClassifyContext(): Promise<InventoryOpeningClassifyContext> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
     const [cats, locs, units, assets, stock, moves] = await Promise.all([
-      sb.from('inventory_categories').select('id, code, active'),
-      sb.from('inventory_locations').select('id, code, active'),
+      sb.from('inventory_categories').select('id, code, active, name_bg, name_ru, name_en'),
+      sb.from('inventory_locations').select('id, code, active, name'),
       sb.from('inventory_units').select('code'),
       sb
         .from('inventory_assets')
@@ -767,19 +1441,53 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       sb.from('inventory_stock_movements').select('stock_item_id, movement_type'),
     ]);
 
+    const norm = (v: string) =>
+      String(v ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
     const categoriesByCode = new Map<string, string>();
-    for (const c of (cats.data ?? []) as { id: string; code: string; active?: boolean }[]) {
+    const categoryLabelsById = new Map<string, string>();
+    for (const c of (cats.data ?? []) as {
+      id: string;
+      code: string;
+      active?: boolean;
+      name_bg?: string;
+      name_ru?: string;
+      name_en?: string;
+    }[]) {
       if (c.active === false) continue;
-      categoriesByCode.set(String(c.code).toLowerCase(), String(c.id));
+      const id = String(c.id);
+      categoriesByCode.set(norm(c.code), id);
+      for (const n of [c.name_bg, c.name_ru, c.name_en]) {
+        if (n && norm(n)) categoriesByCode.set(norm(n), id);
+      }
+      categoryLabelsById.set(
+        id,
+        String(c.name_ru || c.name_bg || c.name_en || c.code || '').trim(),
+      );
     }
     const locationsByCode = new Map<string, string>();
-    for (const l of (locs.data ?? []) as { id: string; code: string; active?: boolean }[]) {
+    const locationLabelsById = new Map<string, string>();
+    for (const l of (locs.data ?? []) as {
+      id: string;
+      code: string;
+      active?: boolean;
+      name?: string;
+    }[]) {
       if (l.active === false) continue;
-      locationsByCode.set(String(l.code).toLowerCase(), String(l.id));
+      const id = String(l.id);
+      locationsByCode.set(norm(l.code), id);
+      if (l.name && norm(l.name)) locationsByCode.set(norm(l.name), id);
+      locationLabelsById.set(id, String(l.name || l.code || '').trim());
     }
-    const unitSet = new Set<string>(
-      ((units.data ?? []) as { code: string }[]).map((u) => String(u.code)),
-    );
+    const unitSet = new Set<string>();
+    for (const u of (units.data ?? []) as { code: string }[]) {
+      const code = String(u.code ?? '').trim();
+      if (!code) continue;
+      unitSet.add(code);
+      unitSet.add(code.toLowerCase());
+    }
     const assetsByNumber = new Map<string, ExistingInventoryAssetRef>();
     for (const a of (assets.data ?? []) as Array<{
       id: string;
@@ -792,7 +1500,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       serial_number: string | null;
       estimated_value_eur: number | null;
     }>) {
-      assetsByNumber.set(String(a.inventory_number).toLowerCase(), {
+      assetsByNumber.set(norm(String(a.inventory_number)), {
         id: String(a.id),
         inventoryNumber: String(a.inventory_number),
         name: String(a.name),
@@ -818,7 +1526,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       category_id: string | null;
       default_location_id: string | null;
     }[]) {
-      stockBySku.set(String(s.sku_code).toLowerCase(), {
+      stockBySku.set(norm(String(s.sku_code)), {
         id: String(s.id),
         skuCode: String(s.sku_code),
         name: String(s.name),
@@ -833,10 +1541,13 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     return {
       categoriesByCode,
       locationsByCode,
+      categoryLabelsById,
+      locationLabelsById,
       units: unitSet,
       assetsByNumber,
       stockBySku,
       sourceRefsSeen: new Set(),
+      allowCreateCatalog: true,
     };
   }
 
@@ -863,7 +1574,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     });
     setBusy(false);
     if (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     if (
@@ -883,16 +1594,18 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       verified_existing_readonly: verifiedExisting,
       skip_historical_import: skipHistoricalExpenses,
     };
-    if (isUkExpenses || isCapitalRepair || isInventory) {
-      const inventoryDraft = isInventory
-        ? {
-            confirmed: draftConfirmed || verifiedExisting || skipHistoricalExpenses,
-            skip_import: skipHistoricalExpenses,
-            empty_inventory_ok: verifiedExisting,
-            start_physical_inventory: allowCreateMissing,
-          }
-        : draft;
-      const validation = adapter.validateManual?.(isInventory ? inventoryDraft : draft);
+    if (isInventory) {
+      const inventoryDraft = {
+        empty_inventory_ok: verifiedExisting || inventoryPath === 'empty',
+        import_committed: inventoryImportCommitted,
+      };
+      const validation = adapter.validateManual?.(inventoryDraft);
+      if (!validation || !validation.ok) {
+        setError(t('admin.inv6SetupIncomplete'));
+        return;
+      }
+    } else if (isUkExpenses || isCapitalRepair) {
+      const validation = adapter.validateManual?.(draft);
       if (!validation || !validation.ok) {
         setError(t('admin.is1SetupIncomplete'));
         return;
@@ -904,12 +1617,69 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         return;
       }
     }
-    if (selected?.state === 'SETUP_IN_PROGRESS' || selected?.state === 'SETUP_REQUIRED') {
-      await transition('READY', 'setup_complete');
-    } else if (selected?.state === 'DISABLED' && !adapter.registration.requiresInitialSetup) {
-      await transition('READY', 'no_setup_required');
-    } else if (selected?.state === 'DISABLED' && adapter.registration.requiresInitialSetup) {
-      await transition('SETUP_REQUIRED', 'begin_setup');
+    if (
+      selected?.state === 'SETUP_IN_PROGRESS' ||
+      selected?.state === 'SETUP_REQUIRED' ||
+      selected?.state === 'DISABLED'
+    ) {
+      if (selected.state === 'DISABLED' && !adapter.registration.requiresInitialSetup) {
+        await transition('READY', 'no_setup_required');
+        return;
+      }
+      // Allowed path only — never SETUP_REQUIRED → READY in one hop.
+      const advanced = await advanceModuleLifecycleToReady(selectedKey, 'setup_complete');
+      if (!advanced.ok) {
+        setError(advanced.message);
+      }
+    }
+  }
+
+  async function retryInventorySetupCompletion() {
+    if (!selectedKey || !isInventory) return;
+    if (!inventoryImportCommitted && !(verifiedExisting || inventoryPath === 'empty')) {
+      setError(t('admin.inv6SetupIncomplete'));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const advanced = await advanceModuleLifecycleToReady(
+        selectedKey,
+        inventoryImportCommitted
+          ? 'inventory_opening_setup_retry'
+          : 'inventory_empty_setup_retry',
+      );
+      if (!advanced.ok) {
+        setInventorySetupCompletionPending(true);
+        setError(t('admin.inv6DataSavedSetupIncomplete'));
+        return;
+      }
+      await supabase.rpc('admin_save_module_setup_progress', {
+        p_module_key: selectedKey,
+        p_current_step: 'inventory_opening',
+        p_draft: {
+          import_committed: inventoryImportCommitted,
+          empty_inventory_ok: verifiedExisting || inventoryPath === 'empty',
+          created_count: inventoryCommitResult
+            ? inventoryCommitConfirmedSavedCount(inventoryCommitResult)
+            : undefined,
+          saved_count: inventoryCommitResult
+            ? inventoryCommitConfirmedSavedCount(inventoryCommitResult)
+            : undefined,
+          total_rows: inventoryCommitResult?.rows.length,
+          last_commit: inventoryCommitResult ?? undefined,
+          preview: pendingInventoryPreview ?? undefined,
+          setup_completion: 'done',
+        },
+        p_validation_errors: [],
+        p_setup_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+      });
+      setInventorySetupCompletionPending(false);
+      setModuleStep('activate');
+    } catch (e: unknown) {
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.inv6SetupCompletionFailed') }));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -926,11 +1696,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
           setError(t('admin.is2PropertyBookEmptyObjects'));
           return;
         }
-        if (payload.owners.length === 0) {
-          setError(t('admin.is2PropertyBookEmptyOwners'));
-          return;
-        }
-
         const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
           p_limit: 5000,
         });
@@ -1014,7 +1779,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               : ''),
         );
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1027,9 +1792,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       try {
         const schema = adapter.registration.setup.xlsx;
         const buf = await file.arrayBuffer();
-        const parsed = parseModuleXlsxBuffer(buf, schema);
+        const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
         if (!parsed.ok) {
-          setError(parsed.error);
+          setError(presentModuleXlsxParseError(parsed.error, t, locale));
           return;
         }
         if (parsed.rows.length === 0) {
@@ -1079,7 +1844,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             ` · ${t('admin.is3OpeningReadingBlocked')}`,
         );
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1092,9 +1857,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       try {
         const schema = adapter.registration.setup.xlsx;
         const buf = await file.arrayBuffer();
-        const parsed = parseModuleXlsxBuffer(buf, schema);
+        const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
         if (!parsed.ok) {
-          setError(parsed.error);
+          setError(presentModuleXlsxParseError(parsed.error, t, locale));
           return;
         }
         if (parsed.rows.length === 0) {
@@ -1143,7 +1908,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             ` · ${t('admin.is4SupportFeeNoSyntheticPayments')}`,
         );
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1156,9 +1921,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       try {
         const schema = adapter.registration.setup.xlsx;
         const buf = await file.arrayBuffer();
-        const parsed = parseModuleXlsxBuffer(buf, schema);
+        const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
         if (!parsed.ok) {
-          setError(parsed.error);
+          setError(presentModuleXlsxParseError(parsed.error, t, locale));
           return;
         }
         if (parsed.rows.length === 0) {
@@ -1209,7 +1974,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             ` · ${t('admin.is8CapitalRepairNoSynthetic')}`,
         );
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1222,9 +1987,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       try {
         const schema = adapter.registration.setup.xlsx;
         const buf = await file.arrayBuffer();
-        const parsed = parseModuleXlsxBuffer(buf, schema);
+        const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
         if (!parsed.ok) {
-          setError(parsed.error);
+          setError(presentModuleXlsxParseError(parsed.error, t, locale));
           return;
         }
         if (parsed.rows.length === 0) {
@@ -1274,7 +2039,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
             ` · ${t('admin.is5InternetNoSyntheticPayments')}`,
         );
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1288,7 +2053,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         const buf = await file.arrayBuffer();
         const parsed = parseInventoryOpeningXlsxBuffer(buf);
         if (!parsed.ok) {
-          setError(parsed.error);
+          setError(presentModuleXlsxParseError(parsed.error, t, locale));
           return;
         }
         if (parsed.rows.length === 0) {
@@ -1332,11 +2097,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         if (batchErr) throw batchErr;
         const id = String((batch as { id?: string })?.id ?? '');
         setBatchId(id || null);
-        setPreviewNote(
-          t('admin.is1PreviewSaved').replace('{id}', id) + ` · ${t('admin.inv6NoFinance')}`,
-        );
+        setInventoryPath('import');
+        setPreviewNote(t('admin.inv6PreviewReady'));
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1349,9 +2113,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       try {
         const schema = adapter.registration.setup.xlsx;
         const buf = await file.arrayBuffer();
-        const parsed = parseModuleXlsxBuffer(buf, schema);
+        const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
         if (!parsed.ok) {
-          setError(parsed.error);
+          setError(presentModuleXlsxParseError(parsed.error, t, locale));
           return;
         }
         if (parsed.rows.length === 0) {
@@ -1401,7 +2165,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
           t('admin.is1PreviewSaved').replace('{id}', id) + ` · ${t('admin.is6aExpensesNoAp')}`,
         );
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       } finally {
         setBusy(false);
       }
@@ -1410,9 +2174,9 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
     const schema = adapter.registration.setup.xlsx;
     const buf = await file.arrayBuffer();
-    const parsed = parseModuleXlsxBuffer(buf, schema);
+    const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
     if (!parsed.ok) {
-      setError(parsed.error);
+      setError(presentModuleXlsxParseError(parsed.error, t, locale));
       return;
     }
     const result = buildImportPreview(parsed.rows, schema, (row) => {
@@ -1439,7 +2203,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       })),
     });
     if (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     setPreviewNote(
@@ -1453,7 +2217,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.is3MetersFixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.is3MetersConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -1599,7 +2362,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setError(t('admin.is3MetersPartialNotFullySuccessful'));
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -1611,7 +2374,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.is2PropertyBookFixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.is2PropertyBookConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -1624,37 +2386,12 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         p_allow_overwrite: false,
       });
       if (rpcErr) {
-        const detail =
-          typeof rpcErr === 'object' && rpcErr && 'details' in rpcErr
-            ? String((rpcErr as { details?: string }).details ?? '')
-            : '';
-        setError(
-          detail
-            ? `${t('admin.is2PropertyBookImportFailed')} ${detail.slice(0, 500)}`
-            : rpcErr.message || t('admin.is2PropertyBookImportFailed'),
-        );
+        setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.is2PropertyBookImportFailed') }));
         return;
       }
       const result = data as { ok?: boolean; errors?: unknown[] };
       if (!result.ok) {
-        const codes = Array.isArray(result.errors)
-          ? result.errors
-              .flatMap((e) => {
-                if (e && typeof e === 'object' && Array.isArray((e as { codes?: unknown }).codes)) {
-                  return ((e as { codes: unknown[] }).codes).map(String);
-                }
-                if (e && typeof e === 'object' && typeof (e as { code?: unknown }).code === 'string') {
-                  return [String((e as { code: string }).code)];
-                }
-                return [JSON.stringify(e)];
-              })
-              .filter(Boolean)
-          : [];
-        setError(
-          codes.length
-            ? `${t('admin.is2PropertyBookImportFailed')} ${Array.from(new Set(codes)).join(', ')}`
-            : t('admin.is2PropertyBookImportFailed'),
-        );
+        setError(t('admin.is2PropertyBookImportFailed'));
         return;
       }
       const { error: commitErr } = await supabase.rpc('admin_commit_module_import_batch', {
@@ -1672,7 +2409,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         await load();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -1684,7 +2421,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.is4SupportFeeFixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.is4SupportFeeConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -1816,7 +2552,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setError(t('admin.is4SupportFeePartialNotFullySuccessful'));
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -1828,7 +2564,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.is8CapitalRepairFixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.is8CapitalRepairConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -1966,7 +2701,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setError(t('admin.is8CapitalRepairPartialNotFullySuccessful'));
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -1978,7 +2713,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.is5InternetFixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.is5InternetConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -2116,7 +2850,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setError(t('admin.is5InternetPartialNotFullySuccessful'));
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -2128,7 +2862,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.inv6FixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.inv6ConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -2154,6 +2887,76 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         idempotencyKeyForRow: (rowNumber, kind) =>
           inventoryOpeningIdempotencyKey(batchId, rowNumber, kind),
         fns: {
+          ensureCategory: async (a) => {
+            const { data, error: rpcErr } = await sb.rpc('inventory_upsert_category', {
+              p_code: a.code,
+              p_name_bg: a.name,
+              p_name_ru: a.name,
+              p_name_en: a.name,
+            });
+            if (!rpcErr && data) {
+              return { ok: true as const, categoryId: String((data as { id: string }).id) };
+            }
+            // Fallback if DB still has insert-only upsert: resolve by code.
+            const { data: existing } = await sb
+              .from('inventory_categories')
+              .select('id')
+              .eq('code', a.code.toLowerCase())
+              .maybeSingle();
+            if (existing?.id) {
+              return { ok: true as const, categoryId: String(existing.id) };
+            }
+            return { ok: false as const, message: rpcErr?.message || 'category_ensure_failed' };
+          },
+          ensureLocation: async (a) => {
+            const { data, error: rpcErr } = await sb.rpc('inventory_upsert_location', {
+              p_code: a.code,
+              p_name: a.name,
+              p_location_kind: 'storage',
+            });
+            if (!rpcErr && data) {
+              return { ok: true as const, locationId: String((data as { id: string }).id) };
+            }
+            const { data: existing } = await sb
+              .from('inventory_locations')
+              .select('id')
+              .eq('code', a.code.toLowerCase())
+              .maybeSingle();
+            if (existing?.id) {
+              return { ok: true as const, locationId: String(existing.id) };
+            }
+            return { ok: false as const, message: rpcErr?.message || 'location_ensure_failed' };
+          },
+          findAssetByNumber: async (inventoryNumber) => {
+            const { data } = await sb
+              .from('inventory_assets')
+              .select('id, operational_status')
+              .eq('inventory_number', inventoryNumber)
+              .maybeSingle();
+            if (!data?.id) return null;
+            return {
+              assetId: String(data.id),
+              operationalStatus: String(data.operational_status ?? ''),
+            };
+          },
+          findStockBySku: async (skuCode) => {
+            const { data: item } = await sb
+              .from('inventory_stock_items')
+              .select('id')
+              .eq('sku_code', skuCode)
+              .maybeSingle();
+            if (!item?.id) return null;
+            const { data: moves } = await sb
+              .from('inventory_stock_movements')
+              .select('id')
+              .eq('stock_item_id', item.id)
+              .eq('movement_type', 'OPENING')
+              .limit(1);
+            return {
+              stockItemId: String(item.id),
+              hasOpeningMovement: Array.isArray(moves) && moves.length > 0,
+            };
+          },
           createDraftAsset: async (a) => {
             const { data, error: rpcErr } = await sb.rpc('inventory_create_draft_asset', {
               p_inventory_number: a.inventoryNumber,
@@ -2207,6 +3010,14 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         },
       });
 
+          // Prove outcomes against server before claiming "not saved".
+      const presence = await loadInventoryServerPresence();
+      const reconciled = reconcileInventoryCommitWithServer(
+        rawBatch,
+        workPreview.rows,
+        presence,
+      );
+
       const merged = mergeInventoryCommitBatches(
         opts?.retryOnly && inventoryCommitResult
           ? inventoryCommitResult
@@ -2221,7 +3032,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
               stoppedEarly: false,
               financeTouched: false,
             },
-        rawBatch,
+        reconciled,
       );
       setInventoryCommitResult(merged);
 
@@ -2254,28 +3065,97 @@ export function AdminInitialSetup({ supabase, t }: Props) {
           p_batch_id: batchId,
         });
         if (commitErr) throw commitErr;
-        setPreviewNote(t('admin.inv6ImportCommitted'));
-        if (
-          selected &&
-          canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_IN_PROGRESS')
-        ) {
-          await transition('SETUP_IN_PROGRESS', 'inventory_opening_committed');
-        } else {
-          await load();
-        }
-      } else {
+        const savedCount = inventoryCommitConfirmedSavedCount(merged);
+        setInventoryImportCommitted(true);
         setPreviewNote(
-          t('admin.inv6PartialCommit')
-            .replace('{c}', String(merged.createdCount))
-            .replace('{s}', String(merged.skippedExistingCount))
-            .replace('{x}', String(merged.conflictCount))
-            .replace('{f}', String(merged.failedCount))
-            .replace('{n}', String(merged.notProcessedCount)),
+          t('admin.inv6ImportSuccessBanner').replace('{n}', String(savedCount)),
+        );
+        await supabase.rpc('admin_save_module_setup_progress', {
+          p_module_key: selectedKey!,
+          p_current_step: 'inventory_opening',
+          p_draft: {
+            import_committed: true,
+            empty_inventory_ok: false,
+            created_count: savedCount,
+            saved_count: savedCount,
+            total_rows: merged.rows.length,
+            batch_id: batchId,
+            last_commit: merged,
+            preview: pendingInventoryPreview,
+            setup_completion: 'pending',
+          },
+          p_validation_errors: [],
+          p_setup_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+        });
+        // Data is saved. Complete setup via the allowed path only
+        // (SETUP_REQUIRED → SETUP_IN_PROGRESS → READY). Never jump.
+        const advanced = await advanceModuleLifecycleToReady(
+          selectedKey!,
+          'inventory_opening_committed',
+        );
+        if (!advanced.ok) {
+          setInventorySetupCompletionPending(true);
+          setError(t('admin.inv6DataSavedSetupIncomplete'));
+          setModuleStep('data');
+          return;
+        }
+        await supabase.rpc('admin_save_module_setup_progress', {
+          p_module_key: selectedKey!,
+          p_current_step: 'inventory_opening',
+          p_draft: {
+            import_committed: true,
+            empty_inventory_ok: false,
+            created_count: savedCount,
+            saved_count: savedCount,
+            total_rows: merged.rows.length,
+            batch_id: batchId,
+            last_commit: merged,
+            preview: pendingInventoryPreview,
+            setup_completion: 'done',
+          },
+          p_validation_errors: [],
+          p_setup_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+        });
+        setInventorySetupCompletionPending(false);
+        // Import already saved — only activation remains (no re-import).
+        setModuleStep('activate');
+      } else {
+        const ui = inventoryCommitUiSummary(merged);
+        setPreviewNote(
+          [
+            t('admin.inv6SavedOfTotal')
+              .replace('{saved}', String(ui.savedNow))
+              .replace('{total}', String(ui.total)),
+            t('admin.inv6AlreadySaved').replace('{n}', String(ui.alreadySaved)),
+            t('admin.inv6NotSaved').replace('{n}', String(ui.notSaved)),
+          ].join(' · '),
         );
         setError(t('admin.inv6PartialNotFullySuccessful'));
+        // Persist partial result so refresh restores from draft + server proof.
+        await supabase.rpc('admin_save_module_setup_progress', {
+          p_module_key: selectedKey!,
+          p_current_step: 'inventory_opening',
+          p_draft: {
+            import_committed: false,
+            empty_inventory_ok: false,
+            batch_id: batchId,
+            created_count: merged.createdCount,
+            last_commit: merged,
+            preview: pendingInventoryPreview,
+          },
+          p_validation_errors: merged.rows
+            .filter(
+              (r) =>
+                r.outcome === 'FAILED' ||
+                r.outcome === 'NOT_PROCESSED' ||
+                r.outcome === 'CONFLICT',
+            )
+            .map((r) => `row ${r.rowNumber}: ${r.detail}`),
+          p_setup_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+        });
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -2287,7 +3167,6 @@ export function AdminInitialSetup({ supabase, t }: Props) {
       setError(t('admin.is6aExpensesFixErrors'));
       return;
     }
-    if (!window.confirm(t('admin.is6aExpensesConfirmImport'))) return;
 
     setBusy(true);
     setError(null);
@@ -2427,7 +3306,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
         setError(t('admin.is6aExpensesPartialNotFullySuccessful'));
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }
@@ -2435,35 +3314,35 @@ export function AdminInitialSetup({ supabase, t }: Props) {
 
   function downloadTemplate() {
     if (isPropertyBook) {
-      downloadPropertyBookOpeningTemplate();
+      downloadPropertyBookOpeningTemplate(locale);
       return;
     }
     if (isWater) {
-      downloadWaterOpeningTemplate();
+      downloadWaterOpeningTemplate(locale);
       return;
     }
     if (isElectricity) {
-      downloadElectricityOpeningTemplate();
+      downloadElectricityOpeningTemplate(locale);
       return;
     }
     if (isSupportFee) {
-      downloadSupportFeeOpeningTemplate();
+      downloadSupportFeeOpeningTemplate(locale);
       return;
     }
     if (isInternet) {
-      downloadInternetOpeningTemplate();
+      downloadInternetOpeningTemplate(locale);
       return;
     }
     if (isUkExpenses) {
-      downloadUkExpensesOpeningTemplate();
+      downloadUkExpensesOpeningTemplate(locale);
       return;
     }
     if (isInventory) {
-      downloadInventoryOpeningTemplate();
+      downloadInventoryOpeningTemplate(locale);
       return;
     }
     if (isCapitalRepair) {
-      downloadCapitalRepairOpeningTemplate();
+      downloadCapitalRepairOpeningTemplate(locale);
       return;
     }
     const schema = adapter?.registration.setup?.xlsx;
@@ -2475,241 +3354,375 @@ export function AdminInitialSetup({ supabase, t }: Props) {
     downloadModuleXlsxTemplate(schema, labels, `${selectedKey ?? 'module'}-template.xlsx`);
   }
 
-  const wizardLabels: Record<Is1WizardStep, string> = {
-    modules: t('admin.settingsWizardStepModules'),
-    finance: t('admin.settingsWizardStepFinance'),
-    notify: t('admin.settingsWizardStepNotify'),
-    ready: t('admin.settingsWizardStepReady'),
-  };
+  function stepLabel(step: ModuleWizardStepId): string {
+    if (step === 'tariff') return t('admin.moduleSetupStepTariff');
+    if (step === 'data') return t('admin.moduleSetupStepData');
+    if (step === 'confirm') return t('admin.moduleSetupStepConfirm');
+    return t('admin.moduleSetupStepActivate');
+  }
 
-  const tariffPanel = (
-    <AdminCard>
-      <h3 className="mb-2 text-sm font-semibold text-foreground">{t('admin.is7aTariffPanelTitle')}</h3>
-      <p className="mb-3 text-xs text-secondary">{t('admin.is7aTariffPanelLead')}</p>
-      <ul className="space-y-2 text-xs">
-        {tariffReadiness.map((r: ModuleTariffReadiness) => (
-          <li key={r.moduleKey} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <code className="text-foreground">{r.moduleKey}</code>
-            <span className="text-muted">
-              {t('admin.is7aImportReady')}:{' '}
-              {r.importReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
-            </span>
-            <span className="text-muted">
-              {t('admin.is7aBillingReady')}:{' '}
-              {r.billingReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
-            </span>
-            {r.importBlockedByMissingTariff && r.missingMessageKey ? (
-              <span className="text-danger">{t(`admin.${r.missingMessageKey}`)}</span>
-            ) : null}
-            {!r.importBlockedByMissingTariff &&
-            r.billingBlockedByMissingTariff &&
-            r.billingMissingMessageKey ? (
-              <span className="text-secondary">{t(`admin.${r.billingMissingMessageKey}`)}</span>
-            ) : null}
-            {!r.billingBlockedByMissingTariff && r.hasPublishedApplicable ? (
-              <span className="text-secondary">{t('admin.is7aTariffPublishedOk')}</span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-xs text-muted">{t('admin.is7aTariffNoAutoPublish')}</p>
-    </AdminCard>
-  );
+  const selectedVisual = selectedKey ? moduleVisual(selectedKey) : null;
+  const SelectedIcon = selectedVisual?.icon;
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        title={t('admin.is1Title')}
-        secondary={t('admin.is1Lead')}
-        action={
-          <button type="button" className={adminBtnSecondaryClass} onClick={() => void load()} disabled={loading}>
+      {!embedded || selectedKey ? (
+        <AdminPageHeader
+          title={t('admin.moduleSetupTitle')}
+          secondary={selectedKey ? labelFor(selectedKey) : t('admin.moduleSetupLead')}
+          action={
+            <button
+              type="button"
+              className={adminBtnSecondaryClass}
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              {t('admin.is1Refresh')}
+            </button>
+          }
+        />
+      ) : (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className={adminBtnSecondaryClass}
+            onClick={() => void load()}
+            disabled={loading}
+          >
             {t('admin.is1Refresh')}
           </button>
-        }
-      />
+        </div>
+      )}
 
       {error ? (
         <div className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">{error}</div>
       ) : null}
-
-      <p className="text-sm text-secondary">{t('admin.is1CompatibilityNote')}</p>
-
-      <nav
-        className="overflow-x-auto rounded-[14px] border border-border bg-surface px-2 py-2 sm:px-3"
-        aria-label={t('admin.is1Title')}
-      >
-        <ol className="flex min-w-max items-stretch gap-1 sm:gap-2">
-          {IS1_WIZARD_STEPS.map((stepId, idx) => {
-            const on = wizardStep === stepId;
-            const status = wizardStepMeta[stepId];
-            return (
-              <li key={stepId} className="flex items-center gap-1 sm:gap-2">
-                {idx > 0 ? (
-                  <span className="hidden h-px w-4 bg-border sm:block" aria-hidden />
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(stepId)}
-                  className={`flex min-w-[7.5rem] flex-col rounded-xl px-3 py-2 text-left transition ${
-                    on
-                      ? 'bg-accent/10 ring-1 ring-accent/30'
-                      : 'hover:bg-hover/60'
-                  }`}
-                >
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
-                    {t('admin.settingsWizardStepOf')
-                      .replace('{n}', String(idx + 1))
-                      .replace('{total}', String(IS1_WIZARD_STEPS.length))}
-                  </span>
-                  <span
-                    className={`mt-0.5 text-sm font-semibold ${
-                      on ? 'text-accent' : 'text-foreground'
-                    }`}
-                  >
-                    {wizardLabels[stepId]}
-                  </span>
-                  <span className="mt-0.5 text-[11px] text-muted">
-                    {status === 'optional'
-                      ? t('admin.is1SetupOptional')
-                      : status === 'active'
-                        ? t('admin.is1SetupRequired')
-                        : '·'}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          className={adminBtnSecondaryClass}
-          disabled={wizardStepIndex <= 0}
-          onClick={() => setWizardStep(IS1_WIZARD_STEPS[Math.max(0, wizardStepIndex - 1)])}
-        >
-          {t('admin.settingsWizardPrev')}
-        </button>
-        <button
-          type="button"
-          className={adminBtnPrimaryClass}
-          disabled={wizardStepIndex >= IS1_WIZARD_STEPS.length - 1}
-          onClick={() =>
-            setWizardStep(
-              IS1_WIZARD_STEPS[Math.min(IS1_WIZARD_STEPS.length - 1, wizardStepIndex + 1)],
-            )
-          }
-        >
-          {t('admin.settingsWizardNext')}
-        </button>
-      </div>
-
-      {wizardStep === 'finance' ? tariffPanel : null}
-
-      {wizardStep === 'notify' ? (
-        <AdminEmailInitialSetupCard supabase={supabase} t={t} canManage={!busy} />
-      ) : null}
-
-      {wizardStep === 'ready' ? (
-        <div className="space-y-4">
-          <AdminCard>
-            <h3 className="mb-2 text-sm font-semibold text-foreground">
-              {t('admin.settingsWizardStepReady')}
-            </h3>
-            <p className="mb-3 text-sm text-secondary">{t('admin.settingsWizardReadyLead')}</p>
-            <ul className="space-y-1.5 text-sm">
-              {displayRows.map((row) => (
-                <li
-                  key={row.module_key}
-                  className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/60 py-1.5 last:border-0"
-                >
-                  <span className="font-medium text-foreground">{labelFor(row.module_key)}</span>
-                  <span className="text-xs text-muted">
-                    <code>{row.state}</code>
-                    {' · '}
-                    {row.building_enabled ? t('admin.is1Yes') : t('admin.is1No')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </AdminCard>
-          {tariffPanel}
+      {successNote ? (
+        <div className="rounded-lg border border-emerald-300/50 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          {successNote}
         </div>
       ) : null}
 
-      {wizardStep === 'modules' ? (
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <AdminCard>
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{t('admin.is1ModuleList')}</h3>
-          {loading ? (
-            <p className="text-sm text-muted">{t('admin.loading')}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className={adminTableHeadRowClass}>
-                    <th className={adminTableCellClass}>{t('admin.is1ColModule')}</th>
-                    <th className={adminTableCellClass}>{t('admin.is1ColLifecycle')}</th>
-                    <th className={adminTableCellClass}>{t('admin.is1ColUxEnabled')}</th>
-                    <th className={adminTableCellClass}>{t('admin.is1ColSetup')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayRows.map((row) => (
-                    <tr
-                      key={row.module_key}
-                      className={`${adminTableRowClass} cursor-pointer ${
-                        selectedKey === row.module_key ? 'bg-accent/5' : ''
-                      }`}
-                      onClick={() => {
-                        setSelectedKey(row.module_key);
-                        resetImportUi();
-                        setDraftConfirmed(false);
-                        setVerifiedExisting(false);
-                        setSkipHistoricalExpenses(false);
-                        setAllowCreateMissing(false);
-                        setError(null);
-                      }}
-                    >
-                      <td className={adminTableCellClass}>{labelFor(row.module_key)}</td>
-                      <td className={adminTableCellClass}>
-                        <code className="text-xs">{row.state}</code>
-                      </td>
-                      <td className={adminTableCellClass}>
-                        {row.building_enabled ? t('admin.is1Yes') : t('admin.is1No')}
-                      </td>
-                      <td className={adminTableCellClass}>
-                        {getModuleAdapter(row.module_key)?.registration.requiresInitialSetup
-                          ? t('admin.is1SetupRequired')
-                          : t('admin.is1SetupOptional')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {registeredExtra.length ? (
-                <p className="mt-3 text-xs text-muted">
-                  {t('admin.is1ExtraAdapters')}:{' '}
-                  {registeredExtra.map((a) => a.registration.moduleKey).join(', ')}
-                </p>
+      {!selectedKey ? (
+        loading ? (
+          <p className="text-sm text-muted">{t('admin.loading')}</p>
+        ) : (
+          <AdminModuleCatalogPanel
+            rows={setupCatalog}
+            canChange
+            savingKey={moduleSavingKey}
+            pendingEnableKey={pendingEnableKey}
+            filter={catalogFilter}
+            onFilterChange={setCatalogFilter}
+            onToggle={(key, enabled) => void handleCatalogToggle(key, enabled)}
+            onOpenSetup={openModule}
+            t={t}
+            dateLocale={dateLocale}
+          />
+        )
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={adminBtnSecondaryClass} onClick={backToCatalog}>
+              {t('admin.moduleSetupBackToList')}
+            </button>
+          </div>
+
+          <AdminCard>
+            <div className="mb-4 flex items-start gap-3">
+              {SelectedIcon ? (
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-surface-secondary">
+                  <SelectedIcon className={`h-5 w-5 ${selectedVisual?.iconClass ?? ''}`} aria-hidden />
+                </span>
+              ) : null}
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-foreground">{labelFor(selectedKey)}</h3>
+                <p className="mt-1 text-sm text-secondary">{t('admin.moduleSetupWizardLead')}</p>
+              </div>
+            </div>
+
+            <nav className="mb-4 flex flex-wrap gap-2" aria-label={t('admin.moduleSetupStepsNav')}>
+              {wizardSteps.map((stepId, idx) => {
+                const on = moduleStep === stepId;
+                return (
+                  <button
+                    key={stepId}
+                    type="button"
+                    className={`rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                      on ? 'bg-accent/10 text-accent ring-1 ring-accent/30' : 'bg-surface-secondary text-secondary hover:bg-hover'
+                    }`}
+                    onClick={() => setModuleStep(stepId)}
+                  >
+                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      {idx + 1}/{wizardSteps.length}
+                    </span>
+                    {stepLabel(stepId)}
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="mb-4 flex flex-wrap gap-2">
+              {!(isInventory && moduleStep === 'data') ? (
+                <button
+                  type="button"
+                  className={adminBtnSecondaryClass}
+                  disabled={wizardSteps.indexOf(moduleStep) <= 0 || busy}
+                  onClick={() => {
+                    const i = wizardSteps.indexOf(moduleStep);
+                    if (i > 0) setModuleStep(wizardSteps[i - 1]!);
+                  }}
+                >
+                  {t('admin.moduleSetupBack')}
+                </button>
+              ) : null}
+              {wizardSteps.indexOf(moduleStep) < wizardSteps.length - 1 &&
+              !(isInventory && moduleStep === 'data') ? (
+                <button
+                  type="button"
+                  className={adminBtnPrimaryClass}
+                  disabled={busy}
+                  onClick={() => {
+                    const i = wizardSteps.indexOf(moduleStep);
+                    if (i >= 0 && i < wizardSteps.length - 1) setModuleStep(wizardSteps[i + 1]!);
+                  }}
+                >
+                  {t('admin.moduleSetupNext')}
+                </button>
               ) : null}
             </div>
-          )}
-        </AdminCard>
 
-        <AdminCard>
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{t('admin.is1DetailTitle')}</h3>
-          {!selected ? (
-            <p className="text-sm text-muted">{t('admin.is1SelectModule')}</p>
-          ) : (
+            {!selected ? (
+              <p className="text-sm text-muted">{t('admin.loading')}</p>
+            ) : (
             <div className="space-y-3 text-sm">
-              <div>
-                <div className="font-medium text-foreground">{labelFor(selected.module_key)}</div>
-                <div className="text-xs text-muted">
-                  <code>{selected.module_key}</code> · {selected.state}
+              {moduleStep === 'tariff' ? (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <p className="font-medium text-foreground">{t('admin.moduleSetupStepTariff')}</p>
+                  <p className="text-xs text-secondary">{t('admin.moduleSetupTariffLead')}</p>
+                  {selectedTariffReady ? (
+                    <ul className="space-y-1 text-xs text-secondary">
+                      <li>
+                        {t('admin.is7aImportReady')}:{' '}
+                        {selectedTariffReady.importReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
+                      </li>
+                      <li>
+                        {t('admin.is7aBillingReady')}:{' '}
+                        {selectedTariffReady.billingReady ? t('admin.is7aReadyYes') : t('admin.is7aReadyNo')}
+                      </li>
+                      {selectedTariffReady.missingMessageKey ? (
+                        <li className="text-danger">{t(`admin.${selectedTariffReady.missingMessageKey}`)}</li>
+                      ) : null}
+                      {selectedTariffReady.billingMissingMessageKey ? (
+                        <li className="text-secondary">
+                          {t(`admin.${selectedTariffReady.billingMissingMessageKey}`)}
+                        </li>
+                      ) : null}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted">{t('admin.moduleSetupTariffNone')}</p>
+                  )}
+                  <p className="text-xs text-muted">{t('admin.moduleSetupLateConnectDateGap')}</p>
                 </div>
-              </div>
+              ) : null}
+
+              {moduleStep === 'confirm' ? (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <p className="font-medium">{t('admin.moduleSetupStepConfirm')}</p>
+                  <p className="text-xs text-secondary">{t('admin.moduleSetupSimpleConfirmLead')}</p>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={draftConfirmed}
+                      onChange={(e) => setDraftConfirmed(e.target.checked)}
+                    />
+                    {t('admin.moduleSetupSimpleConfirm')}
+                  </label>
+                  <button
+                    type="button"
+                    className={adminBtnPrimaryClass}
+                    disabled={busy || !draftConfirmed}
+                    onClick={() => {
+                      setModuleStep('activate');
+                    }}
+                  >
+                    {t('admin.moduleSetupNext')}
+                  </button>
+                </div>
+              ) : null}
+
+              {moduleStep === 'activate' ? (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <p className="font-medium">{t('admin.moduleSetupStepActivate')}</p>
+                  {isInventory ? (
+                    <div className="space-y-2 text-sm text-secondary">
+                      <p>{t('admin.inv6ActivateLead')}</p>
+                      {inventoryRestoreLoading ? (
+                        <p>{t('admin.inv6CheckingImportResult')}</p>
+                      ) : inventorySetupCompletionPending ? (
+                        <>
+                          <p className="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-foreground">
+                            {t('admin.inv6DataSavedSetupIncomplete')}
+                          </p>
+                          {inventoryImportCommitted ? (
+                            <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-foreground">
+                              {t('admin.inv6ImportSuccessBanner').replace(
+                                '{n}',
+                                String(
+                                  inventoryCommitResult
+                                    ? inventoryCommitConfirmedSavedCount(inventoryCommitResult)
+                                    : '—',
+                                ),
+                              )}
+                            </p>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={adminBtnSecondaryClass}
+                            disabled={busy}
+                            onClick={() => void retryInventorySetupCompletion()}
+                          >
+                            {t('admin.inv6RetrySetupCompletion')}
+                          </button>
+                        </>
+                      ) : inventoryImportCommitted ? (
+                        <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-foreground">
+                          {t('admin.inv6ImportSuccessBanner').replace(
+                            '{n}',
+                            String(
+                              inventoryCommitResult
+                                ? inventoryCommitConfirmedSavedCount(inventoryCommitResult)
+                                : '—',
+                            ),
+                          )}
+                        </p>
+                      ) : verifiedExisting || inventoryPath === 'empty' ? (
+                        <p>{t('admin.inv6ActivateEmptySummary')}</p>
+                      ) : (
+                        <p className="text-danger">{t('admin.inv6SetupIncomplete')}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-secondary">{t('admin.moduleSetupActivateLead')}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={adminBtnPrimaryClass}
+                      disabled={
+                        busy ||
+                        inventoryRestoreLoading ||
+                        inventorySetupCompletionPending ||
+                        (isInventory &&
+                          (!inventoryImportCommitted ||
+                            (inventoryCommitResult != null &&
+                              !inventoryCommitResult.fullySuccessful)) &&
+                          !(verifiedExisting || inventoryPath === 'empty')) ||
+                        (isInventory &&
+                          selected?.state !== 'READY' &&
+                          selected?.state !== 'SUSPENDED' &&
+                          selected?.state !== 'ACTIVE') ||
+                        (moduleWizardSteps(selectedKey).includes('confirm') &&
+                          !draftConfirmed &&
+                          !adapter?.registration.requiresInitialSetup &&
+                          selected.state === 'DISABLED')
+                      }
+                      onClick={() => {
+                        void activateAndEnable();
+                      }}
+                    >
+                      {busy ? t('admin.moduleSetupActivating') : t('admin.moduleSetupActivate')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {moduleStep === 'data' && isInventory ? (
+                <AdminInventoryOpeningPanel
+                  t={t}
+                  busy={busy}
+                  path={inventoryPath}
+                  onPathChange={(p) => {
+                    setInventoryPath(p);
+                    setError(null);
+                    if (p === 'choose') {
+                      setPreview(null);
+                      setPendingInventoryPreview(null);
+                      setPreviewNote(null);
+                      setBatchId(null);
+                    }
+                  }}
+                  preview={pendingInventoryPreview ?? preview}
+                  previewNote={previewNote}
+                  batchId={batchId}
+                  commitResult={inventoryCommitResult}
+                  importCommitted={inventoryImportCommitted}
+                  onDownloadTemplate={() => undefined}
+                  onFile={(file) => void onXlsxSelected(file)}
+                  onConfirmImport={() => void confirmInventoryImport()}
+                  onRetryImport={() => void confirmInventoryImport({ retryOnly: true })}
+                  onConfirmEmpty={() => {
+                    void (async () => {
+                      setVerifiedExisting(true);
+                      setBusy(true);
+                      setError(null);
+                      try {
+                        await supabase.rpc('admin_save_module_setup_progress', {
+                          p_module_key: selectedKey!,
+                          p_current_step: 'inventory_opening',
+                          p_draft: {
+                            empty_inventory_ok: true,
+                            import_committed: false,
+                            setup_completion: 'pending',
+                          },
+                          p_validation_errors: [],
+                          p_setup_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+                        });
+                        const advanced = await advanceModuleLifecycleToReady(
+                          selectedKey!,
+                          'inventory_empty_confirmed',
+                        );
+                        if (!advanced.ok) {
+                          setInventorySetupCompletionPending(true);
+                          setError(t('admin.inv6DataSavedSetupIncomplete'));
+                          setModuleStep('data');
+                          return;
+                        }
+                        await supabase.rpc('admin_save_module_setup_progress', {
+                          p_module_key: selectedKey!,
+                          p_current_step: 'inventory_opening',
+                          p_draft: {
+                            empty_inventory_ok: true,
+                            import_committed: false,
+                            setup_completion: 'done',
+                          },
+                          p_validation_errors: [],
+                          p_setup_schema_version: INVENTORY_SETUP_SCHEMA_VERSION,
+                        });
+                        setInventorySetupCompletionPending(false);
+                        setModuleStep('activate');
+                      } catch (e: unknown) {
+                        setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                  setupCompletionPending={inventorySetupCompletionPending}
+                  restoreLoading={inventoryRestoreLoading}
+                  onRetrySetupCompletion={() => void retryInventorySetupCompletion()}
+                  onGoActivate={() => {
+                    if (inventorySetupCompletionPending) {
+                      setError(t('admin.inv6DataSavedSetupIncomplete'));
+                      return;
+                    }
+                    setModuleStep('activate');
+                  }}
+                />
+              ) : null}
+
+              {moduleStep === 'data' && !isInventory ? (
+              <>
 
               {isPropertyBook ? (
                 <p className="text-xs text-secondary">{t('admin.is2PropertyBookSsotNote')}</p>
@@ -2765,54 +3778,16 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                 </p>
               ) : null}
 
-              <div className="flex flex-wrap gap-2">
-                {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SETUP_REQUIRED') ? (
-                  <button
-                    type="button"
-                    className={adminBtnSecondaryClass}
-                    disabled={busy}
-                    onClick={() => void transition('SETUP_REQUIRED')}
-                  >
-                    {t('admin.is1ToSetupRequired')}
-                  </button>
-                ) : null}
-                {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'READY') &&
-                !adapter?.registration.requiresInitialSetup ? (
-                  <button
-                    type="button"
-                    className={adminBtnSecondaryClass}
-                    disabled={busy}
-                    onClick={() => void transition('READY', 'no_setup_required')}
-                  >
-                    {t('admin.is1MarkReady')}
-                  </button>
-                ) : null}
-                {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'ACTIVE') ? (
-                  <button
-                    type="button"
-                    className={adminBtnPrimaryClass}
-                    disabled={busy}
-                    onClick={() => {
-                      if (!window.confirm(t('admin.is1ActivateConfirm'))) return;
-                      void transition('ACTIVE', 'admin_confirm_activate');
-                    }}
-                  >
-                    {t('admin.is1Activate')}
-                  </button>
-                ) : null}
-                {canTransitionModuleLifecycle(selected.state as ModuleLifecycleState, 'SUSPENDED') ? (
-                  <button
-                    type="button"
-                    className={adminBtnSecondaryClass}
-                    disabled={busy}
-                    onClick={() => void transition('SUSPENDED', 'admin_suspend')}
-                  >
-                    {t('admin.is1Suspend')}
-                  </button>
-                ) : null}
-              </div>
-
-              <p className="text-xs text-secondary">{t('admin.is1NoUxToggleNote')}</p>
+              {selected.state === 'DISABLED' && adapter?.registration.requiresInitialSetup ? (
+                <button
+                  type="button"
+                  className={adminBtnSecondaryClass}
+                  disabled={busy}
+                  onClick={() => void transition('SETUP_REQUIRED', 'begin_setup')}
+                >
+                  {t('admin.moduleSetupBegin')}
+                </button>
+              ) : null}
 
               {adapter && setupSupportsManual(adapter.registration.setup) ? (
                 <div className="space-y-2 rounded-lg border border-border p-3">
@@ -2965,12 +3940,15 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                       {t('admin.is2PropertyBookAllowCreate')}
                     </label>
                   ) : null}
-                  <input
-                    className={adminFieldClass}
-                    type="file"
+                  <AppFilePicker
                     accept=".xlsx,.xls"
                     disabled={busy}
-                    onChange={(e) => void onXlsxSelected(e.target.files?.[0] ?? null)}
+                    resetInputAfterChange
+                    hint={t('common.fileHintFormats').replace(
+                      '{formats}',
+                      formatAcceptHint('.xlsx,.xls'),
+                    )}
+                    onChange={(picked) => void onXlsxSelected(picked[0] ?? null)}
                   />
                   {previewNote ? <p className="text-xs text-secondary">{previewNote}</p> : null}
                   {preview ? (
@@ -3012,7 +3990,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmPropertyBookImport()}
                         >
-                          {t('admin.is2PropertyBookConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.is2PropertyBookConfirmButton')}
                         </button>
                       ) : null}
                       {isMeters && pendingMeterPreview && batchId ? (
@@ -3022,7 +4000,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmMeterImport()}
                         >
-                          {t('admin.is3MetersConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.is3MetersConfirmButton')}
                         </button>
                       ) : null}
                       {isSupportFee && pendingSfPreview && batchId ? (
@@ -3032,7 +4010,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmSupportFeeImport()}
                         >
-                          {t('admin.is4SupportFeeConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.is4SupportFeeConfirmButton')}
                         </button>
                       ) : null}
                       {isInternet && pendingInternetPreview && batchId ? (
@@ -3042,7 +4020,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmInternetImport()}
                         >
-                          {t('admin.is5InternetConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.is5InternetConfirmButton')}
                         </button>
                       ) : null}
                       {isUkExpenses && pendingUkExpensePreview && batchId ? (
@@ -3052,7 +4030,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmUkExpenseImport()}
                         >
-                          {t('admin.is6aExpensesConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.is6aExpensesConfirmButton')}
                         </button>
                       ) : null}
                       {isInventory && pendingInventoryPreview && batchId ? (
@@ -3062,7 +4040,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmInventoryImport()}
                         >
-                          {t('admin.inv6ConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.inv6ConfirmButton')}
                         </button>
                       ) : null}
                       {isCapitalRepair && pendingCrPreview && batchId ? (
@@ -3072,7 +4050,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                           disabled={busy || preview.errorCount > 0}
                           onClick={() => void confirmCapitalRepairImport()}
                         >
-                          {t('admin.is8CapitalRepairConfirmButton')}
+                          {busy ? t('admin.firstRunImporting') : t('admin.is8CapitalRepairConfirmButton')}
                         </button>
                       ) : null}
                       {isMeters &&
@@ -3171,7 +4149,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   <td className={adminTableCellClass}>{r.apartmentNumber}</td>
                                   <td className={adminTableCellClass}>{r.meterNumber}</td>
                                   <td className={adminTableCellClass}>
-                                    <code>{r.outcome}</code>
+                                    {presentImportCommitOutcome(r.outcome, t, { committed: true })}
                                   </td>
                                 </tr>
                               ))}
@@ -3197,7 +4175,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   <td className={adminTableCellClass}>{r.apartmentNumber}</td>
                                   <td className={adminTableCellClass}>{r.billingYear}</td>
                                   <td className={adminTableCellClass}>
-                                    <code>{r.outcome}</code>
+                                    {presentImportCommitOutcome(r.outcome, t, { committed: true })}
                                   </td>
                                 </tr>
                               ))}
@@ -3222,10 +4200,10 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   <td className={adminTableCellClass}>{r.rowNumber}</td>
                                   <td className={adminTableCellClass}>{r.apartmentNumber}</td>
                                   <td className={adminTableCellClass}>
-                                    <code>{r.nextChargeOn ?? '—'}</code>
+                                    {r.nextChargeOn ?? '—'}
                                   </td>
                                   <td className={adminTableCellClass}>
-                                    <code>{r.outcome}</code>
+                                    {presentImportCommitOutcome(r.outcome, t, { committed: true })}
                                   </td>
                                 </tr>
                               ))}
@@ -3249,7 +4227,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   <td className={adminTableCellClass}>{r.rowNumber}</td>
                                   <td className={adminTableCellClass}>{r.sourceRef}</td>
                                   <td className={adminTableCellClass}>
-                                    <code>{r.outcome}</code>
+                                    {presentImportCommitOutcome(r.outcome, t, { committed: true })}
                                   </td>
                                 </tr>
                               ))}
@@ -3275,7 +4253,7 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                                   <td className={adminTableCellClass}>{r.apartmentNumber}</td>
                                   <td className={adminTableCellClass}>{r.billingYear}</td>
                                   <td className={adminTableCellClass}>
-                                    <code>{r.outcome}</code>
+                                    {presentImportCommitOutcome(r.outcome, t, { committed: true })}
                                   </td>
                                 </tr>
                               ))}
@@ -3302,11 +4280,13 @@ export function AdminInitialSetup({ supabase, t }: Props) {
                   </p>
                 </div>
               ) : null}
+              </>
+              ) : null}
             </div>
-          )}
-        </AdminCard>
-      </div>
-      ) : null}
+            )}
+          </AdminCard>
+        </div>
+      )}
     </div>
   );
 }

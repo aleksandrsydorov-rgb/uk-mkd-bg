@@ -63,7 +63,7 @@ export function OwnerBudget({
       }
       setPayload((data as OwnerBudgetPayload | null) ?? null);
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('err.loadApt')));
+      setError(ownerVisibleError(e, t('err.loadApt'), t));
     } finally {
       setLoading(false);
     }
@@ -76,8 +76,8 @@ export function OwnerBudget({
   const totals = useMemo(() => {
     const rows = payload?.execution ?? [];
     const planned = rows.reduce((s, r) => s + Number(r.planned_amount_eur), 0);
-    const actual = rows.reduce((s, r) => s + Number(r.actual_amount_eur), 0);
-    return { planned, actual, remaining: planned - actual };
+    const spent = rows.reduce((s, r) => s + Number(r.total_expenses_eur ?? r.actual_amount_eur), 0);
+    return { planned, spent, remainder: planned - spent };
   }, [payload]);
 
   return (
@@ -118,12 +118,13 @@ export function OwnerBudget({
           </div>
 
           <p className="text-sm text-secondary">
-            {t('account.budgetTotals', {
+            {t('account.budgetExecutionTotals', {
               p: moneyEur(totals.planned),
-              a: moneyEur(totals.actual),
-              r: moneyEur(totals.remaining),
+              a: moneyEur(totals.spent),
+              r: moneyEur(totals.remainder),
             })}
           </p>
+          <p className="text-xs text-secondary">{t('account.budgetPlanRemainderHint')}</p>
 
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full min-w-[32rem] text-sm">
@@ -131,8 +132,10 @@ export function OwnerBudget({
                 <tr className="border-b border-border bg-background text-left text-xs text-muted">
                   <th className="px-3 py-2">{t('account.budgetCategory')}</th>
                   <th className="px-3 py-2">{t('account.budgetPlanned')}</th>
-                  <th className="px-3 py-2">{t('account.budgetActual')}</th>
-                  <th className="px-3 py-2">{t('account.budgetRemaining')}</th>
+                  <th className="px-3 py-2">{t('account.budgetOpening')}</th>
+                  <th className="px-3 py-2">{t('account.budgetOperational')}</th>
+                  <th className="px-3 py-2">{t('account.budgetTotalExpenses')}</th>
+                  <th className="px-3 py-2">{t('account.budgetPlanRemainder')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -140,8 +143,10 @@ export function OwnerBudget({
                   <tr key={row.category_id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2 text-foreground">{catName(row)}</td>
                     <td className="px-3 py-2">{moneyEur(row.planned_amount_eur)}</td>
-                    <td className="px-3 py-2">{moneyEur(row.actual_amount_eur)}</td>
-                    <td className="px-3 py-2">{moneyEur(row.remaining_amount_eur)}</td>
+                    <td className="px-3 py-2">{moneyEur(row.opening_amount_eur)}</td>
+                    <td className="px-3 py-2">{moneyEur(row.operational_amount_eur)}</td>
+                    <td className="px-3 py-2">{moneyEur(row.total_expenses_eur)}</td>
+                    <td className="px-3 py-2">{moneyEur(row.plan_remainder_eur ?? row.remaining_amount_eur)}</td>
                   </tr>
                 ))}
               </tbody>

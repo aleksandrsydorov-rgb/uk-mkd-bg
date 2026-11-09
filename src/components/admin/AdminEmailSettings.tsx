@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   AdminCard,
   AdminInlineAlert,
@@ -46,7 +47,7 @@ function outboxRowLabel(
     latestEventType: row.latest_event_type,
     lastErrorCode: row.last_error_code,
   });
-  return key ? t(key) : row.status;
+  return key ? t(key) : t('admin.emailDiagStatusUnknown');
 }
 
 function statusLabel(
@@ -61,7 +62,44 @@ function statusLabel(
     degraded: t('admin.emailStatusDegraded'),
     disabled_by_platform: t('admin.emailStatusPlatformDisabled'),
   };
-  return map[status] ?? status;
+  return map[status] ?? t('admin.emailDiagStatusUnknown');
+}
+
+function emailModuleTitle(
+  moduleKey: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const map: Record<string, string> = {
+    ownership: t('admin.emailModuleOwnership'),
+    polls: t('admin.emailModulePolls'),
+    announcements: t('admin.emailModuleAnnouncements'),
+    support_fee: t('admin.emailModuleSupportFee'),
+    water: t('admin.emailModuleWater'),
+    electricity: t('admin.emailModuleElectricity'),
+    internet: t('account.navInternet'),
+    capital_repair: t('admin.emailModuleCapital'),
+    platform: t('admin.emailModulePlatform'),
+  };
+  return map[moduleKey] ?? t('admin.emailModuleOther');
+}
+
+function emailEventLabel(
+  eventType: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const v = String(eventType ?? '').trim().toLowerCase();
+  if (!v) return '—';
+  const map: Record<string, string> = {
+    sent: t('admin.emailEventSent'),
+    delivered: t('admin.emailEventDelivered'),
+    delivery_delayed: t('admin.emailEventDelayed'),
+    bounced: t('admin.emailEventBounced'),
+    complained: t('admin.emailEventComplained'),
+    opened: t('admin.emailEventOpened'),
+    clicked: t('admin.emailEventClicked'),
+    failed: t('admin.emailEventFailed'),
+  };
+  return map[v] ?? t('admin.emailEventOther');
 }
 
 export function AdminEmailSettings({
@@ -123,7 +161,7 @@ export function AdminEmailSettings({
         setMissing(true);
         setSettings(null);
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
       }
     } finally {
       setLoading(false);
@@ -179,7 +217,7 @@ export function AdminEmailSettings({
       setEmailEnabled(next.email_enabled);
       setSuccess(t('admin.emailSaved'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setSaving(false);
     }
@@ -208,7 +246,7 @@ export function AdminEmailSettings({
         setSuccess(t('admin.emailTestBlocked', { status: result.honesty || result.status }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setQueuingTest(false);
     }
@@ -512,23 +550,29 @@ export function AdminEmailSettings({
                 {filteredDiagnostics.map((row) => (
                   <tr key={row.id} className="border-b border-border/70">
                     <td className="py-2 pr-3">
-                      {row.module_key}
-                      <span className="mt-0.5 block font-mono text-[10px] text-muted">
-                        {row.template_key} · {row.locale}
+                      {emailModuleTitle(row.module_key, t)}
+                      <span className="mt-0.5 block text-[10px] text-muted">
+                        {String(row.locale ?? '').toUpperCase()}
                       </span>
                     </td>
-                    <td className="py-2 pr-3 font-mono text-xs">{row.to_masked ?? '—'}</td>
+                    <td className="py-2 pr-3 text-xs">{row.to_masked ?? '—'}</td>
                     <td className="py-2 pr-3">
                       {outboxRowLabel(row, t)}
                       <span className="mt-0.5 block text-[10px] text-muted">
-                        attempts={row.attempts}
+                        {t('admin.emailDiagAttempts', { n: row.attempts })}
                       </span>
                     </td>
-                    <td className="py-2 pr-3 text-xs text-muted">{row.latest_event_type ?? '—'}</td>
+                    <td className="py-2 pr-3 text-xs text-muted">
+                      {emailEventLabel(row.latest_event_type, t)}
+                    </td>
                     <td className="py-2 pr-3 text-xs">
                       {row.retry_eligible ? t('admin.emailRetryYes') : t('admin.emailRetryNo')}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-muted">{row.last_error_code ?? '—'}</td>
+                    <td className="py-2 pr-3 text-xs text-muted">
+                      {row.last_error_code
+                        ? t('admin.emailDiagDeliveryIssue')
+                        : '—'}
+                    </td>
                     <td className="py-2 text-xs text-muted">{row.created_at}</td>
                   </tr>
                 ))}

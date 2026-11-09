@@ -1,0 +1,172 @@
+import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+
+export const UK_EXPENSES_IMPORT_SPEC: ImportTemplateSpec = {
+  id: 'uk_expenses_opening',
+  fileBaseName: {
+    ru: 'шаблон-расходы-ук-исторические',
+    bg: 'shablon-razhodi-us-istoricheski',
+    en: 'uk-expenses-historical-template',
+  },
+  dataSheetName: {
+    ru: 'Расходы',
+    bg: 'Разходи',
+    en: 'Expenses',
+  },
+  legacySheetNames: ['expenses'],
+  title: {
+    ru: 'Расходы УК — исторический импорт',
+    bg: 'Разходи на УС — исторически импорт',
+    en: 'Management expenses — historical import',
+  },
+  notes: {
+    ru: [
+      'Заполняйте только лист «Расходы». Примеры в этой инструкции не импортируются.',
+      'Одна строка — один расход. Ссылка на источник должна быть уникальной: по ней повторная загрузка не создаёт дубликаты.',
+      'Дата расхода не должна быть позже даты перехода, а сама дата перехода не может быть в будущем. Даты вводите в формате ГГГГ-ММ-ДД, суммы — в евро.',
+    ],
+    bg: [
+      'Попълвайте само листа «Разходи». Примерите в тази инструкция не се импортират.',
+      'Един ред — един разход. Референцията към източника трябва да е уникална: по нея повторно зареждане не създава дубликати.',
+      'Датата на разхода не трябва да е след датата на преминаване, а тя не може да е в бъдещето. Датите са ГГГГ-ММ-ДД, сумите — в евро.',
+    ],
+    en: [
+      'Fill only the Expenses sheet. Examples on this Instructions sheet are not imported.',
+      'One row per expense. The source reference must be unique so a repeat upload does not create duplicates.',
+      'The expense date must not be later than the transition date, and the transition date must not be in the future. Dates use YYYY-MM-DD, amounts are in euros.',
+    ],
+  },
+  columns: [
+    {
+      key: 'source_ref',
+      required: true,
+      format: 'text',
+      width: 22,
+      label: {
+        ru: 'Ссылка на источник',
+        bg: 'Референция към източника',
+        en: 'Source reference',
+      },
+      aliases: ['source', 'reference', 'source reference', 'референция', 'ссылка'],
+      instruction: {
+        ru: 'Уникальный номер или код записи в вашем учёте. Обязательно.',
+        bg: 'Уникален номер или код на записа във вашето счетоводство. Задължително.',
+        en: 'Unique number or code of the record in your books. Required.',
+      },
+      example: 'EXP-2025-001',
+    },
+    {
+      key: 'title',
+      required: true,
+      format: 'text',
+      width: 32,
+      label: { ru: 'Название', bg: 'Заглавие', en: 'Title' },
+      aliases: ['name', 'description', 'название расхода', 'описание', 'наименование'],
+      instruction: {
+        ru: 'Короткое название расхода. Обязательно.',
+        bg: 'Кратко наименование на разхода. Задължително.',
+        en: 'Short name of the expense. Required.',
+      },
+      example: 'Cleaning Q4 2025',
+    },
+    {
+      key: 'expense_date',
+      required: true,
+      format: 'date',
+      width: 16,
+      label: {
+        ru: 'Дата расхода',
+        bg: 'Дата на разхода',
+        en: 'Expense date',
+      },
+      aliases: ['date', 'дата', 'expense date'],
+      instruction: {
+        ru: 'Дата ГГГГ-ММ-ДД, не позже даты перехода. Обязательно.',
+        bg: 'Дата ГГГГ-ММ-ДД, не по-късно от датата на преминаване. Задължително.',
+        en: 'Date YYYY-MM-DD, not later than the transition date. Required.',
+      },
+      example: '2025-11-15',
+    },
+    {
+      key: 'amount_eur',
+      required: true,
+      format: 'money',
+      width: 16,
+      label: {
+        ru: 'Сумма, EUR',
+        bg: 'Сума, EUR',
+        en: 'Amount, EUR',
+      },
+      aliases: ['amount', 'сумма', 'сума', 'сумма (eur)', 'сума (eur)', 'amount (eur)'],
+      instruction: {
+        ru: 'Сумма расхода в EUR (> 0). Обязательно.',
+        bg: 'Сума на разхода в EUR (> 0). Задължително.',
+        en: 'Expense amount in EUR (> 0). Required.',
+      },
+      example: '120.00',
+    },
+    {
+      key: 'category_code',
+      required: false,
+      format: 'text',
+      width: 20,
+      label: { ru: 'Категория', bg: 'Категория', en: 'Category' },
+      aliases: ['category', 'код категории', 'код на категория'],
+      instruction: {
+        ru: 'Категория расхода — название или код существующей статьи бюджета. Необязательно.',
+        bg: 'Категория на разхода — име или код на съществуваща бюджетна статия. По желание.',
+        en: 'Expense category — name or code of an existing budget article. Optional.',
+      },
+      example: 'cleaning',
+    },
+    {
+      key: 'transition_date',
+      required: true,
+      format: 'date',
+      width: 16,
+      label: {
+        ru: 'Дата перехода',
+        bg: 'Дата на преминаване',
+        en: 'Transition date',
+      },
+      aliases: ['transition', 'дата на преход'],
+      instruction: {
+        ru: 'Дата начала учёта в системе: ГГГГ-ММ-ДД, не в будущем. Обязательно.',
+        bg: 'Дата на начало на отчета в системата: ГГГГ-ММ-ДД, не в бъдещето. Задължително.',
+        en: 'Date tracking starts in the system: YYYY-MM-DD, not in the future. Required.',
+      },
+      example: '2026-01-01',
+    },
+    {
+      key: 'source_document',
+      required: false,
+      format: 'text',
+      width: 24,
+      label: {
+        ru: 'Документ-источник',
+        bg: 'Документ-източник',
+        en: 'Source document',
+      },
+      aliases: ['document', 'source document', 'документ', 'номер документа'],
+      instruction: {
+        ru: 'Номер счёта, акта или другого документа. Необязательно.',
+        bg: 'Номер на фактура, протокол или друг документ. По желание.',
+        en: 'Invoice, act or other document number. Optional.',
+      },
+      example: 'INV-7788',
+    },
+    {
+      key: 'notes',
+      required: false,
+      format: 'text',
+      width: 30,
+      label: { ru: 'Примечания', bg: 'Бележки', en: 'Notes' },
+      aliases: ['note', 'comment', 'примечание', 'бележка', 'коментар'],
+      instruction: {
+        ru: 'Свободный комментарий. Необязательно.',
+        bg: 'Свободен коментар. По желание.',
+        en: 'Free-form comment. Optional.',
+      },
+      example: '',
+    },
+  ],
+};

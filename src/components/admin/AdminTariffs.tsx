@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import { ownerVisibleError } from '@/lib/ownerError';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import {
   applicationYearFromValidFrom,
   canCancelTariffVersionInUi,
@@ -33,8 +34,10 @@ import {
   type SupportFeePublishIntent,
   type TariffHistoryRow,
   type TariffListRow,
+  parseTariffTab,
   type TariffTab,
 } from '@/lib/tariffs';
+import { tariffKeysForModules, type FirstRunTariffKey } from '@/lib/firstRun';
 import {
   AdminPageHeader,
   AdminCard,
@@ -46,6 +49,7 @@ import {
   adminFieldClass,
 } from '@/components/admin/AdminUi';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { AdminSupportFeePolicyEditor } from '@/components/admin/AdminSupportFeePolicyEditor';
 
 type DecisionOption = {
   id: string;
@@ -55,10 +59,8 @@ type DecisionOption = {
 
 function unitSuffix(row: Pick<TariffListRow, 'unit_code' | 'tariff_key' | 'calculation_type' | 'billing_period'>, t: (key: string) => string) {
   if (row.tariff_key === 'internet') return t('admin.tcUnitInternet');
-  if (row.tariff_key === 'capital_repair' || (row.unit_code === 'item' && row.billing_period === 'year')) {
-    return t('admin.tcUnitAptYear');
-  }
-  if (row.unit_code === 'm2') return `€/${t('admin.tcUnitM2')}`;
+  if (row.tariff_key === 'capital_repair' || row.unit_code === 'm2') return t('admin.perSqmYear');
+  if (row.unit_code === 'item' && row.billing_period === 'year') return t('admin.tcUnitAptYear');
   if (row.unit_code === 'm3') return `€/${t('admin.tcUnitM3')}`;
   if (row.unit_code === 'kwh') return `€/${t('admin.tcUnitKwh')}`;
   return row.unit_code;
@@ -79,6 +81,27 @@ function RatesDisplay({
 }) {
   if (empty || !rates) {
     return <p className="text-3xl font-semibold tabular-nums text-foreground">—</p>;
+  }
+
+  if (componentKeys.includes('package_30') && componentKeys.includes('day')) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">{t('admin.internetTariffPackage30')}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+            {formatTariffRate(rates.package_30, locale)}
+          </p>
+          <p className="mt-1 text-xs text-muted">{t('admin.internetTariffCalendarHint')}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface-secondary/40 px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">{t('admin.internetTariffDay24')}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+            {formatTariffRate(rates.day, locale)}
+          </p>
+          <p className="mt-1 text-xs text-muted">{t('admin.internetTariffCalendarHint')}</p>
+        </div>
+      </div>
+    );
   }
 
   if (componentKeys.includes('day') && componentKeys.includes('month')) {
@@ -158,14 +181,40 @@ export function AdminTariffs({
   locale,
   staffRole,
   staffActive,
+  enabledModules,
+  tab: tabRaw,
+  onTabChange,
+  policyYear: policyYearRaw,
 }: {
   supabase: SupabaseClient<Database>;
   locale: string;
   staffRole: string;
   staffActive: boolean;
+  /** Installed building modules — tariff cards follow the same keys as first-run. */
+  enabledModules?: {
+    water?: boolean;
+    electricity?: boolean;
+    internet?: boolean;
+    support_fee?: boolean;
+    capital_repair?: boolean;
+  };
+  /** URL tab when wired from admin shell (`annual_policy` = support-fee yearly policy). */
+  tab?: string | null;
+  onTabChange?: (tab: TariffTab) => void;
+  /** Billing year for «Годовая политика» when opened from SF charges. */
+  policyYear?: number | null;
 }) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<TariffTab>('current');
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
+  const supportFeeModuleOn = enabledModules?.support_fee !== false;
+  const [localTab, setLocalTab] = useState<TariffTab>(() => parseTariffTab(tabRaw));
+  const requestedTab = tabRaw != null ? parseTariffTab(tabRaw) : localTab;
+  const tab: TariffTab =
+    requestedTab === 'annual_policy' && !supportFeeModuleOn ? 'current' : requestedTab;
+  function selectTab(next: TariffTab) {
+    if (onTabChange) onTabChange(next);
+    else setLocalTab(next);
+  }
   const [rows, setRows] = useState<TariffListRow[]>([]);
   const [historyTariffId, setHistoryTariffId] = useState<string | null>(null);
   const [history, setHistory] = useState<TariffHistoryRow[]>([]);
@@ -215,8 +264,8 @@ export function AdminTariffs({
     basis_note: '',
   });
   const [internetForm, setInternetForm] = useState({
-    month: '',
-    month_legal: '',
+    package_30: '',
+    day: '',
     valid_from: today,
     basis_reference: '',
     basis_date: today,
@@ -297,15 +346,40 @@ export function AdminTariffs({
     void loadHistory(historyTariffId);
   }, [tab, historyTariffId, loadHistory]);
 
+  const allowedTariffKeys = useMemo(() => {
+    // Explicit map from admin page: only installed modules. Omitted prop → show all known keys.
+    const flags = enabledModules
+      ? {
+          water: enabledModules.water === true,
+          electricity: enabledModules.electricity === true,
+          internet: enabledModules.internet === true,
+          support_fee: enabledModules.support_fee !== false,
+          capital_repair: enabledModules.capital_repair !== false,
+        }
+      : {
+          water: true,
+          electricity: true,
+          internet: true,
+          support_fee: true,
+          capital_repair: true,
+        };
+    return new Set<FirstRunTariffKey>(tariffKeysForModules(flags));
+  }, [enabledModules]);
+
+  const visibleRows = useMemo(
+    () => rows.filter((r) => allowedTariffKeys.has(r.tariff_key as FirstRunTariffKey)),
+    [rows, allowedTariffKeys],
+  );
+
   const byKey = useMemo(() => {
     const m = new Map<string, TariffListRow>();
-    for (const r of rows) m.set(r.tariff_key, r);
+    for (const r of visibleRows) m.set(r.tariff_key, r);
     return m;
-  }, [rows]);
+  }, [visibleRows]);
 
   const scheduled = useMemo(
-    () => rows.filter((r) => r.nearest_future_version_id != null),
-    [rows],
+    () => visibleRows.filter((r) => r.nearest_future_version_id != null),
+    [visibleRows],
   );
 
   async function publishSupport(e: React.FormEvent) {
@@ -507,29 +581,34 @@ export function AdminTariffs({
     setBusy(true);
     setError(null);
     try {
-      const month = Number(internetForm.month);
-      const monthLegal = Number(internetForm.month_legal.trim() || internetForm.month);
-      if (Number.isNaN(month) || month < 0 || Number.isNaN(monthLegal) || monthLegal < 0) {
+      const package30 = Number(internetForm.package_30);
+      const day = Number(internetForm.day);
+      if (Number.isNaN(package30) || package30 < 0 || Number.isNaN(day) || day < 0) {
         throw new Error(t('admin.tcErrRate'));
       }
       if (!internetForm.valid_from || internetForm.valid_from < today) throw new Error(t('admin.tcErrValidFrom'));
       if (!internetForm.basis_reference.trim()) throw new Error(t('admin.tcErrSupplierRef'));
       if (!internetForm.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
+      const rates = { package_30: package30, day };
+      const { error: assertErr } = await supabase.rpc('admin_assert_internet_rates_publishable', {
+        p_rates: rates,
+      });
+      if (assertErr) throw assertErr;
       const { error: rpcErr } = await supabase.rpc('publish_tariff_version', {
         p_tariff_id: tariff.tariff_id,
-        p_rates: { natural: { month }, legal: { month: monthLegal } },
+        p_rates: { natural: rates, legal: rates },
         p_basis_type: 'supplier_notice',
         p_basis_note: internetForm.basis_note.trim(),
+        p_basis_reference: internetForm.basis_reference.trim(),
+        p_basis_date: internetForm.basis_date || null,
         p_idempotency_key: crypto.randomUUID(),
         p_application_year: null,
         p_valid_from: internetForm.valid_from,
-        p_basis_reference: internetForm.basis_reference.trim(),
-        p_basis_date: internetForm.basis_date || null,
         p_decision_id: null,
       });
       if (rpcErr) throw rpcErr;
       setPublishKey(null);
-      setInternetForm((f) => ({ ...f, month: '', month_legal: '', basis_note: '' }));
+      setInternetForm((f) => ({ ...f, package_30: '', day: '', basis_note: '' }));
       await load();
     } catch (err: unknown) {
       setError(ownerVisibleError(err, t('admin.errGeneric')));
@@ -541,7 +620,13 @@ export function AdminTariffs({
   async function handleCancel(e: React.FormEvent) {
     e.preventDefault();
     if (!cancelId || !cancelReason.trim()) return;
-    if (!confirm(t('admin.tcCancelConfirm'))) return;
+    const ok = await confirm({
+      title: t('admin.tcCancelConfirm'),
+      confirmLabel: t('admin.tcCancel'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -611,8 +696,13 @@ export function AdminTariffs({
   function openHistory(tariffId: string) {
     setHistoryTariffId(tariffId);
     setPublishKey(null);
-    setTab('history');
+    selectTab('history');
   }
+
+  const policyYearFocus =
+    policyYearRaw != null && Number.isFinite(policyYearRaw) && policyYearRaw >= 2000
+      ? Math.floor(policyYearRaw)
+      : null;
 
   function renderPublishForm(key: string): ReactNode {
     if (key === 'support_fee' && canSupport) {
@@ -780,8 +870,9 @@ export function AdminTariffs({
       return (
         <form onSubmit={publishCapital} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
           <p className="text-sm font-semibold text-foreground sm:col-span-2">
-            {t('admin.tcSetAnnualAmount')}
+            {t('admin.tcSetCapitalRate')}
           </p>
+          <p className="text-xs text-muted sm:col-span-2">{t('admin.tcCapitalRateDesc')}</p>
           <label className="grid gap-1 text-sm text-secondary sm:col-span-2">
             {t('admin.tcCapitalIntent')}
             <select
@@ -806,7 +897,7 @@ export function AdminTariffs({
             </span>
           </label>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcAnnualAmount')}
+            {t('admin.tcCapitalRate')}
             <span className="text-xs text-muted">{t('admin.tcSubjectNatural')}</span>
             <input
               className={adminFieldClass}
@@ -819,7 +910,7 @@ export function AdminTariffs({
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcAnnualAmount')}
+            {t('admin.tcCapitalRate')}
             <span className="text-xs text-muted">{t('admin.tcSubjectLegal')}</span>
             <input
               className={adminFieldClass}
@@ -1121,27 +1212,29 @@ export function AdminTariffs({
         <form onSubmit={publishInternet} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
           <p className="text-sm font-semibold text-foreground sm:col-span-2">{t('admin.tcChangeRate')}</p>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcCompMonth')} · {t('admin.tcSubjectNatural')}
+            {t('admin.internetTariffPackage30')}
+            <span className="text-xs text-muted">{t('admin.internetTariffCalendarHint')}</span>
             <input
               className={adminFieldClass}
               type="number"
               step="0.01"
               min="0"
-              value={internetForm.month}
-              onChange={(e) => setInternetForm({ ...internetForm, month: e.target.value })}
+              value={internetForm.package_30}
+              onChange={(e) => setInternetForm({ ...internetForm, package_30: e.target.value })}
               required
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
-            {t('admin.tcCompMonth')} · {t('admin.tcSubjectLegal')}
+            {t('admin.internetTariffDay24')}
+            <span className="text-xs text-muted">{t('admin.internetTariffCalendarHint')}</span>
             <input
               className={adminFieldClass}
               type="number"
-              step="0.01"
+              step="0.0001"
               min="0"
-              value={internetForm.month_legal}
-              onChange={(e) => setInternetForm({ ...internetForm, month_legal: e.target.value })}
-              placeholder={internetForm.month || undefined}
+              value={internetForm.day}
+              onChange={(e) => setInternetForm({ ...internetForm, day: e.target.value })}
+              required
             />
           </label>
           <label className="grid gap-1 text-sm text-secondary">
@@ -1263,7 +1356,7 @@ export function AdminTariffs({
           <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-3">
             {publishable ? (
               <AdminPrimaryButton type="button" onClick={() => openPublish(row.tariff_key)}>
-                {row.tariff_key === 'capital_repair' ? t('admin.tcSetAnnualAmount') : t('admin.tcChangeRate')}
+                {row.tariff_key === 'capital_repair' ? t('admin.tcSetCapitalRate') : t('admin.tcChangeRate')}
               </AdminPrimaryButton>
             ) : null}
             <AdminSecondaryButton type="button" onClick={() => openHistory(row.tariff_id)}>
@@ -1334,6 +1427,7 @@ export function AdminTariffs({
 
   return (
     <div className="min-w-0 space-y-4">
+      {dialog}
       <AdminPageHeader title={t('admin.tcTitle')} secondary={t('admin.tcLead')} />
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
 
@@ -1342,10 +1436,13 @@ export function AdminTariffs({
           { id: 'current', label: t('admin.tcTabCurrent') },
           { id: 'scheduled', label: t('admin.tcTabScheduled') },
           { id: 'history', label: t('admin.tcTabHistory') },
+          ...(supportFeeModuleOn
+            ? [{ id: 'annual_policy' as const, label: t('admin.tcTabAnnualPolicy') }]
+            : []),
         ]}
         active={tab}
         onChange={(id) => {
-          setTab(id as TariffTab);
+          selectTab(id as TariffTab);
           setPublishKey(null);
         }}
       />
@@ -1385,11 +1482,11 @@ export function AdminTariffs({
       {loading ? (
         <p className="text-sm text-muted">{t('common.loading')}</p>
       ) : tab === 'current' ? (
-        rows.length === 0 ? (
+        visibleRows.length === 0 ? (
           <AdminEmptyState title={t('admin.tcEmpty')} />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {rows.map((row) => renderCurrentCard(row))}
+            {visibleRows.map((row) => renderCurrentCard(row))}
           </div>
         )
       ) : tab === 'scheduled' ? (
@@ -1400,6 +1497,13 @@ export function AdminTariffs({
             {scheduled.map((row) => renderScheduledCard(row))}
           </div>
         )
+      ) : tab === 'annual_policy' ? (
+        <AdminSupportFeePolicyEditor
+          supabase={supabase}
+          canRate={canSupport}
+          onError={setError}
+          initialYear={policyYearFocus}
+        />
       ) : (
         <div className="space-y-3">
           <label className="grid max-w-md gap-1 text-sm text-secondary">
@@ -1410,7 +1514,7 @@ export function AdminTariffs({
               onChange={(e) => setHistoryTariffId(e.target.value || null)}
             >
               <option value="">{t('admin.tcHistoryPick')}</option>
-              {rows.map((r) => (
+              {visibleRows.map((r) => (
                 <option key={r.tariff_id} value={r.tariff_id}>
                   {r.default_name}
                 </option>
@@ -1424,7 +1528,7 @@ export function AdminTariffs({
           ) : (
             <div className="space-y-2">
               {history.map((h) => {
-                const tariff = rows.find((r) => r.tariff_id === h.tariff_id);
+                const tariff = visibleRows.find((r) => r.tariff_id === h.tariff_id);
                 const keys = tariff?.component_keys ?? Object.keys(h.rates ?? {});
                 const cancellable =
                   tariff != null &&

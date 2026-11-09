@@ -7,6 +7,10 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
+import {
+  normalizeOpeningBalanceKind,
+  normalizeInternetOpeningRow,
+} from '@/lib/moduleCore';
 
 /** Section id reserved for the forced wizard (not part of the normal admin nav). */
 export const FIRST_RUN_SECTION = 'first_run';
@@ -15,6 +19,7 @@ export const ADMIN_HOME_PATH = '/admin';
 
 export const FIRST_RUN_STAGES = [
   'welcome',
+  'modules_select',
   'complex_card',
   'property_book',
   'meters_select',
@@ -22,25 +27,56 @@ export const FIRST_RUN_STAGES = [
   'meters_electricity',
   'support_fee_opening',
   'capital_repair_opening',
+  'internet_opening',
   'tariffs',
   'budget',
+  'uk_expenses_opening',
   'complete',
 ] as const;
 export type FirstRunStageKey = (typeof FIRST_RUN_STAGES)[number];
 
 /** Tariff Core keys required before first-run tariffs stage can complete. */
-export type FirstRunTariffKey = 'water' | 'electricity' | 'support_fee' | 'capital_repair';
+export type FirstRunTariffKey = 'water' | 'electricity' | 'internet' | 'support_fee' | 'capital_repair';
 
 export type FirstRunStatus = 'pending' | 'in_progress' | 'complete';
 export type FirstRunMeterUtility = 'water' | 'electricity';
+
+export type FirstRunBankAccount = {
+  id?: string;
+  purpose: string;
+  account_holder: string;
+  bank_name: string;
+  iban: string;
+  bic_swift: string;
+  currency: string;
+  is_primary: boolean;
+};
 
 export type FirstRunComplex = {
   display_name: string;
   complex_name: string;
   address: string;
+  address_country: string;
+  address_city: string;
+  address_postal_code: string;
+  address_street: string;
+  address_building_number: string;
   apartment_count: number | null;
   contact_phone: string;
   contact_email: string;
+  mgmt_legal_name: string;
+  mgmt_legal_form: string;
+  mgmt_registration_country: string;
+  mgmt_registration_number: string;
+  mgmt_vat_registered: boolean;
+  mgmt_vat_number: string;
+  mgmt_registered_address: string;
+  mgmt_correspondence_address: string;
+  mgmt_representative_name: string;
+  mgmt_representative_title: string;
+  mgmt_phone: string;
+  mgmt_email: string;
+  bank_accounts: FirstRunBankAccount[];
 };
 
 export type FirstRunStageRow = {
@@ -69,19 +105,59 @@ export type FirstRunState = {
 
 export type FirstRunComplexForm = {
   display_name: string;
-  address: string;
+  address_country: string;
+  address_city: string;
+  address_postal_code: string;
+  address_street: string;
+  address_building_number: string;
   apartment_count: string;
   contact_phone: string;
   contact_email: string;
+  mgmt_legal_name: string;
+  mgmt_legal_form: string;
+  mgmt_registration_country: string;
+  mgmt_registration_number: string;
+  mgmt_vat_registered: boolean;
+  mgmt_vat_number: string;
+  mgmt_registered_address: string;
+  mgmt_correspondence_address: string;
+  mgmt_representative_name: string;
+  mgmt_representative_title: string;
+  mgmt_phone: string;
+  mgmt_email: string;
+  bank_accounts: FirstRunBankAccount[];
 };
+
+export function emptyBankAccount(primary = false): FirstRunBankAccount {
+  return {
+    purpose: '',
+    account_holder: '',
+    bank_name: '',
+    iban: '',
+    bic_swift: '',
+    currency: 'EUR',
+    is_primary: primary,
+  };
+}
+
+export function composeComplexAddressLine(form: Pick<
+  FirstRunComplexForm,
+  'address_street' | 'address_building_number' | 'address_postal_code' | 'address_city' | 'address_country'
+>): string {
+  const line1 = [form.address_street, form.address_building_number].map((s) => s.trim()).filter(Boolean).join(' ');
+  const line2 = [form.address_postal_code, form.address_city].map((s) => s.trim()).filter(Boolean).join(' ');
+  return [line1, line2, form.address_country.trim()].filter(Boolean).join(', ');
+}
 
 /** Normalized import error row for UI (Book / meters RPC errors). */
 export type FirstRunErrorRow = {
   sheet: string;
   row: string;
   field: string;
+  /** Stable machine code — present via presentFirstRunErrorRow before UI. */
   reason: string;
   apartment: string;
+  severity: 'error' | 'warning';
 };
 
 type RpcResult = { data: unknown; error: { message: string; details?: string } | null };
@@ -119,6 +195,20 @@ export function parseFirstRunState(data: unknown): FirstRunState | null {
   const complexRaw = asRecord(o.complex);
   const countRaw = complexRaw.apartment_count;
   const count = countRaw == null || countRaw === '' ? null : Number(countRaw);
+  const banksRaw = Array.isArray(complexRaw.bank_accounts) ? complexRaw.bank_accounts : [];
+  const bank_accounts: FirstRunBankAccount[] = banksRaw.map((item) => {
+    const b = asRecord(item);
+    return {
+      id: b.id == null ? undefined : str(b.id),
+      purpose: str(b.purpose),
+      account_holder: str(b.account_holder),
+      bank_name: str(b.bank_name),
+      iban: str(b.iban),
+      bic_swift: str(b.bic_swift),
+      currency: str(b.currency) || 'EUR',
+      is_primary: b.is_primary === true,
+    };
+  });
   const status = normalizeStatus(o.first_run_status);
   const stages = Array.isArray(o.stages)
     ? (o.stages as unknown[]).map((s) => {
@@ -147,9 +237,27 @@ export function parseFirstRunState(data: unknown): FirstRunState | null {
       display_name: str(complexRaw.display_name),
       complex_name: str(complexRaw.complex_name),
       address: str(complexRaw.address),
+      address_country: str(complexRaw.address_country),
+      address_city: str(complexRaw.address_city),
+      address_postal_code: str(complexRaw.address_postal_code),
+      address_street: str(complexRaw.address_street),
+      address_building_number: str(complexRaw.address_building_number),
       apartment_count: count != null && Number.isFinite(count) ? count : null,
       contact_phone: str(complexRaw.contact_phone),
       contact_email: str(complexRaw.contact_email),
+      mgmt_legal_name: str(complexRaw.mgmt_legal_name),
+      mgmt_legal_form: str(complexRaw.mgmt_legal_form),
+      mgmt_registration_country: str(complexRaw.mgmt_registration_country),
+      mgmt_registration_number: str(complexRaw.mgmt_registration_number),
+      mgmt_vat_registered: complexRaw.mgmt_vat_registered === true,
+      mgmt_vat_number: str(complexRaw.mgmt_vat_number),
+      mgmt_registered_address: str(complexRaw.mgmt_registered_address),
+      mgmt_correspondence_address: str(complexRaw.mgmt_correspondence_address),
+      mgmt_representative_name: str(complexRaw.mgmt_representative_name),
+      mgmt_representative_title: str(complexRaw.mgmt_representative_title),
+      mgmt_phone: str(complexRaw.mgmt_phone),
+      mgmt_email: str(complexRaw.mgmt_email),
+      bank_accounts,
     },
     draft: asRecord(o.draft),
     stages,
@@ -175,16 +283,24 @@ export async function fetchFirstRunState(
   try {
     const { data, error } = await untypedRpc(supabase).rpc('admin_get_first_run_state');
     if (error) {
-      return { ok: false, error: error.message || 'admin_get_first_run_state failed' };
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[firstRun] admin_get_first_run_state', error.message);
+      }
+      return { ok: false, error: 'FIRST_RUN_STATE_UNAVAILABLE' };
     }
     const state = parseFirstRunState(data);
     if (!state) {
-      return { ok: false, error: 'admin_get_first_run_state returned invalid payload' };
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[firstRun] admin_get_first_run_state invalid response');
+      }
+      return { ok: false, error: 'FIRST_RUN_STATE_INVALID' };
     }
     return { ok: true, state };
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'admin_get_first_run_state failed';
-    return { ok: false, error: msg };
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[firstRun] admin_get_first_run_state', e);
+    }
+    return { ok: false, error: 'FIRST_RUN_STATE_UNAVAILABLE' };
   }
 }
 
@@ -224,7 +340,17 @@ export async function importMetersOpening(
 ): Promise<{ data: unknown; error: { message: string; details?: string } | null }> {
   const fn =
     utility === 'water' ? 'admin_import_water_meters_opening' : 'admin_import_electricity_meters_opening';
-  return untypedRpc(supabase).rpc(fn, { p_rows: rows, p_dry_run: dryRun });
+  // Templates accept RU/BG/EN balance kinds; RPC expects canonical zero|debt|overpayment.
+  const normalized = rows.map((row) => {
+    const kind = normalizeOpeningBalanceKind(row.opening_balance_kind);
+    const next = { ...row };
+    if (row.opening_balance_kind != null) {
+      next.opening_balance_kind =
+        kind === 'zero' && !String(row.opening_balance_kind).trim() ? '' : kind;
+    }
+    return next;
+  });
+  return untypedRpc(supabase).rpc(fn, { p_rows: normalized, p_dry_run: dryRun });
 }
 
 /** Dry-run / atomic commit for Support Fee opening inventarisation. */
@@ -238,6 +364,23 @@ export async function importSupportFeeOpening(
     p_rows: rows,
     p_dry_run: dryRun,
     p_batch_id: batchId ?? null,
+  });
+}
+
+/** Dry-run / atomic commit for Internet opening inventarisation (subscriptions + paid periods + balances). */
+export async function importInternetOpening(
+  supabase: SupabaseClient<Database>,
+  rows: Record<string, string>[],
+  dryRun: boolean,
+  opts?: { confirmCorrections?: boolean; batchId?: string | null },
+): Promise<{ data: unknown; error: { message: string; details?: string } | null }> {
+  // Templates accept RU/BG labels (активен/неактивен); RPC expects active|inactive.
+  const normalized = rows.map((row) => normalizeInternetOpeningRow(row));
+  return untypedRpc(supabase).rpc('admin_import_internet_opening', {
+    p_rows: normalized,
+    p_dry_run: dryRun,
+    p_confirm_corrections: opts?.confirmCorrections === true,
+    p_batch_id: opts?.batchId ?? null,
   });
 }
 
@@ -277,24 +420,70 @@ export async function setCapitalRepairFundCashOpening(
   });
 }
 
-/** Where the wizard resumes after load/re-login. Complete ⇒ 'complete' stage (done screen). */
+function firstRunStageRowDone(
+  rows: { stage_key: string; status: string }[] | undefined,
+  key: FirstRunStageKey,
+): boolean {
+  return (
+    rows?.some(
+      (row) =>
+        row.stage_key === key && (row.status === 'complete' || row.status === 'skipped'),
+    ) ?? false
+  );
+}
+
+/**
+ * Where the wizard resumes after load/re-login.
+ * Complete ⇒ 'complete' stage (done screen).
+ * If the server pointer jumped to tariffs/budget before internet opening finished,
+ * resume at internet_opening so reload/login cannot skip the installed module.
+ */
 export function resolveFirstRunResumeStage(state: FirstRunState | null | undefined): FirstRunStageKey {
   if (!state) return 'welcome';
   if (state.first_run_status === 'complete') return 'complete';
-  return state.first_run_stage;
+  const choice = parseModuleChoice(state.draft);
+  let stage = state.first_run_stage;
+  if (
+    choice.internet &&
+    !firstRunStageRowDone(state.stages, 'internet_opening') &&
+    (stage === 'tariffs' || stage === 'budget' || stage === 'uk_expenses_opening' || stage === 'complete')
+  ) {
+    if (firstRunStageRowDone(state.stages, 'capital_repair_opening')) {
+      stage = 'internet_opening';
+    }
+  }
+  return stage;
 }
 
-/** Wizard steps visible as progress dots (skipped meter stages are removed). */
-export function visibleFirstRunStages(selection: MetersSelection | null): FirstRunStageKey[] {
+/** Wizard steps for the saved choice. Optional stages stay hidden until selected. */
+export function visibleFirstRunStages(
+  selection: { water: boolean; electricity: boolean; budget?: boolean; internet?: boolean } | null,
+): FirstRunStageKey[] {
   return FIRST_RUN_STAGES.filter((s) => {
-    if (s === 'meters_water') return selection == null || selection.water;
-    if (s === 'meters_electricity') return selection == null || selection.electricity;
+    if (s === 'meters_select') return false;
+    if (s === 'meters_water') return selection?.water === true;
+    if (s === 'meters_electricity') return selection?.electricity === true;
+    if (s === 'internet_opening') return selection?.internet === true;
     return true;
   });
 }
 
+/**
+ * Previous step on the visible wizard route (not browser history).
+ * Legacy `meters_select` is not listed in the sidebar — Back returns to the property book.
+ */
+export function previousVisibleStage(
+  stages: FirstRunStageKey[],
+  current: FirstRunStageKey,
+): FirstRunStageKey | null {
+  if (current === 'meters_select') return 'property_book';
+  const index = stages.indexOf(current);
+  if (index <= 0) return null;
+  return stages[index - 1] ?? null;
+}
+
 // ---------------------------------------------------------------------------
-// Meters selection (≥1 utility required)
+// Meters selection (optional; zero types is valid)
 // ---------------------------------------------------------------------------
 
 export type MetersSelection = { water: boolean; electricity: boolean };
@@ -315,15 +504,103 @@ export function metersSelectedToDraft(sel: MetersSelection): string[] {
   return out;
 }
 
-export function validateMetersSelection(sel: MetersSelection): { ok: boolean; error?: 'at_least_one' } {
-  if (!sel.water && !sel.electricity) return { ok: false, error: 'at_least_one' };
+/** Meter types are optional. An empty choice is valid. */
+export function validateMetersSelection(sel: MetersSelection): { ok: boolean } {
+  void sel;
   return { ok: true };
 }
 
-/** First meter stage after selection (water first), or 'complete' when none (invalid). */
+/** First meter stage after the property book, or the support-fee step when none are selected. */
 export function firstMetersStage(sel: MetersSelection): FirstRunStageKey {
   if (sel.water) return 'meters_water';
   if (sel.electricity) return 'meters_electricity';
+  return 'support_fee_opening';
+}
+
+export const FIRST_RUN_LOCKED_MODULES = ['property_book', 'support_fee', 'capital_repair', 'budget', 'uk_expenses', 'guest_mode'] as const;
+
+export type FirstRunModuleChoice = {
+  water: boolean;
+  electricity: boolean;
+  internet: boolean;
+  budget: boolean;
+  extra: string[];
+};
+
+export function emptyModuleChoice(): FirstRunModuleChoice {
+  return { water: false, electricity: false, internet: false, budget: true, extra: [] };
+}
+
+/** Restore a saved choice. The budget stays selected. A draft without modules_selected keeps the old meter list. */
+export function parseModuleChoice(draft: unknown): FirstRunModuleChoice {
+  const record = asRecord(draft);
+  const rawModules = record.modules_selected;
+  const explicit = Array.isArray(rawModules);
+  const list = explicit ? rawModules.map((item) => String(item).trim().toLowerCase()) : [];
+  const meters = parseMetersSelected(record);
+  const extra = explicit
+    ? list.filter(
+        (key: string) =>
+          key !== 'property_book' &&
+          key !== 'support_fee' &&
+          key !== 'capital_repair' &&
+          key !== 'water' &&
+          key !== 'electricity' &&
+          key !== 'electric' &&
+          key !== 'internet' &&
+          key !== 'budget' &&
+          key !== 'uk_expenses' &&
+          key !== 'guest_mode' &&
+          key !== 'tariffs',
+      )
+    : [];
+  return {
+    water: explicit ? list.includes('water') : meters.water,
+    electricity: explicit ? list.includes('electricity') || list.includes('electric') : meters.electricity,
+    internet: explicit ? list.includes('internet') : false,
+    budget: true,
+    extra,
+  };
+}
+
+export function moduleChoiceToDraft(choice: FirstRunModuleChoice): {
+  modules_selected: string[];
+  meters_selected: string[];
+} {
+  const modules = ['property_book', 'support_fee', 'capital_repair', 'budget', 'uk_expenses', 'guest_mode'];
+  if (choice.water) modules.push('water');
+  if (choice.electricity) modules.push('electricity');
+  if (choice.internet) modules.push('internet');
+  for (const key of choice.extra) {
+    if (!modules.includes(key)) modules.push(key);
+  }
+  return {
+    modules_selected: modules,
+    meters_selected: metersSelectedToDraft(choice),
+  };
+}
+
+export function stageAfterTariffs(choice: FirstRunModuleChoice): FirstRunStageKey {
+  void choice;
+  return 'budget';
+}
+
+/** Next real stage after saving the module choice. Does not skip an unfinished selected step. */
+export function stageAfterModuleSave(
+  choice: FirstRunModuleChoice,
+  rows: { stage_key: string; status: string }[] | undefined,
+): FirstRunStageKey {
+  const done = (key: string) => rows?.some((row) => row.stage_key === key && row.status === 'complete') ?? false;
+  if (!done('complex_card')) return 'complex_card';
+  if (!done('property_book')) return 'property_book';
+  if (choice.water && !done('meters_water')) return 'meters_water';
+  if (choice.electricity && !done('meters_electricity')) return 'meters_electricity';
+  if (!done('support_fee_opening')) return 'support_fee_opening';
+  if (!done('capital_repair_opening')) return 'capital_repair_opening';
+  if (choice.internet && !done('internet_opening')) return 'internet_opening';
+  if (!done('tariffs')) return 'tariffs';
+  if (!done('budget')) return 'budget';
+  if (!done('uk_expenses_opening')) return 'uk_expenses_opening';
   return 'complete';
 }
 
@@ -336,13 +613,75 @@ export function nextAfterMetersStage(
   return 'support_fee_opening';
 }
 
-/** Required published tariffs for first-run (selected utilities + SF + CR). */
-export function requiredFirstRunTariffKeys(sel: MetersSelection): FirstRunTariffKey[] {
+/**
+ * Modules that expose a Tariff Core key.
+ * Single filter used by first-run checklist and post-setup AdminTariffs.
+ */
+export type TariffModuleFlags = {
+  water: boolean;
+  electricity: boolean;
+  internet: boolean;
+  support_fee: boolean;
+  capital_repair: boolean;
+};
+
+/** Tariff keys required for the given installed/enabled modules (order: utilities → SF → CR). */
+export function tariffKeysForModules(flags: TariffModuleFlags): FirstRunTariffKey[] {
   const keys: FirstRunTariffKey[] = [];
-  if (sel.water) keys.push('water');
-  if (sel.electricity) keys.push('electricity');
-  keys.push('support_fee', 'capital_repair');
+  if (flags.water) keys.push('water');
+  if (flags.electricity) keys.push('electricity');
+  if (flags.internet) keys.push('internet');
+  if (flags.support_fee) keys.push('support_fee');
+  if (flags.capital_repair) keys.push('capital_repair');
   return keys;
+}
+
+/** Map a saved `modules_selected` list to tariff flags (UI + server must match). */
+export function tariffFlagsFromModulesSelected(modules: Iterable<string>): TariffModuleFlags {
+  const set = new Set(
+    [...modules].map((item) => String(item).trim().toLowerCase()).filter((item) => item.length > 0),
+  );
+  return {
+    water: set.has('water'),
+    electricity: set.has('electricity') || set.has('electric'),
+    internet: set.has('internet'),
+    support_fee: set.has('support_fee'),
+    capital_repair: set.has('capital_repair'),
+  };
+}
+
+/**
+ * Required first-run tariffs from the module choice that is persisted.
+ * Locked SF/CR come only via `moduleChoiceToDraft` → `modules_selected`, not a parallel hardcode.
+ */
+export function requiredFirstRunTariffKeys(
+  choice: Pick<FirstRunModuleChoice, 'water' | 'electricity'> &
+    Partial<Pick<FirstRunModuleChoice, 'internet' | 'budget' | 'extra'>>,
+): FirstRunTariffKey[] {
+  const full: FirstRunModuleChoice = {
+    water: choice.water === true,
+    electricity: choice.electricity === true,
+    internet: 'internet' in choice ? choice.internet === true : false,
+    budget: choice.budget !== false,
+    extra: choice.extra ?? [],
+  };
+  return tariffKeysForModules(tariffFlagsFromModulesSelected(moduleChoiceToDraft(full).modules_selected));
+}
+
+/** Same rule from a saved first-run draft (`modules_selected`). */
+export function requiredFirstRunTariffKeysFromDraft(draft: unknown): FirstRunTariffKey[] {
+  const record = asRecord(draft);
+  if (Array.isArray(record.modules_selected)) {
+    return tariffKeysForModules(tariffFlagsFromModulesSelected(record.modules_selected.map(String)));
+  }
+  return requiredFirstRunTariffKeys(parseModuleChoice(draft));
+}
+
+/** Next stage after capital-repair opening: internet inventarisation before the tariffs checklist. */
+export function stageAfterCapitalRepairOpening(
+  choice: Pick<FirstRunModuleChoice, 'internet'>,
+): FirstRunStageKey {
+  return choice.internet ? 'internet_opening' : 'tariffs';
 }
 
 function hasTariffVersionId(id: string | null | undefined): boolean {
@@ -367,6 +706,216 @@ export function isFirstRunTariffPublished(
   return (
     hasTariffVersionId(row.current_version_id) || hasTariffVersionId(row.nearest_future_version_id)
   );
+}
+
+export type FirstRunAnnualTariffPrep = {
+  rate_natural: number;
+  rate_legal: number;
+  basis_type: 'external_decision' | 'general_meeting';
+  basis_reference: string | null;
+  basis_date: string;
+  basis_note: string;
+  decision_id: string | null;
+};
+
+export type FirstRunWaterTariffPrep = {
+  rate: number;
+  basis_type: 'supplier_notice' | 'invoice' | 'other';
+  basis_reference: string;
+  basis_date: string | null;
+  basis_note: string;
+};
+
+export type FirstRunElectricityTariffPrep = {
+  day: number;
+  night: number;
+  basis_type: 'supplier_notice' | 'invoice' | 'other';
+  basis_reference: string;
+  basis_date: string | null;
+  basis_note: string;
+};
+
+export type FirstRunInternetTariffPrep = {
+  package_30: number;
+  day: number;
+  basis_type: 'supplier_notice' | 'invoice' | 'other';
+  basis_reference: string;
+  basis_date: string | null;
+  basis_note: string;
+};
+
+export type FirstRunTariffPrepMap = {
+  support_fee?: FirstRunAnnualTariffPrep;
+  capital_repair?: FirstRunAnnualTariffPrep;
+  water?: FirstRunWaterTariffPrep;
+  electricity?: FirstRunElectricityTariffPrep;
+  internet?: FirstRunInternetTariffPrep;
+};
+
+function positive(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function nonNegative(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function isAnnualTariffPrep(value: unknown): value is FirstRunAnnualTariffPrep {
+  const row = asRecord(value);
+  if (!row) return false;
+  const natural = positive(row.rate_natural);
+  const legal = positive(row.rate_legal ?? row.rate_natural);
+  const basis = text(row.basis_type);
+  const note = text(row.basis_note);
+  const date = text(row.basis_date);
+  const reference = text(row.basis_reference);
+  const decision = text(row.decision_id);
+  if (natural == null || legal == null || !note || !date) return false;
+  if (basis === 'external_decision') return reference.length > 0;
+  if (basis === 'general_meeting') return decision.length > 0;
+  return false;
+}
+
+export function isWaterTariffPrep(value: unknown): value is FirstRunWaterTariffPrep {
+  const row = asRecord(value);
+  if (!row) return false;
+  const basis = text(row.basis_type);
+  return (
+    nonNegative(row.rate) != null &&
+    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other') &&
+    text(row.basis_reference).length > 0 &&
+    text(row.basis_note).length > 0
+  );
+}
+
+export function isElectricityTariffPrep(value: unknown): value is FirstRunElectricityTariffPrep {
+  const row = asRecord(value);
+  if (!row) return false;
+  const basis = text(row.basis_type);
+  return (
+    nonNegative(row.day) != null &&
+    nonNegative(row.night) != null &&
+    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other') &&
+    text(row.basis_reference).length > 0 &&
+    text(row.basis_note).length > 0
+  );
+}
+
+export function isInternetTariffPrep(value: unknown): value is FirstRunInternetTariffPrep {
+  const row = asRecord(value);
+  if (!row) return false;
+  const basis = text(row.basis_type);
+  return (
+    nonNegative(row.package_30) != null &&
+    nonNegative(row.day) != null &&
+    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other') &&
+    text(row.basis_reference).length > 0 &&
+    text(row.basis_note).length > 0
+  );
+}
+
+export function readTariffPrep(draft: Record<string, unknown> | null | undefined): FirstRunTariffPrepMap {
+  const raw = asRecord(draft?.tariff_prep);
+  if (!raw) return {};
+  const prep: FirstRunTariffPrepMap = {};
+  if (isAnnualTariffPrep(raw.support_fee)) prep.support_fee = raw.support_fee;
+  if (isAnnualTariffPrep(raw.capital_repair)) prep.capital_repair = raw.capital_repair;
+  if (isWaterTariffPrep(raw.water)) prep.water = raw.water;
+  if (isElectricityTariffPrep(raw.electricity)) prep.electricity = raw.electricity;
+  if (isInternetTariffPrep(raw.internet)) prep.internet = raw.internet;
+  return prep;
+}
+
+export function isFirstRunTariffPrepared(key: FirstRunTariffKey, prep: FirstRunTariffPrepMap): boolean {
+  if (key === 'support_fee' || key === 'capital_repair') return isAnnualTariffPrep(prep[key]);
+  if (key === 'water') return isWaterTariffPrep(prep.water);
+  if (key === 'internet') return isInternetTariffPrep(prep.internet);
+  return isElectricityTariffPrep(prep.electricity);
+}
+
+/** Service stage where the operator enters this tariff during first-run. */
+export function firstRunTariffSetupStage(key: FirstRunTariffKey): FirstRunStageKey {
+  switch (key) {
+    case 'water':
+      return 'meters_water';
+    case 'electricity':
+      return 'meters_electricity';
+    case 'support_fee':
+      return 'support_fee_opening';
+    case 'capital_repair':
+      return 'capital_repair_opening';
+    case 'internet':
+      return 'internet_opening';
+  }
+}
+
+/** i18n key for the service stage that owns this tariff. */
+export function firstRunTariffSetupStageLabelKey(key: FirstRunTariffKey): string {
+  switch (key) {
+    case 'water':
+      return 'admin.firstRunStageMetersWater';
+    case 'electricity':
+      return 'admin.firstRunStageMetersElectricity';
+    case 'support_fee':
+      return 'admin.firstRunStageSupportFee';
+    case 'capital_repair':
+      return 'admin.firstRunStageCapitalRepair';
+    case 'internet':
+      return 'admin.firstRunStageInternetOpening';
+  }
+}
+
+function formatFirstRunTariffAmount(raw: string | number, locale?: string): string {
+  const n = typeof raw === 'number' ? raw : Number(String(raw).replace(',', '.'));
+  if (!Number.isFinite(n)) return String(raw);
+  if (!locale) {
+    return n.toFixed(2);
+  }
+  const tag = locale === 'bg' || locale.startsWith('bg') ? 'bg-BG' : locale === 'en' || locale.startsWith('en') ? 'en-US' : 'ru-RU';
+  return new Intl.NumberFormat(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+}
+
+/** Short rate summary for the tariffs checklist (same draft as service stages). */
+export function formatFirstRunTariffPrepSummary(
+  key: FirstRunTariffKey,
+  prep: FirstRunTariffPrepMap,
+  t: (k: string) => string,
+  locale?: string,
+): string | null {
+  if (!isFirstRunTariffPrepared(key, prep)) return null;
+  const amt = (v: string | number) => formatFirstRunTariffAmount(v, locale);
+  if (key === 'water' && prep.water) {
+    return `${amt(prep.water.rate)} €/${t('admin.tcUnitM3')}`;
+  }
+  if (key === 'electricity' && prep.electricity) {
+    return `${t('admin.tcCompDay')}: ${amt(prep.electricity.day)} €/${t('admin.tcUnitKwh')}\n${t('admin.tcCompNight')}: ${amt(prep.electricity.night)} €/${t('admin.tcUnitKwh')}`;
+  }
+  if (key === 'internet' && prep.internet) {
+    return `${t('admin.internetTariffPackage30')}: ${amt(prep.internet.package_30)} €\n${t('admin.internetTariffDay24')}: ${amt(prep.internet.day)} €`;
+  }
+  if ((key === 'support_fee' || key === 'capital_repair') && prep[key]) {
+    const item = prep[key]!;
+    // Catalog: support_fee and capital_repair = €/m²·year × properties.area_sqm.
+    const unit = t('admin.perSqmYear');
+    return `${t('admin.tcSubjectNatural')}: ${amt(item.rate_natural)} ${unit}\n${t('admin.tcSubjectLegal')}: ${amt(item.rate_legal)} ${unit}`;
+  }
+  return null;
+}
+
+/** A future-only version does not cover activation. A saved preparation does. */
+export function firstRunTariffStepReady(
+  key: FirstRunTariffKey,
+  row: { current_version_id?: string | null } | null | undefined,
+  prep: FirstRunTariffPrepMap,
+): boolean {
+  if (isFirstRunTariffPrepared(key, prep)) return true;
+  return hasTariffVersionId(row?.current_version_id);
 }
 
 /** Keys still missing a published Tariff Core version. */
@@ -430,40 +979,154 @@ export function budgetPlanRequiresZeroConfirmation(totalPlannedEur: number): boo
 }
 
 // ---------------------------------------------------------------------------
-// Complex card form
+// Complex / UK / bank form
 // ---------------------------------------------------------------------------
 
 export function complexToForm(c: FirstRunComplex | null | undefined): FirstRunComplexForm {
+  const street =
+    c?.address_street?.trim() ||
+    (!c?.address_city?.trim() && !c?.address_country?.trim() ? c?.address ?? '' : '');
+  const banks = c?.bank_accounts?.length ? c.bank_accounts : [emptyBankAccount(true)];
   return {
-    display_name: c?.display_name ?? '',
-    address: c?.address ?? '',
+    display_name: c?.display_name || c?.complex_name || '',
+    address_country: c?.address_country ?? '',
+    address_city: c?.address_city ?? '',
+    address_postal_code: c?.address_postal_code ?? '',
+    address_street: street,
+    address_building_number: c?.address_building_number ?? '',
     apartment_count: c?.apartment_count != null ? String(c.apartment_count) : '',
     contact_phone: c?.contact_phone ?? '',
     contact_email: c?.contact_email ?? '',
+    mgmt_legal_name: c?.mgmt_legal_name ?? '',
+    mgmt_legal_form: c?.mgmt_legal_form ?? '',
+    mgmt_registration_country: c?.mgmt_registration_country ?? '',
+    mgmt_registration_number: c?.mgmt_registration_number ?? '',
+    mgmt_vat_registered: c?.mgmt_vat_registered === true,
+    mgmt_vat_number: c?.mgmt_vat_number ?? '',
+    mgmt_registered_address: c?.mgmt_registered_address ?? '',
+    mgmt_correspondence_address: c?.mgmt_correspondence_address ?? '',
+    mgmt_representative_name: c?.mgmt_representative_name ?? '',
+    mgmt_representative_title: c?.mgmt_representative_title ?? '',
+    mgmt_phone: c?.mgmt_phone ?? '',
+    mgmt_email: c?.mgmt_email ?? '',
+    bank_accounts: banks.map((b) => ({ ...b })),
   };
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Returns error codes (empty = valid). Mirrors SQL: name, address, apartment_count > 0 required. */
+function bankRowFilled(b: FirstRunBankAccount): boolean {
+  return Boolean(
+    b.purpose.trim() ||
+      b.account_holder.trim() ||
+      b.bank_name.trim() ||
+      b.iban.trim() ||
+      b.bic_swift.trim(),
+  );
+}
+
+/** Returns error codes (empty = valid). Mirrors SQL commit rules. */
 export function validateComplexForm(form: FirstRunComplexForm): string[] {
   const errors: string[] = [];
   if (!form.display_name.trim()) errors.push('display_name');
-  if (!form.address.trim()) errors.push('address');
+  if (!form.address_country.trim()) errors.push('address_country');
+  if (!form.address_city.trim()) errors.push('address_city');
+  if (!form.address_street.trim()) errors.push('address_street');
+  if (!form.address_building_number.trim()) errors.push('address_building_number');
   const n = Number(form.apartment_count.trim());
   if (!form.apartment_count.trim() || !Number.isInteger(n) || n <= 0) errors.push('apartment_count');
   const email = form.contact_email.trim();
   if (email && !EMAIL_RE.test(email)) errors.push('contact_email');
+
+  if (!form.mgmt_legal_name.trim()) errors.push('mgmt_legal_name');
+  if (!form.mgmt_registration_country.trim()) errors.push('mgmt_registration_country');
+  if (!form.mgmt_registration_number.trim()) errors.push('mgmt_registration_number');
+  if (!form.mgmt_registered_address.trim()) errors.push('mgmt_registered_address');
+  if (!form.mgmt_representative_name.trim()) errors.push('mgmt_representative_name');
+  if (!form.mgmt_phone.trim()) errors.push('mgmt_phone');
+  if (!form.mgmt_email.trim()) errors.push('mgmt_email');
+  else if (!EMAIL_RE.test(form.mgmt_email.trim())) errors.push('mgmt_email');
+  if (form.mgmt_vat_registered && !form.mgmt_vat_number.trim()) errors.push('mgmt_vat_number');
+
+  form.bank_accounts.forEach((b, idx) => {
+    if (!bankRowFilled(b)) return;
+    if (!b.account_holder.trim()) errors.push(`bank_${idx}_account_holder`);
+    if (!b.bank_name.trim()) errors.push(`bank_${idx}_bank_name`);
+    if (!b.iban.trim()) errors.push(`bank_${idx}_iban`);
+    else {
+      // Dynamic import avoided — validate via inline require of isValidIban at call sites.
+    }
+  });
   return errors;
 }
 
-export function complexFormToPayload(form: FirstRunComplexForm): Record<string, unknown> {
+export function validateComplexFormWithIban(
+  form: FirstRunComplexForm,
+  ibanOk: (raw: string) => boolean,
+): string[] {
+  const errors = validateComplexForm(form);
+  form.bank_accounts.forEach((b, idx) => {
+    if (!bankRowFilled(b) || !b.iban.trim()) return;
+    if (!ibanOk(b.iban)) errors.push(`bank_${idx}_iban`);
+  });
+  return errors;
+}
+
+export function complexFormToPayload(
+  form: FirstRunComplexForm,
+  opts?: { asDraft?: boolean },
+): Record<string, unknown> {
+  const asDraft = opts?.asDraft === true;
+  const banks = form.bank_accounts
+    .filter((b) => {
+      if (!bankRowFilled(b)) return false;
+      // Draft: skip incomplete rows so partial typing does not block autosave.
+      if (asDraft) {
+        return Boolean(b.account_holder.trim() && b.bank_name.trim() && b.iban.trim());
+      }
+      return true;
+    })
+    .map((b, index) => ({
+      purpose: b.purpose.trim(),
+      account_holder: b.account_holder.trim(),
+      bank_name: b.bank_name.trim(),
+      iban: b.iban.trim(),
+      bic_swift: b.bic_swift.trim() || null,
+      currency: (b.currency.trim() || 'EUR').toUpperCase(),
+      is_primary: b.is_primary === true,
+      sort_order: index,
+    }));
+  const countRaw = form.apartment_count.trim();
+  const apartment_count = countRaw
+    ? Number(countRaw)
+    : asDraft
+      ? null
+      : Number.NaN;
   return {
     display_name: form.display_name.trim(),
-    address: form.address.trim(),
-    apartment_count: Number(form.apartment_count.trim()),
+    address: composeComplexAddressLine(form),
+    address_country: form.address_country.trim(),
+    address_city: form.address_city.trim(),
+    address_postal_code: form.address_postal_code.trim(),
+    address_street: form.address_street.trim(),
+    address_building_number: form.address_building_number.trim(),
+    apartment_count,
     contact_phone: form.contact_phone.trim(),
     contact_email: form.contact_email.trim(),
+    mgmt_legal_name: form.mgmt_legal_name.trim(),
+    mgmt_legal_form: form.mgmt_legal_form.trim(),
+    mgmt_registration_country: form.mgmt_registration_country.trim(),
+    mgmt_registration_number: form.mgmt_registration_number.trim(),
+    mgmt_vat_registered: form.mgmt_vat_registered === true,
+    mgmt_vat_number: form.mgmt_vat_registered ? form.mgmt_vat_number.trim() : '',
+    mgmt_registered_address: form.mgmt_registered_address.trim(),
+    mgmt_correspondence_address: form.mgmt_correspondence_address.trim(),
+    mgmt_representative_name: form.mgmt_representative_name.trim(),
+    mgmt_representative_title: form.mgmt_representative_title.trim(),
+    mgmt_phone: form.mgmt_phone.trim(),
+    mgmt_email: form.mgmt_email.trim(),
+    bank_accounts: banks,
+    as_draft: asDraft,
   };
 }
 
@@ -475,13 +1138,16 @@ export function normalizeFirstRunErrors(errors: unknown): FirstRunErrorRow[] {
   if (!Array.isArray(errors)) return [];
   return errors.map((e) => {
     const r = asRecord(e);
-    const codes = Array.isArray(r.codes) ? (r.codes as unknown[]).map(String).join(', ') : '';
+    const severityRaw = str(r.severity).toLowerCase();
+    const reason = str(r.code || r.reason);
     return {
       sheet: str(r.sheet),
       row: str(r.row ?? r._row),
       field: str(r.field),
-      reason: str(r.reason || r.code) + (codes ? `: ${codes}` : ''),
+      // Keep a single stable code; never dump codes[] arrays into the UI reason.
+      reason,
       apartment: str(r.apartment_number),
+      severity: severityRaw === 'warning' ? 'warning' : 'error',
     };
   });
 }

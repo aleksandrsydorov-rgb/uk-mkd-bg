@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { annualSupportFee, type SupportFeeEntry } from '@/lib/finance';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import {
   assertSupportFeeRestoreTargetMatch,
@@ -53,6 +54,7 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 function formatPolicyPercent(raw: string | number, locale: string) {
   const v = Number(String(raw).replace(',', '.'));
@@ -90,6 +92,7 @@ export function AdminSupportFeeAnnual({
   panel?: 'all' | 'policy' | 'register';
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const defaultYear = sofiaCalendarYear() + 1;
   const [year, setYear] = useState(String(defaultYear));
   const [enabled, setEnabled] = useState(true);
@@ -191,7 +194,7 @@ export function AdminSupportFeeAnnual({
     const msg =
       e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message ?? '') : '';
     if (/published policy cannot be edited/i.test(msg)) return null;
-    return msg || t('admin.sfSaveFailed');
+    return toUserFacingMessage(e, t, { fallback: t('admin.sfSaveFailed') });
   }
 
   async function load() {
@@ -323,7 +326,7 @@ export function AdminSupportFeeAnnual({
       await load();
       await onReload();
     } catch (e: unknown) {
-      onError(e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : t('admin.sfSaveFailed'));
+      onError(toUserFacingMessage(e, t, { context: 'finance', fallback: t('admin.sfSaveFailed') }));
     } finally {
       setSaving(false);
     }
@@ -352,7 +355,7 @@ export function AdminSupportFeeAnnual({
       await load();
       await onReload();
     } catch (e: unknown) {
-      onError(e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : t('admin.sfSaveFailed'));
+      onError(toUserFacingMessage(e, t, { context: 'finance', fallback: t('admin.sfSaveFailed') }));
     } finally {
       setSaving(false);
     }
@@ -363,6 +366,7 @@ export function AdminSupportFeeAnnual({
 
   return (
     <div className="space-y-4">
+      {dialog}
       {showPolicy && (
       <div className={`${adminCardClass} p-4 md:p-5`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -629,10 +633,9 @@ export function AdminSupportFeeAnnual({
               const p = properties.find((x) => x.id === row.propertyId);
               if (!p) return null;
               const a = assessments.find((x) => x.property_id === p.id);
-              // D1: remaining_due is canonical outstanding; portal debt/over are reconcile/credit only.
+              // D1: remaining_due is the canonical outstanding amount.
               const outstanding = a ? Number(a.remaining_due ?? 0) : 0;
               const over = Number(p.overpayment ?? 0);
-              const portalDebt = Number(p.debt ?? 0);
               const voidElig = a
                 ? assessVoidSupportAssessmentEligibility({
                     status: a.status,
@@ -694,11 +697,6 @@ export function AdminSupportFeeAnnual({
                     ) : (
                       <StatusBadge label={t('admin.balSettled')} tone="neutral" />
                     )}
-                    {a && a.status !== 'void' && portalDebt !== outstanding ? (
-                      <div className="mt-1 text-[10px] text-muted">
-                        portal {formatEurAmount(portalDebt, locale)}
-                      </div>
-                    ) : null}
                     {a?.void_reason ? (
                       <div className="mt-1 text-[10px] text-muted">{a.void_reason}</div>
                     ) : null}
@@ -925,11 +923,7 @@ export function AdminSupportFeeAnnual({
                     await load();
                     await onReload();
                   } catch (err: unknown) {
-                    onError(
-                      err && typeof err === 'object' && 'message' in err
-                        ? String((err as { message: unknown }).message)
-                        : t('admin.sfSaveFailed')
-                    );
+                    onError(toUserFacingMessage(err, t, { context: 'finance', fallback: t('admin.sfSaveFailed') }));
                   } finally {
                     setVoidBusy(false);
                   }
@@ -1039,11 +1033,7 @@ export function AdminSupportFeeAnnual({
                     await load();
                     await onReload();
                   } catch (err: unknown) {
-                    onError(
-                      err && typeof err === 'object' && 'message' in err
-                        ? String((err as { message: unknown }).message)
-                        : t('admin.sfSaveFailed')
-                    );
+                    onError(toUserFacingMessage(err, t, { context: 'finance', fallback: t('admin.sfSaveFailed') }));
                   } finally {
                     setRestoreBusy(false);
                   }
@@ -1132,7 +1122,14 @@ export function AdminSupportFeeAnnual({
                 onError(t('admin.sfErrWaiveNotEligible'));
                 return;
               }
-              if (!confirm(t('admin.sfWaiveConfirm'))) return;
+              const ok = await confirm({
+                title: t('common.confirmAction'),
+                description: t('admin.sfWaiveConfirm'),
+                confirmLabel: t('common.yes'),
+                cancelLabel: t('common.cancel'),
+                tone: 'danger',
+              });
+              if (!ok) return;
               setSaving(true);
               try {
                 const { error } = await supabase.rpc('waive_support_fee_late_increase', {
@@ -1146,11 +1143,7 @@ export function AdminSupportFeeAnnual({
                 await load();
                 await onReload();
               } catch (err: unknown) {
-                onError(
-                  err && typeof err === 'object' && 'message' in err
-                    ? String((err as { message: unknown }).message)
-                    : t('admin.sfSaveFailed'),
-                );
+                onError(toUserFacingMessage(err, t, { context: 'finance', fallback: t('admin.sfSaveFailed') }));
               } finally {
                 setSaving(false);
               }
@@ -1232,7 +1225,7 @@ export function AdminSupportFeeAnnual({
                 await load();
                 await onReload();
               } catch (err: unknown) {
-                onError(err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : t('admin.sfSaveFailed'));
+                onError(toUserFacingMessage(err, t, { context: 'finance', fallback: t('admin.sfSaveFailed') }));
               } finally {
                 setSaving(false);
               }

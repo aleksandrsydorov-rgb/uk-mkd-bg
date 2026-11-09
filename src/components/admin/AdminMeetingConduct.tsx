@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import type { Translate } from '@/i18n/translate';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   AdminCard,
   AdminEmptyState,
@@ -132,7 +133,7 @@ export function AdminMeetingConduct({
       await fn();
       await onReload();
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
+      onError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setBusy(false);
     }

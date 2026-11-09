@@ -42,7 +42,8 @@ export async function GET() {
       supabaseHost = null;
     }
     try {
-      const ctrl = AbortSignal.timeout(2500);
+      // Local multi-stack hosts can be slow under load; keep probe short but not flaky.
+      const ctrl = AbortSignal.timeout(8000);
       const anon = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
       const res = await fetch(`${probeBase}/auth/v1/health`, {
         method: 'GET',

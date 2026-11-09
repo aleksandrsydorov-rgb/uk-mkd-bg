@@ -12,6 +12,7 @@ import { resolveAccess, resolveStaffHome } from '@/lib/access';
 import { resolveAdminEntryPath } from '@/lib/firstBoot';
 import { normalizeEmail } from '@/lib/email';
 import { createClient } from '@/lib/supabase/client';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 function HeroPhoto({ placement }: { placement: 'desktop' | 'mobile' }) {
   const frame =
@@ -370,12 +371,12 @@ export default function HomePage() {
         password,
       });
       if (error) {
-        setLoginError(error.message);
+        setLoginError(toUserFacingMessage(error, t, { context: 'login', fallback: t('common.errLogin') }));
         return;
       }
       const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
       if (!authenticatedEmail) {
-        setLoginError('No email on authenticated user');
+        setLoginError(t('common.errLogin'));
         return;
       }
       const access = await resolveAccess(authenticatedEmail, supabase);
@@ -385,13 +386,7 @@ export default function HomePage() {
         router.replace(resolveStaffHome(access));
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
-            ? (err as { message: string }).message
-            : 'Sign in failed';
-      setLoginError(msg || 'Sign in failed');
+      setLoginError(toUserFacingMessage(err, t, { context: 'login', fallback: t('common.errLogin') }));
     } finally {
       setLoginLoading(false);
     }

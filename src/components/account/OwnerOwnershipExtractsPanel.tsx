@@ -4,8 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import {
+  labelCertifiedRequestStatus,
+  labelTransfer,
+} from '@/i18n/labels';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { isMissingRpcError } from '@/lib/ownershipChange';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   downloadAttachedExtractPdf,
   generateAndAttachPropertyBookPdfs,
@@ -67,12 +72,12 @@ export function OwnerOwnershipExtractsPanel({
       supabase.rpc('owner_list_ownership_history', { p_property_id: propertyId }),
     ]);
     if (exRes.error) {
-      if (!isMissingRpcError(exRes.error)) onError(exRes.error.message);
+      if (!isMissingRpcError(exRes.error)) onError(toUserFacingMessage(exRes.error, t, { context: 'load', fallback: t('xfer.errExtract') }));
     } else {
       setExtracts((exRes.data as ExtractRow[]) ?? []);
     }
     if (histRes.error) {
-      if (!isMissingRpcError(histRes.error)) onError(histRes.error.message);
+      if (!isMissingRpcError(histRes.error)) onError(toUserFacingMessage(histRes.error, t, { context: 'load', fallback: t('xfer.errExtract') }));
     } else if (histRes.data && typeof histRes.data === 'object') {
       setHistory(histRes.data as HistoryPayload);
     }
@@ -100,7 +105,7 @@ export function OwnerOwnershipExtractsPanel({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errExtract'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errExtract') }));
       setStatusMsg(null);
     } finally {
       setBusy('idle');
@@ -119,7 +124,7 @@ export function OwnerOwnershipExtractsPanel({
       await reload();
     } catch (err: unknown) {
       if (isMissingRpcError(err)) onError(t('xfer.errMigrationRequired'));
-      else onError(err instanceof Error ? err.message : t('xfer.errExtract'));
+      else onError(toUserFacingMessage(err, t, { fallback: t('xfer.errExtract') }));
     } finally {
       setBusy('idle');
     }
@@ -135,7 +140,7 @@ export function OwnerOwnershipExtractsPanel({
       } else if (isMissingRpcError(err)) {
         onError(t('xfer.errMigrationRequired'));
       } else {
-        onError(err instanceof Error ? err.message : t('xfer.errExtract'));
+        onError(toUserFacingMessage(err, t, { fallback: t('xfer.errExtract') }));
       }
     } finally {
       setBusy('idle');
@@ -190,7 +195,18 @@ export function OwnerOwnershipExtractsPanel({
         {(history?.transfers ?? []).slice(0, 8).map((tr) => (
           <div key={tr.id} className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-secondary">
             <div>
-              {tr.change_reason || tr.change_kind || '—'} · {tr.status}
+              {(() => {
+                const kind = String(tr.change_reason || tr.change_kind || '').trim();
+                const kindMap: Record<string, string> = {
+                  ordinary: t('xfer.kindOrdinary'),
+                  inheritance: t('xfer.kindInheritance'),
+                  admin_initiated: t('xfer.kindAdmin'),
+                  correction_link: t('xfer.reasonCorrection'),
+                  entity_person: t('xfer.kindEntityPerson'),
+                };
+                return kindMap[kind] || kind || '—';
+              })()}{' '}
+              · {labelTransfer(tr.status, t)}
             </div>
             <div className="text-muted">
               {t('xfer.legalDate')}: {tr.legal_effective_date || '—'}
@@ -235,7 +251,7 @@ export function OwnerOwnershipExtractsPanel({
                   {' · '}
                   {ex.has_pdf ? t('xfer.pdfReady') : t('xfer.pdfNotAttached')}
                   {ex.certified_request_status
-                    ? ` · ${ex.certified_request_status}`
+                    ? ` · ${labelCertifiedRequestStatus(ex.certified_request_status, t)}`
                     : ''}
                   {ex.is_signed ? '' : ` · ${t('xfer.unsigned')}`}
                 </div>

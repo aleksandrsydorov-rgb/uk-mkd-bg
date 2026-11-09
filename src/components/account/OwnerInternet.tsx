@@ -14,6 +14,7 @@ import {
 } from '@/lib/internet';
 import { formatEur, mapAdminRpcError } from '@/lib/utilities';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 function statusTone(status: string): 'warning' | 'info' | 'success' | 'danger' | 'neutral' {
   if (status === 'pending_enable' || status === 'pending_disable') return 'warning';
@@ -46,6 +47,7 @@ export function OwnerInternet({
   serviceLocked?: boolean;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [subscription, setSubscription] = useState<InternetSubscription | null>(null);
   const [history, setHistory] = useState<InternetLedger[]>([]);
   const [monthRate, setMonthRate] = useState<number | null>(null);
@@ -79,7 +81,7 @@ export function OwnerInternet({
         setMonthRate(row ? Number(row.amount_eur) : null);
       }
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
     } finally {
       setLoading(false);
     }
@@ -111,7 +113,7 @@ export function OwnerInternet({
       setSuccess(t('account.internetPendingHint'));
       await load();
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
     } finally {
       setBusy(false);
     }
@@ -122,7 +124,14 @@ export function OwnerInternet({
       setError(t('account.serviceLockBanner'));
       return;
     }
-    if (!confirm(t('account.internetCancelConfirm'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('account.internetCancelConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -134,7 +143,7 @@ export function OwnerInternet({
       setSuccess(t('account.internetCancelled'));
       await load();
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
     } finally {
       setBusy(false);
     }
@@ -145,7 +154,14 @@ export function OwnerInternet({
       setError(t('account.serviceLockBanner'));
       return;
     }
-    if (!confirm(t('account.internetDisconnectConfirm'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('account.internetDisconnectConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -157,7 +173,7 @@ export function OwnerInternet({
       setSuccess(t('account.internetDisconnectPending'));
       await load();
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
     } finally {
       setBusy(false);
     }
@@ -165,6 +181,7 @@ export function OwnerInternet({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <div>
         <h2 className="text-lg font-semibold text-foreground">{t('account.internetTitle')}</h2>
         <p className="mt-1 text-sm text-secondary">{t('account.internetLeadTech')}</p>

@@ -25,6 +25,7 @@ import {
   todayIsoDate,
   type UtilityBalance,
 } from '@/lib/utilities';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import { parseRatesJson } from '@/lib/tariffs';
 import {
   AdminPageHeader,
@@ -36,6 +37,20 @@ import {
   type AdminUtilityTab,
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
+import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
+import {
+  emptyReceiptPayFields,
+  PaymentReceiptPayFields,
+  type PaymentReceiptPayFieldValues,
+} from '@/components/paymentReceipts/PaymentReceiptPayFields';
+import { PaymentSuccessBanner } from '@/components/paymentReceipts/PaymentReceiptActions';
+import { LedgerPaymentReceiptCell } from '@/components/paymentReceipts/LedgerPaymentReceiptCell';
+import {
+  finishReceiptForPayment,
+  ledgerIdFromPaymentRpc,
+  prepareReceiptIntentFromFields,
+} from '@/lib/paymentReceipts/afterPayment';
+import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 
 type PropertyOption = {
   id: number;
@@ -87,7 +102,9 @@ export function AdminElectricityFinance({
     [properties],
   );
 
-  const [propertyId, setPropertyId] = useState<number | ''>(sorted[0]?.id ?? '');
+  const [propertyId, setPropertyId] = useState<number | ''>(
+    focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : '',
+  );
 
   useEffect(() => {
     if (focusPropertyId == null || focusPropertyId === '') return;
@@ -104,6 +121,9 @@ export function AdminElectricityFinance({
   const [success, setSuccess] = useState<string | null>(null);
 
   const [payAmount, setPayAmount] = useState('');
+  const [payReceiptFields, setPayReceiptFields] = useState<PaymentReceiptPayFieldValues>(emptyReceiptPayFields);
+  const [lastPayReceipt, setLastPayReceipt] = useState<PaymentReceiptRow | null>(null);
+  const [lastPayAmountLabel, setLastPayAmountLabel] = useState<string | null>(null);
   const [payNote, setPayNote] = useState('');
   const payKeyRef = useRef(crypto.randomUUID());
 
@@ -192,33 +212,67 @@ export function AdminElectricityFinance({
 
   function rpcFail(message: string | undefined) {
     setSuccess(null);
-    setError(t(mapAdminRpcError(message ?? '')));
+    setError(
+      toUserFacingMessage(
+        { message: message ?? '' },
+        t,
+        { context: 'finance', fallback: t(mapAdminRpcError(message ?? '')) },
+      ),
+    );
+  }
+
+  function goFillUk() {
+    window.location.assign('/admin?section=%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B9%D0%BA%D0%B8');
   }
 
   async function handlePay(e: React.FormEvent) {
     e.preventDefault();
-    if (propertyId === '' || !canFinance) return;
+    if (propertyId === '' || !canFinance || payBusy) return;
     const amount = Number(payAmount);
     if (!(amount > 0) || Number.isNaN(amount)) {
       setError(t('admin.errAmount'));
       return;
     }
     setPayBusy(true);
-    const { error: rpcErr } = await supabase.rpc('record_electricity_payment', {
+    setLastPayReceipt(null);
+    const idem = payKeyRef.current;
+    const intentErr = await prepareReceiptIntentFromFields(supabase, idem, payReceiptFields);
+    if (intentErr) {
+      setPayBusy(false);
+      setError(
+        toUserFacingMessage(intentErr, t, {
+          context: 'finance',
+          fallback: t('admin.errReceiptPrepare'),
+        }),
+      );
+      return;
+    }
+    const { data: payData, error: rpcErr } = await supabase.rpc('record_electricity_payment', {
       p_property_id: Number(propertyId),
       p_amount_eur: amount,
       p_note: payNote.trim() || null,
-      p_idempotency_key: payKeyRef.current,
+      p_idempotency_key: idem,
     });
-    setPayBusy(false);
     if (rpcErr) {
+      setPayBusy(false);
       rpcFail(rpcErr.message);
       return;
     }
+    const ledgerId = ledgerIdFromPaymentRpc(payData);
+    const amountLabel = formatEur(amount, locale);
+    setLastPayAmountLabel(amountLabel);
+    const finished = await finishReceiptForPayment(supabase, 'electricity', ledgerId);
+    setLastPayReceipt(finished.receipt);
     payKeyRef.current = crypto.randomUUID();
     setPayAmount('');
     setPayNote('');
-    flash(t('admin.okElectricityPay'));
+    setPayReceiptFields(emptyReceiptPayFields());
+    setPayBusy(false);
+    flash(
+      finished.pdfError && finished.receipt
+        ? t('receipt.paySavedPdfFailed')
+        : t('receipt.payRegistered', { amount: amountLabel }),
+    );
     void import('@/lib/email/eventProducers')
       .then(({ notifyPropertyOwnersEvent }) =>
         notifyPropertyOwnersEvent(supabase, {
@@ -246,6 +300,30 @@ export function AdminElectricityFinance({
   const showTariff = !panel || panel === 'tariff';
   const showFinance = !panel || panel === 'finance';
 
+  if (panel === 'finance') {
+    return (
+      <div className="space-y-4">
+        {!embedded && (
+          <AdminPageHeader title={t('admin.electricityFinance')} secondary={t('admin.utilFinRegisterLead')} />
+        )}
+        <AdminUtilityFinanceWorkplace
+          service="electricity"
+          supabase={supabase}
+          properties={sorted}
+          canOperate={canFinance}
+          focusPropertyId={propertyId}
+          onPropertyChange={(id) => {
+            setPropertyId(id);
+            onPropertyChange?.(id);
+          }}
+          extraCardActions={
+            <p className="mt-3 text-sm text-secondary">{t('admin.utilFinElChargesHint')}</p>
+          }
+        />
+      </div>
+    );
+  }
+
   if (panel === 'overview') {
     return (
       <div className="grid grid-cols-2 gap-3">
@@ -260,17 +338,15 @@ export function AdminElectricityFinance({
           }
           secondary={
             tariff
-              ? `${t('account.elNight')} ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)}`
+              ? `${t('account.elNight')} ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)} · ${t('admin.tariffManageInCore')}`
               : t('admin.noTariff')
           }
-          onClick={() => onOpenTab?.('tariff')}
         />
         <AdminMetricCard
           label={t('admin.electricityBalance')}
           value={propLoading ? t('common.loading') : formatEur(Math.abs(balance.balance_eur), locale)}
           secondary={statusLabel}
           alert={tone === 'debt'}
-          onClick={() => onOpenTab?.('finance')}
         />
       </div>
     );
@@ -354,11 +430,28 @@ export function AdminElectricityFinance({
           </div>
           <div className={cardClass}>
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.recordPayment')}</p>
+            {lastPayAmountLabel ? (
+              <div className="mt-3">
+                <PaymentSuccessBanner
+                  amountLabel={lastPayAmountLabel}
+                  receipt={lastPayReceipt}
+                  supabase={supabase}
+                  onFillUk={goFillUk}
+                  onReceiptChange={setLastPayReceipt}
+                />
+              </div>
+            ) : null}
             <form onSubmit={handlePay} className="mt-4 space-y-3">
-              <input className={fieldClass} type="number" min="0.01" step="0.01" placeholder={t('admin.amountEur')} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} required />
-              <input className={fieldClass} placeholder={t('admin.noteOptional')} value={payNote} onChange={(e) => setPayNote(e.target.value)} />
+              <input className={fieldClass} type="number" min="0.01" step="0.01" placeholder={t('admin.amountEur')} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} required disabled={payBusy} />
+              <input className={fieldClass} placeholder={t('admin.noteOptional')} value={payNote} onChange={(e) => setPayNote(e.target.value)} disabled={payBusy} />
+              <PaymentReceiptPayFields
+                values={payReceiptFields}
+                onChange={setPayReceiptFields}
+                fieldClass={fieldClass}
+                defaultPayerHint={sorted.find((p) => p.id === propertyId)?.owner_name ?? undefined}
+              />
               <button type="submit" disabled={payBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
-                {payBusy ? t('common.saving') : t('admin.recordPayment')}
+                {payBusy ? t('receipt.forming') : t('admin.recordPayment')}
               </button>
             </form>
           </div>
@@ -383,6 +476,7 @@ export function AdminElectricityFinance({
                   <th className="py-2 pr-3">{t('account.elTariffDay')}</th>
                   <th className="py-2 pr-3">{t('account.elTariffNight')}</th>
                   <th className="py-2 pr-3">{t('account.utilCharged')}</th>
+                  <th className="py-2 pr-3">{t('admin.elCharged')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -394,6 +488,7 @@ export function AdminElectricityFinance({
                     <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.day_tariff_eur_per_kwh), locale)}</td>
                     <td className="py-2 pr-3 tabular-nums">{formatElectricityTariff(Number(row.night_tariff_eur_per_kwh), locale)}</td>
                     <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.total_amount_eur), locale)}</td>
+                    <td className="py-2 pr-3">{t('admin.elCharged')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -419,6 +514,7 @@ export function AdminElectricityFinance({
                     <th className="py-2 pr-3">{t('admin.kind')}</th>
                     <th className="py-2 pr-3">{t('admin.amount')}</th>
                     <th className="py-2 pr-3">{t('admin.note')}</th>
+                    <th className="py-2 pr-3">{t('receipt.open')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -428,6 +524,15 @@ export function AdminElectricityFinance({
                       <td className="py-2 pr-3">{labelLedgerKind(row.kind, t)}</td>
                       <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur), locale)}</td>
                       <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
+                      <td className="py-2 pr-3 align-top">
+                        <LedgerPaymentReceiptCell
+                          supabase={supabase}
+                          module="electricity"
+                          ledgerId={String(row.id)}
+                          kind={row.kind}
+                          onFillUk={goFillUk}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

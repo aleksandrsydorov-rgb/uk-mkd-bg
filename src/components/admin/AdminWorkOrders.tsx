@@ -34,6 +34,7 @@ import {
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 type PropertyOption = {
   id: number;
@@ -121,6 +122,7 @@ export function AdminWorkOrders({
   onClearFromRequest?: () => void;
 }) {
   const { t } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [rows, setRows] = useState<WorkOrderAdminRow[]>([]);
   const [assignees, setAssignees] = useState<StaffOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -373,7 +375,13 @@ export function AdminWorkOrders({
   }
 
   async function handleCancel(id: string) {
-    if (!confirm(t('admin.woConfirmCancel'))) return;
+    const ok = await confirm({
+      title: t('admin.woConfirmCancel'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setError(null);
     setBusyId(id);
     try {
@@ -389,6 +397,7 @@ export function AdminWorkOrders({
 
   return (
     <div className="min-w-0 space-y-4">
+      {dialog}
       <AdminPageHeader
         title={t('admin.workOrders')}
         secondary={t('admin.workOrdersLead')}

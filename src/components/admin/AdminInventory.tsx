@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { ownerVisibleError } from '@/lib/ownerError';
+import { errorTextForMapper } from '@/lib/userFacingError';
 import {
   canSeeInventoryAdmin,
   categoryDisplayName,
@@ -14,6 +15,25 @@ import {
   inventoryRpc,
   inventorySelect,
   inventorySessionStatusTone,
+  presentInventoryAssetStatus,
+  presentInventoryCondition,
+  presentInventoryEventKind,
+  presentInventoryFindingStatus,
+  presentInventoryLocationKind,
+  presentInventoryMaintenanceKind,
+  presentInventoryMoveAction,
+  presentInventoryMovement,
+  presentInventoryOwnership,
+  presentInventorySessionStatus,
+  presentInventoryTracking,
+  presentInventoryUnit,
+  slugifyInventoryCatalogCode,
+  INV1_ASSET_STATUSES,
+  INVENTORY_LOCATION_KINDS,
+  INVENTORY_MAINT_KINDS,
+  INVENTORY_MOVEMENT_TYPES,
+  INVENTORY_OWNERSHIP,
+  INVENTORY_UNIT_CODES,
   type InventoryAdminView,
   type InventoryAssetRow,
   type InventoryCategoryRow,
@@ -25,9 +45,11 @@ import {
 } from '@/lib/inventory';
 import {
   InventoryDocumentValidationError,
+  INV3_MAX_BYTES,
   uploadAndRegisterInventoryDocument,
 } from '@/lib/inventory/documentsClient';
 import { SignedStorageLink, SignedStorageImage } from '@/components/SignedStorageMedia';
+import { AppFilePicker, formatAcceptHint, formatFileSizeMb } from '@/components/ui/AppFilePicker';
 import {
   AdminPageHeader,
   AdminEmptyState,
@@ -45,8 +67,25 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 type StaffOpt = { id: number; name: string; email: string | null };
+
+const labelClass = 'block space-y-1 text-sm';
+const labelTextClass = 'text-xs font-medium text-secondary';
+
+/** Auto-generate a unique catalog code (never reuses an existing one: upsert is keyed by code). */
+function uniqueCatalogCode(name: string, fallback: string, existing: string[]): string {
+  const taken = new Set(existing.map((c) => c.trim().toLowerCase()));
+  const base = slugifyInventoryCatalogCode(name, fallback).toLowerCase();
+  if (!taken.has(base)) return base;
+  for (let i = 0; i < 50; i += 1) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const candidate = `${base.slice(0, 35)}-${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base.slice(0, 25)}-${Date.now().toString(36)}`;
+}
 
 export function AdminInventory({
   supabase,
@@ -56,6 +95,7 @@ export function AdminInventory({
   staffRole: string;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const canSee = canSeeInventoryAdmin(staffRole);
 
   const [view, setView] = useState<InventoryAdminView>('overview');
@@ -94,13 +134,17 @@ export function AdminInventory({
   const [stockMoveType, setStockMoveType] = useState('RECEIPT');
   const [stockMoveQty, setStockMoveQty] = useState('1');
 
-  const [catCode, setCatCode] = useState('');
+  const [showAssetForm, setShowAssetForm] = useState(false);
+  const [showStockForm, setShowStockForm] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [showLocationForm, setShowLocationForm] = useState(false);
+  const [showSessionForm, setShowSessionForm] = useState(false);
+
   const [catBg, setCatBg] = useState('');
   const [catRu, setCatRu] = useState('');
   const [catEn, setCatEn] = useState('');
   const [catParent, setCatParent] = useState('');
 
-  const [locCode, setLocCode] = useState('');
   const [locName, setLocName] = useState('');
   const [locKind, setLocKind] = useState('storage');
 
@@ -110,6 +154,15 @@ export function AdminInventory({
   const [transferLocationId, setTransferLocationId] = useState('');
   const [maintSummary, setMaintSummary] = useState('');
   const [maintKind, setMaintKind] = useState('service');
+
+  const catPrimaryLang: 'bg' | 'ru' | 'en' = locale === 'bg' ? 'bg' : locale === 'en' ? 'en' : 'ru';
+  const catPrimaryValue = catPrimaryLang === 'bg' ? catBg : catPrimaryLang === 'en' ? catEn : catRu;
+  const setCatPrimaryValue = (v: string) => {
+    if (catPrimaryLang === 'bg') setCatBg(v);
+    else if (catPrimaryLang === 'en') setCatEn(v);
+    else setCatRu(v);
+  };
+  const selectedMoveBalance = balances.find((b) => b.stock_item_id === stockMoveId) ?? null;
 
   const categoryNameById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -141,6 +194,14 @@ export function AdminInventory({
   const selectedAsset = useMemo(
     () => assets.find((a) => a.id === selectedAssetId) ?? null,
     [assets, selectedAssetId],
+  );
+
+  const selectedAssetLocation = useMemo(
+    () =>
+      selectedAsset?.location_id
+        ? (locations.find((l) => l.id === String(selectedAsset.location_id)) ?? null)
+        : null,
+    [locations, selectedAsset],
   );
 
   useEffect(() => {
@@ -191,7 +252,7 @@ export function AdminInventory({
         setError(
           firstErr.message.includes('permission') || firstErr.message.includes('does not exist')
             ? t('admin.invMigrationNeeded')
-            : ownerVisibleError(firstErr, t('admin.errGeneric')),
+            : ownerVisibleError(firstErr, t('admin.errGeneric'), t),
         );
       }
       setAssets(a.data.map((r) => ({ ...r, id: String(r.id) })));
@@ -208,7 +269,7 @@ export function AdminInventory({
       setSessions(s.data.map((r) => ({ ...r, id: String(r.id) })));
       setStaff(st.data);
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
     } finally {
       setLoading(false);
     }
@@ -267,7 +328,38 @@ export function AdminInventory({
       setSuccess(okMsg);
       await load();
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function archiveCategory(c: InventoryCategoryRow) {
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('admin.invArchiveCategoryConfirm'),
+      confirmLabel: t('admin.invArchive'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const { error: err } = await inventoryRpc(supabase, 'inventory_archive_category', {
+        p_id: c.id,
+      });
+      if (err) throw err;
+      setSuccess(t('admin.invCategoryArchived'));
+      await load();
+    } catch (e: unknown) {
+      const probe = `${errorTextForMapper(e)} ${(e as { code?: string } | null)?.code ?? ''}`;
+      if (/active references|23503|referenc/i.test(probe)) {
+        setError(t('admin.invCategoryInUse'));
+      } else {
+        setError(ownerVisibleError(e, t('admin.errGeneric'), t));
+      }
     } finally {
       setBusy(false);
     }
@@ -291,6 +383,7 @@ export function AdminInventory({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <AdminPageHeader
         title={t('admin.inventory')}
         secondary={t('admin.invLead')}
@@ -300,7 +393,6 @@ export function AdminInventory({
           </AdminSecondaryButton>
         }
       />
-      <AdminInlineAlert tone="info">{t('admin.invNoFinance')}</AdminInlineAlert>
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
 
@@ -322,7 +414,11 @@ export function AdminInventory({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <AdminMetricCard label={t('admin.invMetricActive')} value={String(overview.activeAssets)} />
-            <AdminMetricCard label={t('admin.invMetricStock')} value={String(overview.stockSkuCount)} />
+            <AdminMetricCard
+              label={t('admin.invMetricStock')}
+              value={String(overview.stockSkuCount)}
+              secondary={t('admin.invStockNamesHint')}
+            />
             <AdminMetricCard
               label={t('admin.invMetricLowStock')}
               value={String(overview.lowStockCount)}
@@ -337,10 +433,11 @@ export function AdminInventory({
           <div className="grid gap-3 md:grid-cols-3">
             <div className={adminCardClass + ' p-4'}>
               <h3 className="text-sm font-semibold">{t('admin.invByOwnership')}</h3>
+              <p className="text-xs text-muted">{t('admin.invByOwnershipHint')}</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {Object.entries(overview.byOwnership).map(([k, n]) => (
                   <li key={k} className="flex justify-between gap-2">
-                    <span className="text-secondary">{k}</span>
+                    <span className="text-secondary">{presentInventoryOwnership(k, t)}</span>
                     <span className="tabular-nums">{n}</span>
                   </li>
                 ))}
@@ -351,10 +448,11 @@ export function AdminInventory({
             </div>
             <div className={adminCardClass + ' p-4'}>
               <h3 className="text-sm font-semibold">{t('admin.invByCondition')}</h3>
+              <p className="text-xs text-muted">{t('admin.invByConditionHint')}</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {Object.entries(overview.byCondition).map(([k, n]) => (
                   <li key={k} className="flex justify-between gap-2">
-                    <span className="text-secondary">{k}</span>
+                    <span className="text-secondary">{presentInventoryCondition(k, t)}</span>
                     <span className="tabular-nums">{n}</span>
                   </li>
                 ))}
@@ -365,6 +463,7 @@ export function AdminInventory({
             </div>
             <div className={adminCardClass + ' p-4'}>
               <h3 className="text-sm font-semibold">{t('admin.invByCategory')}</h3>
+              <p className="text-xs text-muted">{t('admin.invByCategoryHint')}</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {Object.entries(overview.byCategory)
                   .slice(0, 8)
@@ -387,100 +486,130 @@ export function AdminInventory({
         <div className="space-y-4">
           {view === 'assets' ? (
             <>
-              <form
-                className={adminFormPanelClass}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    const { error: err } = await inventoryRpc(supabase, 'inventory_create_draft_asset', {
-                      p_inventory_number: draftNumber.trim(),
-                      p_name: draftName.trim(),
-                      p_ownership_kind: draftOwnership,
-                      p_category_id: draftCategoryId || null,
-                    });
-                    if (err) throw err;
-                    setDraftNumber('');
-                    setDraftName('');
-                  }, t('admin.invAssetCreated'));
-                }}
-              >
-                <h3 className="text-sm font-semibold">{t('admin.invCreateAsset')}</h3>
-                <div className="grid gap-2 md:grid-cols-4">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className={labelClass + ' min-w-[12rem] flex-1'}>
+                  <span className={labelTextClass}>{t('admin.invSearch')}</span>
                   <input
                     className={adminFieldClass}
-                    placeholder={t('admin.invNumber')}
-                    value={draftNumber}
-                    onChange={(e) => setDraftNumber(e.target.value)}
-                    required
+                    value={assetSearch}
+                    onChange={(e) => setAssetSearch(e.target.value)}
                   />
-                  <input
-                    className={adminFieldClass}
-                    placeholder={t('admin.invName')}
-                    value={draftName}
-                    onChange={(e) => setDraftName(e.target.value)}
-                    required
-                  />
+                </label>
+                <label className={labelClass + ' w-full sm:w-52'}>
+                  <span className={labelTextClass}>{t('admin.invOwnership')}</span>
                   <select
                     className={adminFieldClass}
-                    value={draftOwnership}
-                    onChange={(e) => setDraftOwnership(e.target.value)}
+                    value={assetFilterOwnership}
+                    onChange={(e) => setAssetFilterOwnership(e.target.value)}
                   >
-                    <option value="CONDOMINIUM">CONDOMINIUM</option>
-                    <option value="MANAGEMENT_COMPANY">MANAGEMENT_COMPANY</option>
-                    <option value="THIRD_PARTY">THIRD_PARTY</option>
-                  </select>
-                  <select
-                    className={adminFieldClass}
-                    value={draftCategoryId}
-                    onChange={(e) => setDraftCategoryId(e.target.value)}
-                  >
-                    <option value="">{t('admin.invCategory')}</option>
-                    {categories
-                      .filter((c) => c.active)
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {categoryDisplayName(c, locale)}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-                <AdminPrimaryButton type="submit" disabled={busy}>
-                  {t('admin.invCreateDraft')}
-                </AdminPrimaryButton>
-              </form>
-
-              <div className="grid gap-2 md:grid-cols-3">
-                <input
-                  className={adminFieldClass}
-                  placeholder={t('admin.invSearch')}
-                  value={assetSearch}
-                  onChange={(e) => setAssetSearch(e.target.value)}
-                />
-                <select
-                  className={adminFieldClass}
-                  value={assetFilterOwnership}
-                  onChange={(e) => setAssetFilterOwnership(e.target.value)}
-                >
-                  <option value="">{t('admin.invAllOwnership')}</option>
-                  <option value="CONDOMINIUM">CONDOMINIUM</option>
-                  <option value="MANAGEMENT_COMPANY">MANAGEMENT_COMPANY</option>
-                  <option value="THIRD_PARTY">THIRD_PARTY</option>
-                </select>
-                <select
-                  className={adminFieldClass}
-                  value={assetFilterStatus}
-                  onChange={(e) => setAssetFilterStatus(e.target.value)}
-                >
-                  <option value="">{t('admin.invAllStatus')}</option>
-                  {['draft', 'active', 'assigned', 'maintenance', 'written_off', 'archived'].map(
-                    (s) => (
-                      <option key={s} value={s}>
-                        {s}
+                    <option value="">{t('admin.invAllOwnership')}</option>
+                    {INVENTORY_OWNERSHIP.map((o) => (
+                      <option key={o} value={o}>
+                        {presentInventoryOwnership(o, t)}
                       </option>
-                    ),
-                  )}
-                </select>
+                    ))}
+                  </select>
+                </label>
+                <label className={labelClass + ' w-full sm:w-52'}>
+                  <span className={labelTextClass}>{t('admin.invStatus')}</span>
+                  <select
+                    className={adminFieldClass}
+                    value={assetFilterStatus}
+                    onChange={(e) => setAssetFilterStatus(e.target.value)}
+                  >
+                    <option value="">{t('admin.invAllStatus')}</option>
+                    {INV1_ASSET_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {presentInventoryAssetStatus(s, t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <AdminPrimaryButton
+                  type="button"
+                  aria-expanded={showAssetForm}
+                  onClick={() => setShowAssetForm((v) => !v)}
+                >
+                  {showAssetForm ? t('admin.invHideForm') : t('admin.invAddAsset')}
+                </AdminPrimaryButton>
               </div>
+
+              {showAssetForm ? (
+                <form
+                  className={adminFormPanelClass}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(async () => {
+                      const { error: err } = await inventoryRpc(supabase, 'inventory_create_draft_asset', {
+                        p_inventory_number: draftNumber.trim(),
+                        p_name: draftName.trim(),
+                        p_ownership_kind: draftOwnership,
+                        p_category_id: draftCategoryId || null,
+                      });
+                      if (err) throw err;
+                      setDraftNumber('');
+                      setDraftName('');
+                      setShowAssetForm(false);
+                    }, t('admin.invAssetCreated'));
+                  }}
+                >
+                  <h3 className="text-sm font-semibold">{t('admin.invCreateAsset')}</h3>
+                  <div className="grid gap-2 md:grid-cols-4">
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invNumber')}</span>
+                      <input
+                        className={adminFieldClass}
+                        value={draftNumber}
+                        onChange={(e) => setDraftNumber(e.target.value)}
+                        required
+                      />
+                    </label>
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invName')}</span>
+                      <input
+                        className={adminFieldClass}
+                        value={draftName}
+                        onChange={(e) => setDraftName(e.target.value)}
+                        required
+                      />
+                    </label>
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invOwnership')}</span>
+                      <select
+                        className={adminFieldClass}
+                        value={draftOwnership}
+                        onChange={(e) => setDraftOwnership(e.target.value)}
+                      >
+                        {INVENTORY_OWNERSHIP.map((o) => (
+                          <option key={o} value={o}>
+                            {presentInventoryOwnership(o, t)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invCategory')}</span>
+                      <select
+                        className={adminFieldClass}
+                        value={draftCategoryId}
+                        onChange={(e) => setDraftCategoryId(e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {categories
+                          .filter((c) => c.active)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {categoryDisplayName(c, locale)}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  </div>
+                  <AdminPrimaryButton type="submit" disabled={busy}>
+                    {t('admin.invCreateDraft')}
+                  </AdminPrimaryButton>
+                </form>
+              ) : null}
 
               {filteredAssets.length === 0 ? (
                 <AdminEmptyState title={t('admin.invEmptyAssets')} />
@@ -493,31 +622,36 @@ export function AdminInventory({
                         <th className={adminTableCellClass}>{t('admin.invName')}</th>
                         <th className={adminTableCellClass}>{t('admin.invOwnership')}</th>
                         <th className={adminTableCellClass}>{t('admin.invStatus')}</th>
-                        <th className={adminTableCellClass} />
                       </tr>
                     </thead>
                     <tbody>
                       {filteredAssets.map((a) => (
-                        <tr key={a.id} className={adminTableRowClass}>
+                        <tr
+                          key={a.id}
+                          className={adminTableRowClass + ' cursor-pointer hover:bg-hover/50'}
+                          tabIndex={0}
+                          onClick={() => {
+                            setSelectedAssetId(a.id);
+                            setView('asset_detail');
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedAssetId(a.id);
+                              setView('asset_detail');
+                            }
+                          }}
+                        >
                           <td className={adminTableCellClass}>{a.inventory_number}</td>
                           <td className={adminTableCellClass}>{a.name}</td>
-                          <td className={adminTableCellClass}>{a.ownership_kind}</td>
                           <td className={adminTableCellClass}>
-                            <StatusBadge
-                              label={a.operational_status}
-                              tone={inventoryAssetStatusTone(a.operational_status)}
-                            />
+                            {presentInventoryOwnership(a.ownership_kind, t)}
                           </td>
                           <td className={adminTableCellClass}>
-                            <AdminSecondaryButton
-                              type="button"
-                              onClick={() => {
-                                setSelectedAssetId(a.id);
-                                setView('asset_detail');
-                              }}
-                            >
-                              {t('admin.invOpen')}
-                            </AdminSecondaryButton>
+                            <StatusBadge
+                              label={presentInventoryAssetStatus(a.operational_status, t)}
+                              tone={inventoryAssetStatusTone(a.operational_status)}
+                            />
                           </td>
                         </tr>
                       ))}
@@ -537,20 +671,25 @@ export function AdminInventory({
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold">{selectedAsset.name}</h3>
                   <StatusBadge
-                    label={selectedAsset.operational_status}
+                    label={presentInventoryAssetStatus(selectedAsset.operational_status, t)}
                     tone={inventoryAssetStatusTone(selectedAsset.operational_status)}
                   />
                 </div>
                 <p className="text-sm text-secondary">
-                  {selectedAsset.inventory_number} · {selectedAsset.ownership_kind} ·{' '}
-                  {selectedAsset.condition}
+                  {selectedAsset.inventory_number} ·{' '}
+                  {presentInventoryOwnership(selectedAsset.ownership_kind, t)} ·{' '}
+                  {presentInventoryCondition(selectedAsset.condition, t)}
+                  {selectedAssetLocation
+                    ? ` · ${selectedAssetLocation.name} (${presentInventoryLocationKind(selectedAssetLocation.location_kind, t)})`
+                    : ''}
                 </p>
                 {selectedAsset.estimated_value_eur != null ? (
-                  <p className="text-xs text-muted">
-                    {t('admin.invEstValueInfo')}: {selectedAsset.estimated_value_eur} EUR
-                  </p>
+                  <div>
+                    <p className="text-sm tabular-nums">{selectedAsset.estimated_value_eur} EUR</p>
+                    <p className="text-xs text-muted">{t('admin.invEstValueInfo')}</p>
+                  </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2 pt-2">
+                <div className="flex flex-wrap items-end gap-2 pt-2">
                   {selectedAsset.operational_status === 'draft' ? (
                     <AdminPrimaryButton
                       type="button"
@@ -569,18 +708,21 @@ export function AdminInventory({
                   ) : null}
                   {['active', 'assigned', 'maintenance'].includes(selectedAsset.operational_status) ? (
                     <>
-                      <select
-                        className={adminFieldClass + ' max-w-xs'}
-                        value={assignStaffId}
-                        onChange={(e) => setAssignStaffId(e.target.value)}
-                      >
-                        <option value="">{t('admin.invAssignStaff')}</option>
-                        {staff.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
+                      <label className={labelClass + ' max-w-xs'}>
+                        <span className={labelTextClass}>{t('admin.invAssignStaff')}</span>
+                        <select
+                          className={adminFieldClass}
+                          value={assignStaffId}
+                          onChange={(e) => setAssignStaffId(e.target.value)}
+                        >
+                          <option value="">—</option>
+                          {staff.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <AdminSecondaryButton
                         type="button"
                         disabled={busy || !assignStaffId}
@@ -614,21 +756,30 @@ export function AdminInventory({
                         type="button"
                         disabled={busy}
                         onClick={() => {
-                          if (!confirm(t('admin.invWriteOffConfirm'))) return;
-                          void run(async () => {
-                            const { error: e1 } = await inventoryRpc(
-                              supabase,
-                              'inventory_propose_asset_write_off',
-                              { p_asset_id: selectedAsset.id, p_reason: 'admin UI' },
-                            );
-                            if (e1) throw e1;
-                            const { error: e2 } = await inventoryRpc(
-                              supabase,
-                              'inventory_approve_asset_write_off',
-                              { p_asset_id: selectedAsset.id },
-                            );
-                            if (e2) throw e2;
-                          }, t('admin.invWrittenOff'));
+                          void (async () => {
+                            const ok = await confirm({
+                              title: t('common.confirmAction'),
+                              description: t('admin.invWriteOffConfirm'),
+                              confirmLabel: t('admin.invWriteOff'),
+                              cancelLabel: t('common.cancel'),
+                              tone: 'danger',
+                            });
+                            if (!ok) return;
+                            void run(async () => {
+                              const { error: e1 } = await inventoryRpc(
+                                supabase,
+                                'inventory_propose_asset_write_off',
+                                { p_asset_id: selectedAsset.id, p_reason: 'admin UI' },
+                              );
+                              if (e1) throw e1;
+                              const { error: e2 } = await inventoryRpc(
+                                supabase,
+                                'inventory_approve_asset_write_off',
+                                { p_asset_id: selectedAsset.id },
+                              );
+                              if (e2) throw e2;
+                            }, t('admin.invWrittenOff'));
+                          })();
                         }}
                       >
                         {t('admin.invWriteOff')}
@@ -669,13 +820,15 @@ export function AdminInventory({
                   }}
                 >
                   <h4 className="text-sm font-semibold">{t('admin.invEditAsset')}</h4>
-                  <input
-                    className={adminFieldClass}
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder={t('admin.invName')}
-                    required
-                  />
+                  <label className={labelClass}>
+                    <span className={labelTextClass}>{t('admin.invName')}</span>
+                    <input
+                      className={adminFieldClass}
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                    />
+                  </label>
                   <AdminPrimaryButton type="submit" disabled={busy}>
                     {t('admin.invSave')}
                   </AdminPrimaryButton>
@@ -685,19 +838,22 @@ export function AdminInventory({
               {['active', 'assigned', 'maintenance'].includes(selectedAsset.operational_status) ? (
                 <div className={adminFormPanelClass + ' space-y-2'}>
                   <h4 className="text-sm font-semibold">{t('admin.invTransfer')}</h4>
-                  <div className="flex flex-wrap gap-2">
-                    <select
-                      className={adminFieldClass + ' max-w-xs'}
-                      value={transferLocationId}
-                      onChange={(e) => setTransferLocationId(e.target.value)}
-                    >
-                      <option value="">{t('admin.invPickLocation')}</option>
-                      {locations.map((loc) => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className={labelClass + ' w-full max-w-xs'}>
+                      <span className={labelTextClass}>{t('admin.invPickLocation')}</span>
+                      <select
+                        className={adminFieldClass}
+                        value={transferLocationId}
+                        onChange={(e) => setTransferLocationId(e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {locations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.name} ({presentInventoryLocationKind(loc.location_kind, t)})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <AdminSecondaryButton
                       type="button"
                       disabled={busy || !transferLocationId}
@@ -716,24 +872,29 @@ export function AdminInventory({
                     </AdminSecondaryButton>
                   </div>
                   <h4 className="pt-2 text-sm font-semibold">{t('admin.invMaintenance')}</h4>
-                  <div className="flex flex-wrap gap-2">
-                    <select
-                      className={adminFieldClass + ' max-w-xs'}
-                      value={maintKind}
-                      onChange={(e) => setMaintKind(e.target.value)}
-                    >
-                      <option value="inspection">inspection</option>
-                      <option value="repair">repair</option>
-                      <option value="service">service</option>
-                      <option value="calibration">calibration</option>
-                      <option value="other">other</option>
-                    </select>
-                    <input
-                      className={adminFieldClass + ' min-w-[12rem] flex-1'}
-                      value={maintSummary}
-                      onChange={(e) => setMaintSummary(e.target.value)}
-                      placeholder={t('admin.invMaintSummary')}
-                    />
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className={labelClass + ' w-full max-w-[12rem]'}>
+                      <span className={labelTextClass}>{t('admin.invMaintenance')}</span>
+                      <select
+                        className={adminFieldClass}
+                        value={maintKind}
+                        onChange={(e) => setMaintKind(e.target.value)}
+                      >
+                        {INVENTORY_MAINT_KINDS.map((k) => (
+                          <option key={k} value={k}>
+                            {presentInventoryMaintenanceKind(k, t)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={labelClass + ' min-w-[12rem] flex-1'}>
+                      <span className={labelTextClass}>{t('admin.invMaintSummary')}</span>
+                      <input
+                        className={adminFieldClass}
+                        value={maintSummary}
+                        onChange={(e) => setMaintSummary(e.target.value)}
+                      />
+                    </label>
                     <AdminSecondaryButton
                       type="button"
                       disabled={busy || !maintSummary.trim()}
@@ -761,13 +922,16 @@ export function AdminInventory({
 
               <div className={adminFormPanelClass}>
                 <h4 className="text-sm font-semibold">{t('admin.invDocuments')}</h4>
-                <input
-                  type="file"
+                <AppFilePicker
                   accept="image/*,.pdf,.doc,.docx"
                   disabled={busy}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
+                  resetInputAfterChange
+                  hint={t('common.fileHintFormatsSize', {
+                    formats: formatAcceptHint('image/*,.pdf,.doc,.docx'),
+                    size: formatFileSizeMb(INV3_MAX_BYTES),
+                  })}
+                  onChange={(picked) => {
+                    const file = picked[0];
                     if (!file) return;
                     void run(async () => {
                       try {
@@ -818,7 +982,8 @@ export function AdminInventory({
                 <ul className="mt-2 max-h-64 space-y-1 overflow-auto text-xs">
                   {assetEvents.map((ev) => (
                     <li key={ev.id} className="border-b border-border py-1">
-                      <span className="text-muted">{ev.event_at}</span> · {ev.event_kind}
+                      <span className="text-muted">{ev.event_at}</span> ·{' '}
+                      {presentInventoryEventKind(ev.event_kind, t)}
                       {ev.note ? ` — ${ev.note}` : ''}
                     </li>
                   ))}
@@ -832,106 +997,75 @@ export function AdminInventory({
 
       {!loading && view === 'stock' ? (
         <div className="space-y-4">
-          <form
-            className={adminFormPanelClass}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                const { error: err } = await inventoryRpc(supabase, 'inventory_register_stock_item', {
-                  p_sku_code: stockSku.trim(),
-                  p_name: stockName.trim(),
-                  p_ownership_kind: 'CONDOMINIUM',
-                  p_unit_code: stockUnit,
-                });
-                if (err) throw err;
-                setStockSku('');
-                setStockName('');
-              }, t('admin.invStockCreated'));
-            }}
-          >
-            <h3 className="text-sm font-semibold">{t('admin.invRegisterSku')}</h3>
-            <div className="grid gap-2 md:grid-cols-3">
-              <input
-                className={adminFieldClass}
-                placeholder="SKU"
-                value={stockSku}
-                onChange={(e) => setStockSku(e.target.value)}
-                required
-              />
-              <input
-                className={adminFieldClass}
-                placeholder={t('admin.invName')}
-                value={stockName}
-                onChange={(e) => setStockName(e.target.value)}
-                required
-              />
-              <select className={adminFieldClass} value={stockUnit} onChange={(e) => setStockUnit(e.target.value)}>
-                {['pcs', 'l', 'ml', 'kg', 'g', 'm', 'pack', 'box'].map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <AdminPrimaryButton type="submit" disabled={busy}>
-              {t('admin.invCreateSku')}
+          <div className="flex justify-end">
+            <AdminPrimaryButton
+              type="button"
+              aria-expanded={showStockForm}
+              onClick={() => setShowStockForm((v) => !v)}
+            >
+              {showStockForm ? t('admin.invHideForm') : t('admin.invAddMaterial')}
             </AdminPrimaryButton>
-          </form>
+          </div>
 
-          <form
-            className={adminFormPanelClass}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                const { error: err } = await inventoryRpc(supabase, 'inventory_stock_move', {
-                  p_stock_item_id: stockMoveId,
-                  p_movement_type: stockMoveType,
-                  p_qty: Number(stockMoveQty),
-                  p_idempotency_key: crypto.randomUUID(),
-                });
-                if (err) throw err;
-              }, t('admin.invMoveDone'));
-            }}
-          >
-            <h3 className="text-sm font-semibold">{t('admin.invStockMove')}</h3>
-            <div className="grid gap-2 md:grid-cols-3">
-              <select
-                className={adminFieldClass}
-                value={stockMoveId}
-                onChange={(e) => setStockMoveId(e.target.value)}
-                required
-              >
-                <option value="">{t('admin.invPickSku')}</option>
-                {balances.map((b) => (
-                  <option key={b.stock_item_id} value={b.stock_item_id}>
-                    {b.sku_code} — {b.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={adminFieldClass}
-                value={stockMoveType}
-                onChange={(e) => setStockMoveType(e.target.value)}
-              >
-                {['OPENING', 'RECEIPT', 'ISSUE', 'TRANSFER', 'ADJUSTMENT', 'WRITE_OFF'].map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <input
-                className={adminFieldClass}
-                type="number"
-                step="any"
-                value={stockMoveQty}
-                onChange={(e) => setStockMoveQty(e.target.value)}
-                required
-              />
-            </div>
-            <AdminPrimaryButton type="submit" disabled={busy || !stockMoveId}>
-              {t('admin.invPostMove')}
-            </AdminPrimaryButton>
-          </form>
+          {showStockForm ? (
+            <form
+              className={adminFormPanelClass}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => {
+                  const { error: err } = await inventoryRpc(supabase, 'inventory_register_stock_item', {
+                    p_sku_code: stockSku.trim(),
+                    p_name: stockName.trim(),
+                    p_ownership_kind: 'CONDOMINIUM',
+                    p_unit_code: stockUnit,
+                  });
+                  if (err) throw err;
+                  setStockSku('');
+                  setStockName('');
+                  setShowStockForm(false);
+                }, t('admin.invStockCreated'));
+              }}
+            >
+              <h3 className="text-sm font-semibold">{t('admin.invRegisterSku')}</h3>
+              <div className="grid gap-2 md:grid-cols-3">
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invSku')}</span>
+                  <input
+                    className={adminFieldClass}
+                    value={stockSku}
+                    onChange={(e) => setStockSku(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invName')}</span>
+                  <input
+                    className={adminFieldClass}
+                    value={stockName}
+                    onChange={(e) => setStockName(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invUnit')}</span>
+                  <select
+                    className={adminFieldClass}
+                    value={stockUnit}
+                    onChange={(e) => setStockUnit(e.target.value)}
+                  >
+                    {INVENTORY_UNIT_CODES.map((u) => (
+                      <option key={u} value={u}>
+                        {presentInventoryUnit(u, t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <AdminPrimaryButton type="submit" disabled={busy}>
+                {t('admin.invCreateSku')}
+              </AdminPrimaryButton>
+            </form>
+          ) : null}
 
           {balances.length === 0 ? (
             <AdminEmptyState title={t('admin.invEmptyStock')} />
@@ -940,7 +1074,7 @@ export function AdminInventory({
               <table className="w-full text-sm">
                 <thead>
                   <tr className={adminTableHeadRowClass}>
-                    <th className={adminTableCellClass}>SKU</th>
+                    <th className={adminTableCellClass}>{t('admin.invSku')}</th>
                     <th className={adminTableCellClass}>{t('admin.invName')}</th>
                     <th className={adminTableCellClass}>{t('admin.invQty')}</th>
                     <th className={adminTableCellClass}>{t('admin.invUnit')}</th>
@@ -957,8 +1091,14 @@ export function AdminInventory({
                         <td className={`${adminTableCellClass} tabular-nums ${low ? 'text-danger' : ''}`}>
                           {b.qty_on_hand}
                         </td>
-                        <td className={adminTableCellClass}>{b.unit_code}</td>
-                        <td className={adminTableCellClass}>{b.min_qty ?? '—'}</td>
+                        <td className={adminTableCellClass}>{presentInventoryUnit(b.unit_code, t)}</td>
+                        <td className={adminTableCellClass}>
+                          {b.min_qty != null ? (
+                            <span className="tabular-nums">{b.min_qty}</span>
+                          ) : (
+                            <span className="text-muted">— {t('admin.invMinNotSet')}</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -966,80 +1106,221 @@ export function AdminInventory({
               </table>
             </AdminTableShell>
           )}
+
+          {balances.length > 0 ? (
+            <form
+              className={adminFormPanelClass}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => {
+                  const { error: err } = await inventoryRpc(supabase, 'inventory_stock_move', {
+                    p_stock_item_id: stockMoveId,
+                    p_movement_type: stockMoveType,
+                    p_qty: Number(stockMoveQty),
+                    p_idempotency_key: crypto.randomUUID(),
+                  });
+                  if (err) throw err;
+                }, t('admin.invMoveDone'));
+              }}
+            >
+              <h3 className="text-sm font-semibold">{t('admin.invStockMove')}</h3>
+              <div className="grid gap-2 md:grid-cols-4">
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invPickSku')}</span>
+                  <select
+                    className={adminFieldClass}
+                    value={stockMoveId}
+                    onChange={(e) => setStockMoveId(e.target.value)}
+                    required
+                  >
+                    <option value="">—</option>
+                    {balances.map((b) => (
+                      <option key={b.stock_item_id} value={b.stock_item_id}>
+                        {b.name} ({b.sku_code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invMoveType')}</span>
+                  <select
+                    className={adminFieldClass}
+                    value={stockMoveType}
+                    onChange={(e) => setStockMoveType(e.target.value)}
+                  >
+                    {INVENTORY_MOVEMENT_TYPES.map((m) => (
+                      <option key={m} value={m}>
+                        {presentInventoryMovement(m, t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invQty')}</span>
+                  <input
+                    className={adminFieldClass}
+                    type="number"
+                    step="any"
+                    value={stockMoveQty}
+                    onChange={(e) => setStockMoveQty(e.target.value)}
+                    required
+                  />
+                </label>
+                <div className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invUnit')}</span>
+                  <p className={adminFieldClass + ' bg-transparent text-secondary'}>
+                    {selectedMoveBalance ? presentInventoryUnit(selectedMoveBalance.unit_code, t) : '—'}
+                  </p>
+                </div>
+              </div>
+              <AdminPrimaryButton type="submit" disabled={busy || !stockMoveId}>
+                {presentInventoryMoveAction(stockMoveType, t)}
+              </AdminPrimaryButton>
+            </form>
+          ) : null}
         </div>
       ) : null}
 
       {!loading && view === 'categories' ? (
         <div className="space-y-4">
-          <form
-            className={adminFormPanelClass}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                const { error: err } = await inventoryRpc(supabase, 'inventory_upsert_category', {
-                  p_code: catCode.trim(),
-                  p_name_bg: catBg.trim(),
-                  p_name_ru: catRu.trim(),
-                  p_name_en: catEn.trim(),
-                  p_parent_id: catParent || null,
-                });
-                if (err) throw err;
-                setCatCode('');
-                setCatBg('');
-                setCatRu('');
-                setCatEn('');
-              }, t('admin.invCategorySaved'));
-            }}
-          >
-            <h3 className="text-sm font-semibold">{t('admin.invUpsertCategory')}</h3>
-            <div className="grid gap-2 md:grid-cols-2">
-              <input className={adminFieldClass} placeholder="code" value={catCode} onChange={(e) => setCatCode(e.target.value)} required />
-              <select className={adminFieldClass} value={catParent} onChange={(e) => setCatParent(e.target.value)}>
-                <option value="">{t('admin.invNoParent')}</option>
-                {categories.filter((c) => c.active).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {categoryDisplayName(c, locale)}
-                  </option>
-                ))}
-              </select>
-              <input className={adminFieldClass} placeholder="BG" value={catBg} onChange={(e) => setCatBg(e.target.value)} required />
-              <input className={adminFieldClass} placeholder="RU" value={catRu} onChange={(e) => setCatRu(e.target.value)} required />
-              <input className={adminFieldClass} placeholder="EN" value={catEn} onChange={(e) => setCatEn(e.target.value)} required />
-            </div>
-            <AdminPrimaryButton type="submit" disabled={busy}>
-              {t('admin.invSave')}
+          <div className="flex justify-end">
+            <AdminPrimaryButton
+              type="button"
+              aria-expanded={showCategoryForm}
+              onClick={() => setShowCategoryForm((v) => !v)}
+            >
+              {showCategoryForm ? t('admin.invHideForm') : t('admin.invAddCategory')}
             </AdminPrimaryButton>
-          </form>
+          </div>
+
+          {showCategoryForm ? (
+            <form
+              className={adminFormPanelClass}
+              onSubmit={(e) => {
+                e.preventDefault();
+                const primary = catPrimaryValue.trim();
+                if (!primary) return;
+                void run(async () => {
+                  const { error: err } = await inventoryRpc(supabase, 'inventory_upsert_category', {
+                    p_code: uniqueCatalogCode(
+                      primary,
+                      'cat',
+                      categories.map((c) => c.code),
+                    ),
+                    p_name_bg: catBg.trim() || primary,
+                    p_name_ru: catRu.trim() || primary,
+                    p_name_en: catEn.trim() || primary,
+                    p_parent_id: catParent || null,
+                  });
+                  if (err) throw err;
+                  setCatBg('');
+                  setCatRu('');
+                  setCatEn('');
+                  setCatParent('');
+                  setShowCategoryForm(false);
+                }, t('admin.invCategorySaved'));
+              }}
+            >
+              <h3 className="text-sm font-semibold">{t('admin.invUpsertCategory')}</h3>
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invPrimaryName')}</span>
+                  <input
+                    className={adminFieldClass}
+                    value={catPrimaryValue}
+                    onChange={(e) => setCatPrimaryValue(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invParentCategory')}</span>
+                  <select
+                    className={adminFieldClass}
+                    value={catParent}
+                    onChange={(e) => setCatParent(e.target.value)}
+                  >
+                    <option value="">{t('admin.invNoParent')}</option>
+                    {categories
+                      .filter((c) => c.active)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {categoryDisplayName(c, locale)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+              <details className="rounded-lg border border-border px-3 py-2 text-sm">
+                <summary className="cursor-pointer text-secondary">{t('admin.invOtherLangNames')}</summary>
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  {catPrimaryLang !== 'bg' ? (
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invLangBg')}</span>
+                      <input
+                        className={adminFieldClass}
+                        value={catBg}
+                        onChange={(e) => setCatBg(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  {catPrimaryLang !== 'ru' ? (
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invLangRu')}</span>
+                      <input
+                        className={adminFieldClass}
+                        value={catRu}
+                        onChange={(e) => setCatRu(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  {catPrimaryLang !== 'en' ? (
+                    <label className={labelClass}>
+                      <span className={labelTextClass}>{t('admin.invLangEn')}</span>
+                      <input
+                        className={adminFieldClass}
+                        value={catEn}
+                        onChange={(e) => setCatEn(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              </details>
+              <p className="text-xs text-muted">{t('admin.invCodeAutoHint')}</p>
+              <AdminPrimaryButton type="submit" disabled={busy}>
+                {t('admin.invSave')}
+              </AdminPrimaryButton>
+            </form>
+          ) : null}
+
           <AdminTableShell>
             <table className="w-full text-sm">
               <thead>
                 <tr className={adminTableHeadRowClass}>
-                  <th className={adminTableCellClass}>code</th>
-                  <th className={adminTableCellClass}>BG/RU/EN</th>
+                  <th className={adminTableCellClass}>{t('admin.invName')}</th>
+                  <th className={adminTableCellClass}>{t('admin.invParentCategory')}</th>
+                  <th className={adminTableCellClass}>{t('admin.invStatus')}</th>
                   <th className={adminTableCellClass} />
                 </tr>
               </thead>
               <tbody>
                 {categories.map((c) => (
                   <tr key={c.id} className={adminTableRowClass}>
-                    <td className={adminTableCellClass}>{c.code}</td>
                     <td className={adminTableCellClass}>
-                      {c.name_bg} / {c.name_ru} / {c.name_en}
-                      {!c.active ? ` (${t('admin.invArchivedLabel')})` : ''}
+                      {categoryDisplayName(c, locale)}
+                      <span className="block text-xs text-muted">{c.code}</span>
+                    </td>
+                    <td className={adminTableCellClass}>
+                      {c.parent_id ? (categoryNameById[String(c.parent_id)] ?? '—') : '—'}
+                    </td>
+                    <td className={adminTableCellClass}>
+                      {c.active ? t('admin.invCategoryActive') : t('admin.invCategoryInactive')}
                     </td>
                     <td className={adminTableCellClass}>
                       {c.active ? (
                         <AdminSecondaryButton
                           type="button"
                           disabled={busy}
-                          onClick={() =>
-                            void run(async () => {
-                              const { error: err } = await inventoryRpc(supabase, 'inventory_archive_category', {
-                                p_id: c.id,
-                              });
-                              if (err) throw err;
-                            }, t('admin.invCategoryArchived'))
-                          }
+                          onClick={() => void archiveCategory(c)}
                         >
                           {t('admin.invArchive')}
                         </AdminSecondaryButton>
@@ -1055,45 +1336,74 @@ export function AdminInventory({
 
       {!loading && view === 'locations' ? (
         <div className="space-y-4">
-          <form
-            className={adminFormPanelClass}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                const { error: err } = await inventoryRpc(supabase, 'inventory_upsert_location', {
-                  p_code: locCode.trim(),
-                  p_name: locName.trim(),
-                  p_location_kind: locKind,
-                });
-                if (err) throw err;
-                setLocCode('');
-                setLocName('');
-              }, t('admin.invLocationSaved'));
-            }}
-          >
-            <h3 className="text-sm font-semibold">{t('admin.invUpsertLocation')}</h3>
-            <div className="grid gap-2 md:grid-cols-3">
-              <input className={adminFieldClass} placeholder="code" value={locCode} onChange={(e) => setLocCode(e.target.value)} required />
-              <input className={adminFieldClass} placeholder={t('admin.invName')} value={locName} onChange={(e) => setLocName(e.target.value)} required />
-              <select className={adminFieldClass} value={locKind} onChange={(e) => setLocKind(e.target.value)}>
-                {['common_area', 'technical_room', 'office', 'storage', 'apartment', 'offsite', 'other'].map(
-                  (k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ),
-                )}
-              </select>
-            </div>
-            <AdminPrimaryButton type="submit" disabled={busy}>
-              {t('admin.invSave')}
+          <div className="flex justify-end">
+            <AdminPrimaryButton
+              type="button"
+              aria-expanded={showLocationForm}
+              onClick={() => setShowLocationForm((v) => !v)}
+            >
+              {showLocationForm ? t('admin.invHideForm') : t('admin.invAddLocation')}
             </AdminPrimaryButton>
-          </form>
+          </div>
+
+          {showLocationForm ? (
+            <form
+              className={adminFormPanelClass}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => {
+                  const { error: err } = await inventoryRpc(supabase, 'inventory_upsert_location', {
+                    p_code: uniqueCatalogCode(
+                      locName,
+                      'loc',
+                      locations.map((l) => l.code),
+                    ),
+                    p_name: locName.trim(),
+                    p_location_kind: locKind,
+                  });
+                  if (err) throw err;
+                  setLocName('');
+                  setShowLocationForm(false);
+                }, t('admin.invLocationSaved'));
+              }}
+            >
+              <h3 className="text-sm font-semibold">{t('admin.invUpsertLocation')}</h3>
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invName')}</span>
+                  <input
+                    className={adminFieldClass}
+                    value={locName}
+                    onChange={(e) => setLocName(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className={labelClass}>
+                  <span className={labelTextClass}>{t('admin.invKind')}</span>
+                  <select
+                    className={adminFieldClass}
+                    value={locKind}
+                    onChange={(e) => setLocKind(e.target.value)}
+                  >
+                    {INVENTORY_LOCATION_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {presentInventoryLocationKind(k, t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="text-xs text-muted">{t('admin.invCodeAutoHint')}</p>
+              <AdminPrimaryButton type="submit" disabled={busy}>
+                {t('admin.invSave')}
+              </AdminPrimaryButton>
+            </form>
+          ) : null}
+
           <AdminTableShell>
             <table className="w-full text-sm">
               <thead>
                 <tr className={adminTableHeadRowClass}>
-                  <th className={adminTableCellClass}>code</th>
                   <th className={adminTableCellClass}>{t('admin.invName')}</th>
                   <th className={adminTableCellClass}>{t('admin.invKind')}</th>
                 </tr>
@@ -1101,9 +1411,13 @@ export function AdminInventory({
               <tbody>
                 {locations.map((l) => (
                   <tr key={l.id} className={adminTableRowClass}>
-                    <td className={adminTableCellClass}>{l.code}</td>
-                    <td className={adminTableCellClass}>{l.name}</td>
-                    <td className={adminTableCellClass}>{l.location_kind}</td>
+                    <td className={adminTableCellClass}>
+                      {l.name}
+                      <span className="block text-xs text-muted">{l.code}</span>
+                    </td>
+                    <td className={adminTableCellClass}>
+                      {presentInventoryLocationKind(l.location_kind, t)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1116,31 +1430,45 @@ export function AdminInventory({
         <div className="space-y-4">
           {view === 'sessions' ? (
             <>
-              <form
-                className={adminFormPanelClass}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    const { error: err } = await inventoryRpc(supabase, 'inventory_create_session', {
-                      p_title: sessTitle.trim(),
-                    });
-                    if (err) throw err;
-                    setSessTitle('');
-                  }, t('admin.invSessionCreated'));
-                }}
-              >
-                <h3 className="text-sm font-semibold">{t('admin.invCreateSession')}</h3>
-                <input
-                  className={adminFieldClass}
-                  value={sessTitle}
-                  onChange={(e) => setSessTitle(e.target.value)}
-                  placeholder={t('admin.invSessionTitle')}
-                  required
-                />
-                <AdminPrimaryButton type="submit" disabled={busy}>
-                  {t('admin.invCreateSession')}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <AdminPrimaryButton
+                  type="button"
+                  aria-expanded={showSessionForm}
+                  onClick={() => setShowSessionForm((v) => !v)}
+                >
+                  {showSessionForm ? t('admin.invHideForm') : t('admin.invCreateSession')}
                 </AdminPrimaryButton>
-              </form>
+              </div>
+              {showSessionForm ? (
+                <form
+                  className={adminFormPanelClass}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(async () => {
+                      const { error: err } = await inventoryRpc(supabase, 'inventory_create_session', {
+                        p_title: sessTitle.trim(),
+                      });
+                      if (err) throw err;
+                      setSessTitle('');
+                      setShowSessionForm(false);
+                    }, t('admin.invSessionCreated'));
+                  }}
+                >
+                  <h3 className="text-sm font-semibold">{t('admin.invCreateSession')}</h3>
+                  <label className={labelClass}>
+                    <span className={labelTextClass}>{t('admin.invSessionTitle')}</span>
+                    <input
+                      className={adminFieldClass}
+                      value={sessTitle}
+                      onChange={(e) => setSessTitle(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <AdminPrimaryButton type="submit" disabled={busy}>
+                    {t('admin.invCreateSession')}
+                  </AdminPrimaryButton>
+                </form>
+              ) : null}
               {sessions.length === 0 ? (
                 <AdminEmptyState title={t('admin.invEmptySessions')} />
               ) : (
@@ -1159,7 +1487,7 @@ export function AdminInventory({
                           <td className={adminTableCellClass}>{s.title}</td>
                           <td className={adminTableCellClass}>
                             <StatusBadge
-                              label={s.status}
+                              label={presentInventorySessionStatus(s.status, t)}
                               tone={inventorySessionStatusTone(s.status)}
                             />
                           </td>
@@ -1192,7 +1520,7 @@ export function AdminInventory({
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold">{selectedSession.title}</h3>
                   <StatusBadge
-                    label={selectedSession.status}
+                    label={presentInventorySessionStatus(selectedSession.status, t)}
                     tone={inventorySessionStatusTone(selectedSession.status)}
                   />
                   <span className="text-xs text-muted">v{selectedSession.row_version}</span>
@@ -1241,19 +1569,28 @@ export function AdminInventory({
                       type="button"
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm(t('admin.invApproveConfirm'))) return;
-                        void run(async () => {
-                          const { error: err } = await inventoryRpc(
-                            supabase,
-                            'inventory_approve_and_post_session',
-                            {
-                              p_session_id: selectedSession.id,
-                              p_row_version: selectedSession.row_version,
-                              p_approval_note: 'admin UI',
-                            },
-                          );
-                          if (err) throw err;
-                        }, t('admin.invApprovedPosted'));
+                        void (async () => {
+                          const ok = await confirm({
+                            title: t('common.confirmAction'),
+                            description: t('admin.invApproveConfirm'),
+                            confirmLabel: t('admin.invApprovePost'),
+                            cancelLabel: t('common.cancel'),
+                            tone: 'danger',
+                          });
+                          if (!ok) return;
+                          void run(async () => {
+                            const { error: err } = await inventoryRpc(
+                              supabase,
+                              'inventory_approve_and_post_session',
+                              {
+                                p_session_id: selectedSession.id,
+                                p_row_version: selectedSession.row_version,
+                                p_approval_note: 'admin UI',
+                              },
+                            );
+                            if (err) throw err;
+                          }, t('admin.invApprovedPosted'));
+                        })();
                       }}
                     >
                       {t('admin.invApprovePost')}
@@ -1277,19 +1614,22 @@ export function AdminInventory({
                     </AdminSecondaryButton>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    className={adminFieldClass + ' max-w-xs'}
-                    value={assignStaffId}
-                    onChange={(e) => setAssignStaffId(e.target.value)}
-                  >
-                    <option value="">{t('admin.invAddParticipant')}</option>
-                    {staff.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className={labelClass + ' w-full max-w-xs'}>
+                    <span className={labelTextClass}>{t('admin.invAddParticipant')}</span>
+                    <select
+                      className={adminFieldClass}
+                      value={assignStaffId}
+                      onChange={(e) => setAssignStaffId(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {staff.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <AdminSecondaryButton
                     type="button"
                     disabled={busy || !assignStaffId}
@@ -1328,8 +1668,12 @@ export function AdminInventory({
                     {sessionItems.map((it) => (
                       <tr key={it.id} className={adminTableRowClass}>
                         <td className={adminTableCellClass}>{it.draft_name}</td>
-                        <td className={adminTableCellClass}>{it.tracking_type}</td>
-                        <td className={adminTableCellClass}>{it.finding_status}</td>
+                        <td className={adminTableCellClass}>
+                          {presentInventoryTracking(it.tracking_type, t)}
+                        </td>
+                        <td className={adminTableCellClass}>
+                          {presentInventoryFindingStatus(it.finding_status, t)}
+                        </td>
                         <td className={adminTableCellClass}>{it.counted_qty ?? '—'}</td>
                         <td className={adminTableCellClass}>
                           {['draft', 'submitted'].includes(it.finding_status) &&

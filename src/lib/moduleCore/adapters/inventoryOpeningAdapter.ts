@@ -10,8 +10,7 @@ import {
 
 /**
  * INV-6 Inventory Initial Setup adapter.
- * Empty inventory valid; XLSX optional; physical inventory optional.
- * Sessions may run during SETUP_* without requiring ACTIVE (canonical INV-2).
+ * Paths: import XLSX list, or confirm empty registry. No physical stocktake at setup.
  */
 export const inventoryOpeningAdapter: ModuleSetupAdapter = {
   registration: {
@@ -26,24 +25,16 @@ export const inventoryOpeningAdapter: ModuleSetupAdapter = {
     legalOrOperationalGates: [
       'empty_inventory_valid',
       'optional_import',
-      'optional_physical_inventory',
       'no_auto_activation',
       'no_finance_postings',
       'estimated_value_informational',
-      'setup_sessions_before_active_ok',
       'data_survives_suspend',
     ],
     setup: {
       schemaVersion: INVENTORY_SETUP_SCHEMA_VERSION,
       importMethods: ['xlsx', 'manual'],
       idempotent: true,
-      completionCriteria: [
-        'preview_ok',
-        'admin_confirm',
-        'optional_skip',
-        'empty_ok',
-        'physical_inventory_optional',
-      ],
+      completionCriteria: ['preview_ok', 'admin_confirm', 'empty_ok'],
       steps: [
         {
           id: 'inventory_opening',
@@ -53,25 +44,13 @@ export const inventoryOpeningAdapter: ModuleSetupAdapter = {
               key: 'empty_inventory_ok',
               required: false,
               valueType: 'boolean',
-              labelKey: 'inv6EmptyOk',
+              labelKey: 'inv6ChoiceEmpty',
             },
             {
-              key: 'skip_import',
+              key: 'import_committed',
               required: false,
               valueType: 'boolean',
-              labelKey: 'inv6SkipImport',
-            },
-            {
-              key: 'confirmed',
-              required: false,
-              valueType: 'boolean',
-              labelKey: 'inv6ManualConfirm',
-            },
-            {
-              key: 'start_physical_inventory',
-              required: false,
-              valueType: 'boolean',
-              labelKey: 'inv6StartPhysical',
+              labelKey: 'inv6ImportCommitted',
             },
           ],
         },
@@ -87,14 +66,18 @@ export const inventoryOpeningAdapter: ModuleSetupAdapter = {
           required: ['tracking_type', 'item_name', 'ownership_kind'].includes(key),
           example:
             key === 'tracking_type'
-              ? 'INDIVIDUAL_ASSET'
+              ? 'оборудование'
               : key === 'item_name'
-                ? 'Hammer drill'
+                ? 'Перфоратор'
                 : key === 'ownership_kind'
                   ? 'CONDOMINIUM'
                   : key === 'inventory_number'
                     ? 'INV-TOOL-001'
-                    : '',
+                    : key === 'category_code'
+                      ? 'Инструменты'
+                      : key === 'location_code'
+                        ? 'Склад'
+                        : '',
           labelKey: `inv6Col_${key}`,
         })),
       },
@@ -102,10 +85,10 @@ export const inventoryOpeningAdapter: ModuleSetupAdapter = {
   },
   validateManual(draft) {
     if (inventorySetupManualComplete(draft)) return { ok: true };
-    return { ok: false, errors: ['required:confirmed_or_skip_or_empty_or_physical'] };
+    return { ok: false, errors: ['required:empty_or_import'] };
   },
 };
 
-export function downloadInventoryIs6Template(): void {
-  downloadInventoryOpeningTemplate();
+export function downloadInventoryIs6Template(locale?: string): void {
+  downloadInventoryOpeningTemplate(locale);
 }

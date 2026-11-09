@@ -14,13 +14,16 @@ import {
   listRegisteredModuleKeys,
   parseModuleXlsxBuffer,
   reactivationReusesSetup,
+  registerModuleAdapter,
   resetModuleSetupAdaptersForTests,
   sanitizeSpreadsheetCell,
   setupCompleteFromDraft,
   setupIsOptional,
   suspensionPreservesData,
 } from '@/lib/moduleCore';
+import { exampleOpeningAdapter } from '@/lib/moduleCore/adapters/exampleOpeningAdapter';
 import { isBuildingModuleEnabled, emptyBuildingModulesState } from '@/lib/modules';
+import type { ModuleSetupAdapter } from '@/lib/moduleCore/types';
 
 const MIGRATION = path.resolve(
   process.cwd(),
@@ -38,6 +41,28 @@ describe('IS-1 · module registration contract', () => {
     expect(keys).toContain('example_opening_roster');
     expect(keys).toContain('guest_mode');
     expect(getModuleAdapter('example_opening_roster')?.registration.version).toBe('1.0.0');
+  });
+
+  it('allows idempotent re-bootstrap and same-key re-register', () => {
+    expect(() => bootstrapModuleSetupAdapters()).not.toThrow();
+    expect(() => bootstrapModuleSetupAdapters()).not.toThrow();
+    expect(() => registerModuleAdapter(exampleOpeningAdapter)).not.toThrow();
+    expect(listRegisteredModuleKeys().filter((k) => k === 'example_opening_roster')).toHaveLength(
+      1,
+    );
+  });
+
+  it('still throws when a different adapter claims the same moduleKey', () => {
+    const conflicting: ModuleSetupAdapter = {
+      registration: {
+        ...exampleOpeningAdapter.registration,
+        version: '9.9.9-conflict',
+        nameKey: 'is1ExampleModuleNameConflict',
+      },
+    };
+    expect(() => registerModuleAdapter(conflicting)).toThrow(
+      /moduleCore: duplicate registration for example_opening_roster/,
+    );
   });
 
   it('rejects untrusted property_id on example manual validate', () => {

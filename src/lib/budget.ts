@@ -45,6 +45,10 @@ export type BudgetExecutionRow = {
   adjustments_amount_eur?: number;
   actual_amount_eur: number;
   remaining_amount_eur: number;
+  opening_amount_eur?: number;
+  operational_amount_eur?: number;
+  total_expenses_eur?: number;
+  plan_remainder_eur?: number;
 };
 
 export type BudgetAdjustment = {
@@ -86,6 +90,10 @@ export type OwnerBudgetPayload = {
     planned_amount_eur: number;
     actual_amount_eur: number;
     remaining_amount_eur: number;
+    opening_amount_eur?: number;
+    operational_amount_eur?: number;
+    total_expenses_eur?: number;
+    plan_remainder_eur?: number;
   }>;
 };
 

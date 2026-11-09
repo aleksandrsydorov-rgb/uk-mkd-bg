@@ -146,5 +146,45 @@ export function labelPollStatus(raw: string | null | undefined, t: Translate) {
 export function labelOwnerType(raw: string | null | undefined, t: Translate) {
   if (raw === 'юридическое лицо') return t('ownerType.company');
   if (raw === 'физическое лицо') return t('ownerType.person');
-  return raw || '';
+  if (!raw) return t('admin.notSpecified');
+  warnUnknownLabel('owner type', raw);
+  return t('admin.valueUnknown');
+}
+
+/** Certified extract / ownership request workflow status. */
+export function labelCertifiedRequestStatus(raw: string | null | undefined, t: Translate) {
+  const s = (raw ?? '').trim().toLowerCase();
+  if (!s) return '—';
+  if (s === 'pending' || s === 'requested' || s === 'in_review') return t('status.trWait');
+  if (s === 'approved' || s === 'issued' || s === 'ready' || s === 'completed') return t('status.trOk');
+  if (s === 'rejected' || s === 'denied') return t('status.trNo');
+  if (s === 'cancelled' || s === 'canceled' || s === 'void') return t('status.trCancel');
+  warnUnknownLabel('certified request status', s);
+  return t('admin.valueUnknown');
+}
+
+/** Generic admin/guest/liability status for ownership stage-3 panels. */
+export function labelGenericRecordStatus(raw: string | null | undefined, t: Translate) {
+  const s = (raw ?? '').trim().toLowerCase();
+  if (!s) return '—';
+  if (s === 'active' || s === 'accepted' || s === 'confirmed') return t('admin.statusActive');
+  if (s === 'pending' || s === 'draft' || s === 'requested') return t('status.trWait');
+  if (s === 'closed' || s === 'inactive' || s === 'archived') return t('admin.sfStatusClosed');
+  if (s === 'rejected' || s === 'denied') return t('status.trNo');
+  if (s === 'cancelled' || s === 'canceled' || s === 'revoked') return t('status.trCancel');
+  warnUnknownLabel('record status', s);
+  return t('admin.valueUnknown');
+}
+
+/** Inventory / warehouse movement kind (RECEIPT, ISSUE, …). */
+export function labelInventoryDocKind(raw: string | null | undefined, t: Translate) {
+  const s = (raw ?? '').trim().toUpperCase().replace(/-/g, '_');
+  if (!s) return '—';
+  if (s === 'RECEIPT' || s === 'IN' || s === 'INBOUND') return t('admin.invMove_RECEIPT');
+  if (s === 'ISSUE' || s === 'OUT' || s === 'OUTBOUND') return t('admin.invMove_ISSUE');
+  if (s === 'TRANSFER' || s === 'MOVE') return t('admin.invMove_TRANSFER');
+  if (s === 'WRITE_OFF' || s === 'WRITEOFF' || s === 'SCRAP') return t('admin.invMove_WRITE_OFF');
+  if (s === 'ADJUSTMENT' || s === 'ADJUST') return t('admin.invMove_ADJUSTMENT');
+  warnUnknownLabel('inventory doc kind', s);
+  return t('admin.valueUnknown');
 }

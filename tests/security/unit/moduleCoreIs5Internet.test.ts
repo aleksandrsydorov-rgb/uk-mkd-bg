@@ -161,7 +161,7 @@ describe('IS-5 · Internet opening adapter', () => {
     expect(preview.rows[1]?.data.balance_effect).toBe('-10');
   });
 
-  it('validates active paid_through, tariff, status; rejects property_id spoofing', () => {
+  it('validates tariff, connection state; allows unknown payment; rejects property_id spoofing', () => {
     expect(
       validateInternetOpeningRow({
         apartment_number: '101',
@@ -180,16 +180,17 @@ describe('IS-5 · Internet opening adapter', () => {
         transition_date: '2026-01-01',
         paid_through: '2026-02-28',
       }),
-    ).toContain('unsupported:status');
+    ).toContain('unsupported:connection_state');
 
+    // Unknown payment is allowed (not equal to “no payment”).
     expect(
       validateInternetOpeningRow({
         apartment_number: '101',
         tariff_code: 'internet',
-        status: 'active',
+        connection_state: 'Подключён',
         transition_date: '2026-01-01',
       }),
-    ).toContain('required:paid_through');
+    ).not.toContain('required:paid_through');
 
     const spoof = classifyInternetOpeningRows(
       [activeRow('101', { property_id: '999' })],
@@ -198,7 +199,7 @@ describe('IS-5 · Internet opening adapter', () => {
     expect(spoof.rows[0]?.errors).toContain('untrusted_property_id');
   });
 
-  it('unknown apartment, invalid tariff config, duplicate apartment', () => {
+  it('unknown apartment, invalid tariff config, conflicting same-apartment rows', () => {
     const preview = classifyInternetOpeningRows(
       [activeRow('999'), activeRow('101'), activeRow('101', { opening_debt: '5' })],
       baseCtx({ internetTariffConfigured: false }),
@@ -206,7 +207,7 @@ describe('IS-5 · Internet opening adapter', () => {
     expect(preview.rows[0]?.errors).toEqual(
       expect.arrayContaining(['unknown_apartment', 'tariff_not_configured']),
     );
-    expect(preview.rows[2]?.errors).toContain('duplicate_in_file:apartment');
+    expect(preview.rows[2]?.errors).toContain('conflict:same_apartment_rows');
   });
 
   it('pending internet work order → BLOCKED (Q5)', () => {
@@ -362,21 +363,21 @@ describe('IS-5 · Internet opening adapter', () => {
 
   it('payloads from preview; template builds; ownership transfer policy unchanged', () => {
     const preview = classifyInternetOpeningRows(
-      [activeRow('101', { opening_debt: '25', opening_credit: '5' })],
+      [activeRow('101', { opening_debt: '25', opening_credit: '0' })],
       baseCtx(),
     );
     const payloads = internetOpeningPayloadsFromPreview(preview);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]?.propertyId).toBe(10);
     expect(payloads[0]?.openingDebt).toBe(25);
-    expect(payloads[0]?.openingCredit).toBe(5);
+    expect(payloads[0]?.openingCredit).toBe(0);
     expect(payloads[0]?.nextChargeOn).toBe('2026-05-01');
     const buf = buildInternetIs5TemplateBuffer();
     expect(buf.byteLength).toBeGreaterThan(1000);
     expect(ownershipTransferPreservesApartmentLedger()).toBe(true);
   });
 
-  it('inactive opening without paid_through is allowed; active without is ERROR', () => {
+  it('inactive and active opening without paid_through are allowed (unknown payment)', () => {
     const inactive = classifyInternetOpeningRows(
       [
         {
@@ -409,6 +410,7 @@ describe('IS-5 · Internet opening adapter', () => {
       ],
       baseCtx(),
     );
-    expect(activeMissing.rows[0]?.errors).toContain('required:paid_through');
+    expect(activeMissing.createCount).toBe(1);
+    expect(activeMissing.rows[0]?.errors).not.toContain('required:paid_through');
   });
 });

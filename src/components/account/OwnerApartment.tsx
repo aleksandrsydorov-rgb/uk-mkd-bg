@@ -69,10 +69,12 @@ export function OwnerApartment({
   sessionEmail,
   bookRequestOpen,
   listingSaving,
+  clarification,
   onSelectProperty,
   onOpenOccupancy,
   onReportChange,
   onUpdateListing,
+  onClarifyContact,
   extra,
 }: {
   property: Property;
@@ -85,10 +87,21 @@ export function OwnerApartment({
   sessionEmail: string | null;
   bookRequestOpen: boolean;
   listingSaving: boolean;
+  clarification?: {
+    needsClarification: boolean;
+    ownerCanComplete: boolean;
+    ownerIssues: Array<{ code?: string; field?: string }>;
+  } | null;
   onSelectProperty: (id: number) => void;
   onOpenOccupancy: () => void;
   onReportChange: (message: string) => Promise<void>;
   onUpdateListing: (next: 'в собственности' | 'на продаже') => void;
+  onClarifyContact?: (patch: {
+    email?: string;
+    first_name?: string;
+    middle_name?: string;
+    last_name?: string;
+  }) => Promise<void>;
   extra?: ReactNode;
 }) {
   const { t, locale, dateLocale } = useI18n();
@@ -98,12 +111,13 @@ export function OwnerApartment({
   const [changeSaving, setChangeSaving] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
-
-  useEffect(() => {
-    setTab('object');
-    setChangeOpen(false);
-    setTransferOpen(false);
-  }, [property.id]);
+  const [clarifyOpen, setClarifyOpen] = useState(false);
+  const [clarifySaving, setClarifySaving] = useState(false);
+  const [clarifyError, setClarifyError] = useState<string | null>(null);
+  const [clarifyEmail, setClarifyEmail] = useState('');
+  const [clarifyFirst, setClarifyFirst] = useState('');
+  const [clarifyMiddle, setClarifyMiddle] = useState('');
+  const [clarifyLast, setClarifyLast] = useState('');
 
   const owners = activeBookOwners(people);
   const users = people.filter((p) => p.relation_type === 'user_of_property' && p.deregistered_at == null);
@@ -115,6 +129,18 @@ export function OwnerApartment({
 
   const apartmentIdeal = formatIdealPartsPercent(property.ideal_parts_percent, locale);
   const myBookOwner = bookOwnerForEmail(people, sessionEmail);
+
+  useEffect(() => {
+    setTab('object');
+    setChangeOpen(false);
+    setTransferOpen(false);
+    setClarifyOpen(false);
+    setClarifyError(null);
+    setClarifyEmail(myBookOwner?.email ?? sessionEmail ?? '');
+    setClarifyFirst(myBookOwner?.first_name ?? '');
+    setClarifyMiddle(myBookOwner?.middle_name ?? '');
+    setClarifyLast(myBookOwner?.last_name ?? '');
+  }, [property.id, myBookOwner?.email, myBookOwner?.first_name, myBookOwner?.middle_name, myBookOwner?.last_name, sessionEmail]);
   const myShare = formatOwnershipSharePercent(myBookOwner?.ownership_share_percent, locale);
   const myIdeal = formatIdealPartsPercent(myBookOwner?.ideal_parts_percent, locale);
   const listing = listingStatus(property.status);
@@ -266,7 +292,7 @@ export function OwnerApartment({
       setChangeText('');
       setChangeOpen(false);
     } catch (err: unknown) {
-      setChangeError(ownerVisibleError(err, t('err.save')));
+      setChangeError(ownerVisibleError(err, t('err.save'), t));
     } finally {
       setChangeSaving(false);
     }
@@ -336,6 +362,90 @@ export function OwnerApartment({
                 );
               })}
             </ul>
+          </div>
+        ) : null}
+        {clarification?.needsClarification ? (
+          <div className="mt-3 space-y-2 rounded-xl border border-warning/30 bg-warning/5 px-3 py-3">
+            <p className="text-sm font-medium text-foreground">{t('book.needsClarification')}</p>
+            {clarification.ownerIssues.length > 0 ? (
+              <ul className="space-y-0.5 text-xs text-secondary">
+                {clarification.ownerIssues.map((issue, idx) => (
+                  <li key={`${issue.code}-${idx}`}>
+                    {t(`book.issue_${issue.code ?? 'unknown'}`)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-secondary">{t('book.needsClarificationUk')}</p>
+            )}
+            {clarification.ownerCanComplete && onClarifyContact ? (
+              <button
+                type="button"
+                onClick={() => setClarifyOpen((v) => !v)}
+                className="rounded-full border border-border bg-background px-4 py-2 text-sm text-secondary hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                {t('book.completeData')}
+              </button>
+            ) : null}
+            {clarifyOpen && onClarifyContact ? (
+              <form
+                className="space-y-2"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setClarifySaving(true);
+                  setClarifyError(null);
+                  try {
+                    await onClarifyContact({
+                      email: clarifyEmail.trim() || undefined,
+                      first_name: clarifyFirst.trim() || undefined,
+                      middle_name: clarifyMiddle.trim() || undefined,
+                      last_name: clarifyLast.trim() || undefined,
+                    });
+                    setClarifyOpen(false);
+                  } catch (err: unknown) {
+                    setClarifyError(ownerVisibleError(err, t('err.save'), t));
+                  } finally {
+                    setClarifySaving(false);
+                  }
+                }}
+              >
+                <p className="text-xs text-muted">{t('book.completeDataHint')}</p>
+                <input
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  placeholder={t('login.emailLabel')}
+                  value={clarifyEmail}
+                  onChange={(ev) => setClarifyEmail(ev.target.value)}
+                />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder={t('book.firstName')}
+                    value={clarifyFirst}
+                    onChange={(ev) => setClarifyFirst(ev.target.value)}
+                  />
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder={t('book.middleName')}
+                    value={clarifyMiddle}
+                    onChange={(ev) => setClarifyMiddle(ev.target.value)}
+                  />
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder={t('book.lastName')}
+                    value={clarifyLast}
+                    onChange={(ev) => setClarifyLast(ev.target.value)}
+                  />
+                </div>
+                {clarifyError ? <p className="text-xs text-danger">{clarifyError}</p> : null}
+                <button
+                  type="submit"
+                  disabled={clarifySaving}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {clarifySaving ? t('account.sending') : t('book.saveContact')}
+                </button>
+              </form>
+            ) : null}
           </div>
         ) : null}
         <button

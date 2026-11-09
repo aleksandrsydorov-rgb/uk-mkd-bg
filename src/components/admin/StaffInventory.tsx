@@ -5,12 +5,21 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
 import { ownerVisibleError } from '@/lib/ownerError';
+import { errorTextForMapper } from '@/lib/userFacingError';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import {
   categoryDisplayName,
   inventoryRpc,
   inventorySelect,
   inventorySessionStatusTone,
+  presentInventoryCondition,
+  presentInventoryFindingStatus,
+  presentInventoryLocationKind,
+  presentInventoryOwnership,
+  presentInventorySessionStatus,
+  presentInventoryTracking,
+  presentInventoryUnit,
+  INVENTORY_UNIT_CODES,
   type InventoryCategoryRow,
   type InventoryDocumentRow,
   type InventoryLocationRow,
@@ -29,6 +38,7 @@ import {
   type InventoryStaffCapabilityFlags,
   type InventoryStaffView,
 } from '@/lib/inventory/staff';
+import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
 import {
   InventoryDocumentValidationError,
   uploadAndRegisterInventoryDocument,
@@ -197,7 +207,7 @@ export function StaffInventory({
       );
       setItemsBySession(nextItems);
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('admin.errGeneric')));
+      setError(ownerVisibleError(e, t('admin.errGeneric'), t));
     } finally {
       setLoading(false);
     }
@@ -297,8 +307,9 @@ export function StaffInventory({
       await action();
       setSuccess(okMsg);
     } catch (e: unknown) {
-      const msg = ownerVisibleError(e, t('admin.errGeneric'));
-      if (isStaleRowVersionError(msg) && sessionId) {
+      const rawProbe = errorTextForMapper(e);
+      const msg = ownerVisibleError(e, t('admin.errGeneric'), t);
+      if (isStaleRowVersionError(rawProbe) && sessionId) {
         // Never silently overwrite another participant's draft — reload server truth.
         await reloadSessionItems(sessionId);
         const items = await inventorySelect<InventorySessionItemRow>(
@@ -310,7 +321,7 @@ export function StaffInventory({
         const mapped = (items.data ?? []).map(mapItem);
         setItemsBySession((prev) => ({ ...prev, [sessionId]: mapped }));
         const resolved = resolveStaffStaleConflict({
-          errorMessage: msg,
+          errorMessage: rawProbe,
           editingItemId: editingItem?.id ?? null,
           latestItems: mapped,
         });
@@ -477,7 +488,7 @@ export function StaffInventory({
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-base font-semibold">{row.session.title}</h3>
                   <StatusBadge
-                    label={row.session.status}
+                    label={presentInventorySessionStatus(row.session.status, t)}
                     tone={inventorySessionStatusTone(row.session.status)}
                   />
                 </div>
@@ -542,7 +553,7 @@ export function StaffInventory({
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold">{selectedSession.title}</h3>
               <StatusBadge
-                label={selectedSession.status}
+                label={presentInventorySessionStatus(selectedSession.status, t)}
                 tone={inventorySessionStatusTone(selectedSession.status)}
               />
             </div>
@@ -576,15 +587,20 @@ export function StaffInventory({
                   <li key={it.id} className={adminCardClass + ' space-y-2 p-4'}>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{it.draft_name}</span>
-                      <StatusBadge label={it.finding_status} tone={it.finding_status === 'draft' ? 'warning' : 'info'} />
+                      <StatusBadge
+                        label={presentInventoryFindingStatus(it.finding_status, t)}
+                        tone={it.finding_status === 'draft' ? 'warning' : 'info'}
+                      />
                       {mine ? (
                         <span className="text-xs text-muted">{t('admin.invStaffMine')}</span>
                       ) : null}
                     </div>
                     <p className="text-xs text-secondary">
-                      {it.tracking_type}
+                      {presentInventoryTracking(it.tracking_type, t)}
                       {it.draft_inventory_number ? ` · ${it.draft_inventory_number}` : ''}
-                      {it.counted_qty != null ? ` · ${it.counted_qty} ${it.unit_code ?? ''}` : ''}
+                      {it.counted_qty != null
+                        ? ` · ${it.counted_qty} ${it.unit_code ? presentInventoryUnit(it.unit_code, t) : ''}`
+                        : ''}
                     </p>
                     {it.discrepancy_note ? (
                       <p className="text-sm text-warning">{it.discrepancy_note}</p>
@@ -678,100 +694,133 @@ export function StaffInventory({
                   <option value="QUANTITY_STOCK">{t('admin.invStaffStock')}</option>
                 </select>
               </label>
-              <input
-                className={adminFieldClass + ' min-h-11'}
-                placeholder={t('admin.invStaffName')}
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                required
-              />
-              <select
-                className={adminFieldClass + ' min-h-11'}
-                value={draftCategoryId}
-                onChange={(e) => setDraftCategoryId(e.target.value)}
-              >
-                <option value="">{t('admin.invStaffCategory')}</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {categoryDisplayName(c, locale)}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={adminFieldClass + ' min-h-11'}
-                value={draftLocationId}
-                onChange={(e) => setDraftLocationId(e.target.value)}
-              >
-                <option value="">{t('admin.invStaffLocation')}</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={adminFieldClass + ' min-h-11'}
-                value={draftOwnership}
-                onChange={(e) => setDraftOwnership(e.target.value)}
-              >
-                {OWNERSHIP.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
+              <label className="block space-y-1 text-sm">
+                <span>{t('admin.invStaffName')}</span>
+                <input
+                  className={adminFieldClass + ' min-h-11'}
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span>{t('admin.invStaffCategory')}</span>
+                <select
+                  className={adminFieldClass + ' min-h-11'}
+                  value={draftCategoryId}
+                  onChange={(e) => setDraftCategoryId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {categoryDisplayName(c, locale)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span>{t('admin.invStaffLocation')}</span>
+                <select
+                  className={adminFieldClass + ' min-h-11'}
+                  value={draftLocationId}
+                  onChange={(e) => setDraftLocationId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({presentInventoryLocationKind(l.location_kind, t)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span>{t('admin.invOwnership')}</span>
+                <select
+                  className={adminFieldClass + ' min-h-11'}
+                  value={draftOwnership}
+                  onChange={(e) => setDraftOwnership(e.target.value)}
+                >
+                  {OWNERSHIP.map((o) => (
+                    <option key={o} value={o}>
+                      {presentInventoryOwnership(o, t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {trackingType === 'INDIVIDUAL_ASSET' ? (
                 <>
-                  <input
-                    className={adminFieldClass + ' min-h-11'}
-                    placeholder={t('admin.invStaffInvNumber')}
-                    value={draftNumber}
-                    onChange={(e) => setDraftNumber(e.target.value)}
-                  />
-                  <select
-                    className={adminFieldClass + ' min-h-11'}
-                    value={draftCondition}
-                    onChange={(e) => setDraftCondition(e.target.value)}
-                  >
-                    {CONDITIONS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block space-y-1 text-sm">
+                    <span>{t('admin.invStaffInvNumber')}</span>
+                    <input
+                      className={adminFieldClass + ' min-h-11'}
+                      value={draftNumber}
+                      onChange={(e) => setDraftNumber(e.target.value)}
+                    />
+                  </label>
+                  <label className="block space-y-1 text-sm">
+                    <span>{t('admin.invCondition')}</span>
+                    <select
+                      className={adminFieldClass + ' min-h-11'}
+                      value={draftCondition}
+                      onChange={(e) => setDraftCondition(e.target.value)}
+                    >
+                      {CONDITIONS.map((c) => (
+                        <option key={c} value={c}>
+                          {presentInventoryCondition(c, t)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  <input
-                    className={adminFieldClass + ' min-h-11 min-w-[8rem] flex-1'}
-                    placeholder={t('admin.invStaffSku')}
-                    value={draftSku}
-                    onChange={(e) => setDraftSku(e.target.value)}
-                  />
-                  <input
-                    className={adminFieldClass + ' min-h-11 w-28'}
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder={t('admin.invStaffQty')}
-                    value={countedQty}
-                    onChange={(e) => setCountedQty(e.target.value)}
-                    required
-                  />
-                  <input
-                    className={adminFieldClass + ' min-h-11 w-24'}
-                    placeholder={t('admin.invStaffUnit')}
-                    value={unitCode}
-                    onChange={(e) => setUnitCode(e.target.value)}
-                  />
+                  <label className="block min-w-[8rem] flex-1 space-y-1 text-sm">
+                    <span>{t('admin.invStaffSku')}</span>
+                    <input
+                      className={adminFieldClass + ' min-h-11'}
+                      value={draftSku}
+                      onChange={(e) => setDraftSku(e.target.value)}
+                    />
+                  </label>
+                  <label className="block w-28 space-y-1 text-sm">
+                    <span>{t('admin.invStaffQty')}</span>
+                    <input
+                      className={adminFieldClass + ' min-h-11'}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={countedQty}
+                      onChange={(e) => setCountedQty(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="block w-36 space-y-1 text-sm">
+                    <span>{t('admin.invStaffUnit')}</span>
+                    <select
+                      className={adminFieldClass + ' min-h-11'}
+                      value={unitCode}
+                      onChange={(e) => setUnitCode(e.target.value)}
+                    >
+                      {!(INVENTORY_UNIT_CODES as readonly string[]).includes(unitCode) ? (
+                        <option value={unitCode}>{presentInventoryUnit(unitCode, t)}</option>
+                      ) : null}
+                      {INVENTORY_UNIT_CODES.map((u) => (
+                        <option key={u} value={u}>
+                          {presentInventoryUnit(u, t)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
-              <textarea
-                className={adminFieldClass + ' min-h-20'}
-                placeholder={t('admin.invStaffNote')}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
+              <label className="block space-y-1 text-sm">
+                <span>{t('admin.invStaffNote')}</span>
+                <textarea
+                  className={adminFieldClass + ' min-h-20'}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <AdminPrimaryButton type="submit" className="min-h-12 flex-1" disabled={busy}>
                   {t('admin.invStaffSaveDraft')}
@@ -791,15 +840,16 @@ export function StaffInventory({
           {editingItem ? (
             <div className={adminFormPanelClass + ' space-y-3 p-4'}>
               <h4 className="text-sm font-semibold">{t('admin.invStaffPhotos')}</h4>
-              <input
-                type="file"
+              <AppFilePicker
                 accept="image/*"
                 capture="environment"
                 disabled={busy || view === 'finding_detail'}
-                className="min-h-11 w-full text-sm"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
+                resetInputAfterChange
+                hint={t('common.fileHintFormats', {
+                  formats: formatAcceptHint('image/*', t),
+                })}
+                onChange={(picked) => {
+                  const file = picked[0];
                   if (!file || !editingItem) return;
                   void run(async () => {
                     try {

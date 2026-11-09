@@ -27,6 +27,7 @@ import { OwnerMeetingLive } from '@/components/account/OwnerMeetingLive';
 import { EmptyState, PillTabs, SectionHeader } from '@/components/account/ownerUi';
 import { OWNER_MEETING_COLUMNS, labelMeetingWorkflowStatus } from '@/lib/generalMeetingWorkflow';
 import { labelLegalState } from '@/lib/meetingCore';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 type Tab = 'meetings' | 'decisions' | 'documents';
 
@@ -99,7 +100,7 @@ export function OwnerDocumentsDecisions({
         setDocs([]);
         return;
       }
-      setError(mRes.error.message);
+      setError(toUserFacingMessage(mRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
       return;
     }
     setMeetings((mRes.data as GeneralMeeting[]) ?? []);
@@ -110,7 +111,7 @@ export function OwnerDocumentsDecisions({
     if (!pRes.error) setParticipants((pRes.data as import('@/lib/buildingDocuments').MeetingParticipant[]) ?? []);
     if (!vRes.error) setVotes((vRes.data as import('@/lib/buildingDocuments').MeetingVoteRecord[]) ?? []);
     if (!propRes.error) setOwned(propRes.data ?? []);
-  }, [supabase]);
+  }, [supabase, t]);
 
   useEffect(() => {
     void load();

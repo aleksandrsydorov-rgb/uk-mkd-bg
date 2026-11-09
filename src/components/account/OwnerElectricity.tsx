@@ -20,6 +20,8 @@ import {
   type ElectricitySubmitResult,
   type MeterReadingRow,
 } from '@/lib/electricity';
+import { buildElectricityHistoryEntries } from '@/lib/meterReadingHistory';
+import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
 
 export function OwnerElectricity({
   supabase,
@@ -30,6 +32,7 @@ export function OwnerElectricity({
   onSubmitted,
   onOpenFinance,
   serviceLocked = false,
+  guestMode = false,
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
@@ -39,11 +42,16 @@ export function OwnerElectricity({
   onSubmitted: () => Promise<void> | void;
   onOpenFinance?: (tab: FinanceTab) => void;
   serviceLocked?: boolean;
+  guestMode?: boolean;
 }) {
   const { t, dateLocale, locale } = useI18n();
   const pairs = useMemo(() => pairElectricityReadings(rows, meters), [rows, meters]);
   const meter = useMemo(() => activeElectricityMeter(meters), [meters]);
   const shown = useMemo(() => electricityActiveMeterReadings(pairs, meter), [pairs, meter]);
+  const historyEntries = useMemo(
+    () => buildElectricityHistoryEntries(pairs),
+    [pairs],
+  );
   const prevDay = shown.previousDay;
   const prevNight = shown.previousNight;
   const submitFloorDay = shown.submitFloorDay;
@@ -62,6 +70,12 @@ export function OwnerElectricity({
   const today = todayIsoDate();
 
   const loadBalance = useCallback(async () => {
+    if (guestMode) {
+      setBalance(emptyBalance());
+      setBalanceLoading(false);
+      setBalanceFailed(false);
+      return;
+    }
     setBalanceLoading(true);
     setBalanceFailed(false);
     try {
@@ -77,7 +91,7 @@ export function OwnerElectricity({
     } finally {
       setBalanceLoading(false);
     }
-  }, [propertyId, supabase]);
+  }, [propertyId, supabase, guestMode]);
 
   useEffect(() => {
     void loadBalance();
@@ -85,12 +99,6 @@ export function OwnerElectricity({
 
   function onFormChange() {
     if (!submitting) idempotencyKeyRef.current = null;
-  }
-
-  function sourceLabel(source: 'owner' | 'staff' | null) {
-    if (source === 'owner') return t('account.elByOwner');
-    if (source === 'staff') return t('account.elByStaff');
-    return '—';
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -228,7 +236,7 @@ export function OwnerElectricity({
               {shown.readingDate ? formatOwnerDate(shown.readingDate, dateLocale) : '—'}
             </div>
           </div>
-          {onOpenFinance ? (
+          {!guestMode && onOpenFinance ? (
             <MeterFinanceStatus
               balance={Number(balance.balance_eur)}
               loading={balanceLoading}
@@ -304,7 +312,9 @@ export function OwnerElectricity({
             {submitError && <p className="text-sm text-danger">{submitError}</p>}
             {success && (
               <div className="rounded-xl border border-accent/20 bg-accent-bg px-3 py-2 text-sm text-secondary">
-                <p className="font-medium text-accent">{t('account.elSubmitOk')}</p>
+                <p className="font-medium text-accent">
+                  {success.charge_created === false ? t('account.elSubmitPending') : t('account.elSubmitOk')}
+                </p>
                 <p className="mt-1">
                   {t('account.consumption')} {t('account.elDayShort')}: {formatKwh(Number(success.consumption_day), locale)} {t('account.kwh')}
                   {' · '}
@@ -323,45 +333,16 @@ export function OwnerElectricity({
         )}
       </div>
 
-      <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
-        <p className="mb-2 text-[11px] uppercase tracking-wider text-muted">{t('account.utilHistory')}</p>
-        {pairs.length === 0 ? (
-          <p className="text-sm text-secondary">{t('account.utilNoReadings')}</p>
-        ) : (
-          <div className="-mx-1 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-[11px] uppercase tracking-wider text-muted">
-                <tr>
-                  <th className="px-2 py-1 font-medium">{t('account.utilColDate')}</th>
-                  <th className="px-2 py-1 font-medium">{t('account.elMeter')}</th>
-                  <th className="px-2 py-1 font-medium">{t('account.elDayShort')}</th>
-                  <th className="px-2 py-1 font-medium">{t('account.elNightShort')}</th>
-                  <th className="px-2 py-1 font-medium">{t('account.elUseDay')}</th>
-                  <th className="px-2 py-1 font-medium">{t('account.elUseNight')}</th>
-                  <th className="px-2 py-1 font-medium">{t('account.elSubmittedBy')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pairs.map((row) => (
-                  <tr key={row.key} className="text-secondary">
-                    <td className="whitespace-nowrap px-2 py-1.5">
-                      {row.reading_date ? formatOwnerDate(row.reading_date, dateLocale) : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-1.5">
-                      {row.meter_number ? t('account.elMeterShort', { n: displayElectricityMeterNumber(row.meter_number) }) : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.day != null ? formatKwh(row.day, locale) : '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.night != null ? formatKwh(row.night, locale) : '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.consumptionDay != null ? formatKwh(row.consumptionDay, locale) : '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{row.consumptionNight != null ? formatKwh(row.consumptionNight, locale) : '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5">{sourceLabel(row.source)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {!guestMode ? (
+        <div className="rounded-[14px] border border-border bg-surface shadow-card p-5 md:p-6">
+          <MeterReadingHistory
+            utility="electricity"
+            compact
+            emptyTitle={t('admin.noReadings')}
+            entries={historyEntries}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

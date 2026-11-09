@@ -33,7 +33,7 @@ describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
 
   it('disk migration count matches MANIFEST expectedChronologicalMigrationCount', () => {
     expect(manifest.expectedChronologicalMigrationCount).toBe(diskFiles.length);
-    expect(diskFiles.length).toBe(158);
+    expect(diskFiles.length).toBe(197);
   });
 
   it('keeps the UX migrations after the RC8 tariff-period migration', () => {
@@ -57,7 +57,7 @@ describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
       expect(manifest.chronologicalMigrationsPackaged).toContain(rel);
       prev = at;
     }
-    expect(manifest.orderedFiles.slice(-7)).toEqual([
+    expect(manifest.orderedFiles.slice(-25)).toEqual([
       '109_ux_support_fee_tariff_lifecycle.sql',
       '110_ux_support_fee_late_increase_waive.sql',
       '111_ux_capital_repair_tariff_lifecycle.sql',
@@ -65,6 +65,24 @@ describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
       '113_ux_expense_operational_receipt.sql',
       '114_ux_expense_staff_write_path.sql',
       '115_ux_email_attempt_guard.sql',
+      '116_r1_rc8_first_run_module_choice.sql',
+      '117_r1_rc8_first_run_budget_required.sql',
+      '118_r1_rc8_first_run_uk_expenses_required.sql',
+      '119_r1_rc8_first_run_guest_access_required.sql',
+      '120_r1_rc8_first_run_activation_tariffs.sql',
+      '121_r1_rc8_first_run_budget_opening.sql',
+      '122_r1_rc8_legal_entity_electricity.sql',
+      '123_r1_rc8_internet_package_day.sql',
+      '124_r1_rc8_building_profile_uk_bank.sql',
+      '125_r1_rc8_normalize_iban_whitespace.sql',
+      '126_r1_rc8_building_profile_draft_soft.sql',
+      '127_r1_rc8_guest_permissions.sql',
+      '128_r1_rc8_property_book_incomplete_import.sql',
+      '129_r1_rc8_guest_chat_thread_addressing.sql',
+      '130_r1_rc8_internet_monthly_legacy_compat.sql',
+      '131_r1_rc8_guest_meters_submit_and_request_scope.sql',
+      '132_r1_rc8_internet_legacy_rate_order_fix.sql',
+      '133_r1_rc8_guest_security_list_scope.sql',
     ]);
   });
 

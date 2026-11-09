@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useI18n } from '@/i18n/I18nProvider';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 
 export default function UpdatePasswordPage() {
   const { t } = useI18n();
@@ -39,7 +40,7 @@ export default function UpdatePasswordPage() {
       await supabase.auth.signOut();
       router.replace('/?passwordUpdated=1#resident-login');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('authCallback.errGeneric'));
+      setError(toUserFacingMessage(err, t, { fallback: t('authCallback.errGeneric') }));
     } finally {
       setBusy(false);
     }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import {
   announcementBodyPreview,
@@ -12,6 +13,7 @@ import {
   announcementStatusTone,
   validateAnnouncementInput,
 } from '@/lib/announcementsUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import {
   AdminEmptyState,
   AdminPageHeader,
@@ -46,6 +48,7 @@ export function AdminAnnouncements({
   onError: (msg: string) => void;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [detailId, setDetailId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
@@ -107,7 +110,7 @@ export function AdminAnnouncements({
       setForm({ title: '', body: '', created_by: 'УК' });
       await onChanged();
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('admin.annSaveFailed'));
+      onError(toUserFacingMessage(err, t, { fallback: t('admin.annSaveFailed') }));
     } finally {
       setBusy(false);
     }
@@ -118,7 +121,13 @@ export function AdminAnnouncements({
       onError(t('admin.errNoAccess'));
       return;
     }
-    if (!confirm(t('confirm.deleteAnn'))) return;
+    const ok = await confirm({
+      title: t('confirm.deleteAnn'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const { error } = await supabase.from('announcements').delete().eq('id', id);
@@ -126,7 +135,7 @@ export function AdminAnnouncements({
       setDetailId((cur) => (cur === id ? null : cur));
       await onChanged();
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('admin.annDeleteFailed'));
+      onError(toUserFacingMessage(err, t, { fallback: t('admin.annDeleteFailed') }));
     } finally {
       setBusy(false);
     }
@@ -134,6 +143,7 @@ export function AdminAnnouncements({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <AdminPageHeader
         title={t('admin.announcements')}
         secondary={t('admin.announcementsLead')}

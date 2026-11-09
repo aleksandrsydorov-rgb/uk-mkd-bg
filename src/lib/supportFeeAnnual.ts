@@ -63,9 +63,12 @@ export interface SupportFeeAssessment {
   penalty_waived_at?: string | null;
   penalty_waived_by_email?: string | null;
   penalty_waive_ledger_id?: number | null;
+  early_discount_ledger_id?: number | null;
+  late_penalty_ledger_id?: number | null;
   tariff_version_id: string | null;
   area_sqm_snapshot: number | null;
   rate_eur_per_sqm_year_snapshot: number | null;
+  opening_import?: boolean | null;
 }
 
 export interface SupportFeeAllocation {
@@ -109,6 +112,54 @@ export function sofiaCalendarYear(at: Date = new Date()): number {
 
 export function formatEurAmount(n: number | null | undefined, locale?: string): string {
   return formatEur(Number(n) || 0, locale);
+}
+
+/** Net cash payments allocated to an assessment (payment − payment_reversal). */
+export function netSupportFeeAllocatedPayments(
+  allocations: ReadonlyArray<Pick<SupportFeeAllocation, 'allocation_type' | 'amount'>>,
+  fallbackAppliedPayment = 0,
+): number {
+  let pay = 0;
+  let rev = 0;
+  let saw = false;
+  for (const row of allocations) {
+    const kind = String(row.allocation_type ?? '');
+    const amt = Number(row.amount) || 0;
+    if (kind === 'payment') {
+      saw = true;
+      pay += amt;
+    } else if (kind === 'payment_reversal') {
+      saw = true;
+      rev += amt;
+    }
+  }
+  if (!saw) return Math.max(0, Math.round((Number(fallbackAppliedPayment) || 0) * 100) / 100);
+  return Math.max(0, Math.round((pay - rev) * 100) / 100);
+}
+
+/** Net overpayment credit applied to an assessment. */
+export function netSupportFeeAllocatedCredit(
+  allocations: ReadonlyArray<Pick<SupportFeeAllocation, 'allocation_type' | 'amount'>>,
+  fallbackAppliedCredit = 0,
+): number {
+  let credit = 0;
+  let saw = false;
+  for (const row of allocations) {
+    if (String(row.allocation_type ?? '') === 'credit') {
+      saw = true;
+      credit += Number(row.amount) || 0;
+    }
+  }
+  if (!saw) return Math.max(0, Math.round((Number(fallbackAppliedCredit) || 0) * 100) / 100);
+  return Math.max(0, Math.round(credit * 100) / 100);
+}
+
+/** Amount already settled toward final_amount (cash + credit), for display. */
+export function supportFeeSettledTowardFinal(
+  finalAmount: number,
+  remainingDue: number,
+): number {
+  return Math.max(0, Math.round((Number(finalAmount) - Number(remainingDue)) * 100) / 100);
 }
 
 export function moneyDelta(percent: number, ofBase: number): number {

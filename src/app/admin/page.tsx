@@ -17,13 +17,19 @@ import { listingStatus, type OwnerTransfer } from '@/lib/ownership';
 import { AdminOwnershipTransfers } from '@/components/admin/AdminOwnershipTransfers';
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
+import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
-import { buildRoleNavGroups } from '@/lib/adminNav';
+import {
+  buildRoleNavGroups,
+  isAdminNavLeafActive,
+  resolveDualEntryNavGroupId,
+} from '@/lib/adminNav';
 import {
   navGroupIcon,
   navGroupIconChipClass,
@@ -43,6 +49,7 @@ import {
   AdminPrimaryButton,
   AdminSecondaryButton,
   AdminInlineAlert,
+  AdminInfoRow,
   AdminTabBar,
   parseAdminUtilityTab,
   type AdminUtilityTab,
@@ -59,23 +66,21 @@ import {
   adminBtnTertiaryClass,
   adminBtnDangerClass,
   adminCardClass,
+  adminInfoGridClass,
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
-import { readBulkAccrualSummary } from '@/lib/bulkAccrual';
 import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
 import { ownerVisibleError } from '@/lib/ownerError';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   STAFF_ROLE_OPTIONS,
   annualSupportFee,
   canApproveUkExpenses,
   canRecordSupportPayments,
-  canReverseOrVoidSupportFees,
-  canSetSupportRate,
   isUkAccountantRole,
   isUkAdminRole,
   monthlySupportFee,
-  supportPaymentIdempotencySignature,
   type SupportFeeEntry,
 } from '@/lib/finance';
 import {
@@ -85,11 +90,6 @@ import {
   supportOverpayment,
   type SupportAssessmentBalanceRow,
 } from '@/lib/supportFeeBalance';
-import {
-  isSupportLedgerReversed,
-  isSupportPaymentReversible,
-  supportLedgerKindLabelKey,
-} from '@/lib/supportFeeReversal';
 import {
   EXPENSE_PENDING,
   EXPENSE_PUBLISHED,
@@ -121,6 +121,7 @@ import {
 } from '@/lib/privateMedia';
 import { AdminWater } from '@/components/admin/AdminWater';
 import { AdminCapital } from '@/components/admin/AdminCapital';
+import { CAPITAL_ADMIN_TABS } from '@/lib/capitalRepairUi';
 import { AdminInternet } from '@/components/admin/AdminInternet';
 import { AdminServiceLock } from '@/components/admin/AdminServiceLock';
 import { AdminAnnouncements } from '@/components/admin/AdminAnnouncements';
@@ -133,9 +134,11 @@ import { AdminBudget } from '@/components/admin/AdminBudget';
 import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
 import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
+import { AdminElectricityLegalQueue } from '@/components/admin/AdminElectricityLegalQueue';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
-import { AdminSupportFeeAnnual } from '@/components/admin/AdminSupportFeeAnnual';
-import { AdminSupportFeeOverview } from '@/components/admin/AdminSupportFeeOverview';
+import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
+import { buildElectricityHistoryEntries } from '@/lib/meterReadingHistory';
+import { AdminSupportFeeWorkplace } from '@/components/admin/AdminSupportFeeWorkplace';
 import {
   AdminSettingsHub,
   parseSettingsTab,
@@ -165,6 +168,7 @@ import {
   canSeeCapitalAdmin,
   canSeeWaterAdmin,
   canSeeElectricityFinance,
+  canManageWaterFinance,
   mapAdminRpcError,
   todayIsoDate,
   parseWaterMode,
@@ -174,6 +178,12 @@ import {
   formatEur,
   type WaterMode,
 } from '@/lib/utilities';
+import {
+  isFirstRunStageComplete,
+  isModuleWorkplaceAvailable,
+} from '@/lib/moduleSetupCatalog';
+import { getModuleAdapter } from '@/lib/moduleCore/registry';
+import { bootstrapModuleSetupAdapters } from '@/lib/moduleCore/bootstrap';
 import { canSeeInternetAdmin } from '@/lib/internet';
 import { canSeeServiceLockAdmin } from '@/lib/serviceLock';
 import { canSeeSecurityAdmin, isGuardRole, staffHomePath } from '@/lib/security';
@@ -458,10 +468,12 @@ function expenseYearOf(dateStr: string) {
 }
 
 function AdminPortal() {
+  bootstrapModuleSetupAdapters();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const money = (n: number | null | undefined) => formatEur(Number(n) || 0, locale);
   const [supabase] = useState(() => createBrowserClient());
   const MENU_ITEMS: AdminMenuItem[] = useMemo(
@@ -489,7 +501,7 @@ function AdminPortal() {
           ['инвентарь', 'admin.inventory'],
           ['моя_инвентаризация', 'admin.invStaff'],
           ['бюджет', 'admin.budget'],
-          ['собрания', 'admin.navMeetings'],
+          ['собрания', 'admin.moduleGeneralMeeting'],
           ['решения', 'admin.navDecisions'],
           ['расходы', 'admin.expenses'],
           ['отчётность', 'admin.reports'],
@@ -521,10 +533,64 @@ function AdminPortal() {
   const [workClaimProfile, setWorkClaimProfile] = useState<MyWorkClaimProfile | null>(null);
   const [buildingModules, setBuildingModules] = useState<BuildingModulesState>(() => emptyBuildingModulesState());
   const [moduleCatalog, setModuleCatalog] = useState<BuildingModuleV2Row[]>([]);
+  const [moduleLifecycleByKey, setModuleLifecycleByKey] = useState<Record<string, {
+    state: string;
+    building_enabled: boolean;
+    has_setup_draft: boolean;
+  }>>({});
   const [moduleSavingKey, setModuleSavingKey] = useState<string | null>(null);
-  const showWater = canSeeWaterAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'water');
+  /** R1-RC8 mandatory first-run gate (server: admin_get_first_run_state.gate_required). */
+  const [firstRunState, setFirstRunState] = useState<FirstRunState | null>(null);
+  const [firstRunChecked, setFirstRunChecked] = useState(false);
+  const [firstRunLoadError, setFirstRunLoadError] = useState<string | null>(null);
+  const [firstRunRetryNonce, setFirstRunRetryNonce] = useState(0);
+  const completedFirstRunStages = useMemo(() => {
+    const done = new Set<string>();
+    for (const row of firstRunState?.stages ?? []) {
+      if (row.status === 'complete' && row.stage_key) done.add(String(row.stage_key));
+    }
+    return done;
+  }, [firstRunState]);
+  const firstRunCompleted = useMemo(() => {
+    if (!firstRunState) return false;
+    return (
+      firstRunState.first_run_status === 'complete' ||
+      (typeof firstRunState.completed_at === 'string' && firstRunState.completed_at.length > 0)
+    );
+  }, [firstRunState]);
+  const workplaceMetaLoaded = Object.keys(moduleLifecycleByKey).length > 0 || firstRunChecked;
+  const isWorkplaceModuleReady = useCallback(
+    (moduleKey: 'water' | 'electricity') => {
+      const buildingEnabled = isBuildingModuleEnabled(buildingModules, moduleKey);
+      // Until lifecycle/first-run metadata arrives, keep deep-links from being stripped.
+      if (!workplaceMetaLoaded) return buildingEnabled;
+      const life = moduleLifecycleByKey[moduleKey];
+      const adapter = getModuleAdapter(moduleKey);
+      const requiresInitialSetup = adapter?.registration.requiresInitialSetup ?? true;
+      return isModuleWorkplaceAvailable({
+        state: life?.state ?? 'DISABLED',
+        buildingEnabled: life?.building_enabled === true || buildingEnabled,
+        requiresInitialSetup,
+        firstRunCompleted,
+        firstRunStageComplete: isFirstRunStageComplete(moduleKey, completedFirstRunStages),
+        hasSetupDraft: life?.has_setup_draft === true,
+      });
+    },
+    [
+      buildingModules,
+      completedFirstRunStages,
+      firstRunCompleted,
+      moduleLifecycleByKey,
+      workplaceMetaLoaded,
+    ],
+  );
+  const waterWorkplaceReady = isWorkplaceModuleReady('water');
+  const electricityWorkplaceReady = isWorkplaceModuleReady('electricity');
+  const showWater = canSeeWaterAdmin(staffRole) && waterWorkplaceReady;
+  const showWaterFinance = canManageWaterFinance(staffRole) && waterWorkplaceReady;
   const showCapital = canSeeCapitalAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'capital_repair');
   const showInternet = canSeeInternetAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'internet');
+  const showInternetFinance = showInternet;
   const showServiceLock =
     canSeeServiceLockAdmin(staffRole) && isBuildingModuleEnabled(buildingModules, 'service_lock');
   const showSecurity =
@@ -542,7 +608,9 @@ function AdminPortal() {
   // Platform-core: always available to complex admin (not an optional module toggle).
   const showPlatformSupport = canSeePlatformSupportAdmin(staffRole);
   const showUserActivation = canSeeUserActivationAdmin(staffRole);
-  const showElectricity = isBuildingModuleEnabled(buildingModules, 'electricity');
+  const showElectricity =
+    electricityWorkplaceReady &&
+    (canSeeWaterAdmin(staffRole) || canSeeElectricityFinance(staffRole));
   const showSupportFee = isBuildingModuleEnabled(buildingModules, 'support_fee');
   const showRequests = isBuildingModuleEnabled(buildingModules, 'requests');
   const showChat = isBuildingModuleEnabled(buildingModules, 'chat');
@@ -550,7 +618,7 @@ function AdminPortal() {
   const showAnnouncements = isBuildingModuleEnabled(buildingModules, 'announcements');
   const showGeneralMeeting = isBuildingModuleEnabled(buildingModules, 'general_meeting');
   const showBuildingDocuments = isBuildingModuleEnabled(buildingModules, 'building_documents');
-  const showElectricityFinance = canSeeElectricityFinance(staffRole);
+  const showElectricityFinance = canSeeElectricityFinance(staffRole) && electricityWorkplaceReady;
   const canEditStaff = isUkAdminRole(staffRole);
   const canManageCriticalAccess = staffActive && isUkAdminRole(staffRole);
   const canReadPropertyDirectory = staffActive && (
@@ -578,10 +646,12 @@ function AdminPortal() {
       showInventory,
       showWater,
       showElectricity,
+      showWaterFinance,
+      showElectricityFinance,
       showSupportFee: canReadSupportFinance && showSupportFee,
       showCapital,
       showInternet,
-      showElectricityFinance,
+      showInternetFinance,
       showExpenses: canManageCriticalAccess || isUkAccountantRole(staffRole),
       showBudget,
       showTariffs: showTariffCore,
@@ -591,6 +661,7 @@ function AdminPortal() {
       showAnnouncements,
       showPolls,
       showChat: canManageCriticalAccess && showChat,
+      showMeetings: showGeneralMeeting,
       showDocuments: showBuildingDocuments,
       showStaff: canManageCriticalAccess || canEditStaff,
       showSettings: true,
@@ -608,8 +679,11 @@ function AdminPortal() {
     staffRole,
     showWater,
     showElectricity,
+    showWaterFinance,
+    showElectricityFinance,
     showCapital,
     showInternet,
+    showInternetFinance,
     showServiceLock,
     showSecurity,
     showCleaning,
@@ -632,7 +706,6 @@ function AdminPortal() {
     canReadPropertyDirectory,
     canReadSupportFinance,
     showTariffCore,
-    showElectricityFinance,
   ]);
   const visibleSectionSet = useMemo(() => {
     const keys = new Set<AdminSection>();
@@ -648,11 +721,6 @@ function AdminPortal() {
   const [hasCabinet, setHasCabinet] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [authReady, setAuthReady] = useState(false);
-  /** R1-RC8 mandatory first-run gate (server: admin_get_first_run_state.gate_required). */
-  const [firstRunState, setFirstRunState] = useState<FirstRunState | null>(null);
-  const [firstRunChecked, setFirstRunChecked] = useState(false);
-  const [firstRunLoadError, setFirstRunLoadError] = useState<string | null>(null);
-  const [firstRunRetryNonce, setFirstRunRetryNonce] = useState(0);
   const [supportRate, setSupportRate] = useState<number | null>(null);
   const [electricityMode, setElectricityMode] = useState<ElectricityMode>(DEFAULT_ELECTRICITY_MODE);
   const [waterMode, setWaterMode] = useState<WaterMode>(DEFAULT_WATER_MODE);
@@ -660,20 +728,6 @@ function AdminPortal() {
   const [ledger, setLedger] = useState<SupportFeeEntry[]>([]);
   const [supportAssessments, setSupportAssessments] = useState<SupportAssessmentBalanceRow[]>([]);
   const [supportAssessmentsLoaded, setSupportAssessmentsLoaded] = useState(false);
-  const [payPropertyId, setPayPropertyId] = useState<number | ''>('');
-  const [payAmount, setPayAmount] = useState('');
-  const [payNote, setPayNote] = useState('');
-  const [paySaving, setPaySaving] = useState(false);
-  const supportPayKeyRef = useRef<{ key: string; sig: string } | null>(null);
-  const [reverseLedgerId, setReverseLedgerId] = useState<number | null>(null);
-  const [reverseReason, setReverseReason] = useState('');
-  const [reverseConfirm, setReverseConfirm] = useState(false);
-  const [reverseBusy, setReverseBusy] = useState(false);
-  const reverseKeyRef = useRef<{ key: string; ledgerId: number } | null>(null);
-  const [chargeYear, setChargeYear] = useState(String(sofiaCalendarYear()));
-  const [chargeSaving, setChargeSaving] = useState(false);
-  const [feeChargeExisting, setFeeChargeExisting] = useState<number | null>(null);
-  const [feeBulkResult, setFeeBulkResult] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -736,19 +790,26 @@ function AdminPortal() {
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
 
   // ---------- CHAT STATE ----------
-  const [chatProperties, setChatProperties] = useState<
-    { property: Property; lastMessage: ChatMessage | null; unread: number }[]
-  >([]);
-  const [selectedChatProperty, setSelectedChatProperty] = useState<Property | null>(null);
+  type ChatThreadItem = {
+    key: string;
+    property: Property;
+    /** null = owner thread; uuid = specific guest access dialog */
+    guestAccessId: string | null;
+    guestLabel: string | null;
+    lastMessage: ChatMessage | null;
+    unread: number;
+  };
+  const [chatThreads, setChatThreads] = useState<ChatThreadItem[]>([]);
+  const [selectedChatThread, setSelectedChatThread] = useState<ChatThreadItem | null>(null);
+  const selectedChatProperty = selectedChatThread?.property ?? null;
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
   const [chatFile, setChatFile] = useState<File | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  const chatFileRef = useRef<HTMLInputElement>(null);
   const chatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const selectedChatRef = useRef<Property | null>(null);
-  selectedChatRef.current = selectedChatProperty;
+  const selectedChatRef = useRef<ChatThreadItem | null>(null);
+  selectedChatRef.current = selectedChatThread;
   const [totalUnreadChats, setTotalUnreadChats] = useState(0);
   const [internetOpenTasks, setInternetOpenTasks] = useState<number | null>(null);
   const [serviceLockActiveCount, setServiceLockActiveCount] = useState<number | null>(null);
@@ -787,6 +848,9 @@ function AdminPortal() {
     reading_date: new Date().toISOString().slice(0, 10),
   });
   const meterIdempotencyRef = useRef<string | null>(null);
+  const [elReadingNotice, setElReadingNotice] = useState<string | null>(null);
+  const [elPendingOnly, setElPendingOnly] = useState(false);
+  const [elPendingIds, setElPendingIds] = useState<number[]>([]);
   const [elMeterPropertyId, setElMeterPropertyId] = useState('');
   const [showElAssign, setShowElAssign] = useState(false);
   const [showElReplace, setShowElReplace] = useState(false);
@@ -1033,6 +1097,26 @@ function AdminPortal() {
         setModuleCatalog(parsed.catalog);
       }
 
+      const lifeRes = await supabase.rpc('admin_list_module_lifecycle');
+      if (!lifeRes.error && Array.isArray(lifeRes.data)) {
+        const next: Record<string, { state: string; building_enabled: boolean; has_setup_draft: boolean }> = {};
+        for (const row of lifeRes.data as Array<{
+          module_key?: string;
+          state?: string;
+          building_enabled?: boolean;
+          has_setup_draft?: boolean;
+        }>) {
+          const key = String(row.module_key ?? '');
+          if (!key) continue;
+          next[key] = {
+            state: String(row.state ?? 'DISABLED'),
+            building_enabled: row.building_enabled === true,
+            has_setup_draft: row.has_setup_draft === true,
+          };
+        }
+        setModuleLifecycleByKey(next);
+      }
+
       if (ledgerRes.error) {
         if (!isMissingRelation(ledgerRes.error, 'support_fee_ledger')) throw ledgerRes.error;
         setLedger([]);
@@ -1054,25 +1138,6 @@ function AdminPortal() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!/^\d{4}$/.test(chargeYear.trim())) {
-      setFeeChargeExisting(null);
-      return;
-    }
-    let cancelled = false;
-    void supabase
-      .from('support_fee_ledger')
-      .select('id', { count: 'exact', head: true })
-      .eq('kind', 'charge')
-      .eq('period', chargeYear.trim())
-      .then(({ count }) => {
-        if (!cancelled) setFeeChargeExisting(count ?? 0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [chargeYear, chargeSaving, supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1208,10 +1273,6 @@ function AdminPortal() {
     }
   }
 
-  useEffect(() => {
-    if (allowed) loadAll();
-  }, [allowed]);
-
   // R1-RC8: gate re-evaluated on every admin entry (persists across re-login / any ?section=).
   // RPC failure ⇒ error/retry screen; never open the admin shell.
   useEffect(() => {
@@ -1240,6 +1301,14 @@ function AdminPortal() {
       cancelled = true;
     };
   }, [allowed, authReady, staffActive, staffRole, supabase, firstRunRetryNonce]);
+
+  // Skip the heavy admin bootstrap while the mandatory wizard is open — it fights Kong/Auth for bandwidth.
+  useEffect(() => {
+    if (!allowed || !authReady || !firstRunChecked) return;
+    if (firstRunLoadError) return;
+    if (isFirstRunGateRequired(firstRunState)) return;
+    void loadAll();
+  }, [allowed, authReady, firstRunChecked, firstRunLoadError, firstRunState]);
 
   useEffect(() => {
     setOverviewCardPrefs(loadOverviewCardPrefs());
@@ -1320,11 +1389,19 @@ function AdminPortal() {
     };
   }, [allowed, showBudget, supabase]);
 
+  const activeTabQuery = searchParams.get('tab');
   const activeNavGroup = useMemo(() => {
+    const dualGroup = resolveDualEntryNavGroupId({
+      section: activeMenu,
+      tab: activeTabQuery,
+      groups: MENU_GROUPS,
+    });
+    if (dualGroup) return dualGroup;
     const group = MENU_GROUPS.find((item) => item.id !== 'overview' && item.items.includes(activeMenu));
     return group?.id ?? null;
-  }, [MENU_GROUPS, activeMenu]);
+  }, [MENU_GROUPS, activeMenu, activeTabQuery]);
   const [navGroupOverride, setNavGroupOverride] = useState<{ section: AdminSection; groupId: string | null } | null>(null);
+  // Expand/collapse only — never changes section/tab URL.
   const openNavGroup = navGroupOverride?.section === activeMenu ? navGroupOverride.groupId : activeNavGroup;
 
   function toggleNavGroup(id: string) {
@@ -1337,10 +1414,27 @@ function AdminPortal() {
     }
   }, []);
 
+  /** Meetings create-form leave guard (sync). Null when section inactive. */
+  const sectionLeaveGuardRef = useRef<((nextSection: string) => boolean) | null>(null);
+  useEffect(() => {
+    if (activeMenu !== 'собрания') sectionLeaveGuardRef.current = null;
+  }, [activeMenu]);
+
   const navigateAdminSection = useCallback(
-    (key: AdminSection) => {
+    (key: AdminSection, opts?: { bypassLeaveGuard?: boolean }) => {
       if (!visibleSectionSet.has(key)) {
         closeMobileNav();
+        return;
+      }
+      const currentSection = searchParams.get('section') ?? DEFAULT_ADMIN_SECTION;
+      // Only meetings create-form registers a leave guard; ignore stale refs elsewhere.
+      if (
+        !opts?.bypassLeaveGuard &&
+        currentSection === 'собрания' &&
+        key !== 'собрания' &&
+        sectionLeaveGuardRef.current &&
+        !sectionLeaveGuardRef.current(key)
+      ) {
         return;
       }
       const params = new URLSearchParams(searchParams.toString());
@@ -1392,7 +1486,7 @@ function AdminPortal() {
   );
 
   useEffect(() => {
-    if (!allowed || !authReady) return;
+    if (!allowed || !authReady || loading) return;
     if (sectionQuery === 'счётчики') {
       const params = new URLSearchParams(searchParams.toString());
       if (visibleSectionSet.has('электроэнергия')) {
@@ -1413,27 +1507,43 @@ function AdminPortal() {
     params.delete('section');
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [allowed, authReady, firstRunChecked, pathname, router, searchParams, sectionQuery, visibleSectionSet]);
+  }, [
+    allowed,
+    authReady,
+    firstRunChecked,
+    loading,
+    pathname,
+    router,
+    searchParams,
+    sectionQuery,
+    visibleSectionSet,
+  ]);
 
   useEffect(() => {
     if (!allowed || !authReady || !staffRole || sectionQuery !== 'электроэнергия') return;
     const raw = searchParams.get('tab');
     if (!raw) return;
-    const allowedTabs = ['overview', 'meter', 'readings', ...(showElectricityFinance ? ['tariff', 'finance'] : [])];
+    const allowedTabs = ['overview', 'meter', 'readings', ...(showElectricityFinance ? ['finance'] : [])];
     if (allowedTabs.includes(raw)) return;
     openUtilityTab('электроэнергия', 'overview');
   }, [allowed, authReady, openUtilityTab, searchParams, sectionQuery, showElectricityFinance, staffRole]);
 
   useEffect(() => {
     if (!allowed || !authReady) return;
-    if (sectionQuery !== 'такса' && sectionQuery !== 'капремонт') return;
+    if (sectionQuery !== 'такса' && sectionQuery !== 'капремонт' && sectionQuery !== 'тарифы') return;
     const raw = searchParams.get('tab');
     if (!raw) return;
-    const allowedTabs = sectionQuery === 'такса'
-      ? ['overview', 'policy', 'operations', 'register']
-      : ['overview', 'charges', 'operations'];
-    if (allowedTabs.includes(raw)) return;
-    openSectionTab(sectionQuery, 'overview');
+    const allowedTabs =
+      sectionQuery === 'такса'
+        ? ['register', 'charges', 'payments']
+        : sectionQuery === 'тарифы'
+          ? ['current', 'scheduled', 'history', 'annual_policy']
+          : [...CAPITAL_ADMIN_TABS];
+    if ((allowedTabs as string[]).includes(raw)) return;
+    openSectionTab(
+      sectionQuery,
+      sectionQuery === 'тарифы' ? 'current' : 'register',
+    );
   }, [allowed, authReady, openSectionTab, searchParams, sectionQuery]);
 
   useEffect(() => {
@@ -1448,8 +1558,12 @@ function AdminPortal() {
     setUkChatSeen(loadUkChatSeenMap());
   }, []);
 
-  function markUkChatSeen(propertyId: number, at = new Date().toISOString()) {
-    const key = String(propertyId);
+  function markUkChatSeen(
+    propertyId: number,
+    at = new Date().toISOString(),
+    guestAccessId: string | null = null,
+  ) {
+    const key = guestAccessId ? `${propertyId}:${guestAccessId}` : String(propertyId);
     setUkChatSeen((prev) => {
       const prevAt = prev[key];
       if (prevAt && messageTime(prevAt) >= messageTime(at)) return prev;
@@ -1457,29 +1571,50 @@ function AdminPortal() {
       persistUkChatSeenMap(next);
       return next;
     });
-    void supabase
+    let q = supabase
       .from('chat_messages')
       .update({ read_by_uk: true })
       .eq('property_id', propertyId)
       .neq('sender', 'uk');
+    q = guestAccessId
+      ? q.eq('guest_access_id', guestAccessId)
+      : q.is('guest_access_id', null);
+    void q;
   }
 
   async function loadChatList() {
     const allMsgs = allChatMessages;
-    const byProp = new Map<number, ChatMessage[]>();
+    const byThread = new Map<string, ChatMessage[]>();
     for (const m of allMsgs) {
-      if (!byProp.has(m.property_id)) byProp.set(m.property_id, []);
-      byProp.get(m.property_id)!.push(m);
+      const guestKey = m.guest_access_id ? String(m.guest_access_id) : 'owner';
+      const key = `${m.property_id}:${guestKey}`;
+      if (!byThread.has(key)) byThread.set(key, []);
+      byThread.get(key)!.push(m);
     }
 
-    const list: { property: Property; lastMessage: ChatMessage | null; unread: number }[] = [];
-    for (const prop of properties) {
-      const msgsForProp = byProp.get(prop.id) ?? [];
-      if (msgsForProp.length === 0) continue;
-      const last = msgsForProp[msgsForProp.length - 1];
-      const seenAt = ukChatSeen[String(prop.id)];
-      const unread = msgsForProp.filter((m) => isNewOwnerMessage(m, msgsForProp, seenAt)).length;
-      list.push({ property: prop, lastMessage: last, unread });
+    const list: ChatThreadItem[] = [];
+    for (const [key, msgs] of byThread) {
+      if (msgs.length === 0) continue;
+      const propertyId = Number(key.split(':')[0]);
+      const prop = properties.find((p) => p.id === propertyId);
+      if (!prop) continue;
+      const guestAccessId = msgs.find((m) => m.guest_access_id)?.guest_access_id ?? null;
+      const last = msgs[msgs.length - 1];
+      const seenKey = guestAccessId ? `${prop.id}:${guestAccessId}` : String(prop.id);
+      const seenAt = ukChatSeen[seenKey] ?? ukChatSeen[String(prop.id)];
+      const unread = msgs.filter((m) => isNewOwnerMessage(m, msgs, seenAt)).length;
+      const guestLabel =
+        guestAccessId == null
+          ? null
+          : t('account.guestChatSender');
+      list.push({
+        key,
+        property: prop,
+        guestAccessId,
+        guestLabel,
+        lastMessage: last,
+        unread,
+      });
     }
 
     list.sort((a, b) => {
@@ -1490,23 +1625,29 @@ function AdminPortal() {
       return bTime - aTime;
     });
 
-    setChatProperties(list);
+    setChatThreads(list);
     setTotalUnreadChats(list.reduce((sum, item) => sum + item.unread, 0));
   }
 
   const loadChatMessages = useCallback(async () => {
-    if (!selectedChatProperty) return;
+    if (!selectedChatThread) return;
     try {
-      const { data, error } = await supabase
+      let q = supabase
         .from('chat_messages')
         .select('*')
-        .eq('property_id', selectedChatProperty.id)
+        .eq('property_id', selectedChatThread.property.id)
         .order('created_at', { ascending: true })
         .limit(500);
+      if (selectedChatThread.guestAccessId) {
+        q = q.eq('guest_access_id', selectedChatThread.guestAccessId);
+      } else {
+        q = q.is('guest_access_id', null);
+      }
+      const { data, error } = await q;
       if (error) return;
       setChatMessages((data as ChatMessage[]) ?? []);
     } catch {}
-  }, [selectedChatProperty]);
+  }, [selectedChatThread, supabase]);
 
   useEffect(() => {
     loadChatList();
@@ -1524,9 +1665,15 @@ function AdminPortal() {
       setAllChatMessages(msgs);
       const sel = selectedChatRef.current;
       if (sel) {
-        const thread = msgs.filter((m) => m.property_id === sel.id);
+        const thread = msgs.filter(
+          (m) =>
+            m.property_id === sel.property.id &&
+            (sel.guestAccessId
+              ? m.guest_access_id === sel.guestAccessId
+              : m.guest_access_id == null),
+        );
         setChatMessages(thread);
-        markUkChatSeen(sel.id);
+        markUkChatSeen(sel.property.id, new Date().toISOString(), sel.guestAccessId);
       }
     }, 5000);
     return () => {
@@ -1541,20 +1688,27 @@ function AdminPortal() {
   }, [chatMessages]);
 
   useEffect(() => {
-    if (!selectedChatProperty) return;
+    if (!selectedChatThread) return;
     setChatFile(null);
-    if (chatFileRef.current) chatFileRef.current.value = '';
-    markUkChatSeen(selectedChatProperty.id);
+    markUkChatSeen(
+      selectedChatThread.property.id,
+      new Date().toISOString(),
+      selectedChatThread.guestAccessId,
+    );
     let cancelled = false;
     (async () => {
       await loadChatMessages();
       if (cancelled) return;
-      markUkChatSeen(selectedChatProperty.id);
+      markUkChatSeen(
+        selectedChatThread.property.id,
+        new Date().toISOString(),
+        selectedChatThread.guestAccessId,
+      );
     })();
     return () => {
       cancelled = true;
     };
-  }, [selectedChatProperty]); // eslint-disable-line
+  }, [selectedChatThread]); // eslint-disable-line
 
   async function handleSendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -1562,7 +1716,7 @@ function AdminPortal() {
       setError(t('admin.errNoAccess'));
       return;
     }
-    if (!selectedChatProperty) return;
+    if (!selectedChatThread || !selectedChatProperty) return;
     const msg = chatInput.trim();
     if (!msg && !chatFile) return;
     if (chatFile && chatFile.size > MAX_CHAT_FILE_BYTES) {
@@ -1571,27 +1725,24 @@ function AdminPortal() {
     }
     setChatSending(true);
     try {
-      markUkChatSeen(selectedChatProperty.id);
+      markUkChatSeen(
+        selectedChatProperty.id,
+        new Date().toISOString(),
+        selectedChatThread.guestAccessId,
+      );
       let photoUrl: string | null = null;
       if (chatFile) {
         const filePath = chatFilePath(selectedChatProperty.id, chatFile.name);
         photoUrl = await uploadPrivateFile(supabase, CHAT_FILES_BUCKET, filePath, chatFile);
       }
-      const payload: Database['public']['Tables']['chat_messages']['Insert'] = {
-        property_id: selectedChatProperty.id,
-        sender: 'uk',
-        message: msg,
-        read_by_uk: true,
-      };
-      if (photoUrl) {
-        payload.photo_url = photoUrl;
-        payload.file_name = chatFile?.name ?? null;
-      }
-      const { data: inserted, error: insertErr } = await supabase
-        .from('chat_messages')
-        .insert(payload)
-        .select('*')
-        .single();
+      // Explicit selected dialog — never infer from latest guest message on the apartment.
+      const { data: inserted, error: insertErr } = await supabase.rpc('admin_reply_chat_message', {
+        p_property_id: selectedChatProperty.id,
+        p_message: msg,
+        p_guest_access_id: selectedChatThread.guestAccessId,
+        p_photo_url: photoUrl,
+        p_file_name: chatFile?.name ?? null,
+      });
       if (insertErr) {
         const hint = insertErr.message?.includes('photo_url') || insertErr.message?.includes('file_name')
           ? t('err.chatFileSql')
@@ -1599,12 +1750,15 @@ function AdminPortal() {
         throw new Error(hint);
       }
       const row = inserted as ChatMessage;
-      markUkChatSeen(selectedChatProperty.id, row.created_at);
+      markUkChatSeen(
+        selectedChatProperty.id,
+        row.created_at,
+        selectedChatThread.guestAccessId,
+      );
       setChatMessages((prev) => [...prev, row]);
       setAllChatMessages((prev) => [...prev, row]);
       setChatInput('');
       setChatFile(null);
-      if (chatFileRef.current) chatFileRef.current.value = '';
       void import('@/lib/email/eventProducers')
         .then(async ({ notifyTicketNewMessage }) => {
           const { data: auth } = await supabase.auth.getUser();
@@ -1617,7 +1771,7 @@ function AdminPortal() {
         })
         .catch(() => undefined);
     } catch (e: any) {
-      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? e?.message ?? t('err.sendShort'));
+      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? toUserFacingMessage(e, t, { context: 'file', fallback: t('err.sendShort') }));
     } finally {
       setChatSending(false);
     }
@@ -1646,15 +1800,6 @@ function AdminPortal() {
     () => sumDisplaySupportOutstanding(properties, supportAssessments, supportAssessmentsLoaded),
     [properties, supportAssessments, supportAssessmentsLoaded]
   );
-  const totalOverpayment = useMemo(
-    () => properties.reduce((sum, p) => sum + supportOverpayment(p.overpayment), 0),
-    [properties]
-  );
-  const totalArea = useMemo(
-    () => properties.reduce((sum, p) => sum + Number(p.area_sqm ?? 0), 0),
-    [properties]
-  );
-  const annualSupportTotal = supportRate == null ? null : totalArea * supportRate;
   const activeRequests = useMemo(
     () =>
       requests.filter(
@@ -2046,7 +2191,14 @@ function AdminPortal() {
       setError('Удалять квартиры может только активный администратор.');
       return;
     }
-    if (!confirm(t('confirm.retireApt'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('confirm.retireApt'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       const { data: inspect, error: inspErr } = await supabase.rpc('admin_property_lifecycle_inspect', {
         p_property_id: id,
@@ -2082,7 +2234,7 @@ function AdminPortal() {
         setDetailProperty(null);
       }
     } catch (e: any) {
-      setError(e?.message ?? t('admin.aptRetireFailed'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.aptRetireFailed') }));
     }
   }
 
@@ -2115,7 +2267,7 @@ function AdminPortal() {
       .eq('night_reading_id', pair.night_reading_id)
       .maybeSingle();
     if (qErr && !isMissingRelation(qErr, 'electricity_charges')) {
-      setError(qErr.message);
+      setError(toUserFacingMessage(qErr, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     const charge = (data as ElectricityChargeCorrectionRef | null) ?? null;
@@ -2173,7 +2325,7 @@ function AdminPortal() {
       closeElectricityCorrection();
       await loadAll();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setElCorrectBusy(false);
     }
@@ -2196,7 +2348,7 @@ function AdminPortal() {
       meterIdempotencyRef.current = crypto.randomUUID();
     }
     try {
-      const { error } = await supabase.rpc('submit_electricity_reading', {
+      const { data, error } = await supabase.rpc('submit_electricity_reading', {
         p_property_id: Number(meterForm.property_id),
         p_day_reading: Number(day.toFixed(3)),
         p_night_reading: Number(night.toFixed(3)),
@@ -2213,10 +2365,12 @@ function AdminPortal() {
           disabled: t('account.elErrDisabled'),
           staffOnly: t('account.elStaffOnly'),
           noMeter: t('account.elErrNoMeter'),
-          generic: error.message || t('account.utilErrGeneric'),
+          generic: toUserFacingMessage(error, t, { fallback: t('account.utilErrGeneric') }),
         } as const;
         throw new Error(map[key]);
       }
+      const submitted = Array.isArray(data) ? data[0] : null;
+      setElReadingNotice(submitted && submitted.charge_created === false ? t('admin.elPendingNotice') : null);
       setShowMeterForm(false);
       const submittedPropertyId = Number(meterForm.property_id);
       const submittedReadingDate = meterForm.reading_date;
@@ -2241,7 +2395,7 @@ function AdminPortal() {
       }
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка сохранения показания');
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -2279,7 +2433,7 @@ function AdminPortal() {
       setElInitialNight('');
       await loadAll();
     } catch (err: any) {
-      setError(err?.message ?? t('admin.errGeneric'));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setElMeterBusy(false);
     }
@@ -2321,7 +2475,7 @@ function AdminPortal() {
       setElReplaceReason('');
       await loadAll();
     } catch (err: any) {
-      setError(err?.message ?? t('admin.errGeneric'));
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       setElMeterBusy(false);
     }
@@ -2345,6 +2499,26 @@ function AdminPortal() {
     const parsed = buildingModulesFromV2Rows(modulesRes.data as BuildingModuleV2Row[] | null);
     setBuildingModules(parsed.state);
     setModuleCatalog(parsed.catalog);
+
+    const lifeRes = await supabase.rpc('admin_list_module_lifecycle');
+    if (!lifeRes.error && Array.isArray(lifeRes.data)) {
+      const next: Record<string, { state: string; building_enabled: boolean; has_setup_draft: boolean }> = {};
+      for (const row of lifeRes.data as Array<{
+        module_key?: string;
+        state?: string;
+        building_enabled?: boolean;
+        has_setup_draft?: boolean;
+      }>) {
+        const key = String(row.module_key ?? '');
+        if (!key) continue;
+        next[key] = {
+          state: String(row.state ?? 'DISABLED'),
+          building_enabled: row.building_enabled === true,
+          has_setup_draft: row.has_setup_draft === true,
+        };
+      }
+      setModuleLifecycleByKey(next);
+    }
   }
 
   async function handleSetBuildingModule(key: string, enabled: boolean) {
@@ -2382,7 +2556,7 @@ function AdminPortal() {
       if (error) throw error;
       await refreshBuildingSettings();
     } catch (e: any) {
-      setError(e?.message ?? t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -2400,7 +2574,7 @@ function AdminPortal() {
       if (error) throw error;
       await refreshBuildingSettings();
     } catch (e: any) {
-      setError(e?.message ?? t('admin.errGeneric'));
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -2501,13 +2675,17 @@ function AdminPortal() {
       },
     );
     if (dup) {
-      const ok = window.confirm(
-        t('admin.expDuplicateWarn', {
+      const ok = await confirm({
+        title: t('common.confirmAction'),
+        description: t('admin.expDuplicateWarn', {
           date: dup.expense_date,
           title: dup.title,
           amount: String(dup.amount),
         }),
-      );
+        confirmLabel: t('common.yes'),
+        cancelLabel: t('common.cancel'),
+        tone: 'default',
+      });
       if (!ok) return;
     }
     const payload = {
@@ -2584,7 +2762,7 @@ function AdminPortal() {
         setError(t('err.expenseSql'));
         return;
       }
-      setError(messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ?? err?.message ?? 'Ошибка сохранения расхода');
+      setError(messageForUploadError(err, t('err.uploadType'), t('err.uploadSize')) ?? toUserFacingMessage(err, t, { context: 'file', fallback: t('admin.errGeneric') }));
     } finally {
       expenseSaveBusy.current = false;
     }
@@ -2620,7 +2798,7 @@ function AdminPortal() {
         .catch(() => undefined);
       await loadAll();
     } catch (err: any) {
-      setError(err?.message ?? 'Не удалось утвердить расход');
+      setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -2629,159 +2807,19 @@ function AdminPortal() {
       setError('Удалять расходы может только активный администратор.');
       return;
     }
-    if (!confirm('Удалить расход?')) return;
+    const ok = await confirm({
+      title: t('confirm.deleteExpense'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       const { error } = await supabase.from('uk_expenses').delete().eq('id', id);
       if (error) throw error;
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка удаления');
-    }
-  }
-
-  async function handleReverseSupportPayment() {
-    if (!canReverseOrVoidSupportFees(staffRole) || reverseLedgerId == null) return;
-    if (!reverseConfirm || !reverseReason.trim()) {
-      setError(t('admin.feeReverseReason'));
-      return;
-    }
-    if (!reverseKeyRef.current || reverseKeyRef.current.ledgerId !== reverseLedgerId) {
-      reverseKeyRef.current = { key: crypto.randomUUID(), ledgerId: reverseLedgerId };
-    }
-    setReverseBusy(true);
-    setError(null);
-    try {
-      const { error } = await supabase.rpc('reverse_support_payment', {
-        p_ledger_id: reverseLedgerId,
-        p_reason: reverseReason.trim(),
-        p_idempotency_key: reverseKeyRef.current.key,
-      });
-      if (error) throw error;
-      reverseKeyRef.current = null;
-      setReverseLedgerId(null);
-      setReverseReason('');
-      setReverseConfirm(false);
-      await loadAll();
-    } catch (err: unknown) {
-      setError(ownerVisibleError(err, t('admin.errGeneric')));
-    } finally {
-      setReverseBusy(false);
-    }
-  }
-
-  async function handleRecordSupportPayment(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canRecordSupportPayments(staffRole)) {
-      setError('Принимать таксу могут администратор и бухгалтер.');
-      return;
-    }
-    const property = properties.find((p) => p.id === Number(payPropertyId));
-    const amount = Number(String(payAmount).replace(',', '.'));
-    if (!property) {
-      setError(t('err.pickApt'));
-      return;
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError('Сумма должна быть больше нуля');
-      return;
-    }
-    const note = payNote.trim();
-    const sig = supportPaymentIdempotencySignature({
-      mode: 'regular',
-      propertyId: property.id,
-      amount,
-      note,
-    });
-    if (!supportPayKeyRef.current || supportPayKeyRef.current.sig !== sig) {
-      supportPayKeyRef.current = { key: crypto.randomUUID(), sig };
-    }
-    setPaySaving(true);
-    setError(null);
-    try {
-      const { error } = await supabase.rpc('record_support_payment', {
-        p_property_id: property.id,
-        p_amount: amount,
-        p_note: note || null,
-        p_idempotency_key: supportPayKeyRef.current.key,
-      });
-      if (error) throw error;
-      supportPayKeyRef.current = null;
-      setPayAmount('');
-      setPayNote('');
-      void import('@/lib/email/eventProducers')
-        .then(({ notifyPropertyOwnersEvent }) =>
-          notifyPropertyOwnersEvent(supabase, {
-            eventKey: 'support_fee_payment_recorded',
-            propertyId: property.id,
-            entityId: `sf_pay:${property.id}:${amount}`,
-            payload: { amount },
-          })
-        )
-        .catch(() => undefined);
-      await loadAll();
-    } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'message' in err
-          ? String((err as { message: unknown }).message ?? '')
-          : '';
-      if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
-        setSupportFeeMissing(true);
-        setError(t('err.feeSql'));
-      } else if (msg.toLowerCase().includes('idempotency key conflict')) {
-        setError(t('admin.errIdempotency'));
-      } else {
-        setError(msg || 'Не удалось записать оплату');
-      }
-    } finally {
-      setPaySaving(false);
-    }
-  }
-
-  async function handleChargeSupportBulk() {
-    if (!canRecordSupportPayments(staffRole)) {
-      setError('Начислять таксу могут администратор и бухгалтер.');
-      return;
-    }
-    const year = chargeYear.trim();
-    if (!/^\d{4}$/.test(year)) {
-      setError('Укажите год начисления, например 2026.');
-      return;
-    }
-    const total = properties.length;
-    if (total === 0) return;
-    const existingCount = feeChargeExisting ?? 0;
-    const will = Math.max(0, total - existingCount);
-    if (!confirm(t('confirm.bulkSupport', { year, total, existing: existingCount, will }))) return;
-    setChargeSaving(true);
-    setError(null);
-    setFeeBulkResult(null);
-    try {
-      const { data, error } = await supabase.rpc('charge_support_fee_bulk', { p_period: year });
-      if (error) throw error;
-      const summary = readBulkAccrualSummary(data);
-      if (!summary) {
-        setError(t('admin.errGeneric'));
-        return;
-      }
-      const base = t('admin.bulkResult', { created: summary.created, skipped: summary.skipped_existing });
-      const withReprice =
-        summary.repriced > 0 ? `${base} ${t('admin.feeBulkRepriced', { n: summary.repriced })}` : base;
-      setFeeBulkResult(
-        summary.not_applied > 0 ? `${withReprice} ${t('admin.bulkNotApplied', { n: summary.not_applied })}` : withReprice,
-      );
-      await loadAll();
-    } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message ?? '') : '';
-      if (isMissingRelation(err as { message?: string }, 'support_fee_ledger')) {
-        setSupportFeeMissing(true);
-        setError(t('err.feeSql'));
-      } else if (/could not find the function/i.test(msg)) {
-        setError(t('admin.bulkUnavailable'));
-      } else {
-        setError(msg || 'Не удалось начислить таксу');
-      }
-    } finally {
-      setChargeSaving(false);
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -2906,7 +2944,13 @@ function AdminPortal() {
 
   async function handleDeleteStaff(id: number) {
     if (!canEditStaff) return;
-    if (!confirm(t('confirm.deleteStaff'))) return;
+    const ok = await confirm({
+      title: t('confirm.deleteStaff'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       const { error } = await supabase.from('staff').delete().eq('id', id);
       if (error) throw error;
@@ -2939,7 +2983,7 @@ function AdminPortal() {
         .catch(() => undefined);
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка обновления статуса');
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
     }
   }
 
@@ -2948,7 +2992,14 @@ function AdminPortal() {
       setError(t('admin.errNoAccess'));
       return;
     }
-    if (!confirm(t('admin.reqReturnAsk'))) return;
+    const ok = await confirm({
+      title: t('common.confirmAction'),
+      description: t('admin.reqReturnAsk'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'default',
+    });
+    if (!ok) return;
     setRequestLifecycleBusy(true);
     setError(null);
     try {
@@ -2996,7 +3047,13 @@ function AdminPortal() {
       setError(t('admin.errNoAccess'));
       return;
     }
-    if (!confirm(t('confirm.deleteRequest'))) return false;
+    const ok = await confirm({
+      title: t('confirm.deleteRequest'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return false;
     try {
       const { error } = await supabase.from('requests').delete().eq('id', id);
       if (error) throw error;
@@ -3004,7 +3061,7 @@ function AdminPortal() {
       await loadAll();
       return true;
     } catch (e: any) {
-      setError(e?.message ?? 'Ошибка удаления');
+      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
       return false;
     }
   }
@@ -3720,7 +3777,20 @@ function AdminPortal() {
                 supportOver={supportOverpayment(detailProperty.overpayment)}
                 onClose={() => setDetailProperty(null)}
                 onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
-                onOpenChat={() => { setSelectedChatProperty(detailProperty); setDetailProperty(null); navigateAdminSection('чат'); }}
+                onOpenChat={() => {
+                  if (detailProperty) {
+                    setSelectedChatThread({
+                      key: `${detailProperty.id}:owner`,
+                      property: detailProperty,
+                      guestAccessId: null,
+                      guestLabel: null,
+                      lastMessage: null,
+                      unread: 0,
+                    });
+                  }
+                  setDetailProperty(null);
+                  navigateAdminSection('чат');
+                }}
                 onChanged={loadAll}
                 onDelete={
                   canManageCriticalAccess && !detailProperty.archived_at
@@ -3729,18 +3799,15 @@ function AdminPortal() {
                 }
                 onOpenTransfer={() => { setDetailProperty(null); navigateAdminSection('смены'); }}
                 onTakePayment={() => {
-                  setPayPropertyId(detailProperty.id);
-                  const debt = sfDebtOf(detailProperty);
-                  const monthly = monthlySupportFee(detailProperty.area_sqm, supportRate);
-                  setPayAmount(
-                    debt > 0
-                      ? debt.toFixed(2)
-                      : monthly == null
-                        ? ''
-                        : String(monthly),
-                  );
+                  // Open the Support Fee apartment card (register → card) for this property.
+                  const targetId = detailProperty.id;
                   setDetailProperty(null);
-                  navigateAdminSection('такса');
+                  if (!visibleSectionSet.has('такса')) return;
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.set('section', 'такса');
+                  params.set('tab', 'register');
+                  params.set('property', String(targetId));
+                  router.push(`${pathname}?${params.toString()}`, { scroll: false });
                 }}
               />
             )}
@@ -4072,7 +4139,10 @@ function AdminPortal() {
       // =============================================================
       // СЧЁТЧИКИ
       // =============================================================
-      case 'вода':
+      case 'вода': {
+        const waterPropertyRaw = Number(searchParams.get('property') ?? '');
+        const waterFocusProperty =
+          Number.isFinite(waterPropertyRaw) && waterPropertyRaw > 0 ? waterPropertyRaw : '';
         return (
           <AdminWater
             supabase={supabase}
@@ -4084,26 +4154,75 @@ function AdminPortal() {
             onSaveWaterMode={handleSaveWaterMode}
             tab={searchParams.get('tab')}
             onTabChange={(next) => openUtilityTab('вода', next)}
+            focusPropertyId={waterFocusProperty}
+            onPropertyChange={(id) => {
+              // history.replaceState only — router.replace races and can resurrect `property` after «К реестру».
+              if (typeof window === 'undefined') return;
+              const params = new URLSearchParams(window.location.search);
+              params.set('section', 'вода');
+              if (id === '' || id == null) params.delete('property');
+              else params.set('property', String(id));
+              const qs = params.toString();
+              const url = qs ? `${pathname}?${qs}` : pathname;
+              window.history.replaceState(window.history.state, '', url);
+            }}
           />
         );
+      }
 
-      case 'капремонт':
+      case 'капремонт': {
+        const capitalPropertyRaw = Number(searchParams.get('property') ?? '');
+        const capitalFocusProperty =
+          Number.isFinite(capitalPropertyRaw) && capitalPropertyRaw > 0 ? capitalPropertyRaw : '';
         return (
           <AdminCapital
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
+            tab={searchParams.get('tab')}
+            onTabChange={(next) => openSectionTab('капремонт', next)}
+            focusPropertyId={capitalFocusProperty}
+            onPropertyChange={(id) => {
+              // history.replaceState only — router.replace races and can resurrect `property` after «К реестру».
+              if (typeof window === 'undefined') return;
+              const params = new URLSearchParams(window.location.search);
+              params.set('section', 'капремонт');
+              if (id === '' || id == null) params.delete('property');
+              else params.set('property', String(id));
+              const qs = params.toString();
+              const url = qs ? `${pathname}?${qs}` : pathname;
+              window.history.replaceState(window.history.state, '', url);
+            }}
+            onOpenTariffs={() => {
+              // Capital rate is edited under Финансы → Тарифы (current rates tab); never here.
+              const params = new URLSearchParams(searchParams.toString());
+              params.set('section', 'тарифы');
+              params.set('tab', 'current');
+              params.delete('property');
+              params.delete('year');
+              router.push(`${pathname}?${params.toString()}`, { scroll: false });
+            }}
           />
         );
+      }
 
-      case 'интернет':
+      case 'интернет': {
+        const internetTab = searchParams.get('tab');
+        const internetPanel =
+          internetTab === 'finance'
+            ? 'finance'
+            : internetTab === 'operations'
+              ? 'operations'
+              : 'all';
         return (
           <AdminInternet
             supabase={supabase}
             properties={properties}
             staffRole={staffRole}
+            panel={internetPanel}
           />
         );
+      }
 
       case 'блокировка':
         return (
@@ -4167,6 +4286,14 @@ function AdminPortal() {
             meetingsEnabled={showGeneralMeeting}
             documentsEnabled={false}
             mode="meetings"
+            onRegisterLeaveGuard={(guard) => {
+              sectionLeaveGuardRef.current = guard;
+            }}
+            onLeaveConfirmed={(nextSection) => {
+              if (isAdminSection(nextSection)) {
+                navigateAdminSection(nextSection, { bypassLeaveGuard: true });
+              }
+            }}
           />
         );
 
@@ -4210,15 +4337,35 @@ function AdminPortal() {
           { id: 'readings', label: t('admin.utilTabReadings') },
         ];
         if (showElectricityFinance) {
-          elTabItems.push(
-            { id: 'tariff', label: t('admin.utilTabTariff') },
-            { id: 'finance', label: t('admin.utilTabFinance') },
-          );
+          // Allowed via URL from Финансы nav (tab=finance); hidden from metering chrome.
+          elTabItems.push({ id: 'finance', label: t('admin.utilTabFinance') });
         }
         const elTab = parseAdminUtilityTab(
           sectionQuery === 'счётчики' ? 'meter' : searchParams.get('tab'),
           elTabItems.map((item) => item.id),
         );
+        const elMeteringTabs = elTabItems.filter((item) => item.id !== 'finance');
+        if (elTab === 'finance') {
+          return (
+            <div className="space-y-4">
+              <AdminPageHeader
+                title={t('admin.electricityFinance')}
+                secondary={t('admin.utilFinRegisterLead')}
+              />
+              <AdminElectricityFinance
+                supabase={supabase}
+                properties={properties}
+                staffRole={staffRole}
+                embedded
+                panel="finance"
+                focusPropertyId={elMeterPropertyId ? Number(elMeterPropertyId) : ''}
+                onPropertyChange={(id) => {
+                  setElMeterPropertyId(id === '' || id == null ? '' : String(id));
+                }}
+              />
+            </div>
+          );
+        }
         const selectedElId = elMeterPropertyId || (properties[0] ? String(properties[0].id) : '');
         const selectedElMeters = electricityMeters.filter((m) => String(m.property_id) === selectedElId);
         const activeEl = activeElectricityMeter(selectedElMeters);
@@ -4226,6 +4373,15 @@ function AdminPortal() {
           meterReadings.filter((m) => String(m.property_id) === selectedElId),
           electricityMeters,
         );
+        const visibleElPairs = elPendingOnly
+          ? elPairs.filter(
+              (row) => row.day_reading_id != null && elPendingIds.includes(row.day_reading_id),
+            )
+          : elPairs;
+        // All meters for the apartment: replaced devices keep separate history rows.
+        const elHistoryEntries = buildElectricityHistoryEntries(visibleElPairs, {
+          pendingDayReadingIds: elPendingIds,
+        });
         const elSnapshot = electricityActiveMeterReadings(elPairs, activeEl);
         const retiredEl = selectedElMeters.filter((m) => m.retired_at);
         const elCorrectable = latestCorrectableElectricityPair(elPairs, activeEl);
@@ -4301,7 +4457,7 @@ function AdminPortal() {
             </AdminCard>
 
             <AdminTabBar
-              tabs={elTabItems}
+              tabs={elMeteringTabs}
               active={elTab}
               onChange={(id) => openUtilityTab('электроэнергия', id as AdminUtilityTab)}
             />
@@ -4498,6 +4654,22 @@ function AdminPortal() {
             )}
 
             {elTab === 'readings' && (
+              <AdminElectricityLegalQueue
+                supabase={supabase}
+                staffRole={staffRole}
+                staffActive={staffActive}
+                showFilter
+                filterOn={elPendingOnly}
+                onFilterChange={setElPendingOnly}
+                onPendingIds={setElPendingIds}
+                onChanged={() => void loadAll()}
+              />
+            )}
+            {elTab === 'readings' && elReadingNotice ? (
+              <p className="text-sm text-accent">{elReadingNotice}</p>
+            ) : null}
+
+            {elTab === 'readings' && (
               <div className="space-y-3">
                 {canShowElCorrectPanel && elCorrectTarget ? (
                   <AdminMeterCorrectionPanel
@@ -4558,102 +4730,50 @@ function AdminPortal() {
                     onCancel={closeElectricityCorrection}
                   />
                 ) : null}
-                {elPairs.length === 0 ? (
-                  <AdminEmptyState title={t('admin.noReadings')} />
-                ) : (
-                  <AdminTableShell>
-                    <table className="w-full min-w-[40rem] text-sm">
-                      <thead>
-                        <tr className={adminTableHeadRowClass}>
-                          <th className={adminTableCellClass}>{t('admin.date')}</th>
-                          <th className={adminTableCellClass}>{t('account.elMeter')}</th>
-                          <th className={adminTableCellClass}>{t('account.elDay')}</th>
-                          <th className={adminTableCellClass}>{t('account.elNight')}</th>
-                          <th className={adminTableCellClass}>{t('account.elConsDay')}</th>
-                          <th className={adminTableCellClass}>{t('account.elConsNight')}</th>
-                          <th className={adminTableCellClass}>{t('account.elSubmittedBy')}</th>
-                          <th className={adminTableCellClass} />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {elPairs.slice(0, 100).map((row) => {
-                          const reversed = row.status === 'reversed';
-                          // Uncharged gate for button visibility; charged/paid re-checked after charge fetch.
-                          const showCorrect =
-                            elCorrectable?.key === row.key &&
-                            electricityPairIsActive(row) &&
-                            canCorrectElectricityReading(staffRole, staffActive, false);
-                          return (
-                            <tr
-                              key={row.key}
-                              className={`${adminTableRowClass}${reversed ? ' text-muted line-through' : ''}`}
-                            >
-                              <td className={adminTableCellClass}>{formatOwnerDate(row.reading_date)}</td>
-                              <td className={adminTableCellClass}>
-                                {displayElectricityMeterNumber(row.meter_number) || '—'}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                {row.day != null ? `${formatKwh(row.day, locale)} ${t('account.kwh')}` : '—'}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                {row.night != null
-                                  ? `${formatKwh(row.night, locale)} ${t('account.kwh')}`
-                                  : '—'}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                {row.consumptionDay != null
-                                  ? `${formatKwh(row.consumptionDay, locale)} ${t('account.kwh')}`
-                                  : '—'}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                {row.consumptionNight != null
-                                  ? `${formatKwh(row.consumptionNight, locale)} ${t('account.kwh')}`
-                                  : '—'}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                {row.source === 'owner'
-                                  ? t('account.elByOwner')
-                                  : row.source === 'staff'
-                                    ? t('account.elByStaff')
-                                    : (row.submitted_by ?? '—')}
-                              </td>
-                              <td className={adminTableCellClass}>
-                                {showCorrect ? (
-                                  <button
-                                    type="button"
-                                    className="text-sm text-accent hover:underline"
-                                    onClick={() => void openElectricityCorrection(row)}
-                                  >
-                                    {t('admin.meterCorrectionAction')}
-                                  </button>
-                                ) : null}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </AdminTableShell>
-                )}
-              </div>
-            )}
-
-            {showElectricityFinance && (
-              <div className={elTab === 'overview' || elTab === 'tariff' || elTab === 'finance' ? undefined : 'hidden'}>
-                <AdminElectricityFinance
-                  supabase={supabase}
-                  properties={properties}
-                  staffRole={staffRole}
-                  embedded
-                  panel={elTab === 'tariff' ? 'tariff' : elTab === 'finance' ? 'finance' : 'overview'}
-                  focusPropertyId={selectedElId ? Number(selectedElId) : ''}
-                  onPropertyChange={(id) => {
-                    if (id !== '') setElMeterPropertyId(String(id));
+                <MeterReadingHistory
+                  utility="electricity"
+                  entries={elHistoryEntries}
+                  title={t('admin.readingHistory')}
+                  emptyTitle={elPendingOnly ? t('admin.elPendingEmpty') : t('admin.noReadings')}
+                  rowActions={(entry) => {
+                    const row = visibleElPairs.find((p) => p.key === entry.actionKey);
+                    if (!row) return null;
+                    const showCorrect =
+                      elCorrectable?.key === row.key &&
+                      electricityPairIsActive(row) &&
+                      canCorrectElectricityReading(staffRole, staffActive, false);
+                    if (!showCorrect) return null;
+                    return (
+                      <button
+                        type="button"
+                        className="text-sm text-accent hover:underline"
+                        onClick={() => void openElectricityCorrection(row)}
+                      >
+                        {t('admin.meterCorrectionAction')}
+                      </button>
+                    );
                   }}
-                  onOpenTab={(next) => openUtilityTab('электроэнергия', next)}
                 />
               </div>
             )}
+
+            {showElectricityFinance && elTab === 'overview' ? (
+              <AdminElectricityFinance
+                supabase={supabase}
+                properties={properties}
+                staffRole={staffRole}
+                embedded
+                panel="overview"
+                focusPropertyId={selectedElId ? Number(selectedElId) : ''}
+                onPropertyChange={(id) => {
+                  if (id !== '') setElMeterPropertyId(String(id));
+                }}
+                onOpenTab={(next) => {
+                  if (next === 'finance' || next === 'tariff') return;
+                  openUtilityTab('электроэнергия', next);
+                }}
+              />
+            ) : null}
           </div>
         );
       }
@@ -4685,7 +4805,7 @@ function AdminPortal() {
                     </AdminSecondaryButton>
                   ) : null}
                   <AdminPrimaryButton type="button" onClick={startNewExpense}>
-                    + {t('admin.addPlus')}
+                    {t('admin.addPlus')}
                   </AdminPrimaryButton>
                 </div>
               }
@@ -4873,37 +4993,35 @@ function AdminPortal() {
                     </div>
                   )}
                   {expenseExistingUrls.length + expensePhotoFiles.length < MAX_EXPENSE_PHOTOS && (
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-border bg-hover/40 px-3 py-3 text-center text-xs text-secondary hover:bg-hover">
-                        {t('admin.expReceiptPick')}
-                        <input
-                          type="file"
-                          accept={EXPENSE_RECEIPT_ACCEPT}
-                          multiple
-                          className="sr-only"
-                          onChange={(e) => {
-                            const room = MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
-                            const added = Array.from(e.target.files ?? []).slice(0, room);
-                            setExpensePhotoFiles((prev) => [...prev, ...added]);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                      <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-border bg-hover/40 px-3 py-3 text-center text-xs text-secondary hover:bg-hover sm:max-w-[12rem]">
-                        {t('admin.expReceiptCamera')}
-                        <input
-                          type="file"
-                          accept={EXPENSE_RECEIPT_CAMERA_ACCEPT}
-                          capture="environment"
-                          className="sr-only"
-                          onChange={(e) => {
-                            const room = MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
-                            const added = Array.from(e.target.files ?? []).slice(0, room);
-                            setExpensePhotoFiles((prev) => [...prev, ...added]);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                      <AppFilePicker
+                        className="min-w-0 flex-1"
+                        accept={EXPENSE_RECEIPT_ACCEPT}
+                        multiple
+                        resetInputAfterChange
+                        hint={t('common.fileHintFormats', {
+                          formats: formatAcceptHint(EXPENSE_RECEIPT_ACCEPT),
+                        })}
+                        onChange={(picked) => {
+                          const room =
+                            MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
+                          const added = picked.slice(0, room);
+                          if (added.length) setExpensePhotoFiles((prev) => [...prev, ...added]);
+                        }}
+                      />
+                      <AppFilePicker
+                        className="min-w-0 flex-1 sm:max-w-[14rem]"
+                        accept={EXPENSE_RECEIPT_CAMERA_ACCEPT}
+                        capture="environment"
+                        resetInputAfterChange
+                        aria-label={t('admin.expReceiptCamera')}
+                        onChange={(picked) => {
+                          const room =
+                            MAX_EXPENSE_PHOTOS - expenseExistingUrls.length - expensePhotoFiles.length;
+                          const added = picked.slice(0, room);
+                          if (added.length) setExpensePhotoFiles((prev) => [...prev, ...added]);
+                        }}
+                      />
                     </div>
                   )}
                 </div>
@@ -5127,7 +5245,7 @@ function AdminPortal() {
               secondary={t('admin.staffLead')}
               action={canEditStaff ? (
                 <AdminPrimaryButton type="button" onClick={startNewStaff}>
-                  + {t('admin.addPlus')}
+                  {t('admin.addPlus')}
                 </AdminPrimaryButton>
               ) : undefined}
             />
@@ -5438,9 +5556,8 @@ function AdminPortal() {
             supabase={supabase}
             canManageCriticalAccess={canManageCriticalAccess}
             canChangeBuildingModules={canChangeBuildingModules}
-            moduleCatalog={moduleCatalog}
-            moduleSavingKey={moduleSavingKey}
-            onToggleModule={(key, enabled) => void handleSetBuildingModule(key, enabled)}
+            moduleFilter={searchParams.get('moduleFilter') ?? 'all'}
+            onModulesChanged={() => void refreshBuildingModules()}
             activeTab={settingsTab}
             onTabChange={(tab: SettingsTabId) => openSectionTab('настройки', tab)}
             onNavigateSection={(section) => navigateAdminSection(section as AdminSection)}
@@ -5485,7 +5602,15 @@ function AdminPortal() {
             <AdminEmptyState title={t('admin.is1Title')} text={t('admin.is1AccessDenied')} />
           );
         }
-        return <AdminInitialSetup supabase={supabase} t={t} />;
+        // Same catalog + wizard as Settings → Modules, pre-filtered to modules that need setup.
+        return (
+          <AdminInitialSetup
+            supabase={supabase}
+            t={t}
+            defaultFilter="needs_setup"
+            onModulesChanged={() => void refreshBuildingModules()}
+          />
+        );
 
       // =============================================================
       // ОПРОСЫ
@@ -5521,15 +5646,31 @@ function AdminPortal() {
           />
         );
 
-      case 'тарифы':
+      case 'тарифы': {
+        const tariffPolicyYearRaw = Number(searchParams.get('year') ?? '');
+        const tariffPolicyYear =
+          Number.isFinite(tariffPolicyYearRaw) && tariffPolicyYearRaw >= 2000
+            ? Math.floor(tariffPolicyYearRaw)
+            : null;
         return (
           <AdminTariffs
             supabase={supabase}
             locale={locale}
             staffRole={staffRole}
             staffActive={staffActive}
+            enabledModules={{
+              water: isBuildingModuleEnabled(buildingModules, 'water'),
+              electricity: isBuildingModuleEnabled(buildingModules, 'electricity'),
+              internet: isBuildingModuleEnabled(buildingModules, 'internet'),
+              support_fee: isBuildingModuleEnabled(buildingModules, 'support_fee'),
+              capital_repair: isBuildingModuleEnabled(buildingModules, 'capital_repair'),
+            }}
+            tab={searchParams.get('tab')}
+            onTabChange={(next) => openSectionTab('тарифы', next)}
+            policyYear={tariffPolicyYear}
           />
         );
+      }
 
       case 'отчётность':
         return (
@@ -5573,30 +5714,47 @@ function AdminPortal() {
                 </h2>
               </div>
               <div className="flex-1 overflow-y-auto">
-                {chatProperties.length === 0 ? (
+                {chatThreads.length === 0 ? (
                   <div className="p-4">
                     <AdminEmptyState title={t('admin.noDialogs')} />
                   </div>
                 ) : (
-                  chatProperties.map((item) => (
-                    <button key={item.property.id}
-                      onClick={() => setSelectedChatProperty(item.property)}
+                  chatThreads.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setSelectedChatThread(item)}
                       className={`w-full text-left px-4 py-3 border-b border-border hover:bg-surface transition-colors ${
-                        selectedChatProperty?.id === item.property.id ? 'bg-accent-bg border-l-2 border-l-accent' : ''
-                      }`}>
+                        selectedChatThread?.key === item.key
+                          ? 'bg-accent-bg border-l-2 border-l-accent'
+                          : ''
+                      }`}
+                    >
                       <div className="flex items-center justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="text-sm text-foreground font-medium truncate">
                             {t('common.apt')} {item.property.apartment_number}
+                            {item.guestAccessId
+                              ? ` · ${t('account.guestChatSender')}`
+                              : ` · ${t('book.owner')}`}
                           </div>
-                          <div className="text-xs text-muted truncate">{item.property.owner_name}</div>
+                          <div className="text-xs text-muted truncate">
+                            {item.guestAccessId
+                              ? item.guestLabel ?? t('account.guestChatSender')
+                              : item.property.owner_name}
+                          </div>
                           {item.lastMessage && (
                             <div className="text-xs text-muted truncate mt-1">
                               {item.lastMessage.sender === 'owner' || item.lastMessage.sender === 'guest'
                                 ? item.lastMessage.sender === 'guest'
                                   ? `${t('account.guestChatSender')}: `
                                   : ''
-                                : `${t('common.uk')}: `}{chatPreviewText(item.lastMessage.message, item.lastMessage.file_name, item.lastMessage.photo_url)}
+                                : `${t('common.uk')}: `}
+                              {chatPreviewText(
+                                item.lastMessage.message,
+                                item.lastMessage.file_name,
+                                item.lastMessage.photo_url,
+                              )}
                             </div>
                           )}
                         </div>
@@ -5621,18 +5779,25 @@ function AdminPortal() {
                   <div className="flex items-start gap-2 border-b border-border bg-surface px-3 py-3 md:px-5">
                     <button
                       type="button"
-                      onClick={() => setSelectedChatProperty(null)}
+                      onClick={() => setSelectedChatThread(null)}
                       className="mt-0.5 shrink-0 rounded-lg px-2 py-1 text-sm text-secondary hover:bg-hover md:hidden"
                     >
                       ← {t('common.back')}
                     </button>
                     <div className="min-w-0 flex-1">
                       <h2 className="truncate text-sm font-semibold text-accent">
-                        {t('common.apt')} {selectedChatProperty.apartment_number} — {selectedChatProperty.owner_name}
+                        {t('common.apt')} {selectedChatProperty.apartment_number}
+                        {selectedChatThread?.guestAccessId
+                          ? ` — ${t('account.guestChatSender')}`
+                          : ` — ${selectedChatProperty.owner_name}`}
                       </h2>
                       <div className="truncate text-xs text-muted">
-                        {selectedChatProperty.owner_email}
-                        {selectedChatProperty.owner_phone && ` · ${selectedChatProperty.owner_phone}`}
+                        {selectedChatThread?.guestAccessId
+                          ? t('admin.chatGuestThreadHint')
+                          : selectedChatProperty.owner_email}
+                        {!selectedChatThread?.guestAccessId &&
+                          selectedChatProperty.owner_phone &&
+                          ` · ${selectedChatProperty.owner_phone}`}
                         {' · '}
                         <span className={occupancyColor(selectedChatProperty.occupancy_status)}>
                           {occupancyLabel(selectedChatProperty.occupancy_status)}
@@ -5641,7 +5806,7 @@ function AdminPortal() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setSelectedChatProperty(null)}
+                      onClick={() => setSelectedChatThread(null)}
                       className="hidden shrink-0 text-sm text-secondary hover:text-foreground md:inline"
                     >
                       ✕ {t('common.close')}
@@ -5671,7 +5836,16 @@ function AdminPortal() {
                               ) : null}
                               <div className={`mt-1 text-[10px] ${isUk ? 'text-secondary' : 'text-secondary'}`}>
                                 {formatOwnerDateTime(m.created_at, locale)}
-                                {!isUk && isNewOwnerMessage(m, chatMessages, ukChatSeen[String(selectedChatProperty.id)]) && (
+                                {!isUk &&
+                                  isNewOwnerMessage(
+                                    m,
+                                    chatMessages,
+                                    ukChatSeen[
+                                      selectedChatThread?.guestAccessId
+                                        ? `${selectedChatProperty.id}:${selectedChatThread.guestAccessId}`
+                                        : String(selectedChatProperty.id)
+                                    ],
+                                  ) && (
                                   <span className="ml-2 text-danger">● {t('account.newMsg')}</span>
                                 )}
                               </div>
@@ -5683,39 +5857,15 @@ function AdminPortal() {
                   </div>
                   <form onSubmit={handleSendChat}
                     className="border-t border-border bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3">
-                    {chatFile && (
-                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-secondary">
-                        <span className="min-w-0 flex-1 truncate">📎 {chatFile.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChatFile(null);
-                            if (chatFileRef.current) chatFileRef.current.value = '';
-                          }}
-                          className="shrink-0 text-xs text-secondary hover:text-foreground"
-                        >
-                          {t('account.removeFile')}
-                        </button>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2">
-                    <input
-                      ref={chatFileRef}
-                      type="file"
-                      className="hidden"
+                    <AppFilePicker
+                      variant="icon"
                       accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                      onChange={(e) => setChatFile(e.target.files?.[0] ?? null)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => chatFileRef.current?.click()}
                       disabled={chatSending}
+                      files={chatFile ? [chatFile] : []}
                       aria-label={t('account.attachFile')}
-                      title={t('account.attachFile')}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-secondary hover:bg-hover disabled:opacity-40"
-                    >
-                      📎
-                    </button>
+                      onChange={(picked) => setChatFile(picked[0] ?? null)}
+                    />
                     <input className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-base text-foreground placeholder:text-placeholder focus:outline-none focus:border-accent md:text-sm"
                       value={chatInput} onChange={(e) => setChatInput(e.target.value)}
                       placeholder={t('account.chatPlaceholder')} disabled={chatSending} />
@@ -5739,370 +5889,48 @@ function AdminPortal() {
       // ТАКСА ПОДДЕРЖКИ
       // =============================================================
       case 'такса': {
-        const canPay = canRecordSupportPayments(staffRole);
-        const canRate = canSetSupportRate(staffRole);
-        const selectedPay = properties.find((p) => p.id === Number(payPropertyId));
-        const yearPayments = ledger.filter((e) => e.kind === 'payment').reduce((s, e) => s + Number(e.amount), 0);
-        const feeBulkTotal = properties.length;
-        const feeBulkExisting = feeChargeExisting ?? 0;
-        const feeBulkWill = Math.max(0, feeBulkTotal - feeBulkExisting);
-        const feeTabs = [
-          { id: 'overview', label: t('admin.feeTabOverview') },
-          { id: 'policy', label: t('admin.feeTabPolicy') },
-          { id: 'operations', label: t('admin.feeTabOperations') },
-          { id: 'register', label: t('admin.feeTabRegister') },
-        ] as const;
-        const feeRaw = searchParams.get('tab');
-        const feeTab = feeTabs.some((item) => item.id === feeRaw) ? feeRaw : 'overview';
+        const feePropertyRaw = Number(searchParams.get('property') ?? '');
+        const feeFocusProperty =
+          Number.isFinite(feePropertyRaw) && feePropertyRaw > 0 ? feePropertyRaw : '';
         return (
           <div className="space-y-4">
             <AdminPageHeader title={t('admin.fee')} secondary={t('admin.feeLead')} />
             {supportFeeMissing && (
               <AdminInlineAlert tone="warning">{t('admin.feeMissingTables')}</AdminInlineAlert>
             )}
-            <AdminTabBar
-              tabs={[...feeTabs]}
-              active={feeTab ?? 'overview'}
-              onChange={(id) => openSectionTab('такса', id)}
-            />
-            {feeTab === 'overview' && (
-              <AdminSupportFeeOverview
-                supportRate={supportRate}
-                annualSupportTotal={annualSupportTotal}
-                billingYear={sofiaCalendarYear()}
-                outstandingTotal={totalDebt}
-                overpaymentTotal={totalOverpayment}
-                outstandingByProperty={properties.map((p) => sfDebtOf(p))}
-                apartmentsCount={properties.length}
-                ledger={ledger}
-                onOpenOperations={() => openSectionTab('такса', 'operations')}
-                onOpenPolicy={() => openSectionTab('такса', 'policy')}
-                onOpenRegister={() => openSectionTab('такса', 'register')}
-              />
-            )}
-
-            <div className={feeTab === 'policy' || feeTab === 'register' ? undefined : 'hidden'}>
-            <AdminSupportFeeAnnual
+            <AdminSupportFeeWorkplace
               supabase={supabase}
               properties={properties}
-              supportRate={supportRate}
-              canPay={canPay}
-              canRate={canRate}
+              staffRole={staffRole}
+              supportFeeMissing={supportFeeMissing}
+              tab={searchParams.get('tab')}
+              onTabChange={(next) => openSectionTab('такса', next)}
+              focusPropertyId={feeFocusProperty}
+              onPropertyChange={(id) => {
+                // history.replaceState only — router.replace races and can resurrect `property` after «К реестру».
+                if (typeof window === 'undefined') return;
+                const params = new URLSearchParams(window.location.search);
+                params.set('section', 'такса');
+                if (id === '' || id == null) params.delete('property');
+                else params.set('property', String(id));
+                const qs = params.toString();
+                const url = qs ? `${pathname}?${qs}` : pathname;
+                window.history.replaceState(window.history.state, '', url);
+              }}
+              onOpenTariffs={(opts) => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set('section', 'тарифы');
+                params.set('tab', opts?.focus === 'rate' ? 'current' : 'annual_policy');
+                if (opts?.year != null && Number.isFinite(opts.year)) {
+                  params.set('year', String(Math.floor(opts.year)));
+                } else {
+                  params.delete('year');
+                }
+                const qs = params.toString();
+                router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+              }}
               onReload={loadAll}
-              onError={setError}
-              panel={feeTab === 'register' ? 'register' : 'policy'}
             />
-            </div>
-
-            {feeTab === 'operations' && (
-            <>
-            <div className="grid gap-4">
-              <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feeCurrentRate')}</p>
-                {supportRate == null ? (
-                  <p className="mt-2 text-sm text-secondary">{t('admin.feeTariffNotConfigured')}</p>
-                ) : (
-                  <>
-                    <div className="mt-1 text-xl font-semibold text-foreground">{money(supportRate)} <span className="text-sm font-normal text-muted">{t('admin.feePerSqm')}</span></div>
-                    <p className="mt-2 text-sm text-muted">
-                      {t('admin.feeYear')}: {annualSupportTotal == null ? '—' : money(annualSupportTotal)}
-                    </p>
-                  </>
-                )}
-                <p className="mt-3 text-xs text-muted">{t('admin.feeRateViaTariffs')}</p>
-                <p className="mt-1 text-xs text-secondary">{t('admin.feeTariffPolicySplit')}</p>
-              </div>
-
-            </div>
-            <div className="overflow-hidden rounded-[14px] border border-border bg-surface shadow-card p-5">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.bulkTitle')}</p>
-              <p className="mt-2 text-sm text-secondary">{t('admin.feeChargeHint')}</p>
-              <div className="mt-4 flex flex-wrap items-end gap-2">
-                <label className="text-sm text-secondary">
-                  {t('admin.sfYear')}
-                  <input
-                    type="number"
-                    min="2020"
-                    max="2100"
-                    value={chargeYear}
-                    onChange={(e) => {
-                      setChargeYear(e.target.value);
-                      setFeeBulkResult(null);
-                    }}
-                    className="mt-1 block w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
-              </div>
-              <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-                <div>
-                  <dt className="text-xs text-muted">{t('admin.bulkTotal')}</dt>
-                  <dd className="font-medium tabular-nums">{feeBulkTotal}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">{t('admin.bulkExisting')}</dt>
-                  <dd className="font-medium tabular-nums">{feeChargeExisting == null ? '—' : feeBulkExisting}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">{t('admin.bulkWill')}</dt>
-                  <dd className="font-medium tabular-nums">{feeChargeExisting == null ? '—' : feeBulkWill}</dd>
-                </div>
-              </dl>
-              <button
-                type="button"
-                disabled={chargeSaving || !canPay || supportFeeMissing || supportRate == null || feeBulkTotal === 0}
-                onClick={() => void handleChargeSupportBulk()}
-                className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {chargeSaving ? t('admin.feeCharging') : t('admin.bulkChargeAll')}
-              </button>
-              {feeBulkResult ? <p className="mt-3 text-sm text-secondary">{feeBulkResult}</p> : null}
-            </div>
-            </>
-            )}
-
-            {feeTab === 'operations' && (
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feePayTitle')}</p>
-              {!canPay && (
-                <p className="mt-2 text-sm text-warning">{t('admin.feePayWho')}</p>
-              )}
-              <p className="mt-2 text-sm text-secondary">{t('admin.feeWillRecord')}</p>
-              <form onSubmit={handleRecordSupportPayment} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <label className="text-sm text-secondary sm:col-span-2">
-                  {t('admin.aptLabel')}
-                  <ApartmentCombobox
-                    className="mt-1"
-                    required
-                    disabled={!canPay}
-                    properties={properties}
-                    value={payPropertyId}
-                    onChange={(id) => {
-                      setPayPropertyId(id);
-                      const p = properties.find((x) => x.id === id);
-                      if (!p) return;
-                      const debt = sfDebtOf(p);
-                      const monthly = monthlySupportFee(p.area_sqm, supportRate);
-                      setPayAmount(
-                        debt > 0 ? debt.toFixed(2) : monthly == null ? '' : String(monthly),
-                      );
-                    }}
-                  />
-                </label>
-                <label className="text-sm text-secondary">
-                  {t('admin.feeAmount')}
-                  <input
-                    required
-                    disabled={!canPay}
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
-                <label className="text-sm text-secondary">
-                  {t('admin.note')}
-                  <input
-                    disabled={!canPay}
-                    value={payNote}
-                    onChange={(e) => setPayNote(e.target.value)}
-                    placeholder={t('admin.feeNotePh')}
-                    className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
-                {selectedPay && (
-                  <div className="sm:col-span-2 flex flex-wrap gap-2 text-xs">
-                    <button type="button" className="rounded-full border border-border px-3 py-1 text-secondary"
-                      onClick={() => {
-                        const debt = sfDebtOf(selectedPay);
-                        setPayAmount(debt > 0 ? debt.toFixed(2) : '0.01');
-                      }}>
-                      {t('admin.feeAllDebt')}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-full border border-border px-3 py-1 text-secondary disabled:opacity-40"
-                      disabled={supportRate == null}
-                      onClick={() => {
-                        const m = monthlySupportFee(selectedPay.area_sqm, supportRate);
-                        if (m != null) setPayAmount(String(m));
-                      }}
-                    >
-                      {t('admin.feeMonth')}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-full border border-border px-3 py-1 text-secondary disabled:opacity-40"
-                      disabled={supportRate == null}
-                      onClick={() => {
-                        const a = annualSupportFee(selectedPay.area_sqm, supportRate);
-                        if (a != null) setPayAmount(String(a));
-                      }}
-                    >
-                      {t('admin.feeOneYear')}
-                    </button>
-                  </div>
-                )}
-                <div className="sm:col-span-2 lg:col-span-4">
-                  <button
-                    type="submit"
-                    disabled={!canPay || paySaving || supportFeeMissing}
-                    className="rounded-full bg-accent hover:bg-accent-hover px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                  >
-                    {paySaving ? t('admin.feePaying') : t('admin.feePaySubmit')}
-                  </button>
-                </div>
-              </form>
-            </div>
-            )}
-
-            {feeTab === 'operations' && (
-            <div className="rounded-[14px] border border-border bg-surface shadow-card p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.feeLedger')}</p>
-                <p className="text-xs text-muted">{t('admin.kindPayment')}: {money(yearPayments)}</p>
-              </div>
-              {reverseLedgerId != null && canReverseOrVoidSupportFees(staffRole) ? (
-                <div className="mt-3 rounded-lg border border-border bg-background p-3 text-sm">
-                  <p className="font-medium text-foreground">{t('admin.feeReversePayment')} #{reverseLedgerId}</p>
-                  <p className="mt-1 text-xs text-secondary">{t('admin.feeReverseConfirm')}</p>
-                  <label className="mt-2 block text-secondary">
-                    {t('admin.feeReverseReason')}
-                    <input
-                      required
-                      value={reverseReason}
-                      onChange={(e) => setReverseReason(e.target.value)}
-                      className="mt-1 block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                    />
-                  </label>
-                  <label className="mt-2 flex items-center gap-2 text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={reverseConfirm}
-                      onChange={(e) => setReverseConfirm(e.target.checked)}
-                    />
-                    {t('admin.feeActionConfirm')}
-                  </label>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={reverseBusy || !reverseConfirm || !reverseReason.trim()}
-                      onClick={() => void handleReverseSupportPayment()}
-                      className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      {reverseBusy ? t('admin.feeReverseBusy') : t('admin.feeReversePayment')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={reverseBusy}
-                      onClick={() => {
-                        setReverseLedgerId(null);
-                        setReverseReason('');
-                        setReverseConfirm(false);
-                      }}
-                      className="rounded-full border border-border px-4 py-1.5 text-sm text-secondary"
-                    >
-                      {t('admin.feeActionCancel')}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {ledger.length === 0 ? (
-                <div className="mt-3"><AdminEmptyState title={t('admin.feeNoLedger')} /></div>
-              ) : (
-                <div className="mt-3">
-                  <AdminTableShell>
-                  <table className="w-full min-w-[40rem] text-sm">
-                    <thead>
-                      <tr className={adminTableHeadRowClass}>
-                        <th className={adminTableCellClass}>{t('admin.date')}</th>
-                        <th className={adminTableCellClass}>{t('form.colApt')}</th>
-                        <th className={adminTableCellClass}>{t('admin.kind')}</th>
-                        <th className={adminTableCellClass}>{t('admin.amount')}</th>
-                        <th className={adminTableCellClass}>{t('admin.debt')}</th>
-                        <th className={adminTableCellClass}>{t('admin.overpay')}</th>
-                        <th className={adminTableCellClass}>{t('admin.status')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ledger.slice(0, 40).map((row) => {
-                        const apt = properties.find((p) => p.id === row.property_id);
-                        const debtAfter = Number(row.debt_after ?? 0);
-                        const overAfter = Number(row.overpayment_after ?? 0);
-                        const reversed = isSupportLedgerReversed({
-                          originalLedgerId: row.id,
-                          ledger,
-                        });
-                        const kindKey = supportLedgerKindLabelKey(row.kind);
-                        const kindLabel =
-                          row.kind === 'charge'
-                            ? `${t(kindKey)}${row.period ? ` ${row.period}` : ''}`
-                            : t(kindKey);
-                        return (
-                          <tr key={row.id} className={adminTableRowClass}>
-                            <td className={adminTableCellClass}>
-                              {formatOwnerDateTime(row.created_at, locale)}
-                            </td>
-                            <td className={adminTableCellClass}>{apt?.apartment_number ?? row.property_id}</td>
-                            <td className={adminTableCellClass}>
-                              <div>{kindLabel}</div>
-                              {row.reverses_ledger_id ? (
-                                <div className="text-[10px] text-muted">→ #{row.reverses_ledger_id}</div>
-                              ) : null}
-                              {row.reversal_reason ? (
-                                <div className="text-[10px] text-muted">{row.reversal_reason}</div>
-                              ) : null}
-                            </td>
-                            <td className={`${adminTableCellClass} tabular-nums`}>{money(row.amount)}</td>
-                            <td className={adminTableCellClass}>
-                              {debtAfter > 0 ? (
-                                <StatusBadge label={money(debtAfter)} tone="danger" />
-                              ) : (
-                                <span className="text-muted">{money(0)}</span>
-                              )}
-                            </td>
-                            <td className={adminTableCellClass}>
-                              {overAfter > 0 ? (
-                                <StatusBadge label={money(overAfter)} tone="success" />
-                              ) : (
-                                <span className="text-muted">{money(0)}</span>
-                              )}
-                            </td>
-                            <td className={adminTableCellClass}>
-                              {isSupportPaymentReversible(row.kind) && reversed ? (
-                                <StatusBadge label={t('admin.feeReversedBadge')} tone="warning" />
-                              ) : isSupportPaymentReversible(row.kind) &&
-                                canReverseOrVoidSupportFees(staffRole) ? (
-                                <button
-                                  type="button"
-                                  className="rounded-full border border-border px-2 py-0.5 text-xs text-secondary hover:text-foreground"
-                                  onClick={() => {
-                                    setReverseLedgerId(row.id);
-                                    setReverseReason('');
-                                    setReverseConfirm(false);
-                                  }}
-                                >
-                                  {t('admin.feeReversePayment')}
-                                </button>
-                              ) : row.kind === 'payment_reversal' ? (
-                                <StatusBadge label={t('admin.kindPaymentReversal')} tone="neutral" />
-                              ) : row.kind === 'assessment_void' ? (
-                                <StatusBadge label={t('admin.feeVoidedBadge')} tone="neutral" />
-                              ) : (
-                                <span className="text-muted">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  </AdminTableShell>
-                </div>
-              )}
-            </div>
-            )}
           </div>
         );
       }
@@ -6121,16 +5949,32 @@ function AdminPortal() {
     return 0;
   }
 
-  function renderNavButton(key: AdminSection, nested: boolean) {
+  function renderNavButton(key: AdminSection, nested: boolean, groupId: string) {
     const item = menuByKey.get(key);
     if (!item) return null;
-    const active = activeMenu === key;
+    const active = isAdminNavLeafActive({
+      section: key,
+      groupId,
+      activeSection: activeMenu,
+      tab: activeTabQuery,
+    });
     const badge = navBadge(key);
     return (
       <button
-        key={key}
+        key={`${groupId}-${key}`}
         type="button"
-        onClick={() => navigateAdminSection(key)}
+        onClick={() => {
+          if (key === 'вода' || key === 'электроэнергия') {
+            const defaultTab = groupId === 'finance' ? 'finance' : 'overview';
+            openUtilityTab(key, defaultTab);
+            return;
+          }
+          if (key === 'интернет') {
+            openSectionTab('интернет', groupId === 'finance' ? 'finance' : 'operations');
+            return;
+          }
+          navigateAdminSection(key);
+        }}
         title={item.label}
         aria-current={active ? 'page' : undefined}
         className={`flex w-full min-w-0 items-center overflow-hidden rounded-lg border text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
@@ -6215,8 +6059,10 @@ function AdminPortal() {
         <main className="mx-auto flex w-full max-w-lg flex-col gap-4 p-6">
           <h1 className="text-xl font-semibold">{t('admin.firstRunErrLoadTitle')}</h1>
           <p className="text-sm text-secondary">{t('admin.firstRunErrLoad')}</p>
-          <p className="rounded-lg border border-border bg-surface p-3 text-xs text-secondary break-all">
-            {firstRunLoadError}
+          <p className="rounded-lg border border-border bg-surface p-3 text-xs text-secondary">
+            {firstRunLoadError === 'FIRST_RUN_STATE_INVALID'
+              ? t('admin.firstRunErrLoadInvalid')
+              : t('admin.firstRunErrLoadUnavailable')}
           </p>
           <button
             type="button"
@@ -6277,6 +6123,7 @@ function AdminPortal() {
 
   return (
     <div className="flex min-h-dvh bg-background text-foreground">
+      {dialog}
       {sidebarOpen && (
         <button
           type="button"
@@ -6312,7 +6159,7 @@ function AdminPortal() {
         <nav className="min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto p-2">
           {sidebarOpen ? (
             <>
-              {renderNavButton('обзор', false)}
+              {renderNavButton('обзор', false, 'overview')}
               {MENU_GROUPS.filter((group) => group.id !== 'overview' && group.items.length > 0).map((group) => {
                 const expanded = openNavGroup === group.id;
                 return (
@@ -6331,7 +6178,11 @@ function AdminPortal() {
                       <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
                       <NavChevron open={expanded} />
                     </button>
-                    {expanded ? <div className="space-y-0.5">{group.items.map((key) => renderNavButton(key, true))}</div> : null}
+                    {expanded ? (
+                      <div className="space-y-0.5">
+                        {group.items.map((key) => renderNavButton(key, true, group.id))}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -6339,7 +6190,7 @@ function AdminPortal() {
           ) : (
             MENU_GROUPS.map((group) => (
               <div key={group.id} className="space-y-0.5">
-                {group.items.map((key) => renderNavButton(key, false))}
+                {group.items.map((key) => renderNavButton(key, false, group.id))}
               </div>
             ))
           )}
@@ -6513,6 +6364,7 @@ function ApartmentDetailModal({
   onOpenTransfer: () => void;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [supabase] = useState(() => createBrowserClient());
   const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
   const [waterTariffPrice, setWaterTariffPrice] = useState<number | null>(null);
@@ -6529,6 +6381,7 @@ function ApartmentDetailModal({
     check_out: '',
   });
   const [guestSaving, setGuestSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const annualFee = annualSupportFee(property.area_sqm, supportRate);
   const monthlyFee = monthlySupportFee(property.area_sqm, supportRate);
@@ -6580,6 +6433,7 @@ function ApartmentDetailModal({
   async function handleAddPet(e: React.FormEvent) {
     e.preventDefault();
     setPetSaving(true);
+    setLocalError(null);
     try {
       const { error } = await supabase.from('apartment_pets').insert({
         property_id: property.id,
@@ -6592,17 +6446,24 @@ function ApartmentDetailModal({
       setPetForm({ species: 'dog', name: '', chip_no: '', passport_no: '' });
       await onChanged();
     } catch (err: any) {
-      alert(err?.message?.includes('apartment_pets') ? t('err.registrySql') : (err?.message ?? t('err.save')));
+      setLocalError(toUserFacingMessage(err, t, { fallback: t('err.save') }));
     } finally {
       setPetSaving(false);
     }
   }
 
   async function handleRemovePet(id: number) {
-    if (!confirm(t('confirm.removePet'))) return;
+    const ok = await confirm({
+      title: t('confirm.removePet'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setLocalError(null);
     const { error } = await supabase.from('apartment_pets').delete().eq('id', id);
     if (error) {
-      alert(error.message);
+      setLocalError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     await onChanged();
@@ -6614,6 +6475,7 @@ function ApartmentDetailModal({
     const ln = guestForm.last_name.trim();
     if (!fn || !ln) return;
     setGuestSaving(true);
+    setLocalError(null);
     try {
       const payload = {
         property_id: property.id,
@@ -6643,17 +6505,24 @@ function ApartmentDetailModal({
       });
       await onChanged();
     } catch (err: any) {
-      alert(err?.message ?? t('err.addGuest'));
+      setLocalError(toUserFacingMessage(err, t, { fallback: t('err.addGuest') }));
     } finally {
       setGuestSaving(false);
     }
   }
 
   async function handleRemoveGuest(id: number) {
-    if (!confirm(t('confirm.removeGuest'))) return;
+    const ok = await confirm({
+      title: t('confirm.removeGuest'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setLocalError(null);
     const { error } = await supabase.from('apartment_guests').delete().eq('id', id);
     if (error) {
-      alert(error.message);
+      setLocalError(toUserFacingMessage(error, t, { fallback: t('admin.errGeneric') }));
       return;
     }
     await onChanged();
@@ -6661,6 +6530,7 @@ function ApartmentDetailModal({
 
   return (
     <div className={adminModalOverlayClass} onClick={onClose}>
+      {dialog}
       <div className={`${adminModalPanelClass} max-w-4xl`}
         onClick={(e) => e.stopPropagation()}>
         {/* ШАПКА */}
@@ -6695,6 +6565,10 @@ function ApartmentDetailModal({
           </div>
         </div>
 
+        {localError ? (
+          <div className="border-b border-danger/25 bg-danger-bg px-4 py-2 text-sm text-danger">{localError}</div>
+        ) : null}
+
         <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 py-2">
           {[
             { key: 'инфо', label: t('admin.tabObject'), count: null },
@@ -6724,14 +6598,14 @@ function ApartmentDetailModal({
         <div className="flex-1 overflow-y-auto p-6">
           {/* ИНФО */}
           {activeTab === 'инфо' && (
-            <div className="grid gap-2 text-sm sm:grid-cols-2">
+            <div className={`${adminInfoGridClass} text-sm`}>
               <InfoRow label={t('admin.phAptNo')} value={String(property.apartment_number ?? '—')} />
               <InfoRow label={t('admin.phFloor')} value={String(property.floor ?? '—')} />
               <InfoRow label={t('admin.phArea')} value={`${property.area_sqm ?? '—'} ${t('common.sqm')}`} />
               <InfoRow label={t('form.colStatus')} value={labelListing(listingStatus(property.status), t)} />
               <InfoRow label={t('admin.phOwner')} value={property.owner_name ?? '—'} />
               <InfoRow label={t('account.colType')} value={labelOwnerType(property.owner_type, t) || '—'} />
-              <InfoRow label="Email" value={property.owner_email ?? '—'} />
+              <InfoRow label={t('login.emailLabel')} value={property.owner_email ?? '—'} />
               <InfoRow label={t('admin.phPhone')} value={property.owner_phone ?? '—'} />
               {property.company_name ? <InfoRow label={t('admin.phCompany')} value={property.company_name} /> : null}
               <InfoRow
@@ -7128,10 +7002,5 @@ function ApartmentDetailModal({
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between py-2 border-b border-border">
-      <span className="text-secondary">{label}</span>
-      <span className="text-foreground font-medium">{value}</span>
-    </div>
-  );
+  return <AdminInfoRow label={label} value={value} />;
 }

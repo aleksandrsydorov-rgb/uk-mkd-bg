@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  pollAttachmentList,
   pollDecisionLabel,
   tallyPoll,
   type AreaShare,
@@ -10,7 +11,7 @@ import {
   type PollVote,
 } from '@/lib/polls';
 import { useI18n } from '@/i18n/I18nProvider';
-import { SignedStorageImage } from '@/components/SignedStorageMedia';
+import { PollAttachmentsView } from '@/components/PollAttachments';
 
 function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return null;
@@ -38,15 +39,13 @@ export function PollDetails({
   const start = formatDate(poll.voting_starts);
   const end = formatDate(poll.deadline);
 
+  const attachments = pollAttachmentList(poll);
+
   return (
     <div className="space-y-3">
-      {poll.photo_url && (
-        <SignedStorageImage
-          stored={poll.photo_url}
-          alt={poll.title}
-          className="w-full max-h-64 object-cover rounded-xl border border-border"
-        />
-      )}
+      {attachments.length > 0 ? (
+        <PollAttachmentsView attachments={attachments} alt={poll.title} />
+      ) : null}
       {poll.body && (
         <p className="text-sm text-secondary whitespace-pre-wrap">{poll.body}</p>
       )}

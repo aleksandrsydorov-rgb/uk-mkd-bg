@@ -73,9 +73,32 @@ export function downloadModuleXlsxTemplate(
   URL.revokeObjectURL(url);
 }
 
+function normalizeHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Map spreadsheet header cell → column key (canonical key, localized label, or aliases). */
+function resolveHeaderIndex(
+  headerRow: string[],
+  col: ModuleXlsxSchema['columns'][number],
+  labels?: Record<string, string>,
+  aliases?: Record<string, string[]>,
+): number {
+  const candidates = new Set<string>();
+  candidates.add(normalizeHeader(col.key));
+  const label = col.labelKey && labels ? labels[col.labelKey] : undefined;
+  if (label) candidates.add(normalizeHeader(label));
+  for (const a of aliases?.[col.key] ?? []) {
+    if (a) candidates.add(normalizeHeader(a));
+  }
+  return headerRow.findIndex((h) => candidates.has(normalizeHeader(h)));
+}
+
 function sheetRecords(
   sheet: XLSX.WorkSheet | undefined,
   columns: ModuleXlsxSchema['columns'],
+  labels?: Record<string, string>,
+  aliases?: Record<string, string[]>,
 ): { rows: Record<string, string>[]; headerError?: string } {
   if (!sheet) return { rows: [], headerError: 'sheet_missing' };
   const rowsRaw = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(sheet, {
@@ -84,21 +107,14 @@ function sheetRecords(
     raw: false,
   });
   if (!rowsRaw.length) return { rows: [], headerError: 'empty_sheet' };
-  const headerRow = (rowsRaw[0] ?? []).map((h) => cellToString(h).toLowerCase());
+  const headerRow = (rowsRaw[0] ?? []).map((h) => cellToString(h));
   const indexByKey = new Map<string, number>();
   for (const col of columns) {
-    const byKey = headerRow.indexOf(col.key.toLowerCase());
-    if (byKey >= 0) {
-      indexByKey.set(col.key, byKey);
-      continue;
-    }
-    // Also allow localized header match via exact header text stored as key fallback
-    indexByKey.set(col.key, -1);
+    indexByKey.set(col.key, resolveHeaderIndex(headerRow, col, labels, aliases));
   }
-  // Prefer positional match when headers equal keys; else match by key presence
   const missingRequired = columns.filter((c) => {
     if (!c.required) return false;
-    return !headerRow.includes(c.key.toLowerCase());
+    return (indexByKey.get(c.key) ?? -1) < 0;
   });
   if (missingRequired.length) {
     return {
@@ -113,7 +129,7 @@ function sheetRecords(
     const rec: Record<string, string> = {};
     let any = false;
     for (const col of columns) {
-      const idx = headerRow.indexOf(col.key.toLowerCase());
+      const idx = indexByKey.get(col.key) ?? -1;
       const raw = idx >= 0 ? cellToString(line[idx]) : '';
       rec[col.key] = raw;
       if (raw) any = true;
@@ -126,6 +142,8 @@ function sheetRecords(
 export function parseModuleXlsxBuffer(
   buffer: ArrayBuffer,
   schema: ModuleXlsxSchema,
+  labels?: Record<string, string>,
+  aliases?: Record<string, string[]>,
 ): { ok: true; rows: Record<string, string>[] } | { ok: false; error: string } {
   const maxRows = schema.maxRows ?? DEFAULT_XLSX_MAX_ROWS;
   let book: XLSX.WorkBook;
@@ -139,10 +157,25 @@ export function parseModuleXlsxBuffer(
   } catch {
     return { ok: false, error: 'parse_failed' };
   }
-  const sheet =
-    book.Sheets[schema.sheetName] ??
-    book.Sheets[book.SheetNames[0] ?? ''];
-  const parsed = sheetRecords(sheet, schema.columns);
+  const want = schema.sheetName.trim().toLowerCase();
+  const isInstruction = (name: string) => {
+    const n = name.trim().toLowerCase();
+    return (
+      n === 'instructions' ||
+      n === 'instruction' ||
+      n === 'инструкция' ||
+      n === 'инструкции' ||
+      n.startsWith('instructions_') ||
+      n === 'meta'
+    );
+  };
+  let sheetName =
+    book.SheetNames.find((n) => n.trim().toLowerCase() === want) ??
+    book.SheetNames.find((n) => !isInstruction(n)) ??
+    book.SheetNames[0] ??
+    '';
+  const sheet = book.Sheets[sheetName];
+  const parsed = sheetRecords(sheet, schema.columns, labels, aliases);
   if (parsed.headerError) return { ok: false, error: parsed.headerError };
   if (parsed.rows.length > maxRows) return { ok: false, error: 'row_limit' };
   return { ok: true, rows: parsed.rows };

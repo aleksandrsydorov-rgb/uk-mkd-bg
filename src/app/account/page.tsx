@@ -18,6 +18,8 @@ import {
 } from '@/lib/polls';
 import { BrandMark } from '@/components/BrandMark';
 import { ApartmentPicker } from '@/components/ApartmentPicker';
+import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import { listingStatus, listingStatusClass, type OwnerTransfer } from '@/lib/ownership';
 import {
   labelListing,
@@ -36,7 +38,9 @@ import {
 import {
   pickGuestAccessForProperty,
   type GuestAccessContext,
+  guestContextPermissions,
 } from '@/lib/guestMode';
+import { guestHasLocalAction, parseGuestPermissions } from '@/lib/guestPermissions';
 import { OwnerGuestMode } from '@/components/account/OwnerGuestMode';
 import { NotificationPreferencesPanel } from '@/components/notifications/NotificationPreferencesPanel';
 import { normalizeEmail } from '@/lib/email';
@@ -60,10 +64,12 @@ import { OwnerCleaning } from '@/components/account/OwnerCleaning';
 import { OwnerBudget } from '@/components/account/OwnerBudget';
 import { firstServiceLock, isScopeLocked, type PropertyServiceLockView } from '@/lib/serviceLock';
 import {
+  formatEurAmount,
   sofiaCalendarYear,
   type SupportFeeAllocation,
   type SupportFeeAssessment,
 } from '@/lib/supportFeeAnnual';
+import { supportLedgerKindLabelKey } from '@/lib/supportFeeReversal';
 import { OwnerUtilities, type FinanceTab, type MeterTab } from '@/components/account/OwnerUtilities';
 import { OwnerOverview } from '@/components/account/OwnerOverview';
 import { OwnerManagement, type ManagementTab } from '@/components/account/OwnerManagement';
@@ -111,6 +117,7 @@ import {
 } from '@/lib/propertyBook';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { ownerVisibleError } from '@/lib/ownerError';
+import { toUserFacingMessage } from '@/lib/userFacingError';
 import { ownerMgmtParam, ownerSectionParam, parseOwnerNav } from '@/lib/ownerNav';
 import {
   USER_ACTIVATION_ACTIVITY_THROTTLE_MINUTES,
@@ -196,6 +203,7 @@ function expenseYearOf(dateStr: string) {
 export default function AccountPage() {
   const router = useRouter();
   const { t, dateLocale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [supabase] = useState(() => createClient());
   // ---------- DEV-ЛОГИН ----------
   const [devEmail, setDevEmail] = useState<string>('');
@@ -244,6 +252,18 @@ export default function AccountPage() {
     if (!property || !guestContext) return null;
     return pickGuestAccessForProperty(guestAccessContexts, property.id);
   }, [property, guestContext, guestAccessContexts]);
+  const guestPerms = useMemo(
+    () => guestContextPermissions(activeGuestAccess),
+    [activeGuestAccess],
+  );
+  const guestCanRequests = guestHasLocalAction(guestPerms, 'requests.own');
+  const guestCanChat = guestHasLocalAction(guestPerms, 'chat.with_uk');
+  const guestCanSecurity = guestHasLocalAction(guestPerms, 'security.own');
+  const guestCanWater = guestHasLocalAction(guestPerms, 'water.submit_readings');
+  const guestCanElectricity = guestHasLocalAction(guestPerms, 'electricity.submit_readings');
+  const guestCanAnnounce = guestHasLocalAction(guestPerms, 'announcements.guest_audience');
+  const guestCanDocs = guestHasLocalAction(guestPerms, 'documents.guest_audience');
+  const guestCanServicesOverview = guestHasLocalAction(guestPerms, 'services.overview');
   const guestRelationLabel = useMemo(() => {
     if (!activeGuestAccess) return null;
     const key = `account.guestRelation_${activeGuestAccess.relation_type}` as const;
@@ -261,18 +281,30 @@ export default function AccountPage() {
     internetEnabled ||
     requestsEnabled ||
     chatEnabled;
-  const docsInfoEnabled = buildingDocumentsEnabled || pollsEnabled;
+  const docsInfoEnabled =
+    buildingDocumentsEnabled || pollsEnabled || (generalMeetingEnabled && !guestContext);
 
   const MENU_ITEMS: { key: MenuSection; label: string; icon: React.ReactNode }[] = useMemo(() => {
     // R1-UX: guest ≤4 · owner ≤7 top-level sections (Meetings excluded).
     if (guestContext) {
+      const guestServices =
+        (requestsEnabled && guestCanRequests) ||
+        (chatEnabled && guestCanChat) ||
+        (announcementsEnabled && guestCanAnnounce) ||
+        guestCanServicesOverview;
       return [
         { key: 'обзор', label: t('account.navHome'), icon: navSectionIcon('обзор') },
-        ...(requestsEnabled || chatEnabled
+        ...(guestCanWater || guestCanElectricity
+          ? [{ key: 'счётчики' as const, label: t('account.meters'), icon: navSectionIcon('счётчики') }]
+          : []),
+        ...(guestServices
           ? [{ key: 'ук' as const, label: t('account.navServices'), icon: navSectionIcon('ук') }]
           : []),
-        ...(securityEnabled
+        ...(securityEnabled && guestCanSecurity
           ? [{ key: 'охрана' as const, label: t('account.navSecurity'), icon: navSectionIcon('охрана') }]
+          : []),
+        ...(guestCanDocs
+          ? [{ key: 'документы' as const, label: t('account.navDocsInfo'), icon: navSectionIcon('документы') }]
           : []),
         { key: 'настройки' as const, label: t('account.navSettings'), icon: navSectionIcon('настройки') },
       ];
@@ -306,12 +338,22 @@ export default function AccountPage() {
     cleaningEnabled,
     budgetEnabled,
     buildingDocumentsEnabled,
+    generalMeetingEnabled,
     pollsEnabled,
     managementNavEnabled,
     requestsEnabled,
     chatEnabled,
+    announcementsEnabled,
     servicesNavEnabled,
     docsInfoEnabled,
+    guestCanRequests,
+    guestCanChat,
+    guestCanSecurity,
+    guestCanWater,
+    guestCanElectricity,
+    guestCanAnnounce,
+    guestCanDocs,
+    guestCanServicesOverview,
   ]);
   const [waterTariff, setWaterTariff] = useState<CurrentWaterTariffView | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<CurrentElectricityTariffView | null>(null);
@@ -338,6 +380,11 @@ export default function AccountPage() {
   // ---------- ЖИЛЬЦЫ ----------
   const [guests, setGuests] = useState<ApartmentGuest[]>([]);
   const [registryPeople, setRegistryPeople] = useState<PropertyRegistryPerson[]>([]);
+  const [bookClarification, setBookClarification] = useState<{
+    needsClarification: boolean;
+    ownerCanComplete: boolean;
+    ownerIssues: Array<{ code?: string; field?: string }>;
+  } | null>(null);
   const [absences, setAbsences] = useState<PropertyAbsencePeriod[]>([]);
   const [guestForm, setGuestForm] = useState({
     first_name: '',
@@ -522,7 +569,17 @@ export default function AccountPage() {
             'list_my_guest_access_contexts',
           );
           if (!guestCtxErr && guestCtx) {
-            setGuestAccessContexts(guestCtx as GuestAccessContext[]);
+            const rows = (guestCtx as Array<Record<string, unknown>>).map((row) => ({
+              access_id: String(row.access_id),
+              property_id: Number(row.property_id),
+              apartment_number: (row.apartment_number as string | null) ?? null,
+              relation_type: String(row.relation_type ?? ''),
+              valid_from: String(row.valid_from ?? ''),
+              valid_until: (row.valid_until as string | null) ?? null,
+              email: String(row.email ?? ''),
+              permissions: parseGuestPermissions(row.permissions),
+            })) as GuestAccessContext[];
+            setGuestAccessContexts(rows);
           } else {
             setGuestAccessContexts([]);
           }
@@ -698,43 +755,50 @@ export default function AccountPage() {
           );
         }
 
-        const ledRes = await supabase
-          .from('support_fee_ledger')
-          .select('*')
-          .in('property_id', ids)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (ledRes.error) {
-          if (!isMissingRelation(ledRes.error, 'support_fee_ledger')) throw ledRes.error;
+        // Guests do not see finance; skip SF ledger loads so RLS denials do not surface as errors.
+        if (access.isGuest) {
           setSupportLedger([]);
-        } else {
-          setSupportLedger((ledRes.data as SupportFeeEntry[]) ?? []);
-        }
-
-        const assRes = await supabase
-          .from('support_fee_assessments')
-          .select('*')
-          .in('property_id', ids)
-          .order('billing_year', { ascending: false });
-        if (assRes.error) {
-          if (!isMissingRelation(assRes.error, 'support_fee_assessments')) throw assRes.error;
           setSupportAssessments([]);
-        } else {
-          setSupportAssessments((assRes.data as SupportFeeAssessment[]) ?? []);
-        }
-
-        const allocRes = await supabase
-          .from('support_fee_allocations')
-          .select('*')
-          .order('created_at', { ascending: true });
-        if (allocRes.error) {
-          if (!isMissingRelation(allocRes.error, 'support_fee_allocations')) throw allocRes.error;
           setSupportAllocations([]);
         } else {
-          setSupportAllocations((allocRes.data as SupportFeeAllocation[]) ?? []);
+          const ledRes = await supabase
+            .from('support_fee_ledger')
+            .select('*')
+            .in('property_id', ids)
+            .order('created_at', { ascending: false })
+            .limit(50);
+          if (ledRes.error) {
+            if (!isMissingRelation(ledRes.error, 'support_fee_ledger')) throw ledRes.error;
+            setSupportLedger([]);
+          } else {
+            setSupportLedger((ledRes.data as SupportFeeEntry[]) ?? []);
+          }
+
+          const assRes = await supabase
+            .from('support_fee_assessments')
+            .select('*')
+            .in('property_id', ids)
+            .order('billing_year', { ascending: false });
+          if (assRes.error) {
+            if (!isMissingRelation(assRes.error, 'support_fee_assessments')) throw assRes.error;
+            setSupportAssessments([]);
+          } else {
+            setSupportAssessments((assRes.data as SupportFeeAssessment[]) ?? []);
+          }
+
+          const allocRes = await supabase
+            .from('support_fee_allocations')
+            .select('*')
+            .order('created_at', { ascending: true });
+          if (allocRes.error) {
+            if (!isMissingRelation(allocRes.error, 'support_fee_allocations')) throw allocRes.error;
+            setSupportAllocations([]);
+          } else {
+            setSupportAllocations((allocRes.data as SupportFeeAllocation[]) ?? []);
+          }
         }
       } catch (e: any) {
-        setError(ownerVisibleError(e, t('err.load')));
+        setError(ownerVisibleError(e, t('err.load'), t));
       } finally {
         setLoading(false);
       }
@@ -807,6 +871,74 @@ export default function AccountPage() {
   }, []);
 
   const reloadMeterReadings = useCallback(async (propertyId: number) => {
+    if (guestContext) {
+      const { data: guestMeters, error: guestErr } = await supabase.rpc('guest_list_meters_for_submit', {
+        p_property_id: propertyId,
+        p_utility: 'electricity',
+      });
+      if (guestErr) throw guestErr;
+      const list = (Array.isArray(guestMeters) ? guestMeters : []) as Array<{
+        meter_id?: string;
+        meter_number?: string;
+        initial_day_reading?: number | null;
+        initial_night_reading?: number | null;
+        last_day_value?: number | null;
+        last_night_value?: number | null;
+      }>;
+      const meters: ElectricityMeter[] = list
+        .filter((m) => m.meter_id)
+        .map((m) => ({
+          id: String(m.meter_id),
+          property_id: propertyId,
+          meter_number: String(m.meter_number ?? ''),
+          initial_day_reading: Number(m.initial_day_reading ?? 0),
+          initial_night_reading: Number(m.initial_night_reading ?? 0),
+          installed_at: new Date().toISOString().slice(0, 10),
+          retired_at: null,
+          replacement_reason: null,
+          assigned_by_email: 'guest',
+          created_at: new Date().toISOString(),
+        })) as ElectricityMeter[];
+      setElectricityMeters(meters);
+      const dayRows: MeterReading[] = [];
+      const nightRows: MeterReading[] = [];
+      for (const m of list) {
+        if (!m.meter_id) continue;
+        if (m.last_day_value != null) {
+          dayRows.push({
+            id: `guest-day-${m.meter_id}`,
+            property_id: propertyId,
+            electricity_meter_id: String(m.meter_id),
+            meter_type: 'electricity_day',
+            value: Number(m.last_day_value),
+            reading_date: new Date().toISOString().slice(0, 10),
+            status: 'active',
+            created_at: new Date().toISOString(),
+            submitted_by: 'guest',
+          } as unknown as MeterReading);
+        }
+        if (m.last_night_value != null) {
+          nightRows.push({
+            id: `guest-night-${m.meter_id}`,
+            property_id: propertyId,
+            electricity_meter_id: String(m.meter_id),
+            meter_type: 'electricity_night',
+            value: Number(m.last_night_value),
+            reading_date: new Date().toISOString().slice(0, 10),
+            status: 'active',
+            created_at: new Date().toISOString(),
+            submitted_by: 'guest',
+          } as unknown as MeterReading);
+        }
+      }
+      setMeterReadings({
+        electricity_day: dayRows,
+        electricity_night: nightRows,
+        cold_water: [],
+      });
+      return;
+    }
+
     const [dayRes, nightRes, waterRes, metersRes] = await Promise.all([
       supabase
         .from('meter_readings')
@@ -851,7 +983,7 @@ export default function AccountPage() {
       electricity_night: (nightRes.data as MeterReading[]) ?? [],
       cold_water: (waterRes.data as MeterReading[]) ?? [],
     });
-  }, [supabase]);
+  }, [supabase, guestContext]);
 
   useEffect(() => {
     async function loadPropertyScoped() {
@@ -902,6 +1034,31 @@ export default function AccountPage() {
           setRegistryPeople((peopleRes.data as PropertyRegistryPerson[]) ?? []);
         }
 
+        if (!guestContext) {
+          const clarRes = await supabase.rpc('owner_property_book_clarification_status', {
+            p_property_id: property.id,
+          });
+          if (clarRes.error) {
+            if (!isMissingRelation(clarRes.error, 'owner_property_book_clarification_status')) {
+              console.warn('owner_property_book_clarification_status:', clarRes.error.message);
+            }
+            setBookClarification(null);
+          } else {
+            const clar = (clarRes.data ?? {}) as {
+              needs_clarification?: boolean;
+              owner_can_complete?: boolean;
+              owner_issues?: Array<{ code?: string; field?: string }>;
+            };
+            setBookClarification({
+              needsClarification: clar.needs_clarification === true,
+              ownerCanComplete: clar.owner_can_complete === true,
+              ownerIssues: Array.isArray(clar.owner_issues) ? clar.owner_issues : [],
+            });
+          }
+        } else {
+          setBookClarification(null);
+        }
+
         const absenceRes = await supabase
           .from('property_absence_periods')
           .select('*')
@@ -926,7 +1083,7 @@ export default function AccountPage() {
         setChatMessages(allMsgs);
         setUnreadChatCount(allMsgs.filter((m) => m.sender === 'uk' && !m.read_by_owner).length);
       } catch (e: any) {
-        setError(ownerVisibleError(e, t('err.loadApt')));
+        setError(ownerVisibleError(e, t('err.loadApt'), t));
       }
     }
     loadPropertyScoped();
@@ -1005,7 +1162,9 @@ export default function AccountPage() {
   }, [waterEnabled, electricityEnabled, capitalEnabled, internetEnabled, supportFeeEnabled, financeTab]);
 
   const [aptSubTab, setAptSubTab] = useState<'details' | 'occupancy'>('details');
-  const [docsSubTab, setDocsSubTab] = useState<'documents' | 'polls'>('documents');
+  const [docsSubTab, setDocsSubTab] = useState<'meetings' | 'decisions' | 'documents' | 'polls'>(
+    'documents',
+  );
   const [servicesSubTab, setServicesSubTab] = useState<
     'ук' | 'охрана' | 'уборка' | 'бюджет' | 'интернет'
   >('ук');
@@ -1033,12 +1192,18 @@ export default function AccountPage() {
       setActiveMenu(docsInfoEnabled ? 'документы' : 'обзор');
       return;
     }
+    // RC8+: Meetings restored — deep-link into Documents & info (no separate top-level leaf).
     if (activeMenu === 'собрания' || activeMenu === 'решения') {
-      setActiveMenu('обзор');
+      if (guestContext || !generalMeetingEnabled) {
+        setActiveMenu('обзор');
+        return;
+      }
+      setDocsSubTab(activeMenu === 'решения' ? 'decisions' : 'meetings');
+      setActiveMenu(docsInfoEnabled ? 'документы' : 'обзор');
       return;
     }
     if (!allowed.has(activeMenu)) setActiveMenu('обзор');
-  }, [MENU_ITEMS, activeMenu, guestContext, docsInfoEnabled]);
+  }, [MENU_ITEMS, activeMenu, guestContext, docsInfoEnabled, generalMeetingEnabled]);
 
   useEffect(() => {
     // Guests cannot use announcements/expenses. Keep a single fallback path so
@@ -1172,10 +1337,10 @@ export default function AccountPage() {
         .select('*')
         .single();
       if (insertErr) {
-        const hint = insertErr.message?.includes('photo_url') || insertErr.message?.includes('file_name')
-          ? t('err.chatFileSql')
-          : insertErr.message;
-        throw new Error(hint);
+        if (insertErr.message?.includes('photo_url') || insertErr.message?.includes('file_name')) {
+          throw new Error(t('err.chatFileSql'));
+        }
+        throw insertErr;
       }
       const row = inserted as ChatMessage;
       setChatMessages((prev) => [...prev, row]);
@@ -1195,7 +1360,10 @@ export default function AccountPage() {
         )
         .catch(() => undefined);
     } catch (e: any) {
-      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? ownerVisibleError(e, t('err.send')));
+      setError(
+        messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ??
+          toUserFacingMessage(e, t, { fallback: t('err.send') }),
+      );
     } finally {
       setChatSending(false);
     }
@@ -1218,15 +1386,49 @@ export default function AccountPage() {
         .eq('id', property.id);
       if (updErr) {
         const msg = updErr.message ?? '';
-        throw new Error(msg.includes('occupant_kind') ? t('err.registrySql') : msg);
+        if (msg.includes('occupant_kind')) throw new Error(t('err.registrySql'));
+        throw updErr;
       }
       setProperties((prev) =>
         prev.map((p) => (p.id === property.id ? { ...p, occupant_kind: kind } : p)),
       );
     } catch (e: any) {
-      setError(ownerVisibleError(e, t('err.status')));
+      setError(toUserFacingMessage(e, t, { fallback: t('err.status') }));
     } finally {
       setOccupancySaving(false);
+    }
+  }
+
+  async function handleClarifyBookContact(patch: {
+    email?: string;
+    first_name?: string;
+    middle_name?: string;
+    last_name?: string;
+  }) {
+    if (!property) throw new Error(t('err.save'));
+    if (guestContext) throw new Error(t('account.guestNoBookClarify'));
+    const { data, error } = await supabase.rpc('owner_update_own_registry_contact', {
+      p_property_id: property.id,
+      p_patch: patch,
+    });
+    if (error) throw error;
+    const clar = (data as { clarification?: Record<string, unknown> } | null)?.clarification;
+    if (clar) {
+      setBookClarification({
+        needsClarification: clar.needs_clarification === true,
+        ownerCanComplete: clar.owner_can_complete === true,
+        ownerIssues: Array.isArray(clar.owner_issues)
+          ? (clar.owner_issues as Array<{ code?: string; field?: string }>)
+          : [],
+      });
+    }
+    const peopleRes = await supabase
+      .from('property_registry_people')
+      .select('*')
+      .eq('property_id', property.id)
+      .order('created_at', { ascending: true });
+    if (!peopleRes.error) {
+      setRegistryPeople((peopleRes.data as PropertyRegistryPerson[]) ?? []);
     }
   }
 
@@ -1279,13 +1481,14 @@ export default function AccountPage() {
       const { error: updErr } = await supabase.from('properties').update(payload).eq('id', property.id);
       if (updErr) {
         const msg = updErr.message ?? '';
-        throw new Error(msg.includes('occupant_') ? t('err.registrySql') : msg);
+        if (msg.includes('occupant_')) throw new Error(t('err.registrySql'));
+        throw updErr;
       }
       setProperties((prev) =>
         prev.map((p) => (p.id === property.id ? { ...p, ...payload } : p)),
       );
     } catch (err: any) {
-      setError(ownerVisibleError(err, t('err.save')));
+      setError(toUserFacingMessage(err, t, { fallback: t('err.save') }));
     } finally {
       setOccupancySaving(false);
     }
@@ -1310,7 +1513,10 @@ export default function AccountPage() {
         .eq('id', property.id);
       if (updErr) {
         const msg = updErr.message ?? '';
-        throw new Error(msg.includes('occupant_') || msg.includes('occupancy_status') ? t('err.registrySql') : msg);
+        if (msg.includes('occupant_') || msg.includes('occupancy_status')) {
+          throw new Error(t('err.registrySql'));
+        }
+        throw updErr;
       }
       setProperties((prev) =>
         prev.map((p) =>
@@ -1381,7 +1587,7 @@ export default function AccountPage() {
         prev.map((p) => (p.id === property.id ? { ...p, status: next } : p))
       );
     } catch (e: any) {
-      setError(ownerVisibleError(e, t('err.listing')));
+      setError(toUserFacingMessage(e, t, { fallback: t('err.listing') }));
     } finally {
       setListingSaving(false);
     }
@@ -1443,7 +1649,7 @@ export default function AccountPage() {
         p_check_in: payload.check_in,
         p_check_out: payload.is_permanent ? null : payload.check_out,
       });
-      if (error) throw new Error(error.message || t('err.updateGuest'));
+      if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as ApartmentGuest | null;
       if (!row) throw new Error(t('err.updateGuest'));
       setGuests((prev) => prev.map((g) => (g.id === id ? { ...g, ...row } : g)));
@@ -1483,7 +1689,8 @@ export default function AccountPage() {
         error = retry.error;
       }
       if (error) {
-        throw new Error(error.message.includes('apartment_pets') ? t('err.registrySql') : error.message);
+        if (error.message.includes('apartment_pets')) throw new Error(t('err.registrySql'));
+        throw error;
       }
       setPets((prev) => [...prev, data as ApartmentPet]);
     } finally {
@@ -1518,14 +1725,21 @@ export default function AccountPage() {
         prev.map((p) => (p.id === property.id ? { ...p, pet_info: petInfo.trim() || null } : p))
       );
     } catch (e: any) {
-      setError(ownerVisibleError(e, t('err.save')));
+      setError(toUserFacingMessage(e, t, { fallback: t('err.save') }));
     } finally {
       setOccupancySaving(false);
     }
   }
 
   async function handleClearAllGuests() {
-    if (!property || !confirm(t('confirm.clearGuests'))) return;
+    if (!property) return;
+    const ok = await confirm({
+      title: t('confirm.clearGuests'),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       const { error: delErr } = await supabase
         .from('apartment_guests')
@@ -1534,7 +1748,7 @@ export default function AccountPage() {
       if (delErr) throw delErr;
       setGuests([]);
     } catch (e: any) {
-      setError(ownerVisibleError(e, t('err.clear')));
+      setError(toUserFacingMessage(e, t, { fallback: t('err.clear') }));
     }
   }
 
@@ -1579,6 +1793,9 @@ export default function AccountPage() {
       if (guestContext) {
         requestPayload.created_by_role = 'guest';
         requestPayload.created_by_email = activeGuestAccess?.email ?? devEmail ?? null;
+        if (activeGuestAccess?.access_id) {
+          requestPayload.guest_access_id = activeGuestAccess.access_id;
+        }
       } else {
         requestPayload.created_by_role = 'owner';
         requestPayload.created_by_email = devEmail ?? null;
@@ -1622,7 +1839,10 @@ export default function AccountPage() {
       setPhoto(null);
       setShowRequestForm(false);
     } catch (e: any) {
-      setError(messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ?? ownerVisibleError(e, t('err.createRequest')));
+      setError(
+        messageForUploadError(e, t('err.uploadType'), t('err.uploadSize')) ??
+          toUserFacingMessage(e, t, { fallback: t('err.createRequest') }),
+      );
     } finally {
       setCreating(false);
     }
@@ -1747,21 +1967,20 @@ export default function AccountPage() {
         ];
       });
     } catch (e: unknown) {
-      const message =
+      const probe = toUserFacingMessage(e, t, { fallback: t('err.vote') });
+      const parts =
         e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
-          ? (e as { message: string }).message
-          : t('err.vote');
-      const lower = message.toLowerCase();
+          ? (e as { message: string }).message.toLowerCase()
+          : '';
       if (
-        lower.includes('already voted')
-        || lower.includes('duplicate key')
-        || lower.includes('poll_votes_poll_id_property_id')
+        parts.includes('already voted') ||
+        parts.includes('duplicate key') ||
+        parts.includes('poll_votes_poll_id_property_id')
       ) {
         setError(t('err.voteAlready'));
-        // Votes already exist server-side — pull them so attention UI clears.
         await refreshPolls();
       } else {
-        setError(ownerVisibleError(e, t('err.vote')));
+        setError(probe);
       }
     } finally {
       setVotingPollId(null);
@@ -1967,9 +2186,18 @@ export default function AccountPage() {
               setManagementTab('чат');
               setActiveMenu('ук');
             }}
-            onOpenDocuments={() => setActiveMenu('документы')}
-            onOpenMeetings={() => setActiveMenu('собрания')}
-            onOpenDecisions={() => setActiveMenu('решения')}
+            onOpenDocuments={() => {
+              setDocsSubTab('documents');
+              setActiveMenu('документы');
+            }}
+            onOpenMeetings={() => {
+              setDocsSubTab('meetings');
+              setActiveMenu('собрания');
+            }}
+            onOpenDecisions={() => {
+              setDocsSubTab('decisions');
+              setActiveMenu('решения');
+            }}
             guestLimited={guestContext}
             guestRelationLabel={guestRelationLabel}
           />
@@ -2038,15 +2266,22 @@ export default function AccountPage() {
                 absences={absences}
                 sessionEmail={devEmail}
                 bookRequestOpen={bookRequestOpen}
+                clarification={guestContext ? null : bookClarification}
                 onSelectProperty={setSelectedPropertyId}
                 onOpenOccupancy={() => setAptSubTab('occupancy')}
                 onReportChange={handleReportBookChange}
+                onClarifyContact={guestContext ? undefined : handleClarifyBookContact}
                 listingSaving={listingSaving}
                 onUpdateListing={handleUpdateListing}
                 extra={(
                   <>
                   {guestModeEnabled && property && !guestContext ? (
-                    <OwnerGuestMode supabase={supabase} propertyId={property.id} />
+                    <OwnerGuestMode
+                      supabase={supabase}
+                      propertyId={property.id}
+                      apartmentLabel={property.apartment_number ? `№${property.apartment_number}` : undefined}
+                      buildingModules={buildingModules}
+                    />
                   ) : null}
                   {property ? (
                     <OwnerOwnershipPanel
@@ -2104,7 +2339,7 @@ export default function AccountPage() {
 
       case 'собрания':
       case 'решения':
-        // Meetings excluded from R1 — redirect via menu effect.
+        // Deep-link aliases → документы (handled by menu effect).
         return null;
 
       case 'финансы': {
@@ -2372,17 +2607,36 @@ export default function AccountPage() {
                   {t('account.feePayments')}
                 </p>
                 <div className="mt-3 space-y-2">
-                  {propertyLedger.slice(0, 8).map((row) => (
-                    <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                      <span className="text-secondary">
-                        {formatOwnerDate(row.created_at, dateLocale)}
-                      </span>
-                      <span className={row.kind === 'payment' ? 'text-accent' : 'text-warning'}>
-                        {row.kind === 'payment' ? '+' : `${t('account.charge')} `}
-                        {Number(row.amount).toFixed(2)} €
-                      </span>
-                    </div>
-                  ))}
+                  {propertyLedger.slice(0, 12).map((row) => {
+                    const creditKind =
+                      row.kind === 'payment' ||
+                      row.kind === 'early_discount' ||
+                      row.kind === 'late_increase_waive' ||
+                      row.kind === 'adjustment_credit' ||
+                      row.kind === 'opening_credit' ||
+                      row.kind === 'opening_historical_settlement';
+                    const when = row.effective_at || row.created_at;
+                    return (
+                      <div key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="text-secondary">
+                            {formatOwnerDate(when, dateLocale)}
+                            {row.period ? ` · ${row.period}` : ''}
+                          </div>
+                          <div className="text-foreground">
+                            {t(supportLedgerKindLabelKey(row.kind) as Parameters<typeof t>[0])}
+                          </div>
+                          {row.note ? (
+                            <div className="text-[11px] text-muted line-clamp-2">{row.note}</div>
+                          ) : null}
+                        </div>
+                        <span className={`tabular-nums ${creditKind ? 'text-accent' : 'text-warning'}`}>
+                          {creditKind ? '−' : '+'}
+                          {formatEurAmount(Number(row.amount), dateLocale)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -2437,9 +2691,11 @@ export default function AccountPage() {
             requestFormOpen={showRequestForm}
             onRequestFormOpen={setShowRequestForm}
             unreadChatCount={unreadChatCount}
-            requestsEnabled={requestsEnabled}
-            announcementsEnabled={guestContext ? false : announcementsEnabled}
-            chatEnabled={chatEnabled}
+            requestsEnabled={guestContext ? requestsEnabled && guestCanRequests : requestsEnabled}
+            announcementsEnabled={
+              guestContext ? announcementsEnabled && guestCanAnnounce : announcementsEnabled
+            }
+            chatEnabled={guestContext ? chatEnabled && guestCanChat : chatEnabled}
             expensesEnabled={!guestContext}
             guestContext={guestContext}
             guestRelationLabel={guestRelationLabel}
@@ -2497,15 +2753,15 @@ export default function AccountPage() {
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm text-secondary">{t('account.photoOpt')}</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-hover file:px-4 file:py-2 file:text-sm"
-                    onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-                  />
-                </div>
+                <AppFilePicker
+                  label={t('account.photoOpt')}
+                  accept="image/*"
+                  files={photo ? [photo] : []}
+                  hint={t('common.fileHintFormats', {
+                    formats: formatAcceptHint('image/*', t),
+                  })}
+                  onChange={(picked) => setPhoto(picked[0] ?? null)}
+                />
                 <button
                   type="submit"
                   disabled={creating}
@@ -2609,18 +2865,19 @@ export default function AccountPage() {
                 meterTab={shownMeterTab}
                 onSelectMeterTab={selectMeterTab}
                 waterMode={waterMode}
-                waterEnabled={waterEnabled}
-                electricityEnabled={electricityEnabled}
+                waterEnabled={guestContext ? guestCanWater && waterEnabled : waterEnabled}
+                electricityEnabled={guestContext ? guestCanElectricity && electricityEnabled : electricityEnabled}
                 serviceLocked={scopeLocked('water')}
                 electricLastDay={latestElectric.currentDay}
                 electricLastNight={latestElectric.currentNight}
                 electricLastDate={latestElectric.readingDate}
                 electricMeterNumber={activeElMeter?.meter_number ?? null}
-                onOpenFinance={openFinanceFromOverview}
+                onOpenFinance={guestContext ? undefined : openFinanceFromOverview}
+                guestMode={Boolean(guestContext)}
               />
             )}
 
-            {electricityEnabled && shownMeterTab === 'electricity' && property && (
+            {electricityEnabled && shownMeterTab === 'electricity' && property && (!guestContext || guestCanElectricity) && (
               <OwnerElectricity
                 supabase={supabase}
                 propertyId={property.id}
@@ -2628,8 +2885,9 @@ export default function AccountPage() {
                 rows={[...meterReadings.electricity_day, ...meterReadings.electricity_night]}
                 meters={electricityMeters}
                 onSubmitted={() => reloadMeterReadings(property.id)}
-                onOpenFinance={openFinanceFromOverview}
+                onOpenFinance={guestContext ? undefined : openFinanceFromOverview}
                 serviceLocked={scopeLocked('electricity')}
+                guestMode={Boolean(guestContext)}
               />
             )}
           </div>
@@ -2640,7 +2898,14 @@ export default function AccountPage() {
       // ДОКУМЕНТЫ И ИНФОРМАЦИЯ
       // ===========================================================
       case 'документы': {
+        const meetingsOk = generalMeetingEnabled && !guestContext;
         const docTabs = [
+          ...(meetingsOk
+            ? [{ id: 'meetings' as const, label: t('docs.tabMeetings') }]
+            : []),
+          ...(meetingsOk
+            ? [{ id: 'decisions' as const, label: t('docs.tabDecisions') }]
+            : []),
           ...(buildingDocumentsEnabled
             ? [{ id: 'documents' as const, label: t('account.docsTabDocuments') }]
             : []),
@@ -2659,9 +2924,29 @@ export default function AccountPage() {
               <PillTabs
                 items={docTabs}
                 value={shownDocs}
-                onChange={(id) => setDocsSubTab(id as 'documents' | 'polls')}
+                onChange={(id) =>
+                  setDocsSubTab(id as 'meetings' | 'decisions' | 'documents' | 'polls')
+                }
               />
             )}
+            {shownDocs === 'meetings' && meetingsOk ? (
+              <OwnerDocumentsDecisions
+                supabase={supabase}
+                mode="meetings"
+                meetingsEnabled
+                decisionsEnabled={false}
+                documentsEnabled={false}
+              />
+            ) : null}
+            {shownDocs === 'decisions' && meetingsOk ? (
+              <OwnerDocumentsDecisions
+                supabase={supabase}
+                mode="decisions"
+                meetingsEnabled
+                decisionsEnabled
+                documentsEnabled={false}
+              />
+            ) : null}
             {shownDocs === 'documents' && buildingDocumentsEnabled ? (
               <OwnerDocumentsDecisions
                 supabase={supabase}
@@ -2742,6 +3027,7 @@ export default function AccountPage() {
   // ===================================================================
   return (
     <div className="flex min-h-dvh bg-background text-foreground">
+      {dialog}
       {sidebarOpen && (
         <button
           type="button"

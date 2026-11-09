@@ -27,6 +27,7 @@ import {
   dependenciesSatisfied,
 } from '@/lib/moduleCore';
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
+import { WATER_METERS_IMPORT_SPEC, aliasesFromSpec } from '@/lib/importTemplates';
 
 function waterCtx(args?: {
   apts?: Array<{ property_id: number; apartment_number: string }>;
@@ -220,23 +221,28 @@ describe('IS-3 · electricity validation and classify', () => {
 });
 
 describe('IS-3 · XLSX templates', () => {
-  it('builds water and electricity templates with instruction sheets', () => {
-    const waterBuf = buildWaterMeterIs3TemplateBuffer();
-    const elBuf = buildElectricityMeterIs3TemplateBuffer();
-    const waterWb = XLSX.read(waterBuf, { type: 'array' });
-    const elWb = XLSX.read(elBuf, { type: 'array' });
-    expect(waterWb.SheetNames).toEqual(
-      expect.arrayContaining(['meters', 'instructions_bg', 'instructions_ru', 'instructions_en']),
-    );
-    expect(elWb.SheetNames).toEqual(
-      expect.arrayContaining(['meters', 'instructions_bg', 'instructions_ru', 'instructions_en']),
-    );
+  it('builds localized water and electricity templates with a data + instruction sheet', () => {
+    const waterWb = XLSX.read(buildWaterMeterIs3TemplateBuffer('bg'), { type: 'array' });
+    const elWb = XLSX.read(buildElectricityMeterIs3TemplateBuffer('en'), { type: 'array' });
+    expect(waterWb.SheetNames).toHaveLength(2);
+    expect(elWb.SheetNames).toHaveLength(2);
+    expect(waterWb.SheetNames[1]).toBe('Инструкция');
+    expect(elWb.SheetNames[1]).toBe('Instructions');
+  });
 
+  it('parses a localized water template (all locales) with spec aliases', () => {
     bootstrapModuleSetupAdapters();
     const waterSchema = getModuleAdapter(WATER_MODULE_KEY)!.registration.setup!.xlsx!;
-    const parsed = parseModuleXlsxBuffer(waterBuf, waterSchema);
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(parsed.rows.length).toBeGreaterThanOrEqual(1);
+    const aliases = aliasesFromSpec(WATER_METERS_IMPORT_SPEC);
+    for (const locale of ['ru', 'bg', 'en'] as const) {
+      const parsed = parseModuleXlsxBuffer(
+        buildWaterMeterIs3TemplateBuffer(locale),
+        waterSchema,
+        undefined,
+        aliases,
+      );
+      expect(parsed.ok).toBe(true);
+    }
   });
 });
 

@@ -19,6 +19,7 @@ import {
   type SecurityRequestKind,
 } from '@/lib/security';
 import { StatusBadge } from '@/components/account/ownerUi';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 export function OwnerSecurity({
   supabase,
@@ -30,6 +31,7 @@ export function OwnerSecurity({
   serviceLocked?: boolean;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [posts, setPosts] = useState<SecurityPostOption[]>([]);
   const [rows, setRows] = useState<SecurityRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +90,7 @@ export function OwnerSecurity({
         post_id: String(r.post_id),
       })));
     } catch (e: unknown) {
-      setError(ownerVisibleError(e, t('err.loadApt')));
+      setError(ownerVisibleError(e, t('err.loadApt'), t));
     } finally {
       setLoading(false);
     }
@@ -141,14 +143,20 @@ export function OwnerSecurity({
       setOk(t('account.secRequestCreated'));
       await load();
     } catch (err: unknown) {
-      setError(ownerVisibleError(err, t('err.save')));
+      setError(ownerVisibleError(err, t('err.save'), t));
     } finally {
       setBusy(false);
     }
   }
 
   async function handleCancel(id: string) {
-    if (!confirm(t('account.secCancelConfirm'))) return;
+    const ok = await confirm({
+      title: t('account.secCancelConfirm'),
+      confirmLabel: t('common.yes'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -158,7 +166,7 @@ export function OwnerSecurity({
       if (rpcErr) throw rpcErr;
       await load();
     } catch (err: unknown) {
-      setError(ownerVisibleError(err, t('err.save')));
+      setError(ownerVisibleError(err, t('err.save'), t));
     } finally {
       setBusy(false);
     }
@@ -166,6 +174,7 @@ export function OwnerSecurity({
 
   return (
     <div className="space-y-4">
+      {dialog}
       <div>
         <h2 className="text-lg font-semibold text-foreground">{t('account.security')}</h2>
         <p className="mt-1 text-sm text-secondary">{t('account.securityLead')}</p>

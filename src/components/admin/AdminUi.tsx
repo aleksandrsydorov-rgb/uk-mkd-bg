@@ -1,6 +1,6 @@
 'use client';
 
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { EmptyState, SectionHeader, StatusBadge } from '@/components/account/ownerUi';
 
 export { EmptyState as AdminEmptyState, StatusBadge };
@@ -177,41 +177,36 @@ export function AdminTableShell({ children, className = '' }: { children: ReactN
   );
 }
 
-export function AdminPrimaryButton({
-  children,
-  className = '',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button type="button" className={`${adminBtnPrimaryClass} ${className}`.trim()} {...props}>
-      {children}
-    </button>
-  );
-}
+export const AdminPrimaryButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(
+  function AdminPrimaryButton({ children, className = '', type = 'button', ...props }, ref) {
+    return (
+      <button ref={ref} type={type} className={`${adminBtnPrimaryClass} ${className}`.trim()} {...props}>
+        {children}
+      </button>
+    );
+  },
+);
 
-export function AdminSecondaryButton({
-  children,
-  className = '',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+export const AdminSecondaryButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement>
+>(function AdminSecondaryButton({ children, className = '', type = 'button', ...props }, ref) {
   return (
-    <button type="button" className={`${adminBtnSecondaryClass} ${className}`.trim()} {...props}>
+    <button ref={ref} type={type} className={`${adminBtnSecondaryClass} ${className}`.trim()} {...props}>
       {children}
     </button>
   );
-}
+});
 
-export function AdminDangerButton({
-  children,
-  className = '',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button type="button" className={`${adminBtnDangerClass} ${className}`.trim()} {...props}>
-      {children}
-    </button>
-  );
-}
+export const AdminDangerButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(
+  function AdminDangerButton({ children, className = '', type = 'button', ...props }, ref) {
+    return (
+      <button ref={ref} type={type} className={`${adminBtnDangerClass} ${className}`.trim()} {...props}>
+        {children}
+      </button>
+    );
+  },
+);
 
 export function AdminInlineAlert({
   tone,
@@ -260,12 +255,40 @@ export function parseAdminUtilityTab(
   return 'overview';
 }
 
+/**
+ * Two-column field grids for Apartments / Property Book view mode.
+ * Column gap lives on the container; label↔value gap lives in AdminInfoRow.
+ */
+export const adminInfoGridClass = 'admin-info-grid';
+
+/** Label left / value right — shared by Apartments and Property Book cards. */
+export function AdminInfoRow({
+  label,
+  value,
+  className = '',
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex min-w-0 flex-col gap-1 border-b border-border py-3 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${className}`.trim()}
+    >
+      <span className="shrink-0 text-secondary sm:max-w-[46%]">{label}</span>
+      <span className="min-w-0 break-words font-medium text-foreground [overflow-wrap:anywhere] sm:text-right">
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function AdminTabBar({
   tabs,
   active,
   onChange,
 }: {
-  tabs: { id: string; label: string }[];
+  tabs: { id: string; label: ReactNode; badge?: boolean; badgeLabel?: string }[];
   active: string;
   onChange: (id: string) => void;
 }) {
@@ -279,12 +302,21 @@ export function AdminTabBar({
             type="button"
             role="tab"
             aria-selected={on}
+            aria-label={tab.badgeLabel}
             onClick={() => onChange(tab.id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm ${
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${
               on ? 'bg-accent text-white' : 'border border-border bg-surface text-secondary hover:bg-hover'
             }`}
           >
             {tab.label}
+            {tab.badge ? (
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  on ? 'bg-white' : 'bg-warning'
+                }`}
+                aria-hidden
+              />
+            ) : null}
           </button>
         );
       })}

@@ -29,8 +29,23 @@ type OpeningDry = {
 };
 
 export function FirstRunErrorNote({ raw, t }: { raw: string; t: T }) {
-  const view = explainFirstRunFailure(raw, t);
-  return <FirstRunStatusBanner tone="error" title={view.message} />;
+  const text = String(raw ?? '').trim();
+  const view = explainFirstRunFailure(text, t);
+  const unknown = t('admin.firstRunErrUnknown');
+  // Budget (and peers) may pass already-localized copy from toUserFacingMessage.
+  // Re-explaining that free text would always collapse to Unknown — keep it when
+  // it is not a technical / secret diagnostic phrase.
+  const looksTechnical =
+    /^(first_run:|opening_import:|admin_[a-z0-9_]+:|budget_import:)/i.test(text) ||
+    /PGRST|PostgREST|SQLSTATE|rpc_|relation |column |schema cache/i.test(text) ||
+    /bearer\s+\S+|eyJ[A-Za-z0-9_-]{8,}\./i.test(text);
+  const title =
+    view.message !== unknown
+      ? view.message
+      : !text || looksTechnical
+        ? unknown
+        : text;
+  return <FirstRunStatusBanner tone="error" title={title} />;
 }
 
 function Stat({ value, label }: { value: string; label: string }) {

@@ -33,7 +33,7 @@ describe('property book incomplete import', () => {
     expect(migration).toMatch(/property_book_clarification_issues/);
     expect(migration).toMatch(/owner_update_own_registry_contact/);
     expect(migration).toMatch(/admin_record_property_book_clarification_request/);
-    expect(manifest.expectedChronologicalMigrationCount).toBe(215);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(219);
     expect(manifest.orderedFiles).toContain('128_r1_rc8_property_book_incomplete_import.sql');
     expect(manifest.chronologicalMigrationsPackaged).toContain(
       'supabase/migrations/20261130240000_r1_rc8_property_book_incomplete_import.sql',

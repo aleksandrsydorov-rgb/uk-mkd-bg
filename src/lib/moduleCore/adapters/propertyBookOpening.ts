@@ -21,6 +21,16 @@ import {
   toImportTemplateLocale,
   type ImportTemplateLocale,
 } from '@/lib/importTemplates';
+import {
+  PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS,
+  PROPERTY_BOOK_OWNER_NUMERIC_FIELDS,
+  normalizePropertyBookApartmentNumber,
+  normalizePropertyBookNumericFields,
+  parseImportDecimal,
+  propertyBookIdentityKey,
+  propertyBookIdentityLabel,
+  propertyBookIdentityParts,
+} from '@/lib/propertyBookIdentity';
 
 export const PROPERTY_BOOK_MODULE_KEY = 'property_book';
 export const PROPERTY_BOOK_SETUP_SCHEMA_VERSION = '1.0';
@@ -41,7 +51,7 @@ const ENTITY_KIND_SET = new Set<string>(BOOK_ENTITY_KINDS);
 const OWNERSHIP_SET = new Set<string>(OWNERSHIP_TYPES);
 
 function normApt(value: string | undefined | null): string {
-  return String(value ?? '').trim().toLowerCase();
+  return normalizePropertyBookApartmentNumber(value).toLowerCase();
 }
 
 export type PropertyBookFieldIssues = { errors: string[]; warnings: string[] };
@@ -62,12 +72,16 @@ export function splitPropertyBookObjectProps(row: Record<string, string>): Prope
   else if (!OWNERSHIP_SET.has(row.ownership_type.trim().toLowerCase())) {
     errors.push('invalid:ownership_type');
   }
-  const area = Number(row.area_sqm);
-  if (row.area_sqm?.trim() && !(area > 0)) errors.push('invalid:area_sqm');
-  const living = Number(row.living_area_sqm);
-  if (row.living_area_sqm?.trim() && !(living > 0)) errors.push('invalid:living_area_sqm');
-  const ideal = Number(row.ideal_parts_percent);
-  if (row.ideal_parts_percent?.trim() && !(ideal >= 0)) errors.push('invalid:ideal_parts_percent');
+  const area = parseImportDecimal(row.area_sqm);
+  if (row.area_sqm?.trim() && !(area != null && area > 0)) errors.push('invalid:area_sqm');
+  const living = parseImportDecimal(row.living_area_sqm);
+  if (row.living_area_sqm?.trim() && !(living != null && living > 0)) {
+    errors.push('invalid:living_area_sqm');
+  }
+  const ideal = parseImportDecimal(row.ideal_parts_percent);
+  if (row.ideal_parts_percent?.trim() && !(ideal != null && ideal >= 0)) {
+    errors.push('invalid:ideal_parts_percent');
+  }
   return { errors, warnings };
 }
 
@@ -93,12 +107,12 @@ export function splitPropertyBookOwnerRow(row: Record<string, string>): Property
   }
   if (!row.email?.trim()) warnings.push('required:email');
 
-  const share = Number(row.ownership_share_percent);
-  if (!row.ownership_share_percent?.trim() || !(share > 0)) {
+  const share = parseImportDecimal(row.ownership_share_percent);
+  if (!row.ownership_share_percent?.trim() || !(share != null && share > 0)) {
     warnings.push('invalid:ownership_share_percent');
   }
-  const ideal = Number(row.ideal_parts_percent);
-  if (row.ideal_parts_percent?.trim() && !(ideal >= 0)) {
+  const ideal = parseImportDecimal(row.ideal_parts_percent);
+  if (row.ideal_parts_percent?.trim() && !(ideal != null && ideal >= 0)) {
     errors.push('invalid:ideal_parts_percent');
   }
   // Never trust client property_id — apartment_number is the match key.
@@ -108,15 +122,33 @@ export function splitPropertyBookOwnerRow(row: Record<string, string>): Property
   return { errors, warnings };
 }
 
+export type PropertyBookExistingIdentity = {
+  apartment_number?: string | null;
+  section_code?: string | null;
+  block_code?: string | null;
+};
+
 export function classifyPropertyBookOpeningRows(
   payload: PropertyBookWorkbookPayload,
-  existingApartmentNumbers: Iterable<string>,
+  existingApartmentNumbers: Iterable<string | PropertyBookExistingIdentity>,
   policy: PropertyBookOpeningPolicy = DEFAULT_PROPERTY_BOOK_OPENING_POLICY,
 ): ImportPreviewResult {
-  const existing = new Set(
-    [...existingApartmentNumbers].map((a) => normApt(a)).filter(Boolean),
-  );
-  const objectAptsInFile = new Map<string, number>();
+  const existing = new Set<string>();
+  for (const item of existingApartmentNumbers) {
+    if (typeof item === 'string') {
+      const apt = normApt(item);
+      if (apt) existing.add(apt);
+      continue;
+    }
+    const key = propertyBookIdentityKey(item);
+    if (key) existing.add(key);
+    // Legacy callers may still pass bare apartment numbers via objects shaped only with apt.
+    const aptOnly = normApt(item.apartment_number);
+    if (aptOnly && !item.section_code && !item.block_code) existing.add(aptOnly);
+  }
+
+  const objectKeysInFile = new Map<string, number>();
+  const aptNumbersNeedingSection = new Map<string, number[]>();
   const rows: ImportPreviewRow[] = [];
   let createCount = 0;
   let updateCount = 0;
@@ -132,22 +164,68 @@ export function classifyPropertyBookOpeningRows(
     else errorCount += 1;
   };
 
-  payload.objects.forEach((raw, idx) => {
-    const rowNumber = idx + 2;
+  const normalizedObjects = payload.objects.map((raw) =>
+    normalizePropertyBookNumericFields({ ...raw }, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS),
+  );
+
+  // First pass: detect apartment numbers that appear with more than one section/block identity.
+  const aptToKeys = new Map<string, Set<string>>();
+  for (const raw of normalizedObjects) {
+    const parts = propertyBookIdentityParts(raw);
+    if (!parts.apartmentNumber) continue;
+    const apt = parts.apartmentNumber.toLowerCase();
+    const key = propertyBookIdentityKey(parts);
+    const set = aptToKeys.get(apt) ?? new Set<string>();
+    set.add(key);
+    aptToKeys.set(apt, set);
+  }
+
+  normalizedObjects.forEach((raw, idx) => {
+    const rowNumber = Number(raw._row) || idx + 2;
     const split = splitPropertyBookObjectProps(raw);
     const errors = [...split.errors];
     const warnings = [...split.warnings];
-    const apt = normApt(raw.apartment_number);
-    if (apt) {
-      if (objectAptsInFile.has(apt)) errors.push('duplicate_in_file:apartment_number');
-      else objectAptsInFile.set(apt, rowNumber);
+    const parts = propertyBookIdentityParts(raw);
+    const key = propertyBookIdentityKey(parts);
+    const apt = parts.apartmentNumber.toLowerCase();
+
+    if (key) {
+      const prevRow = objectKeysInFile.get(key);
+      if (prevRow != null) {
+        errors.push('duplicate_in_file:apartment_number');
+        errors.push(`duplicate_rows:${prevRow},${rowNumber}`);
+        if (!parts.sectionCode && !parts.blockCode) {
+          errors.push('section_code_required_for_disambiguation');
+        }
+      } else {
+        objectKeysInFile.set(key, rowNumber);
+      }
+    }
+
+    // Same apartment number used under different identities, but this row omitted section/block.
+    const siblingKeys = apt ? aptToKeys.get(apt) : undefined;
+    if (
+      apt &&
+      siblingKeys &&
+      siblingKeys.size > 1 &&
+      !parts.sectionCode &&
+      !parts.blockCode
+    ) {
+      errors.push('section_code_required_for_disambiguation');
+      const list = aptNumbersNeedingSection.get(apt) ?? [];
+      list.push(rowNumber);
+      aptNumbersNeedingSection.set(apt, list);
     }
 
     let operation: ImportRowOperation = 'error';
-    if (errors.length === 0 && apt) {
-      if (existing.has(apt)) {
+    if (errors.length === 0 && key) {
+      const exists =
+        existing.has(key) ||
+        // Legacy book rows that only stored a bare apartment number.
+        (!parts.sectionCode && !parts.blockCode && existing.has(apt));
+      if (exists) {
         if (policy.allowOverwrite) operation = 'update';
-        else operation = 'skip'; // preserve existing ownership / shares / ideal parts
+        else operation = 'skip';
       } else if (policy.allowCreateMissing) {
         operation = 'create';
       } else {
@@ -165,49 +243,85 @@ export function classifyPropertyBookOpeningRows(
     rows.push({
       rowNumber,
       operation,
-      data: { sheet: BOOK_OBJECTS_SHEET, ...raw },
+      data: {
+        sheet: BOOK_OBJECTS_SHEET,
+        ...raw,
+        _identity_label: propertyBookIdentityLabel(parts),
+      },
       errors,
       warnings,
-      matchKey: apt || undefined,
+      matchKey: key || undefined,
     });
   });
 
-  const ownersByApt = new Map<string, Record<string, string>[]>();
-  payload.owners.forEach((raw) => {
-    const apt = normApt(raw.apartment_number);
-    if (!apt) return;
-    const list = ownersByApt.get(apt) ?? [];
+  const normalizedOwners = payload.owners.map((raw) =>
+    normalizePropertyBookNumericFields({ ...raw }, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS),
+  );
+
+  const ownersByKey = new Map<string, Record<string, string>[]>();
+  normalizedOwners.forEach((raw) => {
+    const key = propertyBookIdentityKey(raw);
+    if (!key) return;
+    const list = ownersByKey.get(key) ?? [];
     list.push(raw);
-    ownersByApt.set(apt, list);
+    ownersByKey.set(key, list);
   });
 
-  payload.owners.forEach((raw, idx) => {
-    const rowNumber = idx + 2;
+  normalizedOwners.forEach((raw, idx) => {
+    const rowNumber = Number(raw._row) || idx + 2;
     const split = splitPropertyBookOwnerRow(raw);
     const errors = [...split.errors];
     const warnings = [...split.warnings];
-    const apt = normApt(raw.apartment_number);
+    const parts = propertyBookIdentityParts(raw);
+    const key = propertyBookIdentityKey(parts);
+    const apt = parts.apartmentNumber.toLowerCase();
 
-    if (apt && !objectAptsInFile.has(apt) && !existing.has(apt)) {
-      errors.push('owner_without_object_row');
+    const objectExistsInFile = key ? objectKeysInFile.has(key) : false;
+    const existsInDb =
+      (key && existing.has(key)) ||
+      (!parts.sectionCode && !parts.blockCode && apt && existing.has(apt));
+    if (key && !objectExistsInFile && !existsInDb) {
+      // Owner may omit section when the objects sheet has exactly one matching apartment number.
+      const aptKeys = [...objectKeysInFile.keys()].filter((k) => k.startsWith(`${apt}\u0001`));
+      if (!(apt && aptKeys.length === 1 && objectKeysInFile.has(aptKeys[0]!))) {
+        if (apt && (aptToKeys.get(apt)?.size ?? 0) > 1 && !parts.sectionCode && !parts.blockCode) {
+          errors.push('section_code_required_for_disambiguation');
+        } else {
+          errors.push('owner_without_object_row');
+        }
+      }
     }
 
-    // Hard ownership contradictions only (soft incompleteness stays as warnings).
-    if (apt && ownersByApt.has(apt)) {
-      const group = ownersByApt.get(apt)!;
+    const resolvedKey =
+      key && objectKeysInFile.has(key)
+        ? key
+        : apt && [...objectKeysInFile.keys()].filter((k) => k.startsWith(`${apt}\u0001`)).length === 1
+          ? [...objectKeysInFile.keys()].find((k) => k.startsWith(`${apt}\u0001`))
+          : key;
+
+    if (resolvedKey && ownersByKey.has(resolvedKey)) {
+      const group = ownersByKey.get(resolvedKey)!;
       const first = group[0] === raw;
       const hasShares = group.some((r) => String(r.ownership_share_percent ?? '').trim());
-      const sum = group.reduce((acc, r) => acc + (Number(r.ownership_share_percent) || 0), 0);
+      const sum = group.reduce(
+        (acc, r) => acc + (parseImportDecimal(r.ownership_share_percent) ?? 0),
+        0,
+      );
       if (first && hasShares && Math.abs(sum - 100) > 0.01) {
         errors.push('shares_must_sum_100');
       }
       const soleOwners = group.length === 1;
-      const objOp = rows.find((r) => r.matchKey === apt && r.data.sheet === BOOK_OBJECTS_SHEET);
+      const objOp = rows.find(
+        (r) => r.matchKey === resolvedKey && r.data.sheet === BOOK_OBJECTS_SHEET,
+      );
       const ownershipType = String(objOp?.data.ownership_type ?? '')
         .trim()
         .toLowerCase();
-      const objectIdeal = Number(objOp?.data.ideal_parts_percent);
-      const idealSum = group.reduce((acc, r) => acc + (Number(r.ideal_parts_percent) || 0), 0);
+      const objectIdeal = parseImportDecimal(String(objOp?.data.ideal_parts_percent ?? ''));
+      const idealSum = group.reduce(
+        (acc, r) => acc + (parseImportDecimal(r.ideal_parts_percent) ?? 0),
+        0,
+      );
       const kindOf = (r: Record<string, string>) =>
         String(r.entity_kind ?? '').trim().toLowerCase();
       const legalN = group.filter((r) => kindOf(r) === 'legal_entity').length;
@@ -224,6 +338,7 @@ export function classifyPropertyBookOpeningRows(
       if (
         first &&
         ownershipType === 'shared' &&
+        objectIdeal != null &&
         Number.isFinite(objectIdeal) &&
         group.some((r) => String(r.ideal_parts_percent ?? '').trim()) &&
         Math.abs(idealSum - objectIdeal) > 0.01
@@ -234,6 +349,7 @@ export function classifyPropertyBookOpeningRows(
         first &&
         ownershipType === 'sole' &&
         soleOwners &&
+        objectIdeal != null &&
         Number.isFinite(objectIdeal) &&
         group.some((r) => String(r.ideal_parts_percent ?? '').trim()) &&
         Math.abs(idealSum - objectIdeal) > 0.01
@@ -243,8 +359,12 @@ export function classifyPropertyBookOpeningRows(
     }
 
     let operation: ImportRowOperation = 'error';
-    if (errors.length === 0 && apt) {
-      if (existing.has(apt)) {
+    const matchForPolicy = resolvedKey || key;
+    if (errors.length === 0 && matchForPolicy) {
+      const exists =
+        existing.has(matchForPolicy) ||
+        (!parts.sectionCode && !parts.blockCode && existing.has(apt));
+      if (exists) {
         operation = policy.allowOverwrite ? 'update' : 'skip';
       } else if (policy.allowCreateMissing) {
         operation = 'create';
@@ -262,10 +382,14 @@ export function classifyPropertyBookOpeningRows(
     rows.push({
       rowNumber,
       operation,
-      data: { sheet: BOOK_OWNERS_SHEET, ...raw },
+      data: {
+        sheet: BOOK_OWNERS_SHEET,
+        ...raw,
+        _identity_label: propertyBookIdentityLabel(parts),
+      },
       errors,
       warnings,
-      matchKey: apt || undefined,
+      matchKey: matchForPolicy || undefined,
     });
   });
 
@@ -278,6 +402,7 @@ export function classifyPropertyBookOpeningRows(
     errorCount,
     warningCount,
     clarificationCount,
+    uniqueObjectCount: objectKeysInFile.size,
   };
 }
 
@@ -461,6 +586,9 @@ export function mergePropertyBookLocalAndRpcPreview(
     updateCount: Math.max(0, updateCount),
     skipCount: Math.max(0, skipCount),
     errorCount,
+    clarificationCount: local.clarificationCount,
+    warningCount: local.warningCount,
+    uniqueObjectCount: local.uniqueObjectCount,
   };
 }
 

@@ -62,6 +62,20 @@ export const INTERNET_IMPORT_SPEC: ImportTemplateSpec = {
       example: '101',
     },
     {
+      key: 'section_code',
+      required: false,
+      format: 'text',
+      width: 14,
+      label: { ru: 'Секция / подъезд', bg: 'Секция / вход', en: 'Section / entrance' },
+      aliases: ['section', 'entrance', 'подъезд', 'секция', 'вход'],
+      instruction: {
+        ru: 'Обязательно, если один и тот же номер квартиры есть в разных подъездах.',
+        bg: 'Задължително, ако същият номер апартамент съществува в различни входове.',
+        en: 'Required when the same apartment number exists in more than one entrance.',
+      },
+      example: 'A',
+    },
+    {
       key: 'connection_state',
       required: true,
       format: 'text',

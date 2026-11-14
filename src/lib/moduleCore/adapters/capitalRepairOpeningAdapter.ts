@@ -87,6 +87,12 @@ export const capitalRepairOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is8ColApartment',
           },
           {
+            key: 'section_code',
+            required: false,
+            example: 'A',
+            labelKey: 'is8ColSection',
+          },
+          {
             key: 'billing_year',
             required: true,
             example: '2025',

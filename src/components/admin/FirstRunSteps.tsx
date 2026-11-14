@@ -395,6 +395,8 @@ export function FirstRunBookImport({
     importableCount?: number;
     clarificationCount?: number;
     blockingErrorCount?: number;
+    foundApartmentCount?: number | null;
+    expectedApartmentCount?: number | null;
   } | null;
   errorRows: FirstRunErrorRow[];
   countMismatch: { expected: number | null; actual: number | null } | null;
@@ -444,16 +446,43 @@ export function FirstRunBookImport({
           <FirstRunStatusBanner
             tone="success"
             title={t('admin.firstRunBookCheckOkTitle')}
-            detail={t('admin.firstRunBookCheckOkDetail')
-              .replace('{importable}', String(importable))
-              .replace('{clarify}', String(clarify))}
+            detail={[
+              t('admin.firstRunBookCheckOkDetail')
+                .replace('{importable}', String(importable))
+                .replace('{clarify}', String(clarify)),
+              t('admin.bookImportSummaryFound').replace(
+                '{found}',
+                String(dry.foundApartmentCount ?? importable),
+              ),
+              t('admin.bookImportSummaryExpected').replace(
+                '{expected}',
+                String(dry.expectedApartmentCount ?? apartmentCount ?? '—'),
+              ),
+              t('admin.bookImportSummaryErrorRows').replace('{errors}', '0'),
+            ].join(' · ')}
           />
         ) : null}
         {!committed && dry && !dry.ok ? (
           <FirstRunStatusBanner
             tone="error"
             title={t('admin.firstRunBookCheckFailTitle')}
-            detail={t('admin.firstRunBookCheckFailDetail').replace('{n}', String(blocking))}
+            detail={[
+              t('admin.firstRunBookCheckFailDetail').replace('{n}', String(blocking)),
+              t('admin.bookImportSummaryFound').replace(
+                '{found}',
+                String(dry.foundApartmentCount ?? countMismatch?.actual ?? '—'),
+              ),
+              t('admin.bookImportSummaryExpected').replace(
+                '{expected}',
+                String(
+                  dry.expectedApartmentCount ??
+                    countMismatch?.expected ??
+                    apartmentCount ??
+                    '—',
+                ),
+              ),
+              t('admin.bookImportSummaryErrorRows').replace('{errors}', String(blocking)),
+            ].join(' · ')}
           />
         ) : null}
         {!committed && dry?.ok && clarify > 0 ? (

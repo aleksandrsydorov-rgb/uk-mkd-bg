@@ -21,6 +21,10 @@ import {
   parseTransitionDate,
   scopeKey,
 } from '@/lib/moduleCore/adapters/supportFeeOpening';
+import {
+  resolveApartmentPropertyId,
+  type ApartmentLookupBundle,
+} from '@/lib/propertyBookIdentity';
 
 export const CAPITAL_REPAIR_MODULE_KEY = 'capital_repair';
 export const CAPITAL_REPAIR_SETUP_SCHEMA_VERSION = '1.0';
@@ -28,6 +32,7 @@ export const CAPITAL_REPAIR_OBLIGATION_TYPE = 'capital_repair';
 
 export const CAPITAL_REPAIR_OPENING_HEADERS = [
   'apartment_number',
+  'section_code',
   'billing_year',
   'obligation_type',
   'assessment_title',
@@ -48,7 +53,7 @@ export type CapitalAssessmentRef = {
 };
 
 export type CapitalOpeningClassifyContext = {
-  apartmentsByNumber: Map<string, number>;
+  apartmentsByNumber: Map<string, number> | ApartmentLookupBundle;
   /** Prior IS-8 opening imports by property|year */
   openingImportsByScope: Map<
     string,
@@ -195,14 +200,16 @@ export function classifyCapitalRepairOpeningRows(
     const rowNumber = idx + 2;
     const errors = validateCapitalRepairOpeningRow(raw);
     const apt = normApt(raw.apartment_number);
-    const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
+    const resolved = apt ? resolveApartmentPropertyId(ctx.apartmentsByNumber, raw) : {};
+    const propertyId = resolved.propertyId;
     const year = parseBillingYear(raw.billing_year);
     const assessed = parseNonNegMoney(raw.assessed_amount);
     const paid = parseNonNegMoney(raw.historically_paid_amount);
     const remaining = parseNonNegMoney(raw.remaining_debt);
     const over = parseNonNegMoney(String(raw.opening_overpayment ?? '').trim() || '0') ?? 0;
 
-    if (apt && propertyId == null) errors.push('unknown_apartment');
+    if (resolved.error) errors.push(resolved.error);
+    else if (apt && propertyId == null) errors.push('unknown_apartment');
 
     if (propertyId != null && year != null) {
       const sk = scopeKey(propertyId, year);

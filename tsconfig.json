@@ -34,7 +34,13 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    ".next-firstrun3078/types/**/*.ts",
+    ".next-firstrun3078/dev/types/**/*.ts",
+    ".next-build-verify/types/**/*.ts",
+    ".next-build-verify/dev/types/**/*.ts",
+    ".next-uat3068-build/types/**/*.ts",
+    ".next-uat3068-build/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -75,6 +75,12 @@ export const supportFeeOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is4ColApartment',
           },
           {
+            key: 'section_code',
+            required: false,
+            example: 'A',
+            labelKey: 'is4ColSection',
+          },
+          {
             key: 'billing_year',
             required: true,
             example: '2025',

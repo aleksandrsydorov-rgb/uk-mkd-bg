@@ -79,6 +79,7 @@ import {
 import {
   CAPITAL_REPAIR_IMPORT_SPEC,
   ELECTRICITY_METERS_IMPORT_SPEC,
+  INTERNET_IMPORT_SPEC,
   SUPPORT_FEE_IMPORT_SPEC,
   WATER_METERS_IMPORT_SPEC,
   aliasesFromSpec,
@@ -139,6 +140,8 @@ type BookDryRun = {
   importableCount: number;
   clarificationCount: number;
   blockingErrorCount: number;
+  foundApartmentCount: number | null;
+  expectedApartmentCount: number | null;
 };
 
 type MetersDryRun = {
@@ -217,6 +220,7 @@ const MODULE_XLSX_IMPORT_SPECS = [
   ELECTRICITY_METERS_IMPORT_SPEC,
   SUPPORT_FEE_IMPORT_SPEC,
   CAPITAL_REPAIR_IMPORT_SPEC,
+  INTERNET_IMPORT_SPEC,
 ];
 
 /** Localized (ru/bg/en) + legacy BG meter headers + snake_case keys so any UI locale parses exported files. */
@@ -225,6 +229,7 @@ function moduleXlsxHeaderAliases(schema: { columns: { key: string }[] }): Record
   for (const col of schema.columns) aliases[col.key] = [col.key];
   const bg: Record<string, string> = {
     apartment_number: 'Апартамент',
+    section_code: 'Секция / вход',
     meter_number: 'Номер на водомер',
     initial_reading: 'Начално показание',
     initial_day_reading: 'Начално (ден)',
@@ -235,6 +240,16 @@ function moduleXlsxHeaderAliases(schema: { columns: { key: string }[] }): Record
   };
   for (const [key, label] of Object.entries(bg)) {
     if (aliases[key]) aliases[key] = [...aliases[key], label];
+  }
+  if (aliases.section_code) {
+    aliases.section_code = [
+      ...aliases.section_code,
+      'Секция / подъезд',
+      'Секция',
+      'Подъезд',
+      'Section / entrance',
+      'Section',
+    ];
   }
   if (aliases.meter_number) aliases.meter_number = [...aliases.meter_number, 'Номер на електромер'];
   for (const spec of MODULE_XLSX_IMPORT_SPECS) {
@@ -754,6 +769,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       const res = asObj(data);
       const errors = Array.isArray(res.errors) ? res.errors : [];
       const warnings = Array.isArray(res.warnings) ? res.warnings : [];
+      const foundApartmentCount = Number(res.found_apartment_count ?? res.unique_apartment_count);
+      const expectedApartmentCount = Number(res.expected_apartment_count);
       setBookDry({
         ok: res.ok === true && errors.length === 0,
         errors,
@@ -767,6 +784,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         importableCount: Number(res.importable_count ?? 0) || 0,
         clarificationCount: Number(res.clarification_count ?? warnings.length) || 0,
         blockingErrorCount: Number(res.blocking_error_count ?? errors.length) || 0,
+        foundApartmentCount: Number.isFinite(foundApartmentCount) ? foundApartmentCount : null,
+        expectedApartmentCount: Number.isFinite(expectedApartmentCount)
+          ? expectedApartmentCount
+          : null,
       });
       setErrorRows(normalizeFirstRunErrors([...errors, ...warnings]));
       setCountMismatch(apartmentCountMismatchInfo(errors));

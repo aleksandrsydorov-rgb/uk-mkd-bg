@@ -39,6 +39,18 @@ describe('first-run user-facing messages', () => {
     );
   });
 
+  it('maps Budget Core publish with no lines to the fill-amounts sentence', () => {
+    expect(explainFirstRunFailure('admin_set_budget_year_status: no lines', ru).message).toBe(
+      ru('admin.firstRunErrBudgetLines'),
+    );
+    expect(explainFirstRunFailure('admin_set_budget_year_status: no lines', en).message).toBe(
+      en('admin.firstRunErrBudgetLines'),
+    );
+    expect(explainFirstRunFailure('admin_set_budget_year_status: no lines', bg).message).toBe(
+      bg('admin.firstRunErrBudgetLines'),
+    );
+  });
+
   it('localizes budget year statuses and hides an unknown code', () => {
     expect(budgetYearStatusLabel('draft', ru)).toBe('Черновик');
     expect(budgetYearStatusLabel('published', en)).toBe('Published');
@@ -50,7 +62,7 @@ describe('first-run user-facing messages', () => {
   });
 
   it('localizes a known tariff basis and omits an unknown code', () => {
-    expect(tariffBasisLabel('external_decision', ru)).toBe('Внешнее решение');
+    expect(tariffBasisLabel('external_decision', ru)).toBe('Внешний документ');
     expect(tariffBasisLabel('supplier_notice', en)).toBe('Supplier notice');
     expect(tariffBasisLabel('not_a_basis', ru)).toBeNull();
   });

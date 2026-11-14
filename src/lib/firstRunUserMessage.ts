@@ -171,6 +171,10 @@ function knownMessage(text: string, t: T): string | null {
     return t('admin.firstRunErrBudgetNotPublished');
   }
   if (/^first_run: budget lines missing/i.test(text)) return t('admin.firstRunErrBudgetLines');
+  // Budget Core publish guard — same user action as filling every active category.
+  if (/^admin_set_budget_year_status:\s*no lines$/i.test(text)) {
+    return t('admin.firstRunErrBudgetLines');
+  }
   if (/^first_run: zero budget plan requires confirmation$/i.test(text)) return t('admin.firstRunErrBudgetZero');
   if (/^first_run: opening expenses confirmation required$/i.test(text)) {
     return t('admin.firstRunErrOpeningConfirm');
@@ -260,6 +264,8 @@ function tryLabel(t: T, key: string): string | null {
 export function importReasonI18nKey(raw: string): string | null {
   const code = raw.trim();
   if (!code) return null;
+
+  if (/^duplicate_rows:/i.test(code)) return null;
 
   const prefixed = code.match(
     /^(required|invalid|duplicate_in_file|missing_apartment|unsupported|inconsistent|mutually_exclusive|conflict|duplicate_serial):(.+)$/i,
@@ -371,6 +377,8 @@ export function importReasonI18nKey(raw: string): string | null {
     owner_ideal_parts_sum_mismatch: 'bookImport_ideal_parts_sum',
     apartment_count_mismatch: 'bookImport_apartment_count_mismatch',
     owner_without_object_row: 'bookImport_owner_without_object',
+    section_code_required_for_disambiguation: 'bookImport_section_required',
+    duplicate_apartment: 'bookImport_duplicate_in_file',
     untrusted_property_id: 'bookImport_untrusted_property_id',
     untrusted_assessment_id: 'importIssue_untrusted_assessment_id',
     overwrite_requires_confirmation: 'bookImport_overwrite_required',

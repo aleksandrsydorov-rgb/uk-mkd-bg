@@ -87,6 +87,8 @@ export type ImportPreviewResult = {
   errorCount: number;
   warningCount?: number;
   clarificationCount?: number;
+  /** Distinct object identities in the Objects sheet (apartment + section + block). */
+  uniqueObjectCount?: number;
 };
 
 export type ModuleSetupAdapter = {

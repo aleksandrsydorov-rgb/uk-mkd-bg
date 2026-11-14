@@ -14,6 +14,11 @@ import {
   toImportTemplateLocale,
   type ImportTemplateLocale,
 } from '@/lib/importTemplates';
+import {
+  apartmentScopeKeyFromRow,
+  resolveApartmentPropertyId,
+  type ApartmentLookupBundle,
+} from '@/lib/propertyBookIdentity';
 
 export const SUPPORT_FEE_MODULE_KEY = 'support_fee';
 export const SUPPORT_FEE_SETUP_SCHEMA_VERSION = '1.0';
@@ -21,6 +26,7 @@ export const SUPPORT_FEE_OBLIGATION_TYPE = 'support_fee';
 
 export const SUPPORT_FEE_OPENING_HEADERS = [
   'apartment_number',
+  'section_code',
   'billing_year',
   'obligation_type',
   'assessed_amount',
@@ -43,7 +49,7 @@ export type ExistingSfObligationRef = {
 };
 
 export type SfOpeningClassifyContext = {
-  apartmentsByNumber: Map<string, number>;
+  apartmentsByNumber: Map<string, number> | ApartmentLookupBundle;
   /** Active (non-void/corrected) assessments by property|year */
   existingByScope: Map<string, ExistingSfObligationRef>;
   /** Prior IS-4 opening imports by property|year */
@@ -184,14 +190,17 @@ export function classifySupportFeeOpeningRows(
     const rowNumber = idx + 2;
     const errors = validateSupportFeeOpeningRow(raw);
     const apt = normApt(raw.apartment_number);
-    const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
+    const resolved = apt ? resolveApartmentPropertyId(ctx.apartmentsByNumber, raw) : {};
+    const propertyId = resolved.propertyId;
     const year = parseBillingYear(raw.billing_year);
     const assessed = parseNonNegMoney(raw.assessed_amount);
     const paid = parseNonNegMoney(raw.historically_paid_amount);
     const remaining = parseNonNegMoney(raw.remaining_debt);
     const over = parseNonNegMoney(String(raw.opening_overpayment ?? '').trim() || '0') ?? 0;
+    const aptScope = apartmentScopeKeyFromRow(raw);
 
-    if (apt && propertyId == null) errors.push('unknown_apartment');
+    if (resolved.error) errors.push(resolved.error);
+    else if (apt && propertyId == null) errors.push('unknown_apartment');
     // R1-RC8: do not require published SF tariff for historical opening inventarisation.
     // source_reference + debt/overpayment XOR are enforced in validateSupportFeeOpeningRow.
 
@@ -201,9 +210,9 @@ export function classifySupportFeeOpeningRows(
       else scopeInFile.set(sk, rowNumber);
     }
 
-    if (over > 0 && apt) {
-      if (overpayAptInFile.has(apt)) errors.push('duplicate_in_file:opening_overpayment_per_apartment');
-      else overpayAptInFile.set(apt, rowNumber);
+    if (over > 0 && aptScope) {
+      if (overpayAptInFile.has(aptScope)) errors.push('duplicate_in_file:opening_overpayment_per_apartment');
+      else overpayAptInFile.set(aptScope, rowNumber);
     }
 
     let operation: ImportRowOperation = 'error';

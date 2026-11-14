@@ -40,6 +40,8 @@ export {
   classifyWaterMeterOpeningRows,
   classifyElectricityMeterOpeningRows,
   buildApartmentLookup,
+  buildApartmentIdentityLookup,
+  resolveApartmentPropertyId,
   activePropertyIdsFromMeters,
   existingActiveSerialsFromMeters,
   existingMetersBySerialFromMeters,

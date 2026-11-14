@@ -70,6 +70,12 @@ export const waterOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is3ColApartment',
           },
           {
+            key: 'section_code',
+            required: false,
+            example: 'A',
+            labelKey: 'is3ColSection',
+          },
+          {
             key: 'meter_number',
             required: true,
             example: 'W-12-001',

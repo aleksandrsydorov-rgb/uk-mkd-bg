@@ -16,6 +16,13 @@ import {
   toImportTemplateLocale,
   type ImportTemplateLocale,
 } from '@/lib/importTemplates';
+import {
+  apartmentScopeKeyFromRow,
+  buildApartmentIdentityLookup,
+  resolveApartmentPropertyId,
+  type ApartmentLookupBundle,
+  type ApartmentLookupRow,
+} from '@/lib/propertyBookIdentity';
 
 export const WATER_MODULE_KEY = 'water';
 export const ELECTRICITY_MODULE_KEY = 'electricity';
@@ -50,6 +57,7 @@ export const DEFAULT_METER_OPENING_POLICY: MeterOpeningPolicy = {
 /** Canonical column keys (also accepted as spreadsheet headers). */
 export const WATER_METER_HEADERS = [
   'apartment_number',
+  'section_code',
   'meter_number',
   'initial_reading',
   'installed_at',
@@ -59,6 +67,7 @@ export const WATER_METER_HEADERS = [
 
 export const ELECTRICITY_METER_HEADERS = [
   'apartment_number',
+  'section_code',
   'meter_number',
   'initial_day_reading',
   'initial_night_reading',
@@ -70,6 +79,7 @@ export const ELECTRICITY_METER_HEADERS = [
 /** Human BG labels for new templates; parsers still accept snake_case keys. */
 export const WATER_METER_HEADER_LABELS_BG: Record<(typeof WATER_METER_HEADERS)[number], string> = {
   apartment_number: 'Апартамент',
+  section_code: 'Секция / вход',
   meter_number: 'Номер на водомер',
   initial_reading: 'Начално показание',
   installed_at: 'Дата на монтаж',
@@ -82,6 +92,7 @@ export const ELECTRICITY_METER_HEADER_LABELS_BG: Record<
   string
 > = {
   apartment_number: 'Апартамент',
+  section_code: 'Секция / вход',
   meter_number: 'Номер на електромер',
   initial_day_reading: 'Начално (ден)',
   initial_night_reading: 'Начално (нощ)',
@@ -174,8 +185,8 @@ export function collectApartmentOpeningBalanceConflicts(
   const conflicts = new Map<number, string>();
 
   rows.forEach((row, idx) => {
-    const apt = normApt(row.apartment_number);
-    if (!apt) return;
+    const scope = apartmentScopeKeyFromRow(row);
+    if (!scope) return;
     const kind = normalizeOpeningBalanceKind(row.opening_balance_kind);
     if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(kind)) return;
     if (kind === 'zero') return;
@@ -183,9 +194,9 @@ export function collectApartmentOpeningBalanceConflicts(
     const amount = parseNonNegNumber(String(row.opening_balance_eur ?? '').trim());
     if (amount == null || amount <= 0) return;
 
-    const prev = claims.get(apt);
+    const prev = claims.get(scope);
     if (!prev) {
-      claims.set(apt, { kind, amount, rowIndex: idx });
+      claims.set(scope, { kind, amount, rowIndex: idx });
       return;
     }
     if (prev.kind !== kind || prev.amount !== amount) {
@@ -243,7 +254,8 @@ export function validateOpeningReadingPreviewFields(
 }
 
 export type MeterClassifyContext = {
-  apartmentsByNumber: Map<string, number>; // normApt → propertyId
+  /** Apt-only Map (unique numbers) or identity bundle when entrances share numbers. */
+  apartmentsByNumber: Map<string, number> | ApartmentLookupBundle;
   /** normSerial of ACTIVE meters (retired_at is null). */
   existingActiveSerials: Set<string>;
   /** normSerial → propertyId for ALL meters (active+retired) — serial is globally unique. */
@@ -283,11 +295,13 @@ function classifyMeterOpeningRows(
     const errors = validate(raw);
     const apt = normApt(raw.apartment_number);
     const serial = normSerial(raw.meter_number);
-    const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
+    const resolved = apt ? resolveApartmentPropertyId(ctx.apartmentsByNumber, raw) : {};
+    const propertyId = resolved.propertyId;
     const balanceConflict = balanceConflicts.get(idx);
     if (balanceConflict) errors.push(balanceConflict);
 
-    if (apt && !propertyId) errors.push('unknown_apartment');
+    if (resolved.error) errors.push(resolved.error);
+    else if (apt && propertyId == null) errors.push('unknown_apartment');
     if (serial) {
       if (serialsInFile.has(serial)) errors.push('duplicate_in_file:meter_number');
       else serialsInFile.set(serial, rowNumber);
@@ -345,16 +359,35 @@ export function classifyElectricityMeterOpeningRows(
   return classifyMeterOpeningRows('electricity', rows, ctx, validateElectricityMeterRow);
 }
 
+/**
+ * Apt-only lookup for unique apartment numbers (legacy tests / simple complexes).
+ * Prefer {@link buildApartmentIdentityLookup} when section/block may repeat numbers —
+ * that preserves ambiguous-number detection for clear row errors.
+ */
 export function buildApartmentLookup(
-  apartments: Iterable<{ property_id: number; apartment_number: string | number }>,
-): Map<string, number> {
+  apartments: Iterable<{
+    property_id: number;
+    apartment_number: string | number;
+    section_code?: string | null;
+    block_code?: string | null;
+  }>,
+): Map<string, number> | ApartmentLookupBundle {
+  const rows = [...apartments] as ApartmentLookupRow[];
+  const hasSectionOrBlock = rows.some(
+    (a) => String(a.section_code ?? '').trim() || String(a.block_code ?? '').trim(),
+  );
+  if (hasSectionOrBlock) {
+    return buildApartmentIdentityLookup(rows);
+  }
   const map = new Map<string, number>();
-  for (const a of apartments) {
+  for (const a of rows) {
     const key = normApt(String(a.apartment_number));
     if (key) map.set(key, a.property_id);
   }
   return map;
 }
+
+export { buildApartmentIdentityLookup, resolveApartmentPropertyId };
 
 export function activePropertyIdsFromMeters(meters: ExistingMeterRef[]): Set<number> {
   const set = new Set<number>();

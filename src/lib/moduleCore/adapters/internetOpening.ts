@@ -14,6 +14,11 @@ import {
   toImportTemplateLocale,
   type ImportTemplateLocale,
 } from '@/lib/importTemplates';
+import {
+  apartmentScopeKeyFromRow,
+  resolveApartmentPropertyId,
+  type ApartmentLookupBundle,
+} from '@/lib/propertyBookIdentity';
 
 export const INTERNET_MODULE_KEY = 'internet';
 export const INTERNET_SETUP_SCHEMA_VERSION = '1.1';
@@ -23,6 +28,7 @@ export const INTERNET_OPENING_STATUSES = ['active', 'inactive'] as const;
 /** User-facing first-run template columns (v1.1). Legacy aliases still accepted when parsing. */
 export const INTERNET_OPENING_HEADERS = [
   'apartment_number',
+  'section_code',
   'connection_state',
   'connection_date',
   'paid_period_start',
@@ -35,6 +41,7 @@ export const INTERNET_OPENING_HEADERS = [
 /** Legacy IS-5 headers kept for older workbooks / Initial Setup. */
 export const INTERNET_OPENING_HEADERS_LEGACY = [
   'apartment_number',
+  'section_code',
   'tariff_code',
   'status',
   'connection_date',
@@ -59,7 +66,7 @@ export type ExistingInternetSubRef = {
 };
 
 export type InternetOpeningClassifyContext = {
-  apartmentsByNumber: Map<string, number>;
+  apartmentsByNumber: Map<string, number> | ApartmentLookupBundle;
   existingByProperty: Map<number, ExistingInternetSubRef>;
   openingImportsByProperty: Map<
     number,
@@ -349,7 +356,8 @@ export function classifyInternetOpeningRows(
     const rowNumber = idx + 2;
     const errors = validateInternetOpeningRow(raw);
     const apt = normApt(raw.apartment_number);
-    const propertyId = apt ? ctx.apartmentsByNumber.get(apt) : undefined;
+    const resolved = apt ? resolveApartmentPropertyId(ctx.apartmentsByNumber, raw) : {};
+    const propertyId = resolved.propertyId;
     const status = String(raw.status ?? '')
       .trim()
       .toLowerCase();
@@ -361,12 +369,14 @@ export function classifyInternetOpeningRows(
     const conn = parseOptionalIsoDate(raw.connection_date);
     const paid = parseOptionalIsoDate(raw.paid_through);
     const paidStart = parseOptionalIsoDate(raw.paid_period_start);
+    const aptScope = apartmentScopeKeyFromRow(raw);
 
-    if (apt && propertyId == null) errors.push('unknown_apartment');
-    if (apt) {
-      const prior = aptPrimary.get(apt);
+    if (resolved.error) errors.push(resolved.error);
+    else if (apt && propertyId == null) errors.push('unknown_apartment');
+    if (aptScope) {
+      const prior = aptPrimary.get(aptScope);
       if (!prior) {
-        aptPrimary.set(apt, { rowNumber, status, debt, credit });
+        aptPrimary.set(aptScope, { rowNumber, status, debt, credit });
       } else if (
         (status && prior.status && status !== prior.status) ||
         debt !== prior.debt ||

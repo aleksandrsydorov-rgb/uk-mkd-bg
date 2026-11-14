@@ -194,6 +194,19 @@ export function AdminFirstRunBudget({
     [supabase],
   );
 
+  const seedAmountsForCategories = useCallback(
+    (cats: BudgetCategory[], prior: Record<string, string> = {}) => {
+      const map: Record<string, string> = {};
+      for (const cat of cats) {
+        map[cat.id] = prior[cat.id] ?? '0';
+      }
+      setPlanCategories(cats);
+      setAmounts(map);
+      return map;
+    },
+    [],
+  );
+
   const loadLines = useCallback(
     async (id: string, cats: BudgetCategory[]) => {
       const { data, error } = await supabase.rpc('admin_list_budget_lines', { p_year_id: id });
@@ -206,23 +219,65 @@ export function AdminFirstRunBudget({
         planned_amount_eur: Number(l.planned_amount_eur),
       }));
       setLines(list);
-      const planned = list.map((line) => {
-        const known = cats.find((cat) => cat.id === line.category_id);
-        return known ?? {
-          id: line.category_id,
-          code: line.category_code,
-          name_ru: line.category_name_ru,
-          name_en: line.category_name_ru,
-          name_bg: line.category_name_ru,
-        };
-      });
-      setPlanCategories(planned);
-      const map: Record<string, string> = {};
-      for (const line of list) map[line.category_id] = String(line.planned_amount_eur);
-      setAmounts(map);
+      const prior: Record<string, string> = {};
+      for (const line of list) prior[line.category_id] = String(line.planned_amount_eur);
+      // Always edit the full active catalogue so publish never hits "no lines"
+      // when the operator only confirms a zero plan without prior import.
+      const planned =
+        cats.length > 0
+          ? cats
+          : list.map((line) => {
+              const known = cats.find((cat) => cat.id === line.category_id);
+              return (
+                known ?? {
+                  id: line.category_id,
+                  code: line.category_code,
+                  name_ru: line.category_name_ru,
+                  name_en: line.category_name_ru,
+                  name_bg: line.category_name_ru,
+                }
+              );
+            });
+      seedAmountsForCategories(planned, prior);
       return list;
     },
-    [supabase],
+    [seedAmountsForCategories, supabase],
+  );
+
+  const commitPlanFromAmounts = useCallback(
+    async (yearNum: number, cats: BudgetCategory[]) => {
+      if (cats.length === 0) {
+        throw new Error(t('admin.firstRunErrBudgetLines'));
+      }
+      const rows: Array<{ row: number; code: string; name: string; amount: string }> = [];
+      for (let i = 0; i < cats.length; i += 1) {
+        const cat = cats[i]!;
+        const raw = amounts[cat.id] ?? '0';
+        const n = Number(String(raw).replace(',', '.'));
+        if (!Number.isFinite(n) || n < 0) {
+          throw new Error(t('admin.firstRunBudgetAmountInvalid'));
+        }
+        rows.push({
+          row: i + 1,
+          code: cat.code,
+          name: cat.name_ru || cat.name_en || cat.name_bg || cat.code,
+          amount: n.toFixed(2),
+        });
+      }
+      const { data, error } = await untyped(supabase).rpc('admin_commit_budget_plan', {
+        p_calendar_year: yearNum,
+        p_rows: rows,
+      });
+      if (error) throw error;
+      return data;
+    },
+    [amounts, supabase, t],
+  );
+
+  const presentFormError = useCallback(
+    (err: unknown) =>
+      toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }),
+    [t],
   );
 
   const bootstrap = useCallback(async () => {
@@ -247,7 +302,7 @@ export function AdminFirstRunBudget({
         }
       }
     } catch (e: unknown) {
-      setLoadError(toUserFacingMessage(e, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+      setLoadError(presentFormError(e));
     }
   }, [
     ensureModuleEnabled,
@@ -256,7 +311,7 @@ export function AdminFirstRunBudget({
     loadCategories,
     loadLines,
     loadYearByCalendar,
-    t,
+    presentFormError,
   ]);
 
   useEffect(() => {
@@ -285,8 +340,7 @@ export function AdminFirstRunBudget({
       if (existing) await loadLines(existing.id, cats);
       else {
         setLines([]);
-        setPlanCategories([]);
-        setAmounts({});
+        seedAmountsForCategories(cats);
       }
       const nextStep: FirstRunBudgetDraft['step'] = isPublishedLike(existing?.status)
         ? 'done'
@@ -306,7 +360,7 @@ export function AdminFirstRunBudget({
           : t('admin.firstRunBudgetYearReady'),
       );
     } catch (err: unknown) {
-      setFormError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+      setFormError(presentFormError(err));
     } finally {
       onBusy(false);
     }
@@ -315,39 +369,23 @@ export function AdminFirstRunBudget({
   async function onSaveAmounts(e: React.FormEvent) {
     e.preventDefault();
     if (locked) return;
-    if (!yearId) {
-      setStep('review');
-      await persistDraft({
-        calendarYear: Number(calendarYear),
-        yearId: null,
-        decisionNote,
-        zeroConfirmed: false,
-        step: 'review',
-      });
-      return;
-    }
     onBusy(true);
     setFormError(null);
     setNote(null);
     try {
-      for (const cat of planCategories) {
-        const raw = amounts[cat.id] ?? '0';
-        const n = Number(String(raw).replace(',', '.'));
-        if (!Number.isFinite(n) || n < 0) {
-          throw new Error(t('admin.firstRunBudgetAmountInvalid'));
-        }
-        const { error } = await supabase.rpc('admin_upsert_budget_line', {
-          p_year_id: yearId,
-          p_category_id: cat.id,
-          p_planned_amount_eur: n,
-          p_note: null,
-        });
-        if (error) throw error;
-      }
-      await loadLines(yearId, planCategories.length > 0 ? planCategories : categories);
+      const yearNum = Number(calendarYear);
+      const cats = (categories.length > 0 ? categories : await loadCategories()).slice();
+      if (cats.length === 0) throw new Error(t('admin.firstRunErrBudgetLines'));
+      // Atomic draft write: all active categories in one RPC (no partial upserts).
+      await commitPlanFromAmounts(yearNum, cats);
+      const existing = await loadYearByCalendar(yearNum);
+      if (!existing) throw new Error(t('admin.firstRunErrBudgetLines'));
+      setYearId(existing.id);
+      setYearStatus(existing.status);
+      await loadLines(existing.id, cats);
       const next: FirstRunBudgetDraft = {
-        calendarYear: Number(calendarYear),
-        yearId,
+        calendarYear: yearNum,
+        yearId: existing.id,
         decisionNote,
         zeroConfirmed: false,
         step: 'review',
@@ -357,7 +395,7 @@ export function AdminFirstRunBudget({
       await persistDraft(next);
       setNote(t('admin.firstRunBudgetAmountsSaved'));
     } catch (err: unknown) {
-      setFormError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+      setFormError(presentFormError(err));
     } finally {
       onBusy(false);
     }
@@ -460,7 +498,7 @@ export function AdminFirstRunBudget({
       setStep('amounts');
     } catch (err: unknown) {
       console.error('admin_commit_budget_plan failed', err);
-      setFormError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+      setFormError(presentFormError(err));
     } finally {
       onBusy(false);
     }
@@ -475,18 +513,22 @@ export function AdminFirstRunBudget({
         throw new Error(t('admin.firstRunBudgetZeroRequired'));
       }
       const yearNum = Number(calendarYear);
+      const cats = (categories.length > 0 ? categories : await loadCategories()).slice();
+      if (cats.length === 0) throw new Error(t('admin.firstRunErrBudgetLines'));
+
       let publishYearId = yearId;
-      if (!publishYearId) {
-        const { error: createErr } = await untyped(supabase).rpc('admin_commit_budget_plan', {
-          p_calendar_year: yearNum,
-          p_rows: [],
-        });
-        if (createErr) throw createErr;
+      if (!locked) {
+        // Never publish an empty year: commit every active category first
+        // (zeros are valid when the operator confirmed a zero plan).
+        await commitPlanFromAmounts(yearNum, cats);
         const created = await loadYearByCalendar(yearNum);
-        if (!created) throw new Error(t('admin.errGeneric'));
+        if (!created) throw new Error(t('admin.firstRunErrBudgetLines'));
         publishYearId = created.id;
         setYearId(created.id);
+        await loadLines(created.id, cats);
       }
+      if (!publishYearId) throw new Error(t('admin.firstRunErrBudgetLines'));
+
       const draftPayload: FirstRunBudgetDraft = {
         calendarYear: yearNum,
         yearId: publishYearId,
@@ -519,7 +561,7 @@ export function AdminFirstRunBudget({
       await persistDraft(done);
       setNote(t('admin.firstRunBudgetPublished'));
     } catch (err: unknown) {
-      setFormError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+      setFormError(presentFormError(err));
     } finally {
       onBusy(false);
     }

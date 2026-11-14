@@ -31,7 +31,7 @@ import {
   existingActiveSerialsFromMeters,
   existingMetersBySerialFromMeters,
   bootstrapModuleSetupAdapters,
-  buildApartmentLookup,
+  buildApartmentIdentityLookup,
   buildCapitalAssessmentsMaps,
   buildCapitalLedgerConflictSets,
   buildCategoryCodeMap,
@@ -216,6 +216,7 @@ function moduleXlsxHeaderAliases(schema: { columns: { key: string; labelKey: str
   // Stable BG labels from dedicated meter templates
   const bgMeter: Record<string, string> = {
     apartment_number: 'Апартамент',
+    section_code: 'Секция / вход',
     meter_number: 'Номер на водомер',
     initial_reading: 'Начално показание',
     initial_day_reading: 'Начално (ден)',
@@ -603,13 +604,20 @@ export function AdminInitialSetup({
       p_limit: 5000,
     });
     if (listErr) throw listErr;
-    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+    const apartments = ((bookRows as {
+      property_id?: number;
+      apartment_number?: string | number;
+      section_code?: string | null;
+      block_code?: string | null;
+    }[]) ?? [])
       .filter((r) => r.property_id != null)
       .map((r) => ({
         property_id: Number(r.property_id),
         apartment_number: String(r.apartment_number ?? ''),
+        section_code: r.section_code != null ? String(r.section_code) : '',
+        block_code: r.block_code != null ? String(r.block_code) : '',
       }));
-    const apartmentsByNumber = buildApartmentLookup(apartments);
+    const apartmentsByNumber = buildApartmentIdentityLookup(apartments);
 
     const { data: assessmentRows, error: aErr } = await supabase
       .from('support_fee_assessments')
@@ -687,13 +695,20 @@ export function AdminInitialSetup({
       p_limit: 5000,
     });
     if (listErr) throw listErr;
-    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+    const apartments = ((bookRows as {
+      property_id?: number;
+      apartment_number?: string | number;
+      section_code?: string | null;
+      block_code?: string | null;
+    }[]) ?? [])
       .filter((r) => r.property_id != null)
       .map((r) => ({
         property_id: Number(r.property_id),
         apartment_number: String(r.apartment_number ?? ''),
+        section_code: r.section_code != null ? String(r.section_code) : '',
+        block_code: r.block_code != null ? String(r.block_code) : '',
       }));
-    const apartmentsByNumber = buildApartmentLookup(apartments);
+    const apartmentsByNumber = buildApartmentIdentityLookup(apartments);
 
     const { data: assessmentRows, error: aErr } = await supabase
       .from('capital_repair_assessments')
@@ -766,13 +781,20 @@ export function AdminInitialSetup({
       p_limit: 5000,
     });
     if (listErr) throw listErr;
-    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+    const apartments = ((bookRows as {
+      property_id?: number;
+      apartment_number?: string | number;
+      section_code?: string | null;
+      block_code?: string | null;
+    }[]) ?? [])
       .filter((r) => r.property_id != null)
       .map((r) => ({
         property_id: Number(r.property_id),
         apartment_number: String(r.apartment_number ?? ''),
+        section_code: r.section_code != null ? String(r.section_code) : '',
+        block_code: r.block_code != null ? String(r.block_code) : '',
       }));
-    const apartmentsByNumber = buildApartmentLookup(apartments);
+    const apartmentsByNumber = buildApartmentIdentityLookup(apartments);
 
     const openingImportsByProperty = new Map<
       number,
@@ -881,13 +903,20 @@ export function AdminInitialSetup({
       p_limit: 5000,
     });
     if (listErr) throw listErr;
-    const apartments = ((bookRows as { property_id?: number; apartment_number?: string | number }[]) ?? [])
+    const apartments = ((bookRows as {
+      property_id?: number;
+      apartment_number?: string | number;
+      section_code?: string | null;
+      block_code?: string | null;
+    }[]) ?? [])
       .filter((r) => r.property_id != null)
       .map((r) => ({
         property_id: Number(r.property_id),
         apartment_number: String(r.apartment_number ?? ''),
+        section_code: r.section_code != null ? String(r.section_code) : '',
+        block_code: r.block_code != null ? String(r.block_code) : '',
       }));
-    const apartmentsByNumber = buildApartmentLookup(apartments);
+    const apartmentsByNumber = buildApartmentIdentityLookup(apartments);
 
     const table = utility === 'water' ? 'water_meters' : 'electricity_meters';
     const { data: meterRows, error: meterErr } = await supabase
@@ -1700,9 +1729,15 @@ export function AdminInitialSetup({
           p_limit: 5000,
         });
         if (listErr) throw listErr;
-        const existingApts = ((bookRows as { apartment_number?: string | number }[]) ?? []).map(
-          (r) => String(r.apartment_number ?? ''),
-        );
+        const existingApts = ((bookRows as {
+          apartment_number?: string | number;
+          section_code?: string | null;
+          block_code?: string | null;
+        }[]) ?? []).map((r) => ({
+          apartment_number: String(r.apartment_number ?? ''),
+          section_code: r.section_code != null ? String(r.section_code) : '',
+          block_code: r.block_code != null ? String(r.block_code) : '',
+        }));
 
         // Client classify: CREATE/UPDATE/SKIP/ERROR — overwrite always off in IS-2 UI.
         const localPreview = classifyPropertyBookOpeningRows(payload, existingApts, {

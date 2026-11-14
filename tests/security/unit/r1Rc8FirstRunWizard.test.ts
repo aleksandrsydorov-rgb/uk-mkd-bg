@@ -768,7 +768,7 @@ describe('R1-RC8 first-run · packaging', () => {
         MIG_TARIFF_PERIOD,
       ]),
     );
-    expect(manifest.expectedChronologicalMigrationCount).toBe(215);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(219);
     expect(manifest.chronologicalMigrationTree).toEqual(
       expect.arrayContaining([
         'supabase/migrations/20261130324000_r1_rc8_first_run_internet_before_tariffs_advance.sql',
@@ -799,7 +799,10 @@ describe('R1-RC8 first-run · packaging', () => {
       'utf8',
     );
     expect(budgetUi).toContain('admin_commit_budget_plan');
-    expect(budgetUi).toContain('admin_upsert_budget_line');
+    // Amounts + publish go through one atomic commit (all active categories),
+    // not per-line upserts that could leave a partial draft.
+    expect(budgetUi).toContain('commitPlanFromAmounts');
+    expect(budgetUi).not.toContain('admin_upsert_budget_line');
     expect(budgetUi).toContain('admin_set_budget_year_status');
     expect(budgetUi).toContain("p_status: 'published'");
     expect(budgetUi).not.toContain("p_status: 'adopted'");

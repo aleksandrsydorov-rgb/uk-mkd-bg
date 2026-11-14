@@ -33,7 +33,7 @@ describe('R1 RC7 migration inventory / MANIFEST integrity', () => {
 
   it('disk migration count matches MANIFEST expectedChronologicalMigrationCount', () => {
     expect(manifest.expectedChronologicalMigrationCount).toBe(diskFiles.length);
-    expect(diskFiles.length).toBe(215);
+    expect(diskFiles.length).toBe(219);
   });
 
   it('keeps the UX migrations after the RC8 tariff-period migration', () => {

@@ -13,6 +13,11 @@ import {
   type ImportTemplateLocale,
   type ImportTemplateSpec,
 } from '@/lib/importTemplates';
+import {
+  PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS,
+  PROPERTY_BOOK_OWNER_NUMERIC_FIELDS,
+  normalizePropertyBookNumericFields,
+} from '@/lib/propertyBookIdentity';
 
 export const OWNERSHIP_TYPES = ['sole', 'shared'] as const;
 export type OwnershipType = (typeof OWNERSHIP_TYPES)[number];
@@ -108,6 +113,8 @@ export const BOOK_OBJECTS_CSV_HEADERS = [
 
 export const BOOK_OWNERS_CSV_HEADERS = [
   'apartment_number',
+  'section_code',
+  'block_code',
   'entity_kind',
   'ownership_share_percent',
   'ideal_parts_percent',
@@ -226,15 +233,19 @@ export function parsePropertyBookWorkbookBuffer(buf: ArrayBuffer): PropertyBookW
     throw new Error('Excel must contain sheets "objects" and "owners"');
   }
 
-  return {
-    objects: sheetToRecords(wb.Sheets[objectsName], BOOK_OBJECTS_CSV_HEADERS, PROPERTY_BOOK_OBJECTS_SPEC),
-    owners: sheetToRecords(
-      wb.Sheets[ownersName],
-      BOOK_OWNERS_CSV_HEADERS,
-      PROPERTY_BOOK_OWNERS_SPEC,
-      BOOK_OWNERS_SPARSE_HEADERS,
-    ),
-  };
+  const objects = sheetToRecords(
+    wb.Sheets[objectsName],
+    BOOK_OBJECTS_CSV_HEADERS,
+    PROPERTY_BOOK_OBJECTS_SPEC,
+  ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
+  const owners = sheetToRecords(
+    wb.Sheets[ownersName],
+    BOOK_OWNERS_CSV_HEADERS,
+    PROPERTY_BOOK_OWNERS_SPEC,
+    BOOK_OWNERS_SPARSE_HEADERS,
+  ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS));
+
+  return { objects, owners };
 }
 
 /** Parse one Excel workbook with sheets `objects` and `owners`. */

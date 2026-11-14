@@ -1,10 +1,7 @@
 # Dependencies & build
 node_modules
 .next
-.next-stage1
-.next-stage3
-.next-pre
-.next-release
+.next-*
 out
 coverage
 *.tsbuildinfo

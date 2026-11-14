@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BrandMark } from '@/components/BrandMark';
+import { PublicFooter } from '@/components/public/PublicFooter';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useI18n } from '@/i18n/I18nProvider';
 import { createClient } from '@/lib/supabase/client';
@@ -131,6 +132,12 @@ export function LoginScreen({
           {loginError}
         </div>
       ) : null}
+      <p className="text-xs text-secondary">
+        {t('legal.privacyFormNote')}{' '}
+        <Link href="/legal/privacy" className="underline underline-offset-2">
+          {t('legal.linkPrivacy')}
+        </Link>
+      </p>
     </form>
   );
 
@@ -148,7 +155,8 @@ export function LoginScreen({
   }
 
   return (
-    <div className="relative flex min-h-dvh items-center justify-center bg-background px-4 py-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] text-foreground">
+    <div className="relative flex min-h-dvh flex-col bg-background text-foreground">
+      <div className="flex flex-1 items-center justify-center px-4 py-[max(1.5rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-md px-4">
         <div className="mb-4 flex justify-center">
           <LanguageSwitcher />
@@ -165,6 +173,8 @@ export function LoginScreen({
           </Link>
         </div>
       </div>
+      </div>
+      <PublicFooter cabinetHref="/" />
     </div>
   );
 }

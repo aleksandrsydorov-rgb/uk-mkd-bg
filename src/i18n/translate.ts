@@ -1,4 +1,5 @@
 import { dictionaries, fallbackMessages, type Messages } from './messages';
+import { portalLegalMessages } from './portalLegalMessages';
 import type { Locale } from './config';
 
 function getByPath(obj: unknown, path: string): string | undefined {
@@ -14,7 +15,12 @@ export type Translate = (path: string, vars?: Record<string, string | number>) =
 
 export function translate(locale: Locale, path: string, vars?: Record<string, string | number>): string {
   const dict: Messages = dictionaries[locale] ?? fallbackMessages;
-  let text = getByPath(dict, path) ?? getByPath(fallbackMessages, path) ?? path;
+  let text =
+    getByPath(portalLegalMessages[locale], path) ??
+    getByPath(portalLegalMessages.bg, path) ??
+    getByPath(dict, path) ??
+    getByPath(fallbackMessages, path) ??
+    path;
   if (vars) {
     for (const [key, value] of Object.entries(vars)) {
       text = text.replaceAll(`{${key}}`, String(value));

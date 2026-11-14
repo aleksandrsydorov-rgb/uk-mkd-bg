@@ -1,6 +1,10 @@
 # Dependencies & build
 node_modules
 .next
+.next-stage1
+.next-stage3
+.next-pre
+.next-release
 out
 coverage
 *.tsbuildinfo
@@ -36,6 +40,10 @@ audit_exports
 tmp
 docs
 # scripts/ required: src/lib/firstBootInvite.ts imports scripts/lib/firstBootInvite.mjs
+scripts/portal-legal-stage1-check.sql
+scripts/portal-legal-stage1-seed.sql
+scripts/portal-legal-stage2-seed.sql
+scripts/portal-legal-stage2-invite-stub.sql
 agent-transcripts
 
 # Local verification / demo artifacts (keep on host, never bake)

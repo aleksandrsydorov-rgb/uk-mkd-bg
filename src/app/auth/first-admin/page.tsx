@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -163,6 +164,12 @@ function FirstAdminInner() {
                 minLength={8}
               />
             </label>
+            <p className="text-xs text-secondary">
+              {t('legal.privacyFormNote')}{' '}
+              <Link href="/legal/privacy" className="underline underline-offset-2">
+                {t('legal.linkPrivacy')}
+              </Link>
+            </p>
             <button
               type="submit"
               disabled={!canSubmit}

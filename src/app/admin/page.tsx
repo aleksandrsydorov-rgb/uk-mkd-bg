@@ -15,6 +15,7 @@ import {
 } from '@/lib/polls';
 import { listingStatus, type OwnerTransfer } from '@/lib/ownership';
 import { AdminOwnershipTransfers } from '@/components/admin/AdminOwnershipTransfers';
+import { AdminLegalDocuments } from '@/components/admin/AdminLegalDocuments';
 import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
@@ -378,6 +379,7 @@ type AdminSection =
   | 'расходы'
   | 'опросы'
   | 'документы'
+  | 'правни'
   | 'объявления'
   | 'отчётность'
   | 'тарифы'
@@ -413,6 +415,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'расходы',
   'опросы',
   'документы',
+  'правни',
   'объявления',
   'отчётность',
   'тарифы',
@@ -508,6 +511,7 @@ function AdminPortal() {
           ['тарифы', 'admin.tariffsCore'],
           ['опросы', 'admin.polls'],
           ['документы', 'admin.navDocuments'],
+          ['правни', 'legal.admin.nav'],
           ['объявления', 'admin.announcements'],
           ['чат', 'admin.chat'],
           ['платформа', 'admin.platformTitle'],
@@ -663,6 +667,7 @@ function AdminPortal() {
       showChat: canManageCriticalAccess && showChat,
       showMeetings: showGeneralMeeting,
       showDocuments: showBuildingDocuments,
+      showLegalDocuments: canManageCriticalAccess,
       showStaff: canManageCriticalAccess || canEditStaff,
       showSettings: true,
       showInitialSetup: canManageCriticalAccess,
@@ -4309,6 +4314,9 @@ function AdminPortal() {
             mode="decisions"
           />
         );
+
+      case 'правни':
+        return <AdminLegalDocuments supabase={supabase} />;
 
       case 'документы':
         return (

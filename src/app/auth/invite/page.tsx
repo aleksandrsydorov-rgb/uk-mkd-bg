@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { normalizeEmail } from '@/lib/email';
@@ -14,11 +15,12 @@ import {
   signupOtpVerifyTypes,
 } from '@/lib/auth/emailConfirmation';
 import { useI18n } from '@/i18n/I18nProvider';
+import { acceptPath, loadAcceptanceStatus } from '@/lib/portalLegal/acceptance';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 function InviteAcceptInner() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') ?? '';
@@ -47,7 +49,8 @@ function InviteAcceptInner() {
       p_mark_accepted: true,
     });
     if (accErr) throw accErr;
-    router.replace('/account');
+    const acceptance = await loadAcceptanceStatus(supabase, locale);
+    router.replace(acceptance?.must_accept ? acceptPath('/account') : '/account');
   }
 
   function mapInviteRpcError(msg: string): string {
@@ -119,7 +122,10 @@ function InviteAcceptInner() {
             p_mark_accepted: true,
           });
           if (accErr) throw accErr;
-          if (!cancelled) router.replace('/account');
+          if (!cancelled) {
+            const acceptance = await loadAcceptanceStatus(supabase, locale);
+            router.replace(acceptance?.must_accept ? acceptPath('/account') : '/account');
+          }
           return;
         }
       } catch (e: unknown) {
@@ -323,6 +329,12 @@ function InviteAcceptInner() {
                     required
                   />
                 </label>
+                <p className="text-xs text-secondary">
+                  {t('legal.privacyFormNote')}{' '}
+                  <Link href="/legal/privacy" className="underline underline-offset-2">
+                    {t('legal.linkPrivacy')}
+                  </Link>
+                </p>
                 <button
                   type="submit"
                   disabled={busy}

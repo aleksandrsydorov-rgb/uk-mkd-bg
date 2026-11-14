@@ -37,6 +37,7 @@ const allOn: AdminNavFlags = {
   showChat: true,
   showMeetings: true,
   showDocuments: true,
+  showLegalDocuments: true,
   showStaff: true,
   showSettings: true,
   showInitialSetup: true,
@@ -62,7 +63,7 @@ describe('R1-UX admin/staff navigation groups', () => {
     const leaves = groups.flatMap((g) => g.items);
     expect(leaves).toContain('собрания');
     expect(leaves).not.toContain('решения');
-    expect(groups.find((g) => g.id === 'docs')?.items).toEqual(['собрания', 'документы']);
+    expect(groups.find((g) => g.id === 'docs')?.items).toEqual(['собрания', 'документы', 'правни']);
     // Same modules appear in Finance (finance tab) and Utilities (meters tab).
     expect(groups.find((g) => g.id === 'utilities')?.items).toContain('электроэнергия');
     expect(groups.find((g) => g.id === 'utilities')?.items).toContain('вода');
@@ -87,6 +88,7 @@ describe('R1-UX admin/staff navigation groups', () => {
       ...allOn,
       showMeetings: false,
       showDocuments: false,
+      showLegalDocuments: false,
       showAnnouncements: false,
       showPolls: false,
       showChat: false,
@@ -106,6 +108,7 @@ describe('R1-UX admin/staff navigation groups', () => {
       ...allOn,
       showMeetings: true,
       showDocuments: false,
+      showLegalDocuments: false,
     });
     expect(groups.find((g) => g.id === 'docs')?.items).toEqual(['собрания']);
   });

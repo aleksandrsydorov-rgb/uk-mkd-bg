@@ -6,9 +6,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { LoginScreen } from '@/components/LoginScreen';
+import { PublicFooter } from '@/components/public/PublicFooter';
 import { LocationDiagram } from '@/components/home/ComplexVisuals';
 import { useI18n } from '@/i18n/I18nProvider';
 import { resolveAccess, resolveStaffHome } from '@/lib/access';
+import { acceptPath, loadAcceptanceStatus } from '@/lib/portalLegal/acceptance';
 import { resolveAdminEntryPath } from '@/lib/firstBoot';
 import { normalizeEmail } from '@/lib/email';
 import { createClient } from '@/lib/supabase/client';
@@ -301,7 +303,7 @@ export default function HomePage() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [cabinetHref, setCabinetHref] = useState('#resident-login');
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const router = useRouter();
   const [supabase] = useState(() => createClient());
 
@@ -377,6 +379,15 @@ export default function HomePage() {
       const authenticatedEmail = normalizeEmail(data.user?.email ?? '');
       if (!authenticatedEmail) {
         setLoginError(t('common.errLogin'));
+        return;
+      }
+      const acceptance = await loadAcceptanceStatus(supabase, locale);
+      if (acceptance?.role === 'staff' || acceptance?.role === 'admin') {
+        router.replace('/admin');
+        return;
+      }
+      if (acceptance?.must_accept) {
+        router.replace(acceptPath('/account'));
         return;
       }
       const access = await resolveAccess(authenticatedEmail, supabase);
@@ -787,108 +798,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="home-foot">
-        <div className="home-foot-inner">
-          <nav className="home-foot-nav" aria-label={t('home.navTitle')}>
-            {[
-              { href: '/', label: t('home.footerNavHome') },
-              { href: '#infrastructure', label: t('home.navFacilities') },
-              { href: '#location', label: t('home.navLocation') },
-              { href: '#awards', label: t('home.navAwards') },
-              { href: '#residents', label: t('home.footerNavOwners') },
-              { href: cabinetHref, label: t('home.personalCabinet') },
-            ].map((item, index) => (
-              <span key={item.label} className="home-foot-nav-item">
-                {index > 0 ? <span className="home-foot-sep" aria-hidden="true" /> : null}
-                {item.href.startsWith('#') || item.href === '/' ? (
-                  <a href={item.href} className="home-foot-nav-link">
-                    {item.label}
-                  </a>
-                ) : (
-                  <Link href={item.href} className="home-foot-nav-link">
-                    {item.label}
-                  </Link>
-                )}
-              </span>
-            ))}
-          </nav>
-
-          <div className="home-foot-extra">
-            {[
-              t('home.footerLinkRules'),
-              t('home.footerLinkDocs'),
-              t('home.footerLinkFaq'),
-              t('home.footerLinkService'),
-              t('home.footerLinkSafety'),
-              t('home.footerLinkPrivacy'),
-            ].map((label, index) => (
-              <span key={label} className="home-foot-extra-item">
-                {index > 0 ? <span className="home-foot-sep home-foot-sep-muted" aria-hidden="true" /> : null}
-                <span className="home-foot-extra-text">{label}</span>
-              </span>
-            ))}
-          </div>
-
-          <div className="home-foot-contacts">
-            <div className="home-foot-contact">
-              <span className="home-foot-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 21s6.5-6.1 6.5-11.2A6.5 6.5 0 0 0 5.5 9.8C5.5 14.9 12 21 12 21z" />
-                  <circle cx="12" cy="9.8" r="2.1" />
-                </svg>
-              </span>
-              <span>
-                <span className="home-foot-contact-main">{t('home.footerAddr1')}</span>
-                <span className="home-foot-contact-sub">
-                  {t('home.footerAddr2')}, {t('home.footerAddr3')}
-                </span>
-              </span>
-            </div>
-            <div className="home-foot-contact">
-              <span className="home-foot-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6.6 4.8h2.6l1.2 3.2-1.7 1.1a12 12 0 0 0 6.2 6.2l1.1-1.7 3.2 1.2v2.6c0 .9-.7 1.6-1.6 1.6C10.4 18.9 5.1 13.6 5 7.4c0-.9.7-1.6 1.6-1.6z" />
-                </svg>
-              </span>
-              <span>
-                <a className="home-foot-contact-main home-foot-contact-link" href={`tel:${t('home.footerPhone').replace(/\s/g, '')}`}>
-                  {t('home.footerPhone')}
-                </a>
-                <span className="home-foot-contact-sub">{t('home.footerHours')}</span>
-              </span>
-            </div>
-            <div className="home-foot-contact">
-              <span className="home-foot-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3.6" y="5.4" width="16.8" height="13.2" rx="2" />
-                  <path d="m4.4 7.2 7.6 6.2 7.6-6.2" />
-                </svg>
-              </span>
-              <span>
-                <a className="home-foot-contact-main home-foot-contact-link" href={`mailto:${t('home.footerEmail')}`}>
-                  {t('home.footerEmail')}
-                </a>
-                <span className="home-foot-contact-sub">{t('home.footerEmailNote')}</span>
-              </span>
-            </div>
-          </div>
-
-          <div className="home-foot-bar">
-            <p className="home-foot-copy">{t('home.footerCopy', { year: new Date().getFullYear() })}</p>
-            <LanguageSwitcher variant="plain" />
-            <button
-              type="button"
-              className="home-foot-top"
-              aria-label={t('home.footerTop')}
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            >
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
-                <path d="M12 19V6M6.5 11.5 12 6l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </footer>
+      <PublicFooter cabinetHref={cabinetHref} />
     </div>
   );
 }

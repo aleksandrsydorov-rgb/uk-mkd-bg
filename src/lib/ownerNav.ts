@@ -13,7 +13,8 @@ export type OwnerMenu =
   | 'документы'
   | 'опросы'
   | 'ук'
-  | 'настройки';
+  | 'настройки'
+  | 'потвърждения';
 
 export type OwnerMgmtTab = 'заявки' | 'объявления' | 'расходы' | 'чат';
 
@@ -45,6 +46,8 @@ const SECTION_TO_MENU: Record<string, OwnerMenu> = {
   счётчики: 'счётчики',
   documents: 'документы',
   документы: 'документы',
+  acknowledgements: 'потвърждения',
+  потвърждения: 'потвърждения',
   polls: 'опросы',
   опросы: 'опросы',
   management: 'ук',
@@ -94,6 +97,7 @@ const MENU_TO_SECTION: Record<OwnerMenu, string> = {
   решения: 'decisions',
   счётчики: 'meters',
   документы: 'documents',
+  потвърждения: 'acknowledgements',
   опросы: 'polls',
   ук: 'management',
   настройки: 'settings',

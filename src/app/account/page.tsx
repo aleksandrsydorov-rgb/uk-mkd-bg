@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { signOutFully } from '@/lib/authSession';
@@ -77,6 +77,7 @@ import { OwnerPolls } from '@/components/account/OwnerPolls';
 import { OwnerApartment } from '@/components/account/OwnerApartment';
 import { OwnerOccupancy, type OccupancySavePayload, type GuestInsertPayload, type PetInsertPayload } from '@/components/account/OwnerOccupancy';
 import { OwnerDocumentsDecisions } from '@/components/account/OwnerDocumentsDecisions';
+import { OwnerLegalAcknowledgements } from '@/components/account/OwnerLegalAcknowledgements';
 import { PillTabs } from '@/components/account/ownerUi';
 import { OwnerElectricity } from '@/components/account/OwnerElectricity';
 import type { WaterMode, CurrentWaterTariffView } from '@/lib/utilities';
@@ -126,6 +127,7 @@ import {
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useI18n } from '@/i18n/I18nProvider';
+import { acceptPath, loadAcceptanceStatus } from '@/lib/portalLegal/acceptance';
 type Category = 'сантехника' | 'электрика' | 'уборка' | 'отопление' | 'другое';
 type Priority = 'низкий' | 'средний' | 'высокий';
 type OccupancyStatus = 'owner' | 'standby' | 'rented';
@@ -193,7 +195,8 @@ type MenuSection =
   | 'счётчики'
   | 'документы'
   | 'опросы'
-  | 'настройки';
+  | 'настройки'
+  | 'потвърждения';
 
 function expenseYearOf(dateStr: string) {
   const y = Number(dateStr.slice(0, 4));
@@ -202,7 +205,7 @@ function expenseYearOf(dateStr: string) {
 
 export default function AccountPage() {
   const router = useRouter();
-  const { t, dateLocale } = useI18n();
+  const { locale, t, dateLocale } = useI18n();
   const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [supabase] = useState(() => createClient());
   // ---------- DEV-ЛОГИН ----------
@@ -324,6 +327,7 @@ export default function AccountPage() {
       ...(docsInfoEnabled
         ? [{ key: 'документы' as const, label: t('account.navDocsInfo'), icon: navSectionIcon('документы') }]
         : []),
+      { key: 'потвърждения' as const, label: t('legal.cabinetSection'), icon: navSectionIcon('документы') },
       { key: 'настройки' as const, label: t('account.navSettings'), icon: navSectionIcon('настройки') },
     ];
   }, [
@@ -539,9 +543,18 @@ export default function AccountPage() {
   // ===================================================================
   // ЗАГРУЗКА ВСЕХ ДАННЫХ
   // ===================================================================
+  const entryPathRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (entryPathRef.current == null) {
+      entryPathRef.current = `${window.location.pathname}${window.location.search}`;
+    }
+  }, []);
+
   useEffect(() => {
     async function load() {
       if (!devEmail) return;
+      let redirecting = false;
+      const returnTo = entryPathRef.current || `${window.location.pathname}${window.location.search}`;
       setLoading(true);
       setError(null);
       // Fail-closed before fetch so a prior user's modules/properties cannot flash.
@@ -549,9 +562,29 @@ export default function AccountPage() {
       setAccessProfile(null);
       setProperties([]);
       try {
+        const acceptance = await loadAcceptanceStatus(supabase, locale);
+        if (acceptance?.must_accept) {
+          redirecting = true;
+          router.replace(acceptPath(returnTo));
+          return;
+        }
         const access = await resolveAccess(devEmail, supabase);
         setIsStaff(access.isStaff);
         if (!access.isOwner && !access.isGuest) {
+          if (acceptance?.role === 'owner') {
+            setAccessProfile({
+              email: devEmail,
+              properties: [],
+              guestProperties: [],
+              staff: null,
+              isStaff: false,
+              isOwner: true,
+              isGuest: false,
+            });
+            setActiveMenu('потвърждения');
+            setLoading(false);
+            return;
+          }
           setProperties([]);
           setSelectedPropertyId(null);
           setAccessProfile(null);
@@ -800,7 +833,7 @@ export default function AccountPage() {
       } catch (e: any) {
         setError(ownerVisibleError(e, t('err.load'), t));
       } finally {
-        setLoading(false);
+        if (!redirecting) setLoading(false);
       }
     }
     load();
@@ -2894,6 +2927,9 @@ export default function AccountPage() {
         );
       }
 
+      case 'потвърждения':
+        return <OwnerLegalAcknowledgements supabase={supabase} />;
+
       // ===========================================================
       // ДОКУМЕНТЫ И ИНФОРМАЦИЯ
       // ===========================================================
@@ -3226,13 +3262,13 @@ export default function AccountPage() {
             </div>
           ) : null}
 
-          {!loading && property && (
+          {!loading && (property || activeMenu === 'потвърждения') && (
             inMgmtChat
               ? <div className="flex min-h-0 flex-1 flex-col">{renderContent()}</div>
               : renderContent()
           )}
 
-          {!loading && !property && !error && (
+          {!loading && !property && activeMenu !== 'потвърждения' && !error && (
             <div className="rounded-[14px] border border-border bg-surface shadow-card p-6 text-center text-secondary">
               {t('account.aptNotFound')}
             </div>

@@ -29,6 +29,7 @@ export type AdminNavSection =
   | 'тарифы'
   | 'опросы'
   | 'документы'
+  | 'правни'
   | 'объявления'
   | 'чат'
   | 'платформа'
@@ -76,6 +77,7 @@ export type AdminNavFlags = {
   /** RC8+: General Meetings workplace (AdminDocumentsDecisions mode=meetings). */
   showMeetings: boolean;
   showDocuments: boolean;
+  showLegalDocuments: boolean;
   showStaff: boolean;
   showSettings: boolean;
   showInitialSetup: boolean;
@@ -155,6 +157,7 @@ export function buildAdminNavGroups(f: AdminNavFlags): AdminNavGroup[] {
       items: nonempty([
         ...(f.showMeetings ? (['собрания'] as const) : []),
         ...(f.showDocuments ? (['документы'] as const) : []),
+        ...(f.showLegalDocuments ? (['правни'] as const) : []),
       ]),
     },
     {

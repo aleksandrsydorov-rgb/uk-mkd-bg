@@ -318,7 +318,7 @@
   "excludeFromCompanion": [
     "00_preflight_refuse_populated.sql"
   ],
-  "expectedChronologicalMigrationCount": 208,
+  "expectedChronologicalMigrationCount": 212,
   "chronologicalMigrationTree": [
     "supabase/migrations/20260924160000_bulk_accrual_hotfix.sql",
     "supabase/migrations/20260924171500_general_meetings_rescheduled_from_meeting_id.sql",
@@ -517,7 +517,7 @@
     "supabase/migrations/20261130327000_r1_rc8_tariffs_from_modules_selected.sql",
     "supabase/migrations/20261130328000_r1_rc8_building_module_workplace_ready.sql",
     "supabase/migrations/20261130329000_r1_rc8_import_locale_synonyms.sql",
-    "supabase/migrations/20261130333000_r1_rc8_capital_bulk_year_assessment_form.sql",
+    "supabase/migrations/20261130333000_r1_rc8_capital_bulk_year_assessment_fix.sql",
     "supabase/migrations/20261130334000_r1_rc8_support_fee_launch_year_charge_guard.sql",
     "supabase/migrations/20261130335000_r1_rc8_capital_repair_launch_year_charge_guard.sql",
     "supabase/migrations/20261130336000_r1_rc8_support_fee_annual_policy_rpc.sql",
@@ -527,13 +527,17 @@
     "supabase/migrations/20261130337300_r1_rc8_property_book_owner_phone.sql",
     "supabase/migrations/20261130337400_r1_rc8_property_book_owner_phones.sql",
     "supabase/migrations/20261130337500_r1_rc8_property_book_list_phones.sql",
-    "supabase/migrations/20261130337600_r1_rc8_property_book_clarification_log_action.sql"
+    "supabase/migrations/20261130337600_r1_rc8_property_book_clarification_log_action.sql",
+    "supabase/migrations/20261130337700_portal_legal_revisions.sql",
+    "supabase/migrations/20261130337800_portal_legal_acknowledgements.sql",
+    "supabase/migrations/20261130337900_portal_legal_admin.sql",
+    "supabase/migrations/20261130338000_portal_legal_complex_installation.sql"
   ],
   "release": "1.0.0-rc8",
   "notes": [
     "Apply ALL supabase/migrations/*.sql in filename order after the package (or supabase migration up).",
     "Do NOT insert into schema_migrations unless the matching SQL file was actually applied successfully.",
-    "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (208 = through clarification_log_action).",
+    "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (212 = through portal_legal_complex_installation).",
     "UX additive after RC8: 109–115 are package stubs. Full SQL is chronological 20261129120000, 20261129130000, 20261129140000, 20261129150000, 20261129160000, 20261129170000, 20261129180000, in that order, after 20261125200000.",
     "chronologicalMigrationsPackaged lists release-critical files that must be present in the tree; chronologicalMigrationTree is the full ordered inventory.",
     "RC8 additive: 97_r1_rc8_restore_general_meeting.sql / 20261121120000 supersedes R1-MT-HIDE for general_meeting only; Rental stays excluded.",

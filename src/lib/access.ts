@@ -117,7 +117,13 @@ export async function resolveAccess(
     .limit(5);
 
   if (staffRes.error) {
-    if (!isMissingColumn(staffRes.error, 'email')) throw new Error(errorMessage(staffRes.error));
+    const staffMessage = staffRes.error.message ?? '';
+    const staffMissing =
+      isMissingColumn(staffRes.error, 'email') ||
+      staffRes.error.code === '42P01' ||
+      staffRes.error.code === 'PGRST205' ||
+      staffMessage.includes('does not exist');
+    if (!staffMissing) throw new Error(errorMessage(staffRes.error));
   } else {
     const rows = (staffRes.data as StaffRecord[]) ?? [];
     staff = rows.find((s) => s.active === true) ?? null;

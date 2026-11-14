@@ -168,7 +168,8 @@
     "supabase/migrations/20261130322000_r1_rc8_payment_receipt_void_all_modules.sql",
     "supabase/migrations/20261130323000_r1_rc8_payment_receipt_void_on_ledger_delete.sql",
     "supabase/migrations/20261130324000_r1_rc8_first_run_internet_before_tariffs_advance.sql",
-    "supabase/migrations/20261130325000_r1_rc8_budget_plan_round_cents.sql"
+    "supabase/migrations/20261130325000_r1_rc8_budget_plan_round_cents.sql",
+    "supabase/migrations/20261130338800_payment_receipt_owner_read_by_ownership.sql"
   ],
   "companionMigration": "supabase/migrations/20261030120000_is10d_distributive_neutralize_amadeus11_sf_cutover.sql",
   "requiredExtensions": [
@@ -318,7 +319,7 @@
   "excludeFromCompanion": [
     "00_preflight_refuse_populated.sql"
   ],
-  "expectedChronologicalMigrationCount": 219,
+  "expectedChronologicalMigrationCount": 220,
   "chronologicalMigrationTree": [
     "supabase/migrations/20260924160000_bulk_accrual_hotfix.sql",
     "supabase/migrations/20260924171500_general_meetings_rescheduled_from_meeting_id.sql",
@@ -538,13 +539,14 @@
     "supabase/migrations/20261130338400_property_book_section_identity.sql",
     "supabase/migrations/20261130338500_opening_imports_section_identity.sql",
     "supabase/migrations/20261130338600_property_book_owners_identity_lookup.sql",
-    "supabase/migrations/20261130338700_opening_resolve_ignore_archived.sql"
+    "supabase/migrations/20261130338700_opening_resolve_ignore_archived.sql",
+    "supabase/migrations/20261130338800_payment_receipt_owner_read_by_ownership.sql"
   ],
   "release": "1.0.0-rc8",
   "notes": [
     "Apply ALL supabase/migrations/*.sql in filename order after the package (or supabase migration up).",
     "Do NOT insert into schema_migrations unless the matching SQL file was actually applied successfully.",
-    "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (219 = through opening_resolve_ignore_archived).",
+    "Post-apply verify: schema_migrations row count === expectedChronologicalMigrationCount (220 = through payment_receipt_owner_read_by_ownership).",
     "UX additive after RC8: 109–115 are package stubs. Full SQL is chronological 20261129120000, 20261129130000, 20261129140000, 20261129150000, 20261129160000, 20261129170000, 20261129180000, in that order, after 20261125200000.",
     "chronologicalMigrationsPackaged lists release-critical files that must be present in the tree; chronologicalMigrationTree is the full ordered inventory.",
     "RC8 additive: 97_r1_rc8_restore_general_meeting.sql / 20261121120000 supersedes R1-MT-HIDE for general_meeting only; Rental stays excluded.",

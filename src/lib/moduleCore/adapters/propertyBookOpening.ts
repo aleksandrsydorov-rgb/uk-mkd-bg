@@ -64,6 +64,8 @@ export function splitPropertyBookObjectProps(row: Record<string, string>): Prope
   }
   const area = Number(row.area_sqm);
   if (row.area_sqm?.trim() && !(area > 0)) errors.push('invalid:area_sqm');
+  const living = Number(row.living_area_sqm);
+  if (row.living_area_sqm?.trim() && !(living > 0)) errors.push('invalid:living_area_sqm');
   const ideal = Number(row.ideal_parts_percent);
   if (row.ideal_parts_percent?.trim() && !(ideal >= 0)) errors.push('invalid:ideal_parts_percent');
   return { errors, warnings };

@@ -295,6 +295,7 @@ export function importReasonI18nKey(raw: string): string | null {
       const inv: Record<string, string> = {
         ownership_type: 'bookImport_invalid_ownership_type',
         area_sqm: 'bookImport_invalid_area',
+        living_area_sqm: 'bookImport_invalid_living_area',
         ideal_parts_percent: 'bookImport_invalid_ideal_parts',
         entity_kind: 'bookImport_invalid_entity_kind',
         ownership_share_percent: 'bookImport_invalid_share',
@@ -374,6 +375,7 @@ export function importReasonI18nKey(raw: string): string | null {
     untrusted_assessment_id: 'importIssue_untrusted_assessment_id',
     overwrite_requires_confirmation: 'bookImport_overwrite_required',
     area_sqm_invalid: 'bookImport_invalid_area',
+    living_area_sqm_invalid: 'bookImport_invalid_living_area',
     ownership_share_invalid: 'bookImport_invalid_share',
     unknown_apartment: 'importIssue_unknown_apartment',
     opening_balance_conflict_same_apartment: 'importIssue_opening_balance_conflict_same_apartment',

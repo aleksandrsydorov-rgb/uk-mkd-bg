@@ -102,7 +102,7 @@ describe('R1-RC8 setup adapter ↔ module_catalog parity', () => {
     expect(manifest.expectedChronologicalMigrationCount).toBe(
       manifest.chronologicalMigrationTree.length,
     );
-    expect(manifest.expectedChronologicalMigrationCount).toBe(176);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(215);
   });
 
   it('UI confirm button still gated on dry-run pendingPayload + batchId', () => {

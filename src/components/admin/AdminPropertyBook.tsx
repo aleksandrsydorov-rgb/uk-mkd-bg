@@ -174,6 +174,7 @@ function serializeCardDraft(args: {
   blockCode: string;
   purpose: string;
   areaSqm: string;
+  livingAreaSqm: string;
   idealParts: string;
   idealPartsSource: string;
   idealPartsNote: string;
@@ -187,6 +188,7 @@ function serializeCardDraft(args: {
     blockCode: args.blockCode,
     purpose: args.purpose,
     areaSqm: args.areaSqm,
+    livingAreaSqm: args.livingAreaSqm,
     idealParts: args.idealParts,
     idealPartsSource: args.idealPartsSource,
     idealPartsNote: args.idealPartsNote,
@@ -215,6 +217,7 @@ function parseCardDraft(raw: string): {
   blockCode: string;
   purpose: string;
   areaSqm: string;
+  livingAreaSqm: string;
   idealParts: string;
   idealPartsSource: string;
   idealPartsNote: string;
@@ -228,6 +231,7 @@ function parseCardDraft(raw: string): {
     blockCode?: string;
     purpose?: string;
     areaSqm?: string;
+    livingAreaSqm?: string;
     idealParts?: string;
     idealPartsSource?: string;
     idealPartsNote?: string;
@@ -241,6 +245,7 @@ function parseCardDraft(raw: string): {
     blockCode: String(d.blockCode ?? ''),
     purpose: String(d.purpose ?? ''),
     areaSqm: String(d.areaSqm ?? ''),
+    livingAreaSqm: String(d.livingAreaSqm ?? ''),
     idealParts: String(d.idealParts ?? ''),
     idealPartsSource: String(d.idealPartsSource ?? ''),
     idealPartsNote: String(d.idealPartsNote ?? ''),
@@ -298,6 +303,7 @@ export function AdminPropertyBook({
   const [blockCode, setBlockCode] = useState('');
   const [purpose, setPurpose] = useState('');
   const [areaSqm, setAreaSqm] = useState('');
+  const [livingAreaSqm, setLivingAreaSqm] = useState('');
   const [idealParts, setIdealParts] = useState('');
   const [idealPartsSource, setIdealPartsSource] = useState('');
   const [idealPartsNote, setIdealPartsNote] = useState('');
@@ -366,6 +372,7 @@ export function AdminPropertyBook({
   const aptNoRef = useRef<HTMLInputElement>(null);
   const purposeRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLInputElement>(null);
+  const livingAreaRef = useRef<HTMLInputElement>(null);
   const idealPartsRef = useRef<HTMLInputElement>(null);
   const ownershipTypeRef = useRef<HTMLSelectElement>(null);
 
@@ -381,6 +388,7 @@ export function AdminPropertyBook({
       blockCode,
       purpose,
       areaSqm,
+      livingAreaSqm,
       idealParts,
       idealPartsSource,
       idealPartsNote,
@@ -463,6 +471,7 @@ export function AdminPropertyBook({
           block_code?: string | null;
           purpose: string | null;
           area_sqm: number | null;
+          living_area_sqm?: number | null;
           ideal_parts_percent: number | null;
           ideal_parts_source?: string | null;
           ideal_parts_note?: string | null;
@@ -484,6 +493,9 @@ export function AdminPropertyBook({
       setBlockCode(payload.property.block_code ?? '');
       setPurpose(payload.property.purpose ?? '');
       setAreaSqm(payload.property.area_sqm != null ? String(payload.property.area_sqm) : '');
+      setLivingAreaSqm(
+        payload.property.living_area_sqm != null ? String(payload.property.living_area_sqm) : '',
+      );
       setIdealParts(
         payload.property.ideal_parts_percent != null
           ? String(payload.property.ideal_parts_percent)
@@ -548,6 +560,10 @@ export function AdminPropertyBook({
           blockCode: payload.property.block_code ?? '',
           purpose: payload.property.purpose ?? '',
           areaSqm: payload.property.area_sqm != null ? String(payload.property.area_sqm) : '',
+          livingAreaSqm:
+            payload.property.living_area_sqm != null
+              ? String(payload.property.living_area_sqm)
+              : '',
           idealParts:
             payload.property.ideal_parts_percent != null
               ? String(payload.property.ideal_parts_percent)
@@ -640,6 +656,7 @@ export function AdminPropertyBook({
       purpose: purposeRef.current,
       area_sqm: areaRef.current,
       area: areaRef.current,
+      living_area_sqm: livingAreaRef.current,
       ideal_parts_percent: idealPartsRef.current,
       object_ideal_parts: idealPartsRef.current,
       ownership_type: ownershipTypeRef.current,
@@ -658,6 +675,7 @@ export function AdminPropertyBook({
     setBlockCode(d.blockCode);
     setPurpose(d.purpose);
     setAreaSqm(d.areaSqm);
+    setLivingAreaSqm(d.livingAreaSqm);
     setIdealParts(d.idealParts);
     setIdealPartsSource(d.idealPartsSource);
     setIdealPartsNote(d.idealPartsNote);
@@ -689,7 +707,9 @@ export function AdminPropertyBook({
       if (tab !== 'apartment' || codes.length === 1) {
         setCardTab(tab);
         const field =
-          code.includes('area')
+          code.includes('living_area')
+            ? 'living_area_sqm'
+            : code.includes('area')
             ? 'area_sqm'
             : code.includes('purpose')
               ? 'purpose'
@@ -724,6 +744,17 @@ export function AdminPropertyBook({
       focusCardField('ownership_type');
       return;
     }
+    const livingText = livingAreaSqm.trim();
+    const livingNumber = Number(livingText);
+    if (livingText && !(livingNumber > 0)) {
+      setBusy(false);
+      setCardEditing(true);
+      setCardTab('apartment');
+      setFieldErrors({ living_area_sqm: t('admin.bookImport_invalid_living_area') });
+      focusCardField('living_area_sqm');
+      return;
+    }
+    const livingParsed = { value: livingText ? livingNumber : null };
     try {
       const { error: objErr } = await supabase.rpc('admin_upsert_property_book_object', {
         p_property_id: selectedId,
@@ -732,12 +763,14 @@ export function AdminPropertyBook({
         p_ideal_parts_percent: Number(idealParts),
         p_ownership_type: ownershipType,
         p_ideal_parts_source: idealPartsSource || null,
-        p_apartment_number: Number(apartmentNumber) || null,
+        p_apartment_number: apartmentNumber.trim() || null,
         p_floor: Number(floor) || null,
         p_ideal_parts_note: idealPartsNote || null,
         p_ideal_parts_meeting_ref: null,
         p_section_code: sectionCode.trim() || '',
         p_block_code: blockCode.trim() || '',
+        p_living_area_sqm: livingParsed.value,
+        p_touch_living_area: true,
       });
       if (objErr) throw objErr;
 
@@ -781,7 +814,8 @@ export function AdminPropertyBook({
         const nextErrors: Partial<Record<string, string>> = {};
         for (const code of codes) {
           const msg = presentImportReason(code, t) || code;
-          if (code.includes('area')) nextErrors.area_sqm = msg;
+          if (code.includes('living_area')) nextErrors.living_area_sqm = msg;
+          else if (code.includes('area')) nextErrors.area_sqm = msg;
           else if (code.includes('purpose')) nextErrors.purpose = msg;
           else if (code.includes('object_ideal') || code === 'ideal_parts_percent') {
             nextErrors.ideal_parts_percent = msg;
@@ -819,6 +853,7 @@ export function AdminPropertyBook({
           blockCode,
           purpose,
           areaSqm,
+          livingAreaSqm,
           idealParts,
           idealPartsSource,
           idealPartsNote,
@@ -834,7 +869,9 @@ export function AdminPropertyBook({
       const lower = msg.toLowerCase();
       const codes: string[] = [];
       if (lower.includes('mixed') || lower.includes('смеш')) codes.push('mixed_ownership');
-      if (lower.includes('area') || lower.includes('площад') || lower.includes('площ')) {
+      if (lower.includes('living') || lower.includes('жил')) {
+        codes.push('living_area_sqm');
+      } else if (lower.includes('area') || lower.includes('площад') || lower.includes('площ')) {
         codes.push('area_required');
       }
       if (lower.includes('ideal') || lower.includes('идеал')) codes.push('object_ideal_parts_required');
@@ -1828,6 +1865,19 @@ export function AdminPropertyBook({
                     <span className="text-xs text-danger">{fieldErrors.area_sqm}</span>
                   ) : null}
                 </label>
+                <label className="grid gap-1 text-sm text-secondary">
+                  {t('admin.bookLivingArea')}
+                  <span className="text-xs text-muted">{t('admin.bookLivingAreaHint')}</span>
+                  <input
+                    ref={livingAreaRef}
+                    className={shortFieldClass}
+                    value={livingAreaSqm}
+                    onChange={(e) => setLivingAreaSqm(e.target.value)}
+                  />
+                  {fieldErrors.living_area_sqm ? (
+                    <span className="text-xs text-danger">{fieldErrors.living_area_sqm}</span>
+                  ) : null}
+                </label>
               </div>
             ) : (
               <div className={`${adminInfoGridClass} text-sm`}>
@@ -1856,6 +1906,14 @@ export function AdminPropertyBook({
                   value={
                     areaSqm.trim()
                       ? `${areaSqm.trim()} ${t('common.sqm')}`
+                      : t('book.notSpecified')
+                  }
+                />
+                <AdminInfoRow
+                  label={t('admin.bookLivingArea')}
+                  value={
+                    livingAreaSqm.trim()
+                      ? `${livingAreaSqm.trim()} ${t('common.sqm')}`
                       : t('book.notSpecified')
                   }
                 />

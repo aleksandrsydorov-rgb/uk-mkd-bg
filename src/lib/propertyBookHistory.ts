@@ -21,6 +21,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
   apartment_number: 'admin.bookHistFieldApt',
   floor: 'admin.bookHistFieldFloor',
   area_sqm: 'admin.bookArea',
+  living_area_sqm: 'admin.bookLivingArea',
   purpose: 'admin.bookPurpose',
   ideal_parts_percent: 'admin.bookIdealParts',
   ideal_parts_source: 'admin.bookIdealSource',

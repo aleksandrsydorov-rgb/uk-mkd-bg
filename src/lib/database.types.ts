@@ -804,6 +804,7 @@ export interface Database {
           section_code: string | null;
           block_code: string | null;
           area_sqm: number | null;
+          living_area_sqm: number | null;
           status: string | null;
           owner_name: string | null;
           owner_phone: string | null;
@@ -837,6 +838,7 @@ export interface Database {
           section_code?: string | null;
           block_code?: string | null;
           area_sqm?: number | null;
+          living_area_sqm?: number | null;
           status?: string | null;
           owner_name?: string | null;
           owner_phone?: string | null;
@@ -870,6 +872,7 @@ export interface Database {
           section_code?: string | null;
           block_code?: string | null;
           area_sqm?: number | null;
+          living_area_sqm?: number | null;
           status?: string | null;
           owner_name?: string | null;
           owner_phone?: string | null;
@@ -6424,12 +6427,14 @@ export interface Database {
           p_ideal_parts_percent: number;
           p_ownership_type: string;
           p_ideal_parts_source?: string | null;
-          p_apartment_number?: number | null;
+          p_apartment_number?: string | null;
           p_floor?: number | null;
           p_ideal_parts_note?: string | null;
           p_ideal_parts_meeting_ref?: string | null;
           p_section_code?: string | null;
           p_block_code?: string | null;
+          p_living_area_sqm?: number | null;
+          p_touch_living_area?: boolean;
         };
         Returns: Record<string, unknown>;
       };

@@ -101,6 +101,7 @@ export const BOOK_OBJECTS_CSV_HEADERS = [
   'block_code',
   'purpose',
   'area_sqm',
+  'living_area_sqm',
   'ideal_parts_percent',
   'ownership_type',
 ] as const;
@@ -167,7 +168,7 @@ function sheetToRecords(
     const canonical = keyMap?.get(normalizeImportHeader(rawKey)) ?? rawKey;
     presentCanonical.add(canonical);
   }
-  return rows.map((row) => {
+  return rows.map((row, idx) => {
     const out: Record<string, string> = {};
     for (const key of Object.keys(row)) {
       const rawKey = String(key).trim();
@@ -182,6 +183,7 @@ function sheetToRecords(
       if (sparseHeaders.has(h) && !presentCanonical.has(h)) continue;
       out[h] = '';
     }
+    out._row = String(idx + 2);
     return out;
   }).filter((row) =>
     requiredHeaders.some((h) => (row[h] ?? '').trim() !== ''),

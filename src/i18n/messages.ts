@@ -3715,7 +3715,11 @@ export const ru = {
     bookIssue_owners_required: 'Сведения о собственнике отсутствуют',
     bookIssue_ownership_identity_incomplete: 'Недостаточно данных для создания собственника',
     bookPreviewIssuePartialSaved:
-      'Данные будут сохранены. Нужно уточнить: {fields}',
+      'Имеющиеся сведения будут сохранены. Нужно уточнить: {fields}',
+    bookPreviewIssuePartialSavedLead: 'Имеющиеся сведения будут сохранены.',
+    bookPreviewIssuePartialNeedOne: 'Нужно уточнить: {field}.',
+    bookPreviewIssuePartialBullet: '• {field}',
+    bookPreviewIssuePartialLater: 'Можно добавить позже: {fields}.',
     bookPreviewPartialFieldsJoin: ' и ',
     bookPreviewPartialFieldEntityKind: 'кто владелец',
     bookPreviewPartialFieldShare: 'доля владения',
@@ -3723,6 +3727,9 @@ export const ru = {
     bookPreviewPartialFieldName: 'имя и фамилия',
     bookPreviewPartialFieldLegalName: 'название организации',
     bookPreviewPartialFieldEik: 'ЕИК / Булстат',
+    bookPreviewPartialFieldOwnerCount: 'количество владельцев',
+    bookPreviewPartialFieldVoteWeight: 'вес голоса (доля и идеальные части)',
+    bookPreviewIssueSheetOnly: 'Лист «{sheet}»',
     bookPreviewIssueSheetRow: 'Лист «{sheet}», строка {row}',
     bookPreviewIssueSheetRowField: 'Лист «{sheet}», строка {row} · колонка «{field}»',
     bookIssue_purpose_required: 'Не указано назначение',
@@ -3816,24 +3823,40 @@ export const ru = {
     bookPreviewClarifyIdealPartsSummary: 'Идеальные части не указаны у {n} квартир',
     bookPreviewClarifyGenericSummary: 'Требуют уточнения: {n}',
     bookPreviewIssueAmbiguousAptRows:
-      'Лист «{sheet}», строки {rows}: апартамент №{apt} есть в секциях {sections}. Заполните колонку «{field}».',
+      'Квартира №{apt} есть в {count} подъездах ({sections}). Укажите подъезд в колонке «{field}».',
     bookPreviewIssueAmbiguousApt:
-      'Лист «{sheet}»: апартамент №{apt} есть в секциях {sections}. Заполните колонку «{field}».',
+      'Квартира №{apt} есть в подъездах {sections}. Укажите подъезд в колонке «{field}».',
+    bookPreviewIssueAmbiguousAptAction:
+      'Квартира №{apt} есть в {count} подъездах ({sections}). Укажите подъезд в колонке «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
       '{aptRef} — не указано количество владельцев. Лист «{sheet}», строка {row}, колонка «{field}».',
+    bookPreviewIssueOwnershipTypeMissingCard:
+      'Не указано количество владельцев. Заполните колонку «{field}».',
     bookPreviewIssueOwnershipTypeConflict:
       'Лист «{sheet}», строки {rows}: для {aptRef} в колонке «{field}» указаны разные значения ({values}). Исправьте расхождение.',
+    bookPreviewIssueOwnershipTypeConflictCard:
+      'В колонке «{field}» указаны разные значения ({values}). Исправьте расхождение.',
     bookPreviewIssueOwnerCountConflict:
       'Лист «{sheet}», строки {rows}: для {aptRef} в колонке «{field}» указано разное количество владельцев ({values}). Исправьте расхождение.',
+    bookPreviewIssueOwnerCountConflictCard:
+      'В колонке «{field}» указано разное количество владельцев ({values}). Исправьте расхождение.',
     bookPreviewIssueOwnerCountMismatch:
       '{location}: указано {declared} владельца, заполнена {actual} строка',
+    bookPreviewIssueOwnerCountMismatchCard:
+      'Указано {declared} владельца, заполнена {actual} строка. Исправьте количество или строки.',
     bookPreviewIssueOwnershipTypeSheetConflict:
       '{aptRef}: тип собственности на листе «Объекты» ({objectsValue}) не совпадает с листом «Собственники» ({ownersValue}). Исправьте расхождение.',
+    bookPreviewIssueOwnershipTypeSheetConflictCard:
+      'Тип собственности на листе «Объекты» ({objectsValue}) не совпадает с листом «Собственники» ({ownersValue}). Исправьте расхождение.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — недопустимое значение «{value}» в колонке «{field}». Лист «{sheet}», строка {row}. Допустимо: {allowed}.',
-    bookPreviewIssueOwnersMissing: 'Сведения о собственнике отсутствуют',
+    bookPreviewIssueInvalidEnumCard:
+      'Недопустимое значение «{value}» в колонке «{field}». Допустимо: {allowed}. Исправьте файл.',
+    bookPreviewIssueOwnersMissing:
+      'Сведений о владельцах пока нет. При импорте будет создана запись для уточнения. Данные можно добавить позже в Книге собственности',
     bookPreviewIssueGenericRows: 'Лист «{sheet}», строки {rows}, {aptRef}, колонка «{field}»: {reason}',
     bookPreviewIssueGeneric: 'Лист «{sheet}», {aptRef}, колонка «{field}»: {reason}',
+    bookPreviewIssueGenericCard: 'Колонка «{field}»: {reason}',
     bookPreviewAllowedOwnershipTypes: '1, 2, 3… (положительное целое число)',
     bookPreviewAllowedEntityKinds:
       'Физическое лицо, Юридическое лицо; также 1/0 и ЕТ',
@@ -9017,7 +9040,11 @@ export const en: Messages = {
     bookIssue_eik_required: 'EIK/BULSTAT missing',
     bookIssue_owners_required: 'Owner details are missing',
     bookIssue_ownership_identity_incomplete: 'Not enough data to create an owner',
-    bookPreviewIssuePartialSaved: 'Data will be saved. Need to clarify: {fields}',
+    bookPreviewIssuePartialSaved: 'Existing details will be saved. Need to clarify: {fields}',
+    bookPreviewIssuePartialSavedLead: 'Existing details will be saved.',
+    bookPreviewIssuePartialNeedOne: 'Need to clarify: {field}.',
+    bookPreviewIssuePartialBullet: '• {field}',
+    bookPreviewIssuePartialLater: 'Can be added later: {fields}.',
     bookPreviewPartialFieldsJoin: ' and ',
     bookPreviewPartialFieldEntityKind: 'who owns',
     bookPreviewPartialFieldShare: 'ownership share',
@@ -9025,6 +9052,9 @@ export const en: Messages = {
     bookPreviewPartialFieldName: 'first and last name',
     bookPreviewPartialFieldLegalName: 'organization name',
     bookPreviewPartialFieldEik: 'EIK / Bulstat',
+    bookPreviewPartialFieldOwnerCount: 'number of owners',
+    bookPreviewPartialFieldVoteWeight: 'vote weight (share and ideal parts)',
+    bookPreviewIssueSheetOnly: 'Sheet “{sheet}”',
     bookPreviewIssueSheetRow: 'Sheet “{sheet}”, row {row}',
     bookPreviewIssueSheetRowField: 'Sheet “{sheet}”, row {row} · column “{field}”',
     bookIssue_purpose_required: 'Purpose missing',
@@ -9119,24 +9149,40 @@ export const en: Messages = {
     bookPreviewClarifyIdealPartsSummary: 'Ideal parts are not specified for {n} apartments',
     bookPreviewClarifyGenericSummary: 'Need clarification: {n}',
     bookPreviewIssueAmbiguousAptRows:
-      'Sheet “{sheet}”, rows {rows}: apartment №{apt} exists in sections {sections}. Fill the “{field}” column.',
+      'Apartment №{apt} exists in {count} entrances ({sections}). Enter the entrance in the “{field}” column.',
     bookPreviewIssueAmbiguousApt:
-      'Sheet “{sheet}”: apartment №{apt} exists in sections {sections}. Fill the “{field}” column.',
+      'Apartment №{apt} exists in entrances {sections}. Enter the entrance in the “{field}” column.',
+    bookPreviewIssueAmbiguousAptAction:
+      'Apartment №{apt} exists in {count} entrances ({sections}). Enter the entrance in the “{field}” column.',
     bookPreviewIssueOwnershipTypeMissing:
       '{aptRef} — number of owners is not specified. Sheet “{sheet}”, row {row}, column “{field}”.',
+    bookPreviewIssueOwnershipTypeMissingCard:
+      'Number of owners is not specified. Fill the “{field}” column.',
     bookPreviewIssueOwnershipTypeConflict:
       'Sheet “{sheet}”, rows {rows}: {aptRef} has conflicting “{field}” values ({values}). Fix the mismatch.',
+    bookPreviewIssueOwnershipTypeConflictCard:
+      'Column “{field}” has conflicting values ({values}). Fix the mismatch.',
     bookPreviewIssueOwnerCountConflict:
       'Sheet “{sheet}”, rows {rows}: {aptRef} has conflicting owner counts in “{field}” ({values}). Fix the mismatch.',
+    bookPreviewIssueOwnerCountConflictCard:
+      'Column “{field}” has conflicting owner counts ({values}). Fix the mismatch.',
     bookPreviewIssueOwnerCountMismatch:
       '{location}: {declared} owners declared, {actual} row filled',
+    bookPreviewIssueOwnerCountMismatchCard:
+      '{declared} owners declared, {actual} row filled. Fix the count or the rows.',
     bookPreviewIssueOwnershipTypeSheetConflict:
       '{aptRef}: ownership type on the Objects sheet ({objectsValue}) does not match the Owners sheet ({ownersValue}). Fix the mismatch.',
+    bookPreviewIssueOwnershipTypeSheetConflictCard:
+      'Ownership type on the Objects sheet ({objectsValue}) does not match the Owners sheet ({ownersValue}). Fix the mismatch.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — invalid value “{value}” in column “{field}”. Sheet “{sheet}”, row {row}. Allowed: {allowed}.',
-    bookPreviewIssueOwnersMissing: 'Owner details are missing',
+    bookPreviewIssueInvalidEnumCard:
+      'Invalid value “{value}” in column “{field}”. Allowed: {allowed}. Fix the file.',
+    bookPreviewIssueOwnersMissing:
+      'No owner details yet. Import will create a clarification record. You can add the data later in the Property Book',
     bookPreviewIssueGenericRows: 'Sheet “{sheet}”, rows {rows}, {aptRef}, column “{field}”: {reason}',
     bookPreviewIssueGeneric: 'Sheet “{sheet}”, {aptRef}, column “{field}”: {reason}',
+    bookPreviewIssueGenericCard: 'Column “{field}”: {reason}',
     bookPreviewAllowedOwnershipTypes: '1, 2, 3… (positive whole number)',
     bookPreviewAllowedEntityKinds: 'Individual, Legal entity; also 1/0 and Sole trader',
     bookPreviewAptCardStatusError: 'Error',
@@ -14329,7 +14375,11 @@ export const bg: Messages = {
     bookIssue_eik_required: 'Липсва ЕИК/БУЛСТАТ',
     bookIssue_owners_required: 'Липсват данни за собственика',
     bookIssue_ownership_identity_incomplete: 'Недостатъчни данни за създаване на собственик',
-    bookPreviewIssuePartialSaved: 'Данните ще бъдат записани. Трябва да уточните: {fields}',
+    bookPreviewIssuePartialSaved: 'Наличните данни ще бъдат записани. Трябва да уточните: {fields}',
+    bookPreviewIssuePartialSavedLead: 'Наличните данни ще бъдат записани.',
+    bookPreviewIssuePartialNeedOne: 'Трябва да уточните: {field}.',
+    bookPreviewIssuePartialBullet: '• {field}',
+    bookPreviewIssuePartialLater: 'Може да се добави по-късно: {fields}.',
     bookPreviewPartialFieldsJoin: ' и ',
     bookPreviewPartialFieldEntityKind: 'кой е собственик',
     bookPreviewPartialFieldShare: 'дял от собствеността',
@@ -14337,6 +14387,9 @@ export const bg: Messages = {
     bookPreviewPartialFieldName: 'собствено име и фамилия',
     bookPreviewPartialFieldLegalName: 'наименование на организацията',
     bookPreviewPartialFieldEik: 'ЕИК / Булстат',
+    bookPreviewPartialFieldOwnerCount: 'брой собственици',
+    bookPreviewPartialFieldVoteWeight: 'тегло на гласа (дял и идеални части)',
+    bookPreviewIssueSheetOnly: 'Лист „{sheet}“',
     bookPreviewIssueSheetRow: 'Лист „{sheet}“, ред {row}',
     bookPreviewIssueSheetRowField: 'Лист „{sheet}“, ред {row} · колона „{field}“',
     bookIssue_purpose_required: 'Липсва предназначение',
@@ -14430,24 +14483,40 @@ export const bg: Messages = {
     bookPreviewClarifyIdealPartsSummary: 'Идеалните части не са посочени за {n} апартамента',
     bookPreviewClarifyGenericSummary: 'Изискват уточнение: {n}',
     bookPreviewIssueAmbiguousAptRows:
-      'Лист «{sheet}», редове {rows}: апартамент №{apt} има в секции {sections}. Попълнете колоната «{field}».',
+      'Апартамент №{apt} има в {count} входа ({sections}). Посочете входа в колона «{field}».',
     bookPreviewIssueAmbiguousApt:
-      'Лист «{sheet}»: апартамент №{apt} има в секции {sections}. Попълнете колоната «{field}».',
+      'Апартамент №{apt} има във входове {sections}. Посочете входа в колона «{field}».',
+    bookPreviewIssueAmbiguousAptAction:
+      'Апартамент №{apt} има в {count} входа ({sections}). Посочете входа в колона «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
       '{aptRef} — не е посочен броят собственици. Лист «{sheet}», ред {row}, колона «{field}».',
+    bookPreviewIssueOwnershipTypeMissingCard:
+      'Не е посочен броят собственици. Попълнете колона «{field}».',
     bookPreviewIssueOwnershipTypeConflict:
       'Лист «{sheet}», редове {rows}: за {aptRef} в колона «{field}» са посочени различни стойности ({values}). Поправете разминаването.',
+    bookPreviewIssueOwnershipTypeConflictCard:
+      'В колона «{field}» са посочени различни стойности ({values}). Поправете разминаването.',
     bookPreviewIssueOwnerCountConflict:
       'Лист «{sheet}», редове {rows}: за {aptRef} в колона «{field}» е посочен различен брой собственици ({values}). Поправете разминаването.',
+    bookPreviewIssueOwnerCountConflictCard:
+      'В колона «{field}» е посочен различен брой собственици ({values}). Поправете разминаването.',
     bookPreviewIssueOwnerCountMismatch:
       '{location}: посочени са {declared} собственика, попълнен е {actual} ред',
+    bookPreviewIssueOwnerCountMismatchCard:
+      'Посочени са {declared} собственика, попълнен е {actual} ред. Поправете броя или редовете.',
     bookPreviewIssueOwnershipTypeSheetConflict:
       '{aptRef}: тип собственост в листа «Обекти» ({objectsValue}) не съвпада с листа «Собственици» ({ownersValue}). Поправете разминаването.',
+    bookPreviewIssueOwnershipTypeSheetConflictCard:
+      'Тип собственост в листа «Обекти» ({objectsValue}) не съвпада с листа «Собственици» ({ownersValue}). Поправете разминаването.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — недопустима стойност «{value}» в колона «{field}». Лист «{sheet}», ред {row}. Допустимо: {allowed}.',
-    bookPreviewIssueOwnersMissing: 'Липсват данни за собственика',
+    bookPreviewIssueInvalidEnumCard:
+      'Недопустима стойност «{value}» в колона «{field}». Допустимо: {allowed}. Поправете файла.',
+    bookPreviewIssueOwnersMissing:
+      'Все още няма данни за собственици. При импорта ще се създаде запис за уточнение. Данните могат да се добавят по-късно в Книгата на собствеността',
     bookPreviewIssueGenericRows: 'Лист «{sheet}», редове {rows}, {aptRef}, колона «{field}»: {reason}',
     bookPreviewIssueGeneric: 'Лист «{sheet}», {aptRef}, колона «{field}»: {reason}',
+    bookPreviewIssueGenericCard: 'Колона «{field}»: {reason}',
     bookPreviewAllowedOwnershipTypes: '1, 2, 3… (положително цяло число)',
     bookPreviewAllowedEntityKinds: 'Физическо лице, Юридическо лице; също 1/0 и ЕТ',
     bookPreviewAptCardStatusError: 'Грешка',

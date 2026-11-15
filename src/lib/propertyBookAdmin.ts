@@ -404,7 +404,7 @@ export function parsePropertyBookWorkbookBuffer(
     )
       .map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS))
       // Apartments sub-step ignores ownership_type (filled on owners). Blank keeps DB value.
-      .map((row) => ({ ...row, ownership_type: '' }));
+      .map((row) => ({ ...row, ownership_type: '', _sheet: name }));
     return { objects, owners: [] };
   }
 
@@ -420,7 +420,9 @@ export function parsePropertyBookWorkbookBuffer(
           BOOK_OWNERS_SPARSE_HEADERS,
         ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
       ),
-    ).filter((row) => !isPropertyBookOwnerRowBlank(row));
+    )
+      .filter((row) => !isPropertyBookOwnerRowBlank(row))
+      .map((row) => ({ ...row, _sheet: name }));
     // Combined legacy workbook: keep Objects rows as ownership_type source for the owners step.
     const objects =
       objectsName && objectsName !== name
@@ -428,7 +430,11 @@ export function parsePropertyBookWorkbookBuffer(
             wb.Sheets[objectsName],
             BOOK_OBJECTS_CSV_HEADERS,
             PROPERTY_BOOK_OBJECTS_SPEC,
-          ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS))
+          )
+            .map((row) =>
+              normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS),
+            )
+            .map((row) => ({ ...row, _sheet: objectsName }))
         : [];
     return { objects, owners };
   }
@@ -445,7 +451,9 @@ export function parsePropertyBookWorkbookBuffer(
     wb.Sheets[resolvedObjects],
     BOOK_OBJECTS_CSV_HEADERS,
     PROPERTY_BOOK_OBJECTS_SPEC,
-  ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
+  )
+    .map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS))
+    .map((row) => ({ ...row, _sheet: resolvedObjects }));
   const owners = coerceOwnersOwnershipType(
     coerceOwnersEntityKind(
       sheetToRecords(
@@ -455,7 +463,9 @@ export function parsePropertyBookWorkbookBuffer(
         BOOK_OWNERS_SPARSE_HEADERS,
       ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
     ),
-  ).filter((row) => !isPropertyBookOwnerRowBlank(row));
+  )
+    .filter((row) => !isPropertyBookOwnerRowBlank(row))
+    .map((row) => ({ ...row, _sheet: resolvedOwners }));
 
   return { objects, owners };
 }

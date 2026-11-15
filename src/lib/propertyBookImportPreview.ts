@@ -20,6 +20,8 @@ export type BookPreviewObjectRow = {
   area_sqm?: string | null;
   ideal_parts_percent?: string | null;
   _row?: string | number | null;
+  /** Actual workbook sheet title from the uploaded file. */
+  _sheet?: string | null;
 };
 
 export type BookPreviewOwnerRow = {
@@ -30,6 +32,8 @@ export type BookPreviewOwnerRow = {
   /** Legacy owners sheets may still carry apartment-level ownership_type. */
   ownership_type?: string | null;
   _row?: string | number | null;
+  /** Actual workbook sheet title from the uploaded file. */
+  _sheet?: string | null;
 };
 
 export type BookSectionBucket = {
@@ -744,7 +748,8 @@ export function buildBookPreviewIssues(
         return true;
       });
       if (matchedOwners.length) {
-        const first = propertyBookIdentityParts(asIdentityRow(matchedOwners[0]!));
+        const firstOwner = matchedOwners[0]!;
+        const first = propertyBookIdentityParts(asIdentityRow(firstOwner));
         meta.sectionCode = meta.sectionCode || first.sectionCode;
         meta.blockCode = meta.blockCode || first.blockCode;
         if (!Array.isArray(meta.sourceRows) || (meta.sourceRows as number[]).length === 0) {
@@ -752,6 +757,8 @@ export function buildBookPreviewIssues(
             .map((o) => rowNum(o._row))
             .filter((n): n is number => n != null);
         }
+        const fileSheet = String(firstOwner._sheet ?? '').trim();
+        if (fileSheet) meta.forceSheet = fileSheet;
       } else {
         const obj = objects.find((o) => {
           const p = propertyBookIdentityParts(asIdentityRow(o));
@@ -766,7 +773,9 @@ export function buildBookPreviewIssues(
       if (!row.field || row.field === 'owners') {
         meta.forceField = ownerSoftFieldByReason[row.reason];
       }
-      if (!row.sheet || row.sheet === 'validation') meta.forceSheet = 'owners';
+      if (!meta.forceSheet && (!row.sheet || row.sheet === 'validation' || row.sheet === 'objects')) {
+        meta.forceSheet = 'owners';
+      }
     }
 
     return {
@@ -978,12 +987,26 @@ const PARTIAL_OWNER_FIELD_REASONS = new Set([
   'eik_required',
   'sole_trader_name_required',
   'owner_vote_weight_mismatch',
+  'ownership_type_required',
+  'required:ownership_type',
+]);
+
+/** Soft noise suppressed for identity-only apartments (one stub message only). */
+const IDENTITY_ONLY_SUPPRESSED = new Set([
+  ...PARTIAL_OWNER_FIELD_REASONS,
+  'purpose_required',
+  'required:purpose',
+  'area_required',
+  'required:area_sqm',
+  'object_ideal_parts_required',
+  'required:ideal_parts_percent',
+  'ownership_identity_incomplete',
 ]);
 
 /**
  * One card = unique remarks (no duplicate reasons). Incomplete owner rows with
  * any person/org payload collapse soft field warns into `owner_partial_saved`.
- * `owners_required` / `ownership_identity_incomplete` stay only for identity-only.
+ * Identity-only keeps a single `owners_required` (no count/type/email/share noise).
  */
 export function collapseApartmentCardIssues(issues: BookPreviewIssue[]): BookPreviewIssue[] {
   const byReason = new Map<string, BookPreviewIssue>();
@@ -994,8 +1017,13 @@ export function collapseApartmentCardIssues(issues: BookPreviewIssue[]): BookPre
       continue;
     }
     const rows = new Set([...existing.rows, ...issue.rows]);
+    const preferSheet =
+      existing.sheet === 'objects' || existing.sheet === 'validation'
+        ? issue.sheet || existing.sheet
+        : existing.sheet;
     byReason.set(issue.reason, {
       ...existing,
+      sheet: preferSheet,
       rows: [...rows].sort((a, b) => a - b),
       severity: existing.severity === 'error' || issue.severity === 'error' ? 'error' : 'warning',
     });
@@ -1007,14 +1035,46 @@ export function collapseApartmentCardIssues(issues: BookPreviewIssue[]): BookPre
     (i) => i.reason === 'owners_required' || i.reason === 'ownership_identity_incomplete',
   );
 
-  // Partial payload: drop identity-only wording + field-level soft duplicates → one save notice.
+  // Identity-only first: one stub message; never mix with count/type/email/share soft noise.
+  if (hasIdentityOnlyMsg) {
+    const identity =
+      byReason.get('owners_required') ?? byReason.get('ownership_identity_incomplete');
+    if (!identity) return list;
+    const hard = list.filter(
+      (i) => i.severity === 'error' && !IDENTITY_ONLY_SUPPRESSED.has(i.reason),
+    );
+    const sheet =
+      (identity.sheet && identity.sheet !== 'objects' && identity.sheet !== 'validation'
+        ? identity.sheet
+        : null) ||
+      list.find((i) => i.sheet && i.sheet !== 'objects' && i.sheet !== 'validation')?.sheet ||
+      'owners';
+    const rows =
+      identity.rows.length > 0
+        ? identity.rows
+        : [...new Set(list.flatMap((i) => i.rows))].sort((a, b) => a - b);
+    return [
+      ...hard,
+      {
+        ...identity,
+        reason: 'owners_required',
+        sheet,
+        rows,
+      },
+    ];
+  }
+
+  // Partial payload: one save notice; keep only hard blocking errors beside it.
   if (partials.length > 0) {
     const rows = [...new Set(partials.flatMap((i) => i.rows))].sort((a, b) => a - b);
     const first = partials[0]!;
+    const sheet =
+      partials.find((i) => i.sheet && i.sheet !== 'objects' && i.sheet !== 'validation')?.sheet ||
+      first.sheet;
     const merged: BookPreviewIssue = {
       severity: 'warning',
       reason: 'owner_partial_saved',
-      sheet: first.sheet,
+      sheet,
       field: first.field,
       apartment: first.apartment,
       sectionCode: first.sectionCode,
@@ -1023,34 +1083,34 @@ export function collapseApartmentCardIssues(issues: BookPreviewIssue[]): BookPre
       candidateSections: first.candidateSections,
       value: partials.map((i) => i.reason).join(','),
     };
-    const rest = list.filter(
+    const hard = list.filter(
       (i) =>
-        !PARTIAL_OWNER_FIELD_REASONS.has(i.reason) &&
-        i.reason !== 'owners_required' &&
-        i.reason !== 'ownership_identity_incomplete',
+        i.severity === 'error' &&
+        !PARTIAL_OWNER_FIELD_REASONS.has(i.reason),
     );
-    return [...rest, merged];
-  }
-
-  // Identity-only: keep a single owners_required; drop legacy incomplete wording.
-  if (hasIdentityOnlyMsg) {
-    const identity =
-      byReason.get('owners_required') ?? byReason.get('ownership_identity_incomplete');
-    const rest = list.filter(
-      (i) => i.reason !== 'owners_required' && i.reason !== 'ownership_identity_incomplete',
-    );
-    if (identity) {
-      return [
-        ...rest,
-        {
-          ...identity,
-          reason: 'owners_required',
-        },
-      ];
-    }
+    return [...hard, merged];
   }
 
   return list;
+}
+
+/** Prefer a real uploaded sheet title over pseudo codes when presenting. */
+export function resolveBookPreviewSheetTitle(issue: BookPreviewIssue, t: TFn): string {
+  const raw = (issue.sheet || '').trim();
+  if (!raw || raw === 'validation') {
+    return t('admin.bookImportSheetOwners');
+  }
+  const lower = raw.toLowerCase();
+  if (lower === 'owners' || lower === 'собственники' || lower === 'собственици') {
+    // Keep the file’s own title when it already matches a localized owners sheet.
+    if (raw !== 'owners') return raw;
+    return t('admin.bookImportSheetOwners');
+  }
+  if (lower === 'objects' || lower === 'объекты' || lower === 'обекти') {
+    if (raw !== 'objects') return raw;
+    return t('admin.bookImportSheetObjects');
+  }
+  return raw;
 }
 
 export function clarifyGroupSummary(group: ClarifyIssueGroup, t: TFn): string {

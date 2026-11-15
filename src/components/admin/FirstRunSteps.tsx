@@ -33,6 +33,8 @@ import {
   type FirstRunTariffPrepMap,
 } from '@/lib/firstRun';
 import {
+  presentBookApartmentCardIssueBody,
+  presentBookApartmentCardWhere,
   presentBookPreviewIssue,
   presentBookPreviewIssueWhere,
   presentFirstRunErrorRow,
@@ -697,16 +699,35 @@ export function FirstRunBookImport({
                         <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
                           {aptRef} — {statusLabel}
                         </p>
-                        <ul style={{ margin: 0, paddingLeft: 18 }}>
-                          {card.issues.map((issue, idx) => (
-                            <li key={`${card.key}-${issue.reason}-${idx}`} style={{ marginBottom: 4 }}>
-                              <div>{presentBookPreviewIssue(issue, t)}</div>
-                              <div style={{ opacity: 0.85 }}>
-                                {presentBookPreviewIssueWhere(issue, t)}
+                        <div style={{ margin: 0 }}>
+                          {card.issues.map((issue, idx) => {
+                            const body = presentBookApartmentCardIssueBody(issue, t);
+                            return (
+                              <div
+                                key={`${card.key}-${issue.reason}-${idx}`}
+                                style={{ marginBottom: idx === card.issues.length - 1 ? 4 : 8 }}
+                              >
+                                <div>{body.lead}</div>
+                                {body.bullets.length > 0 ? (
+                                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                                    {body.bullets.map((b) => (
+                                      <li key={`${card.key}-${issue.reason}-${b}`}>{b}</li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                                {body.later ? (
+                                  <div style={{ marginTop: 4 }}>{body.later}</div>
+                                ) : null}
                               </div>
-                            </li>
-                          ))}
-                        </ul>
+                            );
+                          })}
+                          {(() => {
+                            const where = presentBookApartmentCardWhere(card.issues, t);
+                            return where ? (
+                              <div style={{ opacity: 0.85, marginTop: 4 }}>{where}</div>
+                            ) : null;
+                          })()}
+                        </div>
                       </li>
                     );
                   })}

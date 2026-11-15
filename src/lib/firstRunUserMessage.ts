@@ -8,6 +8,7 @@ import {
   formatBookApartmentRef,
   formatExcelRowRanges,
   formatOwnerCountLocation,
+  resolveBookPreviewSheetTitle,
   type BookPreviewIssue,
 } from '@/lib/propertyBookImportPreview';
 
@@ -596,9 +597,82 @@ export function presentImportSheet(sheet: string, field: string, t?: T): string 
   return sheet.trim() || (t ? t('admin.bookImportSheetObjects') : 'objects');
 }
 
+export type PresentBookPreviewOptions = {
+  /** Apt/sheet/row live in the card chrome — keep the body action-only. */
+  inCard?: boolean;
+};
+
+const PARTIAL_OPTIONAL_CODES = new Set(['owner_email_required']);
+
+function partialFieldLabel(code: string, t: T): string {
+  if (code === 'entity_kind_required') return t('admin.bookPreviewPartialFieldEntityKind');
+  if (code === 'owner_share_required') return t('admin.bookPreviewPartialFieldShare');
+  if (code === 'owner_email_required') return t('admin.bookPreviewPartialFieldEmail');
+  if (code === 'natural_name_required' || code === 'sole_trader_name_required') {
+    return t('admin.bookPreviewPartialFieldName');
+  }
+  if (code === 'legal_name_required') return t('admin.bookPreviewPartialFieldLegalName');
+  if (code === 'eik_required') return t('admin.bookPreviewPartialFieldEik');
+  if (code === 'ownership_type_required' || code === 'required:ownership_type') {
+    return t('admin.bookPreviewPartialFieldOwnerCount');
+  }
+  if (code === 'owner_vote_weight_mismatch') {
+    return t('admin.bookPreviewPartialFieldVoteWeight');
+  }
+  return '';
+}
+
+/** Structured body for an apartment-card issue (no apt/sheet/row repeats). */
+export function presentBookApartmentCardIssueBody(
+  issue: BookPreviewIssue,
+  t: T,
+): { lead: string; bullets: string[]; later: string | null } {
+  if (issue.reason === 'owners_required' || issue.reason === 'ownership_identity_incomplete') {
+    return { lead: t('admin.bookPreviewIssueOwnersMissing'), bullets: [], later: null };
+  }
+
+  if (issue.reason === 'owner_partial_saved') {
+    const codes = String(issue.value || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const required: string[] = [];
+    const optional: string[] = [];
+    for (const code of codes) {
+      const label = partialFieldLabel(code, t);
+      if (!label) continue;
+      if (PARTIAL_OPTIONAL_CODES.has(code)) optional.push(label);
+      else required.push(label);
+    }
+    const uniqReq = [...new Set(required)];
+    const uniqOpt = [...new Set(optional)];
+    return {
+      lead: t('admin.bookPreviewIssuePartialSavedLead'),
+      bullets: uniqReq,
+      later:
+        uniqOpt.length > 0
+          ? t('admin.bookPreviewIssuePartialLater', {
+              fields: uniqOpt.join(t('admin.bookPreviewPartialFieldsJoin')),
+            })
+          : null,
+    };
+  }
+
+  return {
+    lead: presentBookPreviewIssue(issue, t, { inCard: true }),
+    bullets: [],
+    later: null,
+  };
+}
+
 /** Full operator sentence for a grouped Book preview issue. */
-export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
-  const sheet = presentImportSheet(issue.sheet, issue.field, t);
+export function presentBookPreviewIssue(
+  issue: BookPreviewIssue,
+  t: T,
+  options?: PresentBookPreviewOptions,
+): string {
+  const inCard = options?.inCard === true;
+  const sheet = resolveBookPreviewSheetTitle(issue, t);
   const field = presentImportField(issue.field, t);
   const rowsLabel = formatExcelRowRanges(issue.rows);
   const aptRef = formatBookApartmentRef(t, {
@@ -607,13 +681,13 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
     blockCode: issue.blockCode,
   });
   const sectionsList = issue.candidateSections.join(', ');
+  const sectionCount = issue.candidateSections.length;
 
   if (issue.reason === 'section_code_required_for_disambiguation' && sectionsList) {
-    if (rowsLabel) {
-      return t('admin.bookPreviewIssueAmbiguousAptRows', {
-        sheet,
-        rows: rowsLabel,
+    if (sectionCount > 0) {
+      return t('admin.bookPreviewIssueAmbiguousAptAction', {
         apt: issue.apartment || '—',
+        count: sectionCount,
         sections: sectionsList,
         field,
       });
@@ -627,19 +701,25 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
   }
 
   if (issue.reason === 'ownership_type_required' || issue.reason === 'required:ownership_type') {
-    return t('admin.bookPreviewIssueOwnershipTypeMissing', {
-      aptRef,
-      sheet,
-      row: rowsLabel || '—',
-      field,
-    });
+    return inCard
+      ? t('admin.bookPreviewIssueOwnershipTypeMissingCard', { field })
+      : t('admin.bookPreviewIssueOwnershipTypeMissing', {
+          aptRef,
+          sheet,
+          row: rowsLabel || '—',
+          field,
+        });
   }
 
   if (issue.reason === 'ownership_type_conflict' || issue.reason === 'owner_count_conflict') {
     return t(
       issue.reason === 'owner_count_conflict'
-        ? 'admin.bookPreviewIssueOwnerCountConflict'
-        : 'admin.bookPreviewIssueOwnershipTypeConflict',
+        ? inCard
+          ? 'admin.bookPreviewIssueOwnerCountConflictCard'
+          : 'admin.bookPreviewIssueOwnerCountConflict'
+        : inCard
+          ? 'admin.bookPreviewIssueOwnershipTypeConflictCard'
+          : 'admin.bookPreviewIssueOwnershipTypeConflict',
       {
         aptRef,
         sheet,
@@ -652,6 +732,12 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
 
   if (issue.reason === 'owner_count_mismatch') {
     const [declaredPart, actualPart] = issue.value.split('/');
+    if (inCard) {
+      return t('admin.bookPreviewIssueOwnerCountMismatchCard', {
+        declared: declaredPart || '—',
+        actual: actualPart || '—',
+      });
+    }
     const location = formatOwnerCountLocation(t, {
       apartmentNumber: issue.apartment || '—',
       sectionCode: issue.sectionCode,
@@ -665,12 +751,17 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
   }
 
   if (issue.reason === 'ownership_type_sheet_conflict') {
-    return t('admin.bookPreviewIssueOwnershipTypeSheetConflict', {
-      aptRef,
-      field,
-      objectsValue: issue.value.split('/')[0] || '—',
-      ownersValue: issue.value.split('/')[1] || '—',
-    });
+    return t(
+      inCard
+        ? 'admin.bookPreviewIssueOwnershipTypeSheetConflictCard'
+        : 'admin.bookPreviewIssueOwnershipTypeSheetConflict',
+      {
+        aptRef,
+        field,
+        objectsValue: issue.value.split('/')[0] || '—',
+        ownersValue: issue.value.split('/')[1] || '—',
+      },
+    );
   }
 
   if (
@@ -683,53 +774,49 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
       issue.reason.includes('entity_kind')
         ? t('admin.bookPreviewAllowedEntityKinds')
         : t('admin.bookPreviewAllowedOwnershipTypes');
-    return t('admin.bookPreviewIssueInvalidEnum', {
-      aptRef,
-      sheet,
-      row: rowsLabel || '—',
-      field,
-      value: issue.value || '—',
-      allowed,
-    });
+    return inCard
+      ? t('admin.bookPreviewIssueInvalidEnumCard', {
+          field,
+          value: issue.value || '—',
+          allowed,
+        })
+      : t('admin.bookPreviewIssueInvalidEnum', {
+          aptRef,
+          sheet,
+          row: rowsLabel || '—',
+          field,
+          value: issue.value || '—',
+          allowed,
+        });
   }
 
-  if (issue.reason === 'owners_required') {
+  if (issue.reason === 'owners_required' || issue.reason === 'ownership_identity_incomplete') {
     return t('admin.bookPreviewIssueOwnersMissing');
   }
 
   if (issue.reason === 'owner_partial_saved') {
-    const codes = String(issue.value || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const fieldLabels = codes
-      .map((code) => {
-        if (code === 'entity_kind_required') return t('admin.bookPreviewPartialFieldEntityKind');
-        if (code === 'owner_share_required') return t('admin.bookPreviewPartialFieldShare');
-        if (code === 'owner_email_required') return t('admin.bookPreviewPartialFieldEmail');
-        if (code === 'natural_name_required' || code === 'sole_trader_name_required') {
-          return t('admin.bookPreviewPartialFieldName');
-        }
-        if (code === 'legal_name_required') return t('admin.bookPreviewPartialFieldLegalName');
-        if (code === 'eik_required') return t('admin.bookPreviewPartialFieldEik');
-        return '';
-      })
-      .filter(Boolean);
-    const unique = [...new Set(fieldLabels)];
-    return t('admin.bookPreviewIssuePartialSaved', {
-      fields: unique.length > 0 ? unique.join(t('admin.bookPreviewPartialFieldsJoin')) : '—',
-    });
-  }
-
-  // Never surface the old hard reject for incomplete-but-saveable rows.
-  if (issue.reason === 'ownership_identity_incomplete') {
-    return t('admin.bookPreviewIssueOwnersMissing');
+    const body = presentBookApartmentCardIssueBody(issue, t);
+    const parts = [body.lead];
+    if (body.bullets.length === 1) {
+      parts.push(t('admin.bookPreviewIssuePartialNeedOne', { field: body.bullets[0]! }));
+    } else if (body.bullets.length > 1) {
+      parts.push(
+        ...body.bullets.map((b) => t('admin.bookPreviewIssuePartialBullet', { field: b })),
+      );
+    }
+    if (body.later) parts.push(body.later);
+    return parts.join('\n');
   }
 
   const base = presentImportReason(issue.reason, t, {
     severity: issue.severity,
     nothingSaved: issue.severity === 'error',
   });
+  if (inCard) {
+    return field && field !== '—'
+      ? t('admin.bookPreviewIssueGenericCard', { field, reason: base })
+      : base;
+  }
   if (rowsLabel) {
     return t('admin.bookPreviewIssueGenericRows', {
       sheet,
@@ -751,15 +838,30 @@ export function presentImportSeverity(severity: string | undefined, t: T): strin
   return severity === 'warning' ? t('admin.bookImportSeverityWarning') : t('admin.bookImportSeverityError');
 }
 
-/** Sheet + Excel row (+ column) under a card issue (when determinable). */
+/**
+ * Sheet (+ row when known) under a card message.
+ * Omits the row entirely when unknown — never shows «строка —».
+ */
 export function presentBookPreviewIssueWhere(issue: BookPreviewIssue, t: T): string {
-  const sheet = presentImportSheet(issue.sheet, issue.field, t);
-  const field = presentImportField(issue.field, t);
-  const rowsLabel = formatExcelRowRanges(issue.rows) || '—';
-  if (issue.reason === 'owner_partial_saved' || issue.reason === 'owners_required') {
-    return t('admin.bookPreviewIssueSheetRow', { sheet, row: rowsLabel });
-  }
-  return t('admin.bookPreviewIssueExcelWhere', { sheet, row: rowsLabel, field });
+  const sheet = resolveBookPreviewSheetTitle(issue, t);
+  const rowsLabel = formatExcelRowRanges(issue.rows);
+  if (!sheet) return '';
+  if (rowsLabel) return t('admin.bookPreviewIssueSheetRow', { sheet, row: rowsLabel });
+  return t('admin.bookPreviewIssueSheetOnly', { sheet });
+}
+
+/** One where-line for a whole apartment card (prefer owners sheet + known rows). */
+export function presentBookApartmentCardWhere(issues: BookPreviewIssue[], t: T): string {
+  if (issues.length === 0) return '';
+  const preferred =
+    issues.find(
+      (i) =>
+        (i.reason === 'owner_partial_saved' || i.reason === 'owners_required') &&
+        i.rows.length > 0,
+    ) ||
+    issues.find((i) => i.rows.length > 0) ||
+    issues[0]!;
+  return presentBookPreviewIssueWhere(preferred, t);
 }
 
 export type PresentedImportErrorRow = {

@@ -7,7 +7,10 @@ import {
   ensurePaymentReceiptPdf,
   fetchPaymentReceiptPdfBlob,
 } from '@/lib/paymentReceipts/client';
-import { formatReceiptSeriesNumber } from '@/lib/paymentReceipts/receiptFormat';
+import {
+  formatReceiptSeriesNumber,
+  receiptBlockingMissingFields,
+} from '@/lib/paymentReceipts/receiptFormat';
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 
 const UK_FIELD_LABEL_KEYS: Record<string, string> = {
@@ -16,6 +19,7 @@ const UK_FIELD_LABEL_KEYS: Record<string, string> = {
   mgmt_registered_address: 'receipt.missingUkAddress',
   complex_display_name: 'receipt.missingComplexName',
   complex_address: 'receipt.missingComplexAddress',
+  bank_iban: 'receipt.missingUkBankIban',
 };
 
 function messageForPdfError(
@@ -59,7 +63,7 @@ export function PaymentReceiptActions({
 
   if (!receipt) return null;
 
-  const missing = receipt.missing_uk_fields ?? [];
+  const missing = receiptBlockingMissingFields(receipt);
   const voided = receipt.status === 'voided';
   const needsUk = missing.length > 0 || receipt.status === 'pending_details';
   const failed = receipt.status === 'failed' || Boolean(receipt.pdf_error);

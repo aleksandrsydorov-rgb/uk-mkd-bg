@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildPaymentReceiptPdfBlob } from '@/lib/paymentReceipts/buildReceiptPdf';
+import { receiptBlockingMissingFields } from '@/lib/paymentReceipts/receiptFormat';
 import {
   PAYMENT_RECEIPTS_BUCKET,
   type PaymentReceiptModule,
@@ -122,17 +123,19 @@ export async function ensurePaymentReceiptPdf(
       return {
         receipt: receipt,
         error: refreshed.error ?? 'uk_refresh_failed',
-        missingUk: receipt.missing_uk_fields ?? [],
+        missingUk: receiptBlockingMissingFields(receipt),
       };
     }
     receipt = refreshed.receipt;
-    if ((receipt.missing_uk_fields?.length ?? 0) > 0) {
-      return {
-        receipt,
-        error: 'uk_details_incomplete',
-        missingUk: receipt.missing_uk_fields ?? [],
-      };
-    }
+  }
+
+  const blocking = receiptBlockingMissingFields(receipt);
+  if (blocking.length > 0) {
+    return {
+      receipt,
+      error: 'uk_details_incomplete',
+      missingUk: blocking,
+    };
   }
 
   if (receipt.status === 'ready' && receipt.storage_path) {

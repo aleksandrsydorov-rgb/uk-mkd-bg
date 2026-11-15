@@ -223,10 +223,11 @@ export async function buildPaymentReceiptPdf(row: PaymentReceiptRow): Promise<js
   const contact = [mgmt.phone, mgmt.email].filter(Boolean).join(' · ');
   if (contact) recipientLines.push(contact);
   if (primaryBank) {
+    const bic = primaryBank.bic_swift ?? primaryBank.bic;
     const bankBits = [
       primaryBank.iban ? `IBAN: ${primaryBank.iban}` : '',
       primaryBank.bank_name ? String(primaryBank.bank_name) : '',
-      primaryBank.bic ? `BIC ${primaryBank.bic}` : '',
+      bic ? `BIC ${bic}` : '',
     ].filter(Boolean);
     if (bankBits.length) recipientLines.push(bankBits.join(' · '));
   }

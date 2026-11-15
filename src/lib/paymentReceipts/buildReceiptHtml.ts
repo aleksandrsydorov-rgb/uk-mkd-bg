@@ -40,10 +40,11 @@ export function buildPaymentReceiptHtml(row: PaymentReceiptRow): string {
         .join(', '),
   );
 
+  const primaryBic = primaryBank?.bic_swift ?? primaryBank?.bic;
   const bankBlock = primaryBank
     ? `<div class="muted">IBAN: ${esc(primaryBank.iban ?? '—')}${
         primaryBank.bank_name ? ` · ${esc(primaryBank.bank_name)}` : ''
-      }${primaryBank.bic ? ` · BIC ${esc(primaryBank.bic)}` : ''}</div>`
+      }${primaryBic ? ` · BIC ${esc(primaryBic)}` : ''}</div>`
     : '';
 
   const refs = row.external_refs ?? {};

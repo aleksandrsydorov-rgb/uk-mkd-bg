@@ -43,6 +43,33 @@ export function receiptPaymentMethodLabel(method: string | null | undefined): st
   return method;
 }
 
+export function isBankPaymentMethod(method: string | null | undefined): boolean {
+  const m = (method || '').toLowerCase();
+  return m === 'bank' || m === 'transfer' || m === 'банков превод';
+}
+
+/** Primary (or first) IBAN from the frozen party snapshot. */
+export function receiptSnapshotPrimaryIban(
+  snapshot: PaymentReceiptRow['party_snapshot'] | null | undefined,
+): string {
+  const banks = Array.isArray(snapshot?.bank_accounts) ? snapshot!.bank_accounts! : [];
+  const rows = banks as Array<Record<string, unknown>>;
+  const primary = rows.find((b) => b.is_primary === true) ?? rows[0] ?? null;
+  return String(primary?.iban ?? '').trim();
+}
+
+/**
+ * UK / payment-method gaps that block PDF finalize.
+ * Bank transfer requires a primary IBAN from the complex card bank list.
+ */
+export function receiptBlockingMissingFields(row: Pick<PaymentReceiptRow, 'missing_uk_fields' | 'payment_method' | 'party_snapshot'>): string[] {
+  const missing = [...(row.missing_uk_fields ?? [])];
+  if (isBankPaymentMethod(row.payment_method) && !receiptSnapshotPrimaryIban(row.party_snapshot)) {
+    if (!missing.includes('bank_iban')) missing.push('bank_iban');
+  }
+  return missing;
+}
+
 export function receiptPurposeLines(row: PaymentReceiptRow): PaymentReceiptPurposeLine[] {
   if (Array.isArray(row.purpose_lines) && row.purpose_lines.length > 0) {
     return row.purpose_lines;

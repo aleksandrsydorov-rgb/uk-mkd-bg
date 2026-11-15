@@ -146,7 +146,7 @@ export function OwnershipRosterEditor({
               <input
                 className={fieldClass}
                 disabled={disabled}
-                placeholder={t('xfer.middleName')}
+                placeholder={t('admin.bookMiddleName')}
                 value={o.middle_name}
                 onChange={(e) => patch(o.key, { middle_name: e.target.value })}
               />

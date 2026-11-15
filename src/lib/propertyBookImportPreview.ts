@@ -946,12 +946,13 @@ export function groupBookPreviewByApartment(issues: BookPreviewIssue[]): {
     card.issues.push(issue);
   }
   const cards = [...byKey.values()].map((card) => {
-    const hasError = card.issues.some((i) => i.severity === 'error');
-    const hasWarn = card.issues.some((i) => i.severity === 'warning');
+    const collapsed = collapseApartmentCardIssues(card.issues);
+    const hasError = collapsed.some((i) => i.severity === 'error');
+    const hasWarn = collapsed.some((i) => i.severity === 'warning');
     return {
       ...card,
       status: (hasError ? 'error' : hasWarn ? 'clarify' : 'ok') as BookApartmentPreviewStatus,
-      issues: [...card.issues].sort((a, b) => {
+      issues: collapsed.sort((a, b) => {
         if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
         return (a.rows[0] ?? 0) - (b.rows[0] ?? 0);
       }),
@@ -965,6 +966,91 @@ export function groupBookPreviewByApartment(issues: BookPreviewIssue[]): {
     return a.apartment.localeCompare(b.apartment, undefined, { numeric: true });
   });
   return { cards, unlinked };
+}
+
+/** Soft owner-field codes that mean “will save, need to clarify …” (not identity-only). */
+const PARTIAL_OWNER_FIELD_REASONS = new Set([
+  'entity_kind_required',
+  'owner_share_required',
+  'owner_email_required',
+  'natural_name_required',
+  'legal_name_required',
+  'eik_required',
+  'sole_trader_name_required',
+  'owner_vote_weight_mismatch',
+]);
+
+/**
+ * One card = unique remarks (no duplicate reasons). Incomplete owner rows with
+ * any person/org payload collapse soft field warns into `owner_partial_saved`.
+ * `owners_required` / `ownership_identity_incomplete` stay only for identity-only.
+ */
+export function collapseApartmentCardIssues(issues: BookPreviewIssue[]): BookPreviewIssue[] {
+  const byReason = new Map<string, BookPreviewIssue>();
+  for (const issue of issues) {
+    const existing = byReason.get(issue.reason);
+    if (!existing) {
+      byReason.set(issue.reason, { ...issue, rows: [...issue.rows] });
+      continue;
+    }
+    const rows = new Set([...existing.rows, ...issue.rows]);
+    byReason.set(issue.reason, {
+      ...existing,
+      rows: [...rows].sort((a, b) => a - b),
+      severity: existing.severity === 'error' || issue.severity === 'error' ? 'error' : 'warning',
+    });
+  }
+
+  const list = [...byReason.values()];
+  const partials = list.filter((i) => PARTIAL_OWNER_FIELD_REASONS.has(i.reason));
+  const hasIdentityOnlyMsg = list.some(
+    (i) => i.reason === 'owners_required' || i.reason === 'ownership_identity_incomplete',
+  );
+
+  // Partial payload: drop identity-only wording + field-level soft duplicates → one save notice.
+  if (partials.length > 0) {
+    const rows = [...new Set(partials.flatMap((i) => i.rows))].sort((a, b) => a - b);
+    const first = partials[0]!;
+    const merged: BookPreviewIssue = {
+      severity: 'warning',
+      reason: 'owner_partial_saved',
+      sheet: first.sheet,
+      field: first.field,
+      apartment: first.apartment,
+      sectionCode: first.sectionCode,
+      blockCode: first.blockCode,
+      rows,
+      candidateSections: first.candidateSections,
+      value: partials.map((i) => i.reason).join(','),
+    };
+    const rest = list.filter(
+      (i) =>
+        !PARTIAL_OWNER_FIELD_REASONS.has(i.reason) &&
+        i.reason !== 'owners_required' &&
+        i.reason !== 'ownership_identity_incomplete',
+    );
+    return [...rest, merged];
+  }
+
+  // Identity-only: keep a single owners_required; drop legacy incomplete wording.
+  if (hasIdentityOnlyMsg) {
+    const identity =
+      byReason.get('owners_required') ?? byReason.get('ownership_identity_incomplete');
+    const rest = list.filter(
+      (i) => i.reason !== 'owners_required' && i.reason !== 'ownership_identity_incomplete',
+    );
+    if (identity) {
+      return [
+        ...rest,
+        {
+          ...identity,
+          reason: 'owners_required',
+        },
+      ];
+    }
+  }
+
+  return list;
 }
 
 export function clarifyGroupSummary(group: ClarifyIssueGroup, t: TFn): string {

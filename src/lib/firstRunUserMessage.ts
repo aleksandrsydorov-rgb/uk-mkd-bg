@@ -697,6 +697,35 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
     return t('admin.bookPreviewIssueOwnersMissing');
   }
 
+  if (issue.reason === 'owner_partial_saved') {
+    const codes = String(issue.value || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const fieldLabels = codes
+      .map((code) => {
+        if (code === 'entity_kind_required') return t('admin.bookPreviewPartialFieldEntityKind');
+        if (code === 'owner_share_required') return t('admin.bookPreviewPartialFieldShare');
+        if (code === 'owner_email_required') return t('admin.bookPreviewPartialFieldEmail');
+        if (code === 'natural_name_required' || code === 'sole_trader_name_required') {
+          return t('admin.bookPreviewPartialFieldName');
+        }
+        if (code === 'legal_name_required') return t('admin.bookPreviewPartialFieldLegalName');
+        if (code === 'eik_required') return t('admin.bookPreviewPartialFieldEik');
+        return '';
+      })
+      .filter(Boolean);
+    const unique = [...new Set(fieldLabels)];
+    return t('admin.bookPreviewIssuePartialSaved', {
+      fields: unique.length > 0 ? unique.join(t('admin.bookPreviewPartialFieldsJoin')) : '—',
+    });
+  }
+
+  // Never surface the old hard reject for incomplete-but-saveable rows.
+  if (issue.reason === 'ownership_identity_incomplete') {
+    return t('admin.bookPreviewIssueOwnersMissing');
+  }
+
   const base = presentImportReason(issue.reason, t, {
     severity: issue.severity,
     nothingSaved: issue.severity === 'error',
@@ -722,11 +751,15 @@ export function presentImportSeverity(severity: string | undefined, t: T): strin
   return severity === 'warning' ? t('admin.bookImportSeverityWarning') : t('admin.bookImportSeverityError');
 }
 
-/** Excel row + field line under a card issue (when determinable). */
+/** Sheet + Excel row (+ column) under a card issue (when determinable). */
 export function presentBookPreviewIssueWhere(issue: BookPreviewIssue, t: T): string {
+  const sheet = presentImportSheet(issue.sheet, issue.field, t);
   const field = presentImportField(issue.field, t);
   const rowsLabel = formatExcelRowRanges(issue.rows) || '—';
-  return t('admin.bookPreviewIssueExcelWhere', { row: rowsLabel, field });
+  if (issue.reason === 'owner_partial_saved' || issue.reason === 'owners_required') {
+    return t('admin.bookPreviewIssueSheetRow', { sheet, row: rowsLabel });
+  }
+  return t('admin.bookPreviewIssueExcelWhere', { sheet, row: rowsLabel, field });
 }
 
 export type PresentedImportErrorRow = {

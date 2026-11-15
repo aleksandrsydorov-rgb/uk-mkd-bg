@@ -80,6 +80,7 @@ import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
 import {
   parsePropertyBookWorkbook,
   partitionPropertyBookOwnerRows,
+  propertyBookOwnersForImport,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
 import {
@@ -985,9 +986,9 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     await run(async () => {
       const payload = await parsePropertyBookWorkbook(file, 'owners');
       const partitioned = partitionPropertyBookOwnerRows(payload.owners);
-      // Identity-only rows are placeholders (clarify via missing owners); blank rows already dropped.
-      const ownersForImport = partitioned.creatable;
-      if (ownersForImport.length === 0 && partitioned.identityOnly.length === 0) {
+      // Partial + identity-only stubs are saved (server skips stub wipe when owners exist).
+      const ownersForImport = propertyBookOwnersForImport(partitioned);
+      if (ownersForImport.length === 0) {
         setError(t('admin.is2PropertyBookEmptyOwners'));
         return;
       }
@@ -1017,7 +1018,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setBookPayload({
           ...payload,
           owners: ownersForImport,
-          ownersPreviewExtra: partitioned.identityOnly,
         });
         return;
       }
@@ -1042,7 +1042,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       setBookPayload({
         objects: objectsWithType,
         owners: ownersForImport,
-        ownersPreviewExtra: partitioned.identityOnly,
       });
     });
   }
@@ -1680,10 +1679,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           error={error}
           needsComplexFix={false}
           previewObjects={bookPayload?.objects}
-          previewOwners={[
-            ...(bookPayload?.owners ?? []),
-            ...(bookPayload?.ownersPreviewExtra ?? []),
-          ]}
+          previewOwners={bookPayload?.owners}
           onDownload={() =>
             downloadXlsx(
               buildPropertyBookOwnersTemplateBuffer(locale),

@@ -2063,6 +2063,10 @@ export function AdminPropertyBook({
                                 value={displayValue(owner.first_name, empty)}
                               />
                               <AdminInfoRow
+                                label={t('admin.bookMiddleName')}
+                                value={displayValue(owner.middle_name, empty)}
+                              />
+                              <AdminInfoRow
                                 label={t('admin.bookLastName')}
                                 value={displayValue(owner.last_name, empty)}
                               />
@@ -2203,6 +2207,20 @@ export function AdminPropertyBook({
                                   setOwners((prev) =>
                                     prev.map((o, i) =>
                                       i === idx ? { ...o, first_name: e.target.value } : o,
+                                    ),
+                                  )
+                                }
+                              />
+                            </label>
+                            <label className="grid gap-1 text-xs text-secondary">
+                              {t('admin.bookMiddleName')}
+                              <input
+                                className={adminFieldClass}
+                                value={owner.middle_name}
+                                onChange={(e) =>
+                                  setOwners((prev) =>
+                                    prev.map((o, i) =>
+                                      i === idx ? { ...o, middle_name: e.target.value } : o,
                                     ),
                                   )
                                 }

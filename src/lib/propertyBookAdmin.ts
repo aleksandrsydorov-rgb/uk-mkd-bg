@@ -283,7 +283,7 @@ function coerceOwnersOwnershipType(rows: Record<string, string>[]): Record<strin
 const OWNER_PAYLOAD_KEYS = [
   'entity_kind',
   'first_name',
-  'middle_name',
+  // middle_name is fully optional — alone it does not count as owner payload
   'last_name',
   'entity_name',
   'eik_bulstat',
@@ -291,7 +291,7 @@ const OWNER_PAYLOAD_KEYS = [
   'phone',
   'phone_secondary',
   'ownership_share_percent',
-  // ideal_parts_percent is apartment-level (Objects step); legacy owner column is ignored for creatable detection
+  // ideal_parts_percent is apartment-level (Objects step); legacy owner column is ignored for payload detection
 ] as const;
 
 function ownerPayloadFilled(row: Record<string, string>): boolean {
@@ -311,7 +311,7 @@ export function isPropertyBookOwnerRowBlank(row: Record<string, string>): boolea
 
 /**
  * Apartment identity present, but no owner person/org fields.
- * Used as a placeholder: mark clarify, do not create an empty owner.
+ * Import may create one draft stub (if the apartment has no owners yet).
  */
 export function isPropertyBookOwnerIdentityOnly(row: Record<string, string>): boolean {
   if (!String(row.apartment_number ?? '').trim()) return false;
@@ -319,9 +319,9 @@ export function isPropertyBookOwnerIdentityOnly(row: Record<string, string>): bo
 }
 
 /**
- * Split parsed owners: drop blank rows; keep identity-only out of the RPC payload
- * (creatable owners only). Identity-only apartments still clarify via missing owners
- * on the objects stubs.
+ * Split parsed owners: drop blank rows; separate partial/full payload from identity-only.
+ * Both creatable and identityOnly are sent to import RPC (server skips stub wipe when
+ * owners already exist).
  */
 export function partitionPropertyBookOwnerRows(rows: Record<string, string>[]): {
   creatable: Record<string, string>[];
@@ -345,14 +345,19 @@ export function partitionPropertyBookOwnerRows(rows: Record<string, string>[]): 
   return { creatable, identityOnly, blankSkipped };
 }
 
+/** Owners payload for RPC: partial/full rows + identity-only stubs (blank rows already dropped). */
+export function propertyBookOwnersForImport(partitioned: {
+  creatable: Record<string, string>[];
+  identityOnly: Record<string, string>[];
+}): Record<string, string>[] {
+  return [...partitioned.creatable, ...partitioned.identityOnly];
+}
+
 export type PropertyBookWorkbookPayload = {
   objects: Record<string, string>[];
-  /** Creatable owner rows sent to import RPC (never identity-only / blank). */
+  /** Owner rows sent to import RPC (partial + identity-only stubs; never blank). */
   owners: Record<string, string>[];
-  /**
-   * Identity-only apartment rows kept for preview Excel-row hints only.
-   * Never passed to admin_import_property_book.
-   */
+  /** @deprecated identity-only is now included in `owners`; kept for preview hints. */
   ownersPreviewExtra?: Record<string, string>[];
 };
 

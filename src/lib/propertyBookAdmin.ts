@@ -116,6 +116,7 @@ export const BOOK_OWNERS_CSV_HEADERS = [
   'apartment_number',
   'section_code',
   'block_code',
+  'ownership_type',
   'entity_kind',
   'ownership_share_percent',
   'ideal_parts_percent',

@@ -43,8 +43,9 @@ import {
   apartmentsWithOwnersCount,
   buildBookPreviewIssues,
   buildBookSectionBreakdown,
-  formatBookApartmentRef,
-  sectionBucketTitle,
+  clarifyGroupSummary,
+  formatSectionCountsLine,
+  groupClarifyIssuesByReason,
 } from '@/lib/propertyBookImportPreview';
 import {
   FirstRunTariffPrepBlock,
@@ -438,6 +439,7 @@ export function FirstRunBookImport({
   onContinue: () => void;
 }) {
   const isOwners = phase === 'owners';
+  const [expandedClarify, setExpandedClarify] = useState<Record<string, boolean>>({});
   const importable =
     dry && typeof dry.importableCount === 'number' ? dry.importableCount : dry ? dry.newCount : 0;
   const clarify = dry?.clarificationCount ?? 0;
@@ -460,6 +462,7 @@ export function FirstRunBookImport({
   });
   const blockingIssues = issues.filter((i) => i.severity === 'error');
   const clarifyIssues = issues.filter((i) => i.severity === 'warning');
+  const clarifyGroups = groupClarifyIssuesByReason(clarifyIssues);
   const blocking = dry?.blockingErrorCount ?? blockingIssues.length;
   // Owners commit uses allow_overwrite — do not block the confirm button.
   const overwriteBlocked = !isOwners && dry?.requiresOverwriteConfirmation === true;
@@ -650,36 +653,10 @@ export function FirstRunBookImport({
           {dry && !committed && !isOwners && breakdown.sections.length > 0 ? (
             <div className={styles.tableWrap} style={{ marginTop: 12 }}>
               <p className={styles.importLabel}>{t('admin.bookPreviewSectionsTitle')}</p>
-              <p className={styles.hint} style={{ marginBottom: 8 }}>
+              <p className={styles.hint} style={{ marginBottom: 4 }}>
                 {foundLabel}
-                {breakdown.sections.length
-                  ? ` · ${breakdown.sections
-                      .map((s) => sectionBucketTitle(t, s))
-                      .join(' · ')}`
-                  : ''}
               </p>
-              {breakdown.sections.map((bucket) => (
-                <div key={`${bucket.sectionCode}|${bucket.blockCode}`} style={{ marginBottom: 10 }}>
-                  <p className={styles.importLabel}>{sectionBucketTitle(t, bucket)}</p>
-                  <ul className={styles.hint} style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-                    {bucket.apartments.slice(0, 40).map((apt) => (
-                      <li key={`${bucket.sectionCode}-${bucket.blockCode}-${apt.apartmentNumber}`}>
-                        {formatBookApartmentRef(t, {
-                          apartmentNumber: apt.apartmentNumber,
-                          sectionCode: bucket.sectionCode,
-                          blockCode: bucket.blockCode,
-                        })}
-                        {apt.ownershipTypeMissing
-                          ? ` — ${t('admin.bookIssue_ownership_type_required')}`
-                          : ''}
-                      </li>
-                    ))}
-                    {bucket.apartments.length > 40 ? (
-                      <li>… +{bucket.apartments.length - 40}</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ))}
+              <p className={styles.hint}>{formatSectionCountsLine(t, breakdown)}</p>
             </div>
           ) : null}
 
@@ -697,18 +674,47 @@ export function FirstRunBookImport({
             </div>
           ) : null}
 
-          {dry && !committed && clarifyIssues.length > 0 ? (
+          {dry && !committed && clarifyGroups.length > 0 ? (
             <div className={styles.tableWrap} style={{ marginTop: 12 }}>
               <p className={styles.importLabel}>{t('admin.bookPreviewClarifyTitle')}</p>
               <p className={styles.hint}>{t('admin.bookPreviewClarifyHint')}</p>
-              <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                {clarifyIssues.slice(0, 80).map((issue, idx) => (
-                  <li key={`clarify-${issue.reason}-${issue.apartment}-${idx}`}>
-                    {presentBookPreviewIssue(issue, t)}
-                  </li>
-                ))}
-                {clarifyIssues.length > 80 ? <li>… +{clarifyIssues.length - 80}</li> : null}
-              </ul>
+              <div style={{ marginTop: 8 }}>
+                {clarifyGroups.map((group) => {
+                  const open = expandedClarify[group.reason] === true;
+                  const summary = clarifyGroupSummary(group, t);
+                  return (
+                    <div key={`clarify-g-${group.reason}`} style={{ marginBottom: 10 }}>
+                      <p className={styles.hint} style={{ marginBottom: 4 }}>
+                        {summary}
+                      </p>
+                      <button
+                        type="button"
+                        className={styles.secondary}
+                        disabled={busy}
+                        onClick={() =>
+                          setExpandedClarify((prev) => ({
+                            ...prev,
+                            [group.reason]: !open,
+                          }))
+                        }
+                      >
+                        {open
+                          ? t('admin.bookPreviewClarifyHideApartments')
+                          : t('admin.bookPreviewClarifyShowApartments')}
+                      </button>
+                      {open ? (
+                        <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                          {group.issues.map((issue, idx) => (
+                            <li key={`clarify-${issue.reason}-${issue.apartment}-${idx}`}>
+                              {presentBookPreviewIssue(issue, t)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
 

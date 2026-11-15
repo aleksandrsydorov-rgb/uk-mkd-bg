@@ -3717,7 +3717,7 @@ export const ru = {
     bookIssue_purpose_required: 'Не указано назначение',
     bookIssue_area_required: 'Не указана площадь',
     bookIssue_object_ideal_parts_required: 'Не указаны идеальные части объекта',
-    bookIssue_ownership_type_required: 'Не указан тип владения',
+    bookIssue_ownership_type_required: 'Не указан тип собственности',
     bookIssue_owner_share_required: 'Не указана доля собственности',
     bookIssue_owner_ideal_parts_required: 'Не указаны идеальные части собственника',
     bookIssue_entity_kind_required: 'Не указан тип собственника',
@@ -3783,6 +3783,14 @@ export const ru = {
     bookPreviewClarifyTitle: 'Можно уточнить позже',
     bookPreviewClarifyHint: 'Импорт разрешён. Эти сведения можно дополнить в Книге собственности.',
     bookPreviewSectionsTitle: 'Квартиры по секциям',
+    bookPreviewSectionsTotal: 'всего {n}',
+    bookPreviewClarifyShowApartments: 'Показать квартиры',
+    bookPreviewClarifyHideApartments: 'Скрыть',
+    bookPreviewClarifyOwnershipTypeSummary: 'Тип собственности не указан у {n} квартир',
+    bookPreviewClarifyPurposeSummary: 'Назначение не указано у {n} квартир',
+    bookPreviewClarifyAreaSummary: 'Площадь не указана у {n} квартир',
+    bookPreviewClarifyIdealPartsSummary: 'Идеальные части не указаны у {n} квартир',
+    bookPreviewClarifyGenericSummary: 'Требуют уточнения: {n}',
     bookPreviewIssueAmbiguousAptRows:
       'Лист «{sheet}», строки {rows}: апартамент №{apt} есть в секциях {sections}. Заполните колонку «{field}».',
     bookPreviewIssueAmbiguousApt:
@@ -8968,7 +8976,7 @@ export const en: Messages = {
     bookIssue_purpose_required: 'Purpose missing',
     bookIssue_area_required: 'Area missing',
     bookIssue_object_ideal_parts_required: 'Object ideal parts missing',
-    bookIssue_ownership_type_required: 'Ownership type missing',
+    bookIssue_ownership_type_required: 'Ownership type is not specified',
     bookIssue_owner_share_required: 'Ownership share missing',
     bookIssue_owner_ideal_parts_required: 'Owner ideal parts missing',
     bookIssue_entity_kind_required: 'Entity kind missing',
@@ -9035,12 +9043,20 @@ export const en: Messages = {
     bookPreviewClarifyTitle: 'Can be clarified later',
     bookPreviewClarifyHint: 'Import is allowed. You can complete these details later in the Property Book.',
     bookPreviewSectionsTitle: 'Apartments by section',
+    bookPreviewSectionsTotal: 'total {n}',
+    bookPreviewClarifyShowApartments: 'Show apartments',
+    bookPreviewClarifyHideApartments: 'Hide',
+    bookPreviewClarifyOwnershipTypeSummary: 'Ownership type is not specified for {n} apartments',
+    bookPreviewClarifyPurposeSummary: 'Purpose is not specified for {n} apartments',
+    bookPreviewClarifyAreaSummary: 'Area is not specified for {n} apartments',
+    bookPreviewClarifyIdealPartsSummary: 'Ideal parts are not specified for {n} apartments',
+    bookPreviewClarifyGenericSummary: 'Need clarification: {n}',
     bookPreviewIssueAmbiguousAptRows:
       'Sheet “{sheet}”, rows {rows}: apartment №{apt} exists in sections {sections}. Fill the “{field}” column.',
     bookPreviewIssueAmbiguousApt:
       'Sheet “{sheet}”: apartment №{apt} exists in sections {sections}. Fill the “{field}” column.',
     bookPreviewIssueOwnershipTypeMissing:
-      '{aptRef} — ownership type is missing. Sheet “{sheet}”, row {row}, column “{field}”.',
+      '{aptRef} — ownership type is not specified. Sheet “{sheet}”, row {row}, column “{field}”.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — invalid value “{value}” in column “{field}”. Sheet “{sheet}”, row {row}. Allowed: {allowed}.',
     bookPreviewIssueOwnersMissing: '{aptRef} — no owner details. Fill the “{sheet}” sheet.',
@@ -12882,7 +12898,7 @@ export const bg: Messages = {
     is2PropertyBookXlsxInstructions: 'Листове objects + owners; инструкции BG/RU/EN в шаблона',
     is2ColApartment: 'Апартамент',
     is2ColPurpose: 'Предназначение',
-    is2ColOwnershipType: 'Вид собственост',
+    is2ColOwnershipType: 'Тип собственост',
     is2PropertyBookSsotNote:
       'Книгата е единственият източник на истина за събрания и прехвърляния. Импортът не замества законовите прехвърляния.',
     is2PropertyBookManualHint:
@@ -14229,7 +14245,7 @@ export const bg: Messages = {
     bookIssue_purpose_required: 'Липсва предназначение',
     bookIssue_area_required: 'Липсва площ',
     bookIssue_object_ideal_parts_required: 'Липсват идеални части на обекта',
-    bookIssue_ownership_type_required: 'Липсва тип собственост',
+    bookIssue_ownership_type_required: 'Не е посочен тип собственост',
     bookIssue_owner_share_required: 'Липсва дял',
     bookIssue_owner_ideal_parts_required: 'Липсват идеални части на собственика',
     bookIssue_entity_kind_required: 'Липсва вид собственик',
@@ -14295,12 +14311,20 @@ export const bg: Messages = {
     bookPreviewClarifyTitle: 'Може да се уточни по-късно',
     bookPreviewClarifyHint: 'Импортът е разрешен. Данните могат да се допълнят по-късно в Книгата на собствеността.',
     bookPreviewSectionsTitle: 'Апартаменти по секции',
+    bookPreviewSectionsTotal: 'общо {n}',
+    bookPreviewClarifyShowApartments: 'Покажи апартаментите',
+    bookPreviewClarifyHideApartments: 'Скрий',
+    bookPreviewClarifyOwnershipTypeSummary: 'Тип собственост не е посочен за {n} апартамента',
+    bookPreviewClarifyPurposeSummary: 'Предназначението не е посочено за {n} апартамента',
+    bookPreviewClarifyAreaSummary: 'Площта не е посочена за {n} апартамента',
+    bookPreviewClarifyIdealPartsSummary: 'Идеалните части не са посочени за {n} апартамента',
+    bookPreviewClarifyGenericSummary: 'Изискват уточнение: {n}',
     bookPreviewIssueAmbiguousAptRows:
       'Лист «{sheet}», редове {rows}: апартамент №{apt} има в секции {sections}. Попълнете колоната «{field}».',
     bookPreviewIssueAmbiguousApt:
       'Лист «{sheet}»: апартамент №{apt} има в секции {sections}. Попълнете колоната «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
-      '{aptRef} — не е посочен вид собственост. Лист «{sheet}», ред {row}, колона «{field}».',
+      '{aptRef} — не е посочен тип собственост. Лист «{sheet}», ред {row}, колона «{field}».',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — недопустима стойност «{value}» в колона «{field}». Лист «{sheet}», ред {row}. Допустимо: {allowed}.',
     bookPreviewIssueOwnersMissing: '{aptRef} — няма данни за собственик. Попълнете листа «{sheet}».',

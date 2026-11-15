@@ -235,11 +235,61 @@ function isPropertyBookOwnersNoise(entry: unknown): boolean {
   ) {
     return true;
   }
+  // Ownership type is filled on the owners sub-step — not an apartments-step clarify.
+  if (code === 'ownership_type_required' || code === 'required:ownership_type') {
+    return true;
+  }
   return false;
 }
 
 function filterObjectsStepBookIssues(entries: unknown[]): unknown[] {
   return entries.filter((e) => !isPropertyBookOwnersNoise(e));
+}
+
+/** Apply a single consistent ownership_type from owner rows onto matching object stubs. */
+function mergeOwnersOwnershipTypeOntoObjects(
+  objects: Record<string, string>[],
+  owners: Array<Record<string, string>>,
+): Record<string, string>[] {
+  const byKey = new Map<string, string>();
+  for (const raw of owners) {
+    const apt = String(raw.apartment_number ?? '').trim();
+    if (!apt) continue;
+    const type = String(raw.ownership_type ?? '')
+      .trim()
+      .toLowerCase();
+    if (type !== 'sole' && type !== 'shared') continue;
+    const key = [
+      apt.toLowerCase(),
+      String(raw.section_code ?? '')
+        .trim()
+        .toLowerCase(),
+      String(raw.block_code ?? '')
+        .trim()
+        .toLowerCase(),
+    ].join('\u0001');
+    const prev = byKey.get(key);
+    if (prev && prev !== type) continue; // conflict handled separately
+    byKey.set(key, type);
+  }
+  return objects.map((obj) => {
+    const key = [
+      String(obj.apartment_number ?? '')
+        .trim()
+        .toLowerCase(),
+      String(obj.section_code ?? '')
+        .trim()
+        .toLowerCase(),
+      String(obj.block_code ?? '')
+        .trim()
+        .toLowerCase(),
+    ].join('\u0001');
+    const fromOwners = byKey.get(key);
+    // Only apply when owners rows agree on a type (conflicts are blocked earlier).
+    // Never invent a type when the file left it blank.
+    if (!fromOwners) return obj;
+    return { ...obj, ownership_type: fromOwners };
+  });
 }
 
 function bookStageIsComplete(
@@ -911,8 +961,13 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         throw new Error(t('admin.is2PropertyBookImportFailed'));
       }
       const importableRaw = Number(res.importable_count);
+      const softAfter = filterObjectsStepBookIssues(
+        Array.isArray(res.warnings) ? res.warnings : [],
+      );
       setBookCommitSummary({
-        clarificationCount: Number(res.clarification_count ?? 0) || 0,
+        clarificationCount: Array.isArray(res.warnings)
+          ? softAfter.length
+          : Number(res.clarification_count ?? 0) || 0,
         importableCount: Number.isFinite(importableRaw)
           ? importableRaw
           : bookPayload.objects.length,
@@ -999,8 +1054,9 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setError(t('admin.is2PropertyBookEmptyObjects'));
         return;
       }
+      const objectsWithType = mergeOwnersOwnershipTypeOntoObjects(objectStubs, payload.owners);
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
-        p_objects: objectStubs,
+        p_objects: objectsWithType,
         p_owners: payload.owners,
         p_dry_run: true,
         p_allow_create_missing: false,
@@ -1008,7 +1064,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       });
       if (rpcErr) throw new Error(rpcErr.message);
       applyBookDryRun(asObj(data), { filterOwnersNoise: false, ignoreOverwriteBlock: true });
-      setBookPayload({ objects: objectStubs, owners: payload.owners });
+      setBookPayload({ objects: objectsWithType, owners: payload.owners });
     });
   }
 

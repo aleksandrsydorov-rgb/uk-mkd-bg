@@ -22,6 +22,11 @@ export type ImportColumnDef = {
   instruction: Record<ImportTemplateLocale, string>;
   /** Example value shown only on the Instruction sheet (never on the data sheet). */
   example?: string;
+  /**
+   * When false, the column is still accepted on import (legacy files) but omitted
+   * from downloaded templates and instruction tables. Default true.
+   */
+  includeInTemplate?: boolean;
 };
 
 export type ImportTemplateSpec = {

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBookPreviewIssues,
   buildBookSectionBreakdown,
+  clarifyGroupSummary,
   formatExcelRowRanges,
+  formatSectionCountsLine,
+  groupClarifyIssuesByReason,
 } from '@/lib/propertyBookImportPreview';
 import { presentBookPreviewIssue } from '@/lib/firstRunUserMessage';
 import { translate } from '@/i18n/translate';
@@ -103,7 +106,50 @@ describe('propertyBookImportPreview', () => {
     const ownMsg = presentBookPreviewIssue(clarify[0]!, tRu);
     expect(ownMsg).toContain('Подъезд A');
     expect(ownMsg).toContain('Тип собственности');
-    expect(ownMsg).toContain('Объекты');
+    expect(ownMsg).toContain('Собственники');
+  });
+
+  it('formats compact section counts without per-apt ownership clutter', () => {
+    const objects = [];
+    for (let i = 1; i <= 36; i += 1) objects.push({ apartment_number: String(i), section_code: 'A', _row: i + 1 });
+    for (let i = 1; i <= 43; i += 1) objects.push({ apartment_number: String(i), section_code: 'Б', _row: 40 + i });
+    for (let i = 1; i <= 36; i += 1) objects.push({ apartment_number: String(i), section_code: 'В', _row: 90 + i });
+    const br = buildBookSectionBreakdown(objects);
+    const line = formatSectionCountsLine(tRu, br);
+    expect(line).toContain('A — 36');
+    expect(line).toContain('Б — 43');
+    expect(line).toContain('В — 36');
+    expect(line).toContain('всего 115');
+    expect(line).not.toMatch(/тип собств/i);
+
+    const groups = groupClarifyIssuesByReason([
+      {
+        severity: 'warning',
+        reason: 'ownership_type_required',
+        sheet: 'owners',
+        field: 'ownership_type',
+        apartment: '1',
+        sectionCode: 'A',
+        blockCode: '',
+        rows: [2],
+        candidateSections: [],
+        value: '',
+      },
+      {
+        severity: 'warning',
+        reason: 'ownership_type_required',
+        sheet: 'owners',
+        field: 'ownership_type',
+        apartment: '2',
+        sectionCode: 'A',
+        blockCode: '',
+        rows: [3],
+        candidateSections: [],
+        value: '',
+      },
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(clarifyGroupSummary(groups[0]!, tRu)).toBe('Тип собственности не указан у 2 квартир');
   });
 
   it('rewrites orphan object_row_missing to ambiguous section when file has multiple sections', () => {

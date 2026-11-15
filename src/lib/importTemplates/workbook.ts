@@ -121,6 +121,11 @@ function applyColumnFormats(sheet: XLSX.WorkSheet, columns: ImportColumnDef[], r
   }
 }
 
+/** Columns shown in downloaded templates (legacy-only columns stay parseable). */
+export function templateColumns(spec: ImportTemplateSpec): ImportColumnDef[] {
+  return spec.columns.filter((c) => c.includeInTemplate !== false);
+}
+
 function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateLocale): XLSX.WorkSheet {
   const aoa: string[][] = [
     [spec.title[locale]],
@@ -132,7 +137,7 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
       locale === 'en' ? 'Example' : locale === 'bg' ? 'Пример' : 'Пример',
     ],
   ];
-  for (const col of spec.columns) {
+  for (const col of templateColumns(spec)) {
     aoa.push([
       col.label[locale],
       col.required
@@ -168,12 +173,13 @@ export function buildLocalizedImportWorkbook(
   spec: ImportTemplateSpec,
   locale: ImportTemplateLocale,
 ): ArrayBuffer {
-  const headers = spec.columns.map((c) => c.label[locale]);
+  const cols = templateColumns(spec);
+  const headers = cols.map((c) => c.label[locale]);
   const dataSheet = XLSX.utils.aoa_to_sheet([headers]);
   // Reserve empty typed rows so apartment / meter codes keep leading zeros when typed.
   const reserve = 80;
   for (let r = 1; r < reserve; r += 1) {
-    spec.columns.forEach((col, c) => {
+    cols.forEach((col, c) => {
       if (col.format === 'text' || col.format === 'date' || !col.format) {
         dataSheet[XLSX.utils.encode_cell({ r, c })] = { t: 's', v: '', z: '@' };
       }
@@ -181,9 +187,9 @@ export function buildLocalizedImportWorkbook(
   }
   dataSheet['!ref'] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: reserve - 1, c: Math.max(0, spec.columns.length - 1) },
+    e: { r: reserve - 1, c: Math.max(0, cols.length - 1) },
   });
-  applyColumnFormats(dataSheet, spec.columns, reserve);
+  applyColumnFormats(dataSheet, cols, reserve);
 
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, dataSheet, spec.dataSheetName[locale].slice(0, 31));
@@ -204,12 +210,13 @@ export function buildLocalizedImportWorkbookWithRows(
   locale: ImportTemplateLocale,
   rows: Array<Record<string, string>>,
 ): ArrayBuffer {
-  const headers = spec.columns.map((c) => c.label[locale]);
+  const cols = templateColumns(spec);
+  const headers = cols.map((c) => c.label[locale]);
   const body = rows.map((row) =>
-    spec.columns.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))),
+    cols.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))),
   );
   const dataSheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
-  applyColumnFormats(dataSheet, spec.columns, body.length + 1);
+  applyColumnFormats(dataSheet, cols, body.length + 1);
 
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, dataSheet, spec.dataSheetName[locale].slice(0, 31));

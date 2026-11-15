@@ -350,9 +350,12 @@ export function buildBookPreviewIssues(
         meta.blockCode = meta.blockCode || normalizePropertyBookBlockCode(obj.block_code);
         const r = rowNum(obj._row);
         if (r != null && !meta.sourceRows) meta.sourceRows = [r];
-        if (!row.sheet || row.sheet === 'validation') meta.forceSheet = 'objects';
-        if (!row.field) meta.forceField = 'ownership_type';
       }
+      // Two-step wizard: type is filled on the owners sub-step.
+      if (!row.sheet || row.sheet === 'validation' || row.sheet === 'objects') {
+        meta.forceSheet = 'owners';
+      }
+      if (!row.field) meta.forceField = 'ownership_type';
     }
 
     return {
@@ -428,4 +431,62 @@ export function sectionBucketTitle(t: TFn, bucket: BookSectionBucket): string {
     });
   }
   return t('admin.bookPreviewSectionPlain', { count: bucket.apartments.length });
+}
+
+/** Compact one-line section counts: «A — 36 · Б — 43 · В — 36 · всего 115». */
+export function formatSectionCountsLine(
+  t: TFn,
+  breakdown: { total: number; sections: BookSectionBucket[] },
+): string {
+  const parts = breakdown.sections.map((s) => {
+    if (s.sectionCode) return `${s.sectionCode} — ${s.apartments.length}`;
+    if (s.blockCode) return t('admin.bookPreviewBlockOnly', {
+      block: s.blockCode,
+      count: s.apartments.length,
+    });
+    return t('admin.bookPreviewSectionPlain', { count: s.apartments.length });
+  });
+  parts.push(t('admin.bookPreviewSectionsTotal', { n: breakdown.total }));
+  return parts.join(' · ');
+}
+
+export function isOwnershipTypeClarifyReason(reason: string): boolean {
+  const r = reason.trim().toLowerCase();
+  return r === 'ownership_type_required' || r === 'required:ownership_type';
+}
+
+export type ClarifyIssueGroup = {
+  reason: string;
+  issues: BookPreviewIssue[];
+};
+
+/** Group clarify issues by reason so each cause is summarized once. */
+export function groupClarifyIssuesByReason(issues: BookPreviewIssue[]): ClarifyIssueGroup[] {
+  const map = new Map<string, BookPreviewIssue[]>();
+  for (const issue of issues) {
+    const list = map.get(issue.reason) ?? [];
+    list.push(issue);
+    map.set(issue.reason, list);
+  }
+  return [...map.entries()].map(([reason, grouped]) => ({ reason, issues: grouped }));
+}
+
+export function clarifyGroupSummary(group: ClarifyIssueGroup, t: TFn): string {
+  const n = group.issues.length;
+  if (isOwnershipTypeClarifyReason(group.reason)) {
+    return t('admin.bookPreviewClarifyOwnershipTypeSummary', { n });
+  }
+  if (group.reason === 'purpose_required' || group.reason === 'required:purpose') {
+    return t('admin.bookPreviewClarifyPurposeSummary', { n });
+  }
+  if (group.reason === 'area_required' || group.reason === 'required:area_sqm') {
+    return t('admin.bookPreviewClarifyAreaSummary', { n });
+  }
+  if (
+    group.reason === 'object_ideal_parts_required' ||
+    group.reason === 'required:ideal_parts_percent'
+  ) {
+    return t('admin.bookPreviewClarifyIdealPartsSummary', { n });
+  }
+  return t('admin.bookPreviewClarifyGenericSummary', { n, reason: group.reason });
 }

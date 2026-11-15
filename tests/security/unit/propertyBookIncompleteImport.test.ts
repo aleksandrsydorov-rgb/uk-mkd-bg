@@ -54,9 +54,9 @@ describe('property book incomplete import', () => {
         'required:purpose',
         'required:area_sqm',
         'required:ideal_parts_percent',
-        'required:ownership_type',
       ]),
     );
+    expect(obj.warnings).not.toContain('required:ownership_type');
     expect(splitPropertyBookObjectProps({ apartment_number: '' }).errors).toContain(
       'required:apartment_number',
     );

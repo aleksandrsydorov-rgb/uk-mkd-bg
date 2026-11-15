@@ -570,6 +570,7 @@ export function presentImportSheet(sheet: string, field: string, t?: T): string 
     'entity_name',
     'eik_bulstat',
     'ownership_share_percent',
+    'ownership_type',
     'owners',
   ]);
   let kind: 'objects' | 'owners' | 'other' = 'other';

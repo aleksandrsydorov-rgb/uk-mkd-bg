@@ -68,8 +68,12 @@ export function splitPropertyBookObjectProps(row: Record<string, string>): Prope
   if (!row.purpose?.trim()) warnings.push('required:purpose');
   if (!row.area_sqm?.trim()) warnings.push('required:area_sqm');
   if (!row.ideal_parts_percent?.trim()) warnings.push('required:ideal_parts_percent');
-  if (!row.ownership_type?.trim()) warnings.push('required:ownership_type');
-  else if (!OWNERSHIP_SET.has(row.ownership_type.trim().toLowerCase())) {
+  // Ownership type is set on the owners step in two-step first-run; empty is not an
+  // objects-sheet clarification. Invalid non-empty values remain hard errors.
+  if (
+    row.ownership_type?.trim() &&
+    !OWNERSHIP_SET.has(row.ownership_type.trim().toLowerCase())
+  ) {
     errors.push('invalid:ownership_type');
   }
   const area = parseImportDecimal(row.area_sqm);

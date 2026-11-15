@@ -114,6 +114,11 @@ describe('book entity_kind 0/1', () => {
     expect(sheetXml).toMatch(/sqref="E2:E1001"/);
     expect(sheetXml).toMatch(/state="frozen"/);
     expect(sheetXml).toMatch(/errorStyle="warning"/);
+    // OOXML: dataValidations must precede ignoredErrors (Excel repairs otherwise).
+    const dvAt = sheetXml.search(/<dataValidations\b/i);
+    const ignoredAt = sheetXml.search(/<ignoredErrors\b/i);
+    expect(dvAt).toBeGreaterThan(0);
+    if (ignoredAt >= 0) expect(dvAt).toBeLessThan(ignoredAt);
     const wb = XLSX.read(buf, { type: 'array' });
     const data = wb.Sheets['Собственники'];
     expect(String(data['!ref'])).toMatch(/A1:O1001/i);

@@ -181,6 +181,25 @@ function applyFreezeHeader(xml: string, headerRows: number): string {
   throw new Error('xlsxListValidation: cannot insert freeze pane');
 }
 
+/**
+ * OOXML worksheet child order (ECMA-376): … sheetData … dataValidations …
+ * hyperlinks? printOptions? pageMargins? … ignoredErrors? … extLst?
+ * Appending dataValidations after ignoredErrors makes Excel repair/reject the file.
+ */
+function insertDataValidationsBlock(xml: string, block: string): string {
+  // Insert immediately before the first element that must follow dataValidations,
+  // or before </worksheet> when none of those are present.
+  const followers =
+    /<(hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|drawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b/i;
+  if (followers.test(xml)) {
+    return xml.replace(followers, (m) => `${block}${m}`);
+  }
+  if (!/<\/worksheet>/i.test(xml)) {
+    throw new Error('xlsxListValidation: </worksheet> not found');
+  }
+  return xml.replace(/<\/worksheet>/i, `${block}</worksheet>`);
+}
+
 function applyListValidationsXml(xml: string, items: XlsxListValidationItem[]): string {
   let out = xml.replace(/<dataValidations\b[\s\S]*?<\/dataValidations>/gi, '');
   if (!items.length) return out;
@@ -199,10 +218,7 @@ function applyListValidationsXml(xml: string, items: XlsxListValidationItem[]): 
     })
     .join('');
   const block = `<dataValidations count="${items.length}">${body}</dataValidations>`;
-  if (!/<\/worksheet>/i.test(out)) {
-    throw new Error('xlsxListValidation: </worksheet> not found');
-  }
-  return out.replace(/<\/worksheet>/i, `${block}</worksheet>`);
+  return insertDataValidationsBlock(out, block);
 }
 
 /**

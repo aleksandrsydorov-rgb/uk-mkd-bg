@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   PROPERTY_BOOK_OBJECTS_SPEC,
   PROPERTY_BOOK_OWNERS_SPEC,
+  buildLocalizedImportWorkbook,
   buildLocalizedMultiSheetImportWorkbook,
   columnHeaderCandidates,
   downloadImportTemplateBuffer,
@@ -211,35 +212,68 @@ function specSheetNames(spec: ImportTemplateSpec): Set<string> {
   return names;
 }
 
+export type PropertyBookParseMode = 'full' | 'objects' | 'owners';
+
 /**
- * Parse workbook buffer: objects + owners sheets.
+ * Parse workbook buffer.
+ * - full: combined Objects + Owners (legacy wizard / admin import)
+ * - objects: Objects sheet only (Owners sheet ignored if present)
+ * - owners: Owners sheet only (Objects sheet ignored if present)
  * Accepts localized sheet names (ru/bg/en), legacy `objects` / `owners`, and
- * localized or snake_case column headers.
+ * localized or snake_case column headers. Single-sheet templates are allowed
+ * for objects/owners modes.
  */
-export function parsePropertyBookWorkbookBuffer(buf: ArrayBuffer): PropertyBookWorkbookPayload {
+export function parsePropertyBookWorkbookBuffer(
+  buf: ArrayBuffer,
+  mode: PropertyBookParseMode = 'full',
+): PropertyBookWorkbookPayload {
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const dataSheets = wb.SheetNames.filter((n) => !isInstructionSheetName(n));
 
   const objectNames = specSheetNames(PROPERTY_BOOK_OBJECTS_SPEC);
   const ownerNames = specSheetNames(PROPERTY_BOOK_OWNERS_SPEC);
 
-  const objectsName =
-    dataSheets.find((n) => objectNames.has(n.trim().toLowerCase())) ?? dataSheets[0];
-  const ownersName =
-    dataSheets.find((n) => ownerNames.has(n.trim().toLowerCase())) ??
-    dataSheets.find((n) => n !== objectsName);
+  const objectsName = dataSheets.find((n) => objectNames.has(n.trim().toLowerCase()));
+  const ownersName = dataSheets.find((n) => ownerNames.has(n.trim().toLowerCase()));
 
-  if (!objectsName || !ownersName || objectsName === ownersName) {
+  if (mode === 'objects') {
+    const name = objectsName ?? dataSheets[0];
+    if (!name) throw new Error('Excel must contain an Objects sheet');
+    const objects = sheetToRecords(
+      wb.Sheets[name],
+      BOOK_OBJECTS_CSV_HEADERS,
+      PROPERTY_BOOK_OBJECTS_SPEC,
+    ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
+    return { objects, owners: [] };
+  }
+
+  if (mode === 'owners') {
+    const name = ownersName ?? dataSheets.find((n) => n !== objectsName) ?? dataSheets[0];
+    if (!name) throw new Error('Excel must contain an Owners sheet');
+    const owners = sheetToRecords(
+      wb.Sheets[name],
+      BOOK_OWNERS_CSV_HEADERS,
+      PROPERTY_BOOK_OWNERS_SPEC,
+      BOOK_OWNERS_SPARSE_HEADERS,
+    ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS));
+    return { objects: [], owners };
+  }
+
+  const resolvedObjects = objectsName ?? dataSheets[0];
+  const resolvedOwners =
+    ownersName ?? dataSheets.find((n) => n !== resolvedObjects);
+
+  if (!resolvedObjects || !resolvedOwners || resolvedObjects === resolvedOwners) {
     throw new Error('Excel must contain sheets "objects" and "owners"');
   }
 
   const objects = sheetToRecords(
-    wb.Sheets[objectsName],
+    wb.Sheets[resolvedObjects],
     BOOK_OBJECTS_CSV_HEADERS,
     PROPERTY_BOOK_OBJECTS_SPEC,
   ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
   const owners = sheetToRecords(
-    wb.Sheets[ownersName],
+    wb.Sheets[resolvedOwners],
     BOOK_OWNERS_CSV_HEADERS,
     PROPERTY_BOOK_OWNERS_SPEC,
     BOOK_OWNERS_SPARSE_HEADERS,
@@ -248,10 +282,13 @@ export function parsePropertyBookWorkbookBuffer(buf: ArrayBuffer): PropertyBookW
   return { objects, owners };
 }
 
-/** Parse one Excel workbook with sheets `objects` and `owners`. */
-export async function parsePropertyBookWorkbook(file: File): Promise<PropertyBookWorkbookPayload> {
+/** Parse one Excel workbook (combined or step-specific). */
+export async function parsePropertyBookWorkbook(
+  file: File,
+  mode: PropertyBookParseMode = 'full',
+): Promise<PropertyBookWorkbookPayload> {
   const buf = await file.arrayBuffer();
-  return parsePropertyBookWorkbookBuffer(buf);
+  return parsePropertyBookWorkbookBuffer(buf, mode);
 }
 
 /** Localized base file name for the combined objects + owners template. */
@@ -269,6 +306,34 @@ const PROPERTY_BOOK_TEMPLATE_TITLE: Record<ImportTemplateLocale, string> = {
 
 export function propertyBookTemplateFileName(locale: ImportTemplateLocale | string = 'ru'): string {
   return `${PROPERTY_BOOK_TEMPLATE_FILE_BASE[toImportTemplateLocale(locale)]}.xlsx`;
+}
+
+export function propertyBookObjectsTemplateFileName(
+  locale: ImportTemplateLocale | string = 'ru',
+): string {
+  const loc = toImportTemplateLocale(locale);
+  return `${PROPERTY_BOOK_OBJECTS_SPEC.fileBaseName[loc]}.xlsx`;
+}
+
+export function propertyBookOwnersTemplateFileName(
+  locale: ImportTemplateLocale | string = 'ru',
+): string {
+  const loc = toImportTemplateLocale(locale);
+  return `${PROPERTY_BOOK_OWNERS_SPEC.fileBaseName[loc]}.xlsx`;
+}
+
+/** Single-sheet Objects template for the apartments wizard step. */
+export function buildPropertyBookObjectsTemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(PROPERTY_BOOK_OBJECTS_SPEC, toImportTemplateLocale(locale));
+}
+
+/** Single-sheet Owners template for the owners wizard step. */
+export function buildPropertyBookOwnersTemplateBuffer(
+  locale: ImportTemplateLocale | string = 'ru',
+): ArrayBuffer {
+  return buildLocalizedImportWorkbook(PROPERTY_BOOK_OWNERS_SPEC, toImportTemplateLocale(locale));
 }
 
 /** Localized multi-sheet template: Objects + Owners data sheets + one Instructions sheet. */

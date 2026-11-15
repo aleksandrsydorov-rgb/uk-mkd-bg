@@ -20,6 +20,8 @@ type DiffPair = { old: unknown; new: unknown };
 const FIELD_LABEL_KEYS: Record<string, string> = {
   apartment_number: 'admin.bookHistFieldApt',
   floor: 'admin.bookHistFieldFloor',
+  section_code: 'admin.bookSection',
+  block_code: 'admin.bookBlock',
   area_sqm: 'admin.bookArea',
   living_area_sqm: 'admin.bookLivingArea',
   purpose: 'admin.bookPurpose',
@@ -53,6 +55,7 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
   ownership_share_percent: 'admin.bookShare',
   deregistered_at: 'admin.bookHistFieldDeregistered',
   id: 'admin.bookHistFieldOwnerId',
+  apartment_count: 'admin.bookHistFieldApt',
 };
 
 function isDiffPair(v: unknown): v is DiffPair {

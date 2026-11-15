@@ -31,13 +31,20 @@ import {
   type FirstRunModuleChoice,
   type FirstRunTariffPrepMap,
 } from '@/lib/firstRun';
-import { presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
+import { presentBookPreviewIssue, presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
 import {
   formatMeterMoney,
   formatMeterReadingCell,
   meterOpeningBalanceCells,
   summarizeMeterOpeningBalances,
 } from '@/lib/firstRunMetersPreview';
+import {
+  apartmentsWithOwnersCount,
+  buildBookPreviewIssues,
+  buildBookSectionBreakdown,
+  formatBookApartmentRef,
+  sectionBucketTitle,
+} from '@/lib/propertyBookImportPreview';
 import {
   FirstRunTariffPrepBlock,
   type FirstRunTariffPrepHandle,
@@ -58,7 +65,7 @@ import { FirstRunStageActions } from '@/components/admin/FirstRunFrame';
 import { AppFilePicker } from '@/components/ui/AppFilePicker';
 import styles from './FirstRunFrame.module.css';
 
-type T = (key: string) => string;
+type T = (key: string, params?: Record<string, string | number>) => string;
 
 export function FirstRunScreen({
   icon: Icon,
@@ -157,7 +164,8 @@ const MODULE_PURPOSE: Record<string, string> = {
 };
 
 const LOCKED = [
-  { key: 'property_book', label: 'admin.firstRunStagePropertyBook', icon: BookOpen, iconClass: 'text-indigo-600' },
+  { key: 'property_book_objects', label: 'admin.firstRunStagePropertyBookObjects', icon: BookOpen, iconClass: 'text-indigo-600' },
+  { key: 'property_book_owners', label: 'admin.firstRunStagePropertyBookOwners', icon: BookOpen, iconClass: 'text-indigo-700' },
   { key: 'support_fee', label: 'admin.moduleSupportFee', icon: Wallet, iconClass: 'text-emerald-600' },
   { key: 'capital_repair', label: 'admin.moduleCapitalRepair', icon: Landmark, iconClass: 'text-orange-700' },
   { key: 'budget', label: 'admin.firstRunStageBudget', icon: Wallet, iconClass: 'text-teal-700' },
@@ -171,7 +179,8 @@ function moduleTitle(t: T, key: string, fallback: string): string {
 }
 
 function cardTitle(t: T, key: string, fallback: string): string {
-  if (key === 'property_book') return t('admin.firstRunStagePropertyBook');
+  if (key === 'property_book' || key === 'property_book_objects') return t('admin.firstRunStagePropertyBookObjects');
+  if (key === 'property_book_owners') return t('admin.firstRunStagePropertyBookOwners');
   if (key === 'budget') return t('admin.firstRunStageBudget');
   return moduleTitle(t, key, fallback);
 }
@@ -205,7 +214,7 @@ export function FirstRunModulesSelect({
         enabled: true,
         default_name: t(item.label),
         category:
-          item.key === 'property_book'
+          item.key === 'property_book_objects' || item.key === 'property_book_owners'
             ? 'documents'
             : item.key === 'budget'
               ? 'finance'
@@ -369,6 +378,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 export function FirstRunBookImport({
   t,
+  phase = 'objects',
   apartmentCount,
   busy,
   dry,
@@ -378,12 +388,16 @@ export function FirstRunBookImport({
   commitSummary,
   error,
   needsComplexFix,
+  previewObjects,
+  previewOwners,
   onDownload,
   onFile,
   onCommit,
   onContinue,
 }: {
   t: T;
+  /** objects = apartments step; owners = owners step (overwrite allowed). */
+  phase?: 'objects' | 'owners';
   apartmentCount: string;
   busy: boolean;
   dry: {
@@ -402,26 +416,69 @@ export function FirstRunBookImport({
   countMismatch: { expected: number | null; actual: number | null } | null;
   committed: boolean;
   /** Counts from the confirmed save response only — never from expected apartment count. */
-  commitSummary: { clarificationCount: number; importableCount: number | null } | null;
+  commitSummary: {
+    clarificationCount: number;
+    importableCount: number | null;
+    ownerRowCount?: number | null;
+    apartmentsWithOwnersCount?: number | null;
+  } | null;
   error?: string | null;
   needsComplexFix: boolean;
+  previewObjects?: Array<Record<string, string>>;
+  previewOwners?: Array<Record<string, string>>;
   onDownload: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
   onContinue: () => void;
 }) {
+  const isOwners = phase === 'owners';
   const importable =
     dry && typeof dry.importableCount === 'number' ? dry.importableCount : dry ? dry.newCount : 0;
   const clarify = dry?.clarificationCount ?? 0;
-  const blocking = dry?.blockingErrorCount ?? (dry && !dry.ok ? errorRows.filter((r) => r.severity !== 'warning').length : 0);
   const savedClarify = commitSummary?.clarificationCount ?? 0;
+  const breakdown = buildBookSectionBreakdown(previewObjects ?? []);
+  const ownerRows = previewOwners?.length ?? 0;
+  const ownerUnits = apartmentsWithOwnersCount(previewOwners ?? []);
+  const savedOwnerRows = commitSummary?.ownerRowCount ?? ownerRows;
+  const savedOwnerUnits = commitSummary?.apartmentsWithOwnersCount ?? ownerUnits;
+  const found =
+    dry?.foundApartmentCount ??
+    (breakdown.total > 0 ? breakdown.total : countMismatch?.actual ?? null);
+  const expected =
+    dry?.expectedApartmentCount ??
+    countMismatch?.expected ??
+    (apartmentCount && apartmentCount !== '—' ? Number(apartmentCount) : null);
+  const issues = buildBookPreviewIssues(errorRows, {
+    objects: previewObjects,
+    owners: previewOwners,
+  });
+  const blockingIssues = issues.filter((i) => i.severity === 'error');
+  const clarifyIssues = issues.filter((i) => i.severity === 'warning');
+  const blocking = dry?.blockingErrorCount ?? blockingIssues.length;
+  // Owners commit uses allow_overwrite — do not block the confirm button.
+  const overwriteBlocked = !isOwners && dry?.requiresOverwriteConfirmation === true;
+  const foundLabel =
+    found != null && expected != null && Number.isFinite(expected)
+      ? t('admin.bookImportSummaryFound', {
+          found: String(found),
+          expected: String(expected),
+        })
+      : t('admin.bookImportSummaryFoundOnly', {
+          found: String(found ?? '—'),
+        });
+  const title = isOwners
+    ? t('admin.firstRunBookOwnersTitle')
+    : t('admin.firstRunBookObjectsTitle');
+  const lead = isOwners
+    ? t('admin.firstRunBookOwnersLead')
+    : t('admin.firstRunBookObjectsLead').replace('{n}', apartmentCount);
 
   return (
     <FirstRunScreen
       icon={BookOpen}
-      iconClass="text-indigo-600"
-      title={t('admin.firstRunBookTitle')}
-      lead={t('admin.firstRunBookLead').replace('{n}', apartmentCount)}
+      iconClass={isOwners ? 'text-indigo-700' : 'text-indigo-600'}
+      title={title}
+      lead={lead}
       busy={busy}
     >
       <FirstRunStatusStack>
@@ -431,9 +488,26 @@ export function FirstRunBookImport({
         {committed ? (
           <FirstRunStatusBanner
             tone="success"
-            title={t('admin.firstRunBookImportOkTitle')}
-            detail={t('admin.firstRunBookImportOkDetail')}
+            title={
+              isOwners
+                ? t('admin.firstRunBookOwnersSavedTitle')
+                : t('admin.firstRunBookObjectsSavedTitle')
+            }
+            detail={
+              isOwners
+                ? undefined
+                : t('admin.firstRunBookObjectsSavedDetail').replace(
+                    '{n}',
+                    String(commitSummary?.importableCount ?? found ?? '—'),
+                  )
+            }
           />
+        ) : null}
+        {committed && isOwners ? (
+          <div className={styles.stats}>
+            <Stat value={String(savedOwnerRows)} label={t('admin.firstRunBookOwnersStatRows')} />
+            <Stat value={String(savedOwnerUnits)} label={t('admin.firstRunBookOwnersStatUnits')} />
+          </div>
         ) : null}
         {committed && savedClarify > 0 ? (
           <FirstRunStatusBanner
@@ -442,46 +516,23 @@ export function FirstRunBookImport({
             detail={t('admin.firstRunBookClarifyWarnDetail').replace('{n}', String(savedClarify))}
           />
         ) : null}
-        {!committed && dry?.ok ? (
+        {!committed && dry ? (
           <FirstRunStatusBanner
-            tone="success"
-            title={t('admin.firstRunBookCheckOkTitle')}
+            tone={dry.ok ? 'success' : 'error'}
+            title={dry.ok ? t('admin.firstRunBookCheckOkTitle') : t('admin.firstRunBookCheckFailTitle')}
             detail={[
-              t('admin.firstRunBookCheckOkDetail')
-                .replace('{importable}', String(importable))
-                .replace('{clarify}', String(clarify)),
-              t('admin.bookImportSummaryFound').replace(
-                '{found}',
-                String(dry.foundApartmentCount ?? importable),
-              ),
-              t('admin.bookImportSummaryExpected').replace(
-                '{expected}',
-                String(dry.expectedApartmentCount ?? apartmentCount ?? '—'),
-              ),
-              t('admin.bookImportSummaryErrorRows').replace('{errors}', '0'),
-            ].join(' · ')}
-          />
-        ) : null}
-        {!committed && dry && !dry.ok ? (
-          <FirstRunStatusBanner
-            tone="error"
-            title={t('admin.firstRunBookCheckFailTitle')}
-            detail={[
-              t('admin.firstRunBookCheckFailDetail').replace('{n}', String(blocking)),
-              t('admin.bookImportSummaryFound').replace(
-                '{found}',
-                String(dry.foundApartmentCount ?? countMismatch?.actual ?? '—'),
-              ),
-              t('admin.bookImportSummaryExpected').replace(
-                '{expected}',
-                String(
-                  dry.expectedApartmentCount ??
-                    countMismatch?.expected ??
-                    apartmentCount ??
-                    '—',
-                ),
-              ),
-              t('admin.bookImportSummaryErrorRows').replace('{errors}', String(blocking)),
+              isOwners
+                ? `${t('admin.firstRunBookOwnersStatRows')}: ${ownerRows} · ${t('admin.firstRunBookOwnersStatUnits')}: ${ownerUnits}`
+                : foundLabel,
+              dry.ok
+                ? t('admin.firstRunBookCheckOkDetail', {
+                    importable: String(isOwners ? ownerRows : importable),
+                    clarify: String(clarify),
+                  })
+                : t('admin.firstRunBookCheckFailDetail', { n: String(blocking) }),
+              t('admin.bookImportSummaryErrorRows', {
+                errors: String(blockingIssues.reduce((n, i) => n + Math.max(i.rows.length, 1), 0)),
+              }),
             ].join(' · ')}
           />
         ) : null}
@@ -492,7 +543,7 @@ export function FirstRunBookImport({
             detail={t('admin.firstRunBookClarifyWarnDetail').replace('{n}', String(clarify))}
           />
         ) : null}
-        {!committed && dry?.requiresOverwriteConfirmation ? (
+        {!committed && overwriteBlocked ? (
           <FirstRunStatusBanner
             tone="warning"
             title={t('admin.firstRunBookOverwriteBlockedTitle')}
@@ -535,18 +586,108 @@ export function FirstRunBookImport({
           <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
           {dry && !committed ? (
             <div className={styles.stats}>
-              <Stat value={String(importable)} label={t('admin.firstRunBookStatImportable')} />
-              <Stat value={String(clarify)} label={t('admin.firstRunBookStatClarify')} />
-              <Stat value={String(blocking)} label={t('admin.firstRunBookStatBlocking')} />
+              {isOwners ? (
+                <>
+                  <Stat value={String(ownerRows)} label={t('admin.firstRunBookOwnersStatRows')} />
+                  <Stat value={String(ownerUnits)} label={t('admin.firstRunBookOwnersStatUnits')} />
+                  <Stat
+                    value={String(blocking)}
+                    label={`${t('admin.firstRunBookStatBlocking')} · ${t('admin.bookPreviewCountLabelBlockingRows')}`}
+                  />
+                </>
+              ) : (
+                <>
+                  <Stat
+                    value={String(found ?? importable)}
+                    label={`${t('admin.firstRunBookStatImportable')} · ${t('admin.bookPreviewCountLabelApartments')}`}
+                  />
+                  <Stat
+                    value={String(clarify)}
+                    label={`${t('admin.firstRunBookStatClarify')} · ${t('admin.bookPreviewCountLabelClarifyUnits')}`}
+                  />
+                  <Stat
+                    value={String(blocking)}
+                    label={`${t('admin.firstRunBookStatBlocking')} · ${t('admin.bookPreviewCountLabelBlockingRows')}`}
+                  />
+                </>
+              )}
             </div>
           ) : committed ? (
             <p className={styles.hint}>{t('admin.firstRunBookImportSavedHint')}</p>
           ) : (
             <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
           )}
-          <div className={styles.tableWrap} style={{ marginTop: 8 }}>
-            <FirstRunErrorTable rows={errorRows} t={t} />
-          </div>
+
+          {dry && !committed && !isOwners && breakdown.sections.length > 0 ? (
+            <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+              <p className={styles.importLabel}>{t('admin.bookPreviewSectionsTitle')}</p>
+              <p className={styles.hint} style={{ marginBottom: 8 }}>
+                {foundLabel}
+                {breakdown.sections.length
+                  ? ` · ${breakdown.sections
+                      .map((s) => sectionBucketTitle(t, s))
+                      .join(' · ')}`
+                  : ''}
+              </p>
+              {breakdown.sections.map((bucket) => (
+                <div key={`${bucket.sectionCode}|${bucket.blockCode}`} style={{ marginBottom: 10 }}>
+                  <p className={styles.importLabel}>{sectionBucketTitle(t, bucket)}</p>
+                  <ul className={styles.hint} style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {bucket.apartments.slice(0, 40).map((apt) => (
+                      <li key={`${bucket.sectionCode}-${bucket.blockCode}-${apt.apartmentNumber}`}>
+                        {formatBookApartmentRef(t, {
+                          apartmentNumber: apt.apartmentNumber,
+                          sectionCode: bucket.sectionCode,
+                          blockCode: bucket.blockCode,
+                        })}
+                        {apt.ownershipTypeMissing
+                          ? ` — ${t('admin.bookIssue_ownership_type_required')}`
+                          : ''}
+                      </li>
+                    ))}
+                    {bucket.apartments.length > 40 ? (
+                      <li>… +{bucket.apartments.length - 40}</li>
+                    ) : null}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {dry && !committed && blockingIssues.length > 0 ? (
+            <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+              <p className={styles.importLabel}>{t('admin.bookPreviewBlockingTitle')}</p>
+              <p className={styles.hint}>{t('admin.bookPreviewBlockingHint')}</p>
+              <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                {blockingIssues.map((issue, idx) => (
+                  <li key={`block-${issue.reason}-${issue.apartment}-${idx}`}>
+                    {presentBookPreviewIssue(issue, t)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {dry && !committed && clarifyIssues.length > 0 ? (
+            <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+              <p className={styles.importLabel}>{t('admin.bookPreviewClarifyTitle')}</p>
+              <p className={styles.hint}>{t('admin.bookPreviewClarifyHint')}</p>
+              <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                {clarifyIssues.slice(0, 80).map((issue, idx) => (
+                  <li key={`clarify-${issue.reason}-${issue.apartment}-${idx}`}>
+                    {presentBookPreviewIssue(issue, t)}
+                  </li>
+                ))}
+                {clarifyIssues.length > 80 ? <li>… +{clarifyIssues.length - 80}</li> : null}
+              </ul>
+            </div>
+          ) : null}
+
+          {dry && !committed && issues.length === 0 && errorRows.length > 0 ? (
+            <div className={styles.tableWrap} style={{ marginTop: 8 }}>
+              <FirstRunErrorTable rows={errorRows} t={t} />
+            </div>
+          ) : null}
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>
@@ -555,14 +696,14 @@ export function FirstRunBookImport({
               <button
                 type="button"
                 className={styles.primary}
-                disabled={busy || !dry?.ok || dry.requiresOverwriteConfirmation}
+                disabled={busy || !dry?.ok || overwriteBlocked}
                 onClick={onCommit}
               >
                 {busy ? t('admin.firstRunImporting') : t('admin.firstRunBookCommit')}
               </button>
             ) : (
               <button type="button" className={styles.primary} disabled={busy} onClick={onContinue}>
-                {t('admin.firstRunContinue')}
+                {isOwners ? t('admin.firstRunContinue') : t('admin.firstRunBookContinueOwners')}
               </button>
             )}
           </FirstRunStageActions>

@@ -21,6 +21,9 @@ export const FIRST_RUN_STAGES = [
   'welcome',
   'modules_select',
   'complex_card',
+  'property_book_objects',
+  'property_book_owners',
+  /** @deprecated Kept for resume of older in-progress installs; hidden from new routes. */
   'property_book',
   'meters_select',
   'meters_water',
@@ -158,6 +161,14 @@ export type FirstRunErrorRow = {
   reason: string;
   apartment: string;
   severity: 'error' | 'warning';
+  /** Optional RPC / client enrichment (sections, row lists, invalid value). */
+  meta?: {
+    candidateSections?: string[];
+    sourceRows?: number[];
+    sectionCode?: string;
+    blockCode?: string;
+    value?: string;
+  };
 };
 
 type RpcResult = { data: unknown; error: { message: string; details?: string } | null };
@@ -180,6 +191,8 @@ function str(v: unknown): string {
 
 export function normalizeFirstRunStage(raw: unknown): FirstRunStageKey {
   const v = String(raw ?? '').trim();
+  // Legacy single book stage → apartments step (owners follow after objects are saved).
+  if (v === 'property_book') return 'property_book_objects';
   return (FIRST_RUN_STAGES as readonly string[]).includes(v) ? (v as FirstRunStageKey) : 'welcome';
 }
 
@@ -461,6 +474,7 @@ export function visibleFirstRunStages(
 ): FirstRunStageKey[] {
   return FIRST_RUN_STAGES.filter((s) => {
     if (s === 'meters_select') return false;
+    if (s === 'property_book') return false;
     if (s === 'meters_water') return selection?.water === true;
     if (s === 'meters_electricity') return selection?.electricity === true;
     if (s === 'internet_opening') return selection?.internet === true;
@@ -476,7 +490,8 @@ export function previousVisibleStage(
   stages: FirstRunStageKey[],
   current: FirstRunStageKey,
 ): FirstRunStageKey | null {
-  if (current === 'meters_select') return 'property_book';
+  if (current === 'meters_select') return 'property_book_owners';
+  if (current === 'property_book') return 'complex_card';
   const index = stages.indexOf(current);
   if (index <= 0) return null;
   return stages[index - 1] ?? null;
@@ -592,7 +607,8 @@ export function stageAfterModuleSave(
 ): FirstRunStageKey {
   const done = (key: string) => rows?.some((row) => row.stage_key === key && row.status === 'complete') ?? false;
   if (!done('complex_card')) return 'complex_card';
-  if (!done('property_book')) return 'property_book';
+  if (!done('property_book_objects') && !done('property_book')) return 'property_book_objects';
+  if (!done('property_book_owners') && !done('property_book')) return 'property_book_owners';
   if (choice.water && !done('meters_water')) return 'meters_water';
   if (choice.electricity && !done('meters_electricity')) return 'meters_electricity';
   if (!done('support_fee_opening')) return 'support_fee_opening';
@@ -1134,12 +1150,43 @@ export function complexFormToPayload(
 // Import errors (Property Book / meters RPC)
 // ---------------------------------------------------------------------------
 
+function asStringList(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.map((x) => String(x ?? '').trim()).filter(Boolean);
+  return out.length ? out : undefined;
+}
+
+function asIntList(v: unknown): number[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v
+    .map((x) => Number(x))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .map((n) => Math.trunc(n));
+  return out.length ? out : undefined;
+}
+
 export function normalizeFirstRunErrors(errors: unknown): FirstRunErrorRow[] {
   if (!Array.isArray(errors)) return [];
   return errors.map((e) => {
     const r = asRecord(e);
     const severityRaw = str(r.severity).toLowerCase();
     const reason = str(r.code || r.reason);
+    const candidateSections =
+      asStringList(r.candidate_sections) || asStringList(r.candidateSections);
+    const sourceRows = asIntList(r.source_rows) || asIntList(r.sourceRows) || asIntList(r.rows);
+    const sectionCode = str(r.section_code || r.sectionCode);
+    const blockCode = str(r.block_code || r.blockCode);
+    const value = str(r.value);
+    const meta =
+      candidateSections || sourceRows || sectionCode || blockCode || value
+        ? {
+            ...(candidateSections ? { candidateSections } : {}),
+            ...(sourceRows ? { sourceRows } : {}),
+            ...(sectionCode ? { sectionCode } : {}),
+            ...(blockCode ? { blockCode } : {}),
+            ...(value ? { value } : {}),
+          }
+        : undefined;
     return {
       sheet: str(r.sheet),
       row: str(r.row ?? r._row),
@@ -1148,6 +1195,7 @@ export function normalizeFirstRunErrors(errors: unknown): FirstRunErrorRow[] {
       reason,
       apartment: str(r.apartment_number),
       severity: severityRaw === 'warning' ? 'warning' : 'error',
+      meta,
     };
   });
 }

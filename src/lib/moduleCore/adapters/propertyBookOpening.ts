@@ -599,6 +599,13 @@ export function buildPropertyBookIs2TemplateBuffer(
   return buildPropertyBookTemplateBuffer(toImportTemplateLocale(locale));
 }
 
+export {
+  buildPropertyBookObjectsTemplateBuffer,
+  buildPropertyBookOwnersTemplateBuffer,
+  propertyBookObjectsTemplateFileName,
+  propertyBookOwnersTemplateFileName,
+} from '@/lib/propertyBookAdmin';
+
 export function downloadPropertyBookIs2Template(
   localeOrFileName?: ImportTemplateLocale | string,
   fileName?: string,

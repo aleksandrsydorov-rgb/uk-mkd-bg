@@ -4,12 +4,19 @@
  */
 
 import { propertyBookFieldLabel } from '@/lib/propertyBookHistory';
+import {
+  formatBookApartmentRef,
+  formatExcelRowRanges,
+  type BookPreviewIssue,
+} from '@/lib/propertyBookImportPreview';
 
 const STAGE_LABEL: Record<string, string> = {
   welcome: 'admin.firstRunStageWelcome',
   modules_select: 'admin.firstRunStageModules',
   complex_card: 'admin.firstRunStageComplex',
   property_book: 'admin.firstRunStagePropertyBook',
+  property_book_objects: 'admin.firstRunStagePropertyBookObjects',
+  property_book_owners: 'admin.firstRunStagePropertyBookOwners',
   meters_select: 'admin.firstRunStageMetersSelect',
   meters_water: 'admin.firstRunStageMetersWater',
   meters_electricity: 'admin.firstRunStageMetersElectricity',
@@ -35,7 +42,7 @@ export type FirstRunErrorView = {
   detail: string | null;
 };
 
-type T = (key: string) => string;
+type T = (key: string, params?: Record<string, string | number>) => string;
 
 export function firstRunFailureText(raw: unknown): string {
   if (typeof raw === 'string') return raw.trim();
@@ -360,6 +367,7 @@ export function importReasonI18nKey(raw: string): string | null {
     area_required: 'bookIssue_area_required',
     object_ideal_parts_required: 'bookIssue_object_ideal_parts_required',
     ownership_type_required: 'bookIssue_ownership_type_required',
+    'required:ownership_type': 'bookIssue_ownership_type_required',
     owner_email_required: 'bookIssue_owner_email_required',
     owners_required: 'bookIssue_owners_required',
     natural_name_required: 'bookIssue_natural_name_required',
@@ -377,6 +385,7 @@ export function importReasonI18nKey(raw: string): string | null {
     owner_ideal_parts_sum_mismatch: 'bookImport_ideal_parts_sum',
     apartment_count_mismatch: 'bookImport_apartment_count_mismatch',
     owner_without_object_row: 'bookImport_owner_without_object',
+    object_row_missing: 'bookImport_owner_without_object',
     section_code_required_for_disambiguation: 'bookImport_section_required',
     duplicate_apartment: 'bookImport_duplicate_in_file',
     untrusted_property_id: 'bookImport_untrusted_property_id',
@@ -385,6 +394,11 @@ export function importReasonI18nKey(raw: string): string | null {
     area_sqm_invalid: 'bookImport_invalid_area',
     living_area_sqm_invalid: 'bookImport_invalid_living_area',
     ownership_share_invalid: 'bookImport_invalid_share',
+    ownership_type_invalid: 'bookImport_invalid_ownership_type',
+    ownership_type_conflict: 'bookImport_ownership_type_conflict',
+    'invalid:ownership_type': 'bookImport_invalid_ownership_type',
+    'invalid:entity_kind': 'bookImport_invalid_entity_kind',
+    entity_kind_invalid: 'bookImport_invalid_entity_kind',
     unknown_apartment: 'importIssue_unknown_apartment',
     opening_balance_conflict_same_apartment: 'importIssue_opening_balance_conflict_same_apartment',
     overlapping_paid_periods: 'importIssue_overlapping_paid_periods',
@@ -532,29 +546,124 @@ export function presentImportField(raw: string, t: T): string {
 }
 
 /**
- * Real workbook sheet name for the UI column.
+ * Localized workbook sheet title for the UI.
  * Pseudo-sheet `validation` is mapped to objects/owners by field.
  */
-export function presentImportSheet(sheet: string, field: string): string {
+export function presentImportSheet(sheet: string, field: string, t?: T): string {
   const s = sheet.trim().toLowerCase();
-  if (s === 'objects' || s === 'owners') return s;
   const f = field.trim().toLowerCase();
-  if (
-    f === 'email' ||
-    f === 'first_name' ||
-    f === 'last_name' ||
-    f === 'middle_name' ||
-    f === 'entity_kind' ||
-    f === 'entity_name' ||
-    f === 'eik_bulstat' ||
-    f === 'ownership_share_percent' ||
-    f === 'owners'
-  ) {
-    return 'owners';
+  const ownersFields = new Set([
+    'email',
+    'first_name',
+    'last_name',
+    'middle_name',
+    'entity_kind',
+    'entity_name',
+    'eik_bulstat',
+    'ownership_share_percent',
+    'owners',
+  ]);
+  let kind: 'objects' | 'owners' | 'other' = 'other';
+  if (s === 'objects' || s === 'объекты' || s === 'обекти') kind = 'objects';
+  else if (s === 'owners' || s === 'собственники' || s === 'собственици') kind = 'owners';
+  else if (ownersFields.has(f)) kind = 'owners';
+  else if (s === 'validation' || !s) kind = 'objects';
+
+  if (t) {
+    if (kind === 'objects') return t('admin.bookImportSheetObjects');
+    if (kind === 'owners') return t('admin.bookImportSheetOwners');
   }
-  if (s === 'validation' || !s) return 'objects';
+  if (kind === 'objects') return 'objects';
+  if (kind === 'owners') return 'owners';
   // Keep unknown real sheet names as returned by the parser (never invent codes).
-  return sheet.trim() || 'objects';
+  return sheet.trim() || (t ? t('admin.bookImportSheetObjects') : 'objects');
+}
+
+/** Full operator sentence for a grouped Book preview issue. */
+export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
+  const sheet = presentImportSheet(issue.sheet, issue.field, t);
+  const field = presentImportField(issue.field, t);
+  const rowsLabel = formatExcelRowRanges(issue.rows);
+  const aptRef = formatBookApartmentRef(t, {
+    apartmentNumber: issue.apartment || '—',
+    sectionCode: issue.sectionCode,
+    blockCode: issue.blockCode,
+  });
+  const sectionsList = issue.candidateSections.join(', ');
+
+  if (issue.reason === 'section_code_required_for_disambiguation' && sectionsList) {
+    if (rowsLabel) {
+      return t('admin.bookPreviewIssueAmbiguousAptRows', {
+        sheet,
+        rows: rowsLabel,
+        apt: issue.apartment || '—',
+        sections: sectionsList,
+        field,
+      });
+    }
+    return t('admin.bookPreviewIssueAmbiguousApt', {
+      sheet,
+      apt: issue.apartment || '—',
+      sections: sectionsList,
+      field,
+    });
+  }
+
+  if (issue.reason === 'ownership_type_required' || issue.reason === 'required:ownership_type') {
+    return t('admin.bookPreviewIssueOwnershipTypeMissing', {
+      aptRef,
+      sheet,
+      row: rowsLabel || '—',
+      field,
+    });
+  }
+
+  if (
+    issue.reason === 'ownership_type_invalid' ||
+    issue.reason === 'invalid:ownership_type' ||
+    issue.reason === 'entity_kind_invalid' ||
+    issue.reason === 'invalid:entity_kind'
+  ) {
+    const allowed =
+      issue.reason.includes('entity_kind')
+        ? t('admin.bookPreviewAllowedEntityKinds')
+        : t('admin.bookPreviewAllowedOwnershipTypes');
+    return t('admin.bookPreviewIssueInvalidEnum', {
+      aptRef,
+      sheet,
+      row: rowsLabel || '—',
+      field,
+      value: issue.value || '—',
+      allowed,
+    });
+  }
+
+  if (issue.reason === 'owners_required') {
+    return t('admin.bookPreviewIssueOwnersMissing', {
+      aptRef,
+      sheet: presentImportSheet('owners', 'owners', t),
+    });
+  }
+
+  const base = presentImportReason(issue.reason, t, {
+    severity: issue.severity,
+    nothingSaved: issue.severity === 'error',
+  });
+  if (rowsLabel) {
+    return t('admin.bookPreviewIssueGenericRows', {
+      sheet,
+      rows: rowsLabel,
+      aptRef,
+      field,
+      reason: base,
+    });
+  }
+  return t('admin.bookPreviewIssueGeneric', {
+    sheet,
+    aptRef,
+    field,
+    reason: base,
+  });
 }
 
 export function presentImportSeverity(severity: string | undefined, t: T): string {
@@ -579,20 +688,52 @@ export function presentFirstRunErrorRow(
     reason: string;
     apartment: string;
     severity?: 'error' | 'warning';
+    meta?: {
+      candidateSections?: string[];
+      sourceRows?: number[];
+      sectionCode?: string;
+      blockCode?: string;
+      value?: string;
+    };
   },
   t: T,
   options?: { nothingSaved?: boolean },
 ): PresentedImportErrorRow {
   const severity = row.severity === 'warning' ? 'warning' : 'error';
+  const issue: BookPreviewIssue = {
+    severity,
+    reason: row.reason,
+    sheet: row.sheet,
+    field: row.field,
+    apartment: row.apartment,
+    sectionCode: row.meta?.sectionCode ?? '',
+    blockCode: row.meta?.blockCode ?? '',
+    rows:
+      row.meta?.sourceRows?.length
+        ? row.meta.sourceRows
+        : row.row && Number(row.row) > 0
+          ? [Number(row.row)]
+          : [],
+    candidateSections: row.meta?.candidateSections ?? [],
+    value: row.meta?.value ?? '',
+  };
+  const rich =
+    issue.candidateSections.length > 0 ||
+    issue.reason === 'ownership_type_required' ||
+    issue.reason === 'required:ownership_type' ||
+    issue.reason === 'owners_required' ||
+    issue.reason.includes('invalid');
   return {
-    row: row.row || '—',
+    row: formatExcelRowRanges(issue.rows) || row.row || '—',
     apartment: row.apartment || '—',
     field: presentImportField(row.field, t),
-    reason: presentImportReason(row.reason, t, {
-      severity,
-      nothingSaved: options?.nothingSaved,
-    }),
-    sheet: presentImportSheet(row.sheet, row.field),
+    reason: rich
+      ? presentBookPreviewIssue(issue, t)
+      : presentImportReason(row.reason, t, {
+          severity,
+          nothingSaved: options?.nothingSaved,
+        }),
+    sheet: presentImportSheet(row.sheet, row.field, t),
     severity,
     severityLabel: presentImportSeverity(severity, t),
   };

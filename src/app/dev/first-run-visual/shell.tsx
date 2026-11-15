@@ -83,10 +83,10 @@ const STAGE_BY_VIEW: Record<string, FirstRunStageKey> = {
   modules: 'modules_select',
   complex: 'complex_card',
   'complex-errors': 'complex_card',
-  book: 'property_book',
-  'book-ok': 'property_book',
-  'book-warn': 'property_book',
-  'book-saved': 'property_book',
+  book: 'property_book_objects',
+  'book-ok': 'property_book_objects',
+  'book-warn': 'property_book_objects',
+  'book-saved': 'property_book_objects',
   'meters-select': 'meters_select',
   meters: 'meters_water',
   electricity: 'meters_electricity',
@@ -112,7 +112,8 @@ const ORDER: FirstRunStageKey[] = [
   'welcome',
   'modules_select',
   'complex_card',
-  'property_book',
+  'property_book_objects',
+  'property_book_owners',
   'meters_select',
   'meters_water',
   'meters_electricity',
@@ -121,6 +122,7 @@ const ORDER: FirstRunStageKey[] = [
   'tariffs',
   'internet_opening',
   'budget',
+  'uk_expenses_opening',
   'complete',
 ];
 
@@ -352,6 +354,8 @@ export function FirstRunVisualShell() {
       modules_select: 'admin.firstRunStageModules',
       complex_card: 'admin.firstRunStageComplex',
       property_book: 'admin.firstRunStagePropertyBook',
+      property_book_objects: 'admin.firstRunStagePropertyBookObjects',
+      property_book_owners: 'admin.firstRunStagePropertyBookOwners',
       meters_select: 'admin.firstRunStageMetersSelect',
       meters_water: 'admin.firstRunStageMetersWater',
       meters_electricity: 'admin.firstRunStageMetersElectricity',
@@ -430,6 +434,7 @@ export function FirstRunVisualShell() {
         {view === 'book' || view === 'book-ok' || view === 'book-warn' || view === 'book-saved' ? (
           <FirstRunBookImport
             t={t}
+            phase="objects"
             apartmentCount="24"
             busy={false}
             committed={view === 'book-saved' || view === 'book-warn'}

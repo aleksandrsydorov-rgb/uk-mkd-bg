@@ -51,7 +51,12 @@ import {
   type FirstRunTariffPrepMap,
   type MetersSelection,
 } from '@/lib/firstRun';
-import { buildPropertyBookIs2TemplateBuffer } from '@/lib/moduleCore/adapters/propertyBookOpening';
+import {
+  buildPropertyBookObjectsTemplateBuffer,
+  buildPropertyBookOwnersTemplateBuffer,
+  propertyBookObjectsTemplateFileName,
+  propertyBookOwnersTemplateFileName,
+} from '@/lib/moduleCore/adapters/propertyBookOpening';
 import {
   buildElectricityMeterIs3TemplateBuffer,
   buildWaterMeterIs3TemplateBuffer,
@@ -73,9 +78,12 @@ import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapt
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
 import {
   parsePropertyBookWorkbook,
-  propertyBookTemplateFileName,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
+import {
+  apartmentsWithOwnersCount,
+  ownersOwnershipTypeConflictRows,
+} from '@/lib/propertyBookImportPreview';
 import {
   CAPITAL_REPAIR_IMPORT_SPEC,
   ELECTRICITY_METERS_IMPORT_SPEC,
@@ -203,6 +211,53 @@ function errorsFromRpcDetails(err: { details?: string | null } | null | undefine
   }
 }
 
+/** Owners-sheet / owner-binding noise must not block the apartments-only step. */
+function isPropertyBookOwnersNoise(entry: unknown): boolean {
+  const r = asObj(entry);
+  const sheet = String(r.sheet ?? '')
+    .trim()
+    .toLowerCase();
+  if (
+    sheet === 'owners' ||
+    sheet === 'собственники' ||
+    sheet === 'собственици' ||
+    sheet.includes('owner')
+  ) {
+    return true;
+  }
+  const code = String(r.code || r.reason || '')
+    .trim()
+    .toLowerCase();
+  if (!code) return false;
+  if (code.startsWith('owners_') || code === 'owners_required') return true;
+  if (
+    code.startsWith('owner_') ||
+    code === 'sole_requires_one_owner' ||
+    code === 'shared_requires_two_owners' ||
+    code === 'shares_must_sum_100' ||
+    code === 'mixed_natural_legal_forbidden' ||
+    code === 'owner_ideal_parts_sum_mismatch' ||
+    code === 'sole_ideal_parts_mismatch'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function filterObjectsStepBookIssues(entries: unknown[]): unknown[] {
+  return entries.filter((e) => !isPropertyBookOwnersNoise(e));
+}
+
+function bookStageIsComplete(
+  key: 'property_book_objects' | 'property_book_owners',
+  rows: FirstRunStageRow[] | undefined,
+): boolean {
+  const done = (stageKey: string) =>
+    rows?.some((row) => row.stage_key === stageKey && row.status === 'complete') ?? false;
+  // Legacy single property_book stage counted as both steps complete.
+  return done(key) || done('property_book');
+}
+
 
 function moduleXlsxLabels(
   schema: { columns: { labelKey: string }[] },
@@ -288,10 +343,13 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   const [bookPayload, setBookPayload] = useState<PropertyBookWorkbookPayload | null>(null);
   const [bookDry, setBookDry] = useState<BookDryRun | null>(null);
-  const [bookCommitted, setBookCommitted] = useState(false);
+  const [bookObjectsCommitted, setBookObjectsCommitted] = useState(false);
+  const [bookOwnersCommitted, setBookOwnersCommitted] = useState(false);
   const [bookCommitSummary, setBookCommitSummary] = useState<{
     clarificationCount: number;
     importableCount: number | null;
+    ownerRowCount?: number | null;
+    apartmentsWithOwnersCount?: number | null;
   } | null>(null);
 
   const [meterRows, setMeterRows] = useState<Record<string, string>[] | null>(null);
@@ -369,7 +427,12 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   useEffect(() => {
     if (loading || !state) return;
     const rows = state.stages;
-    setBookCommitted(stageIsComplete('property_book', rows));
+    setBookObjectsCommitted(bookStageIsComplete('property_book_objects', rows));
+    setBookOwnersCommitted(bookStageIsComplete('property_book_owners', rows));
+    // Legacy in-memory stage key → apartments step.
+    if (stage === 'property_book') {
+      setStage('property_book_objects');
+    }
     setMeterCommitted(
       stage === 'meters_electricity'
         ? stageIsComplete('meters_electricity', rows)
@@ -495,7 +558,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     setError(null);
 
     const rows = state?.stages;
-    setBookCommitted(stageIsComplete('property_book', rows));
+    setBookObjectsCommitted(bookStageIsComplete('property_book_objects', rows));
+    setBookOwnersCommitted(bookStageIsComplete('property_book_owners', rows));
     setMeterCommitted(
       nextStage === 'meters_electricity'
         ? stageIsComplete('meters_electricity', rows)
@@ -731,19 +795,62 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         complex: complexFormToPayload(form),
       });
       applyState(
-        await completeFirstRunStage(supabase, { stage: 'complex_card', nextStage: 'property_book' }),
+        await completeFirstRunStage(supabase, {
+          stage: 'complex_card',
+          nextStage: 'property_book_objects',
+        }),
       );
-      goStage('property_book');
+      goStage('property_book_objects');
     });
   }
 
   // ---------------------------------------------------------------------------
-  // property_book
+  // property_book_objects → property_book_owners
   // ---------------------------------------------------------------------------
 
-  async function onBookFile(file: File | null) {
-    // Confirmed import is a saved stage — do not reopen the write path.
-    if (bookCommitted) return;
+  function applyBookDryRun(
+    res: Record<string, unknown>,
+    opts: { filterOwnersNoise: boolean; ignoreOverwriteBlock: boolean },
+  ) {
+    const rawErrors = Array.isArray(res.errors) ? res.errors : [];
+    const rawWarnings = Array.isArray(res.warnings) ? res.warnings : [];
+    const errors = opts.filterOwnersNoise ? filterObjectsStepBookIssues(rawErrors) : rawErrors;
+    const warnings = opts.filterOwnersNoise ? filterObjectsStepBookIssues(rawWarnings) : rawWarnings;
+    const foundApartmentCount = Number(res.found_apartment_count ?? res.unique_apartment_count);
+    const expectedApartmentCount = Number(res.expected_apartment_count);
+    // When owners noise is stripped, recount from the filtered arrays (RPC totals still include it).
+    const blockingErrorCount = opts.filterOwnersNoise
+      ? errors.length
+      : Number(res.blocking_error_count ?? errors.length) || 0;
+    const clarificationCount = opts.filterOwnersNoise
+      ? warnings.length
+      : Number(res.clarification_count ?? warnings.length) || 0;
+    const requiresOverwrite =
+      !opts.ignoreOverwriteBlock && res.requires_overwrite_confirmation === true;
+    setBookDry({
+      ok: errors.length === 0 && blockingErrorCount === 0,
+      errors,
+      warnings,
+      newCount: arrLen(res.new_properties),
+      existingCount: arrLen(res.existing_properties),
+      changesCount: arrLen(res.changes),
+      skippedIdenticalCount: arrLen(res.skipped_identical_property_ids),
+      requiresOverwriteConfirmation: requiresOverwrite,
+      bookEmptyAutoCreate: res.book_empty_auto_create === true,
+      importableCount: Number(res.importable_count ?? 0) || 0,
+      clarificationCount,
+      blockingErrorCount,
+      foundApartmentCount: Number.isFinite(foundApartmentCount) ? foundApartmentCount : null,
+      expectedApartmentCount: Number.isFinite(expectedApartmentCount)
+        ? expectedApartmentCount
+        : null,
+    });
+    setErrorRows(normalizeFirstRunErrors([...errors, ...warnings]));
+    setCountMismatch(apartmentCountMismatchInfo(errors));
+  }
+
+  async function onBookObjectsFile(file: File | null) {
+    if (bookObjectsCommitted) return;
     setBookPayload(null);
     setBookDry(null);
     setBookCommitSummary(null);
@@ -753,64 +860,173 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     setNote(null);
     if (!file) return;
     await run(async () => {
-      const payload = await parsePropertyBookWorkbook(file);
+      const payload = await parsePropertyBookWorkbook(file, 'objects');
       if (payload.objects.length === 0) {
         setError(t('admin.is2PropertyBookEmptyObjects'));
         return;
       }
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
         p_objects: payload.objects,
-        p_owners: payload.owners,
+        p_owners: [],
         p_dry_run: true,
         p_allow_create_missing: true,
         p_allow_overwrite: false,
       });
       if (rpcErr) throw new Error(rpcErr.message);
-      const res = asObj(data);
-      const errors = Array.isArray(res.errors) ? res.errors : [];
-      const warnings = Array.isArray(res.warnings) ? res.warnings : [];
-      const foundApartmentCount = Number(res.found_apartment_count ?? res.unique_apartment_count);
-      const expectedApartmentCount = Number(res.expected_apartment_count);
-      setBookDry({
-        ok: res.ok === true && errors.length === 0,
-        errors,
-        warnings,
-        newCount: arrLen(res.new_properties),
-        existingCount: arrLen(res.existing_properties),
-        changesCount: arrLen(res.changes),
-        skippedIdenticalCount: arrLen(res.skipped_identical_property_ids),
-        requiresOverwriteConfirmation: res.requires_overwrite_confirmation === true,
-        bookEmptyAutoCreate: res.book_empty_auto_create === true,
-        importableCount: Number(res.importable_count ?? 0) || 0,
-        clarificationCount: Number(res.clarification_count ?? warnings.length) || 0,
-        blockingErrorCount: Number(res.blocking_error_count ?? errors.length) || 0,
-        foundApartmentCount: Number.isFinite(foundApartmentCount) ? foundApartmentCount : null,
-        expectedApartmentCount: Number.isFinite(expectedApartmentCount)
-          ? expectedApartmentCount
-          : null,
-      });
-      setErrorRows(normalizeFirstRunErrors([...errors, ...warnings]));
-      setCountMismatch(apartmentCountMismatchInfo(errors));
+      applyBookDryRun(asObj(data), { filterOwnersNoise: true, ignoreOverwriteBlock: false });
       setBookPayload(payload);
     });
   }
 
-  async function onBookCommit() {
+  async function onBookObjectsCommit() {
+    if (!bookPayload || !bookDry || !bookDry.ok || bookDry.requiresOverwriteConfirmation) return;
+    await run(async () => {
+      const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
+        p_objects: bookPayload.objects,
+        p_owners: [],
+        p_dry_run: false,
+        p_allow_create_missing: true,
+        p_allow_overwrite: false,
+      });
+      if (rpcErr) {
+        const errs = filterObjectsStepBookIssues(errorsFromRpcDetails(rpcErr));
+        setErrorRows(normalizeFirstRunErrors(errs));
+        setCountMismatch(apartmentCountMismatchInfo(errs));
+        throw new Error(
+          errs.length > 0
+            ? t('admin.is2PropertyBookImportFailed')
+            : rpcErr.message || t('admin.is2PropertyBookImportFailed'),
+        );
+      }
+      const res = asObj(data);
+      const commitErrors = filterObjectsStepBookIssues(
+        Array.isArray(res.errors) ? res.errors : [],
+      );
+      if (res.ok !== true || commitErrors.length > 0) {
+        setErrorRows(normalizeFirstRunErrors(commitErrors));
+        setCountMismatch(apartmentCountMismatchInfo(commitErrors));
+        throw new Error(t('admin.is2PropertyBookImportFailed'));
+      }
+      const importableRaw = Number(res.importable_count);
+      setBookCommitSummary({
+        clarificationCount: Number(res.clarification_count ?? 0) || 0,
+        importableCount: Number.isFinite(importableRaw)
+          ? importableRaw
+          : bookPayload.objects.length,
+      });
+      setBookObjectsCommitted(true);
+      setNote(null);
+      // Activate Property Book module after apartments are saved.
+      await activateModule(PROPERTY_BOOK_MODULE);
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'property_book_objects',
+          nextStage: 'property_book_owners',
+        }),
+      );
+    });
+  }
+
+  async function loadExistingBookObjectStubs(): Promise<Record<string, string>[]> {
+    const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+      p_limit: 5000,
+    });
+    if (listErr) throw new Error(listErr.message);
+    return ((bookRows ?? []) as Array<{
+      apartment_number?: string | number | null;
+      section_code?: string | null;
+      block_code?: string | null;
+      purpose?: string | null;
+      area_sqm?: number | null;
+      ideal_parts_percent?: number | null;
+      ownership_type?: string | null;
+      floor?: number | null;
+    }>).map((r) => ({
+      apartment_number: String(r.apartment_number ?? ''),
+      section_code: r.section_code != null ? String(r.section_code) : '',
+      block_code: r.block_code != null ? String(r.block_code) : '',
+      purpose: r.purpose != null ? String(r.purpose) : '',
+      area_sqm: r.area_sqm != null ? String(r.area_sqm) : '',
+      ideal_parts_percent: r.ideal_parts_percent != null ? String(r.ideal_parts_percent) : '',
+      ownership_type: r.ownership_type != null ? String(r.ownership_type) : '',
+      floor: r.floor != null ? String(r.floor) : '',
+    }));
+  }
+
+  async function onBookOwnersFile(file: File | null) {
+    if (bookOwnersCommitted) return;
+    setBookPayload(null);
+    setBookDry(null);
+    setBookCommitSummary(null);
+    setErrorRows([]);
+    setCountMismatch(null);
+    setError(null);
+    setNote(null);
+    if (!file) return;
+    await run(async () => {
+      const payload = await parsePropertyBookWorkbook(file, 'owners');
+      if (payload.owners.length === 0) {
+        setError(t('admin.is2PropertyBookEmptyOwners'));
+        return;
+      }
+      const conflictRows = ownersOwnershipTypeConflictRows(payload.owners);
+      if (conflictRows.length > 0) {
+        setBookDry({
+          ok: false,
+          errors: conflictRows,
+          warnings: [],
+          newCount: 0,
+          existingCount: 0,
+          changesCount: 0,
+          skippedIdenticalCount: 0,
+          requiresOverwriteConfirmation: false,
+          bookEmptyAutoCreate: false,
+          importableCount: 0,
+          clarificationCount: 0,
+          blockingErrorCount: conflictRows.length,
+          foundApartmentCount: null,
+          expectedApartmentCount: null,
+        });
+        setErrorRows(conflictRows);
+        setBookPayload(payload);
+        return;
+      }
+      const objectStubs = await loadExistingBookObjectStubs();
+      if (objectStubs.length === 0) {
+        setError(t('admin.is2PropertyBookEmptyObjects'));
+        return;
+      }
+      const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
+        p_objects: objectStubs,
+        p_owners: payload.owners,
+        p_dry_run: true,
+        p_allow_create_missing: false,
+        p_allow_overwrite: true,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      applyBookDryRun(asObj(data), { filterOwnersNoise: false, ignoreOverwriteBlock: true });
+      setBookPayload({ objects: objectStubs, owners: payload.owners });
+    });
+  }
+
+  async function onBookOwnersCommit() {
     if (!bookPayload || !bookDry || !bookDry.ok) return;
     await run(async () => {
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
         p_objects: bookPayload.objects,
         p_owners: bookPayload.owners,
         p_dry_run: false,
-        p_allow_create_missing: true,
-        p_allow_overwrite: false,
+        p_allow_create_missing: false,
+        p_allow_overwrite: true,
       });
       if (rpcErr) {
         const errs = errorsFromRpcDetails(rpcErr);
         setErrorRows(normalizeFirstRunErrors(errs));
         setCountMismatch(apartmentCountMismatchInfo(errs));
         throw new Error(
-          errs.length > 0 ? t('admin.is2PropertyBookImportFailed') : rpcErr.message || t('admin.is2PropertyBookImportFailed'),
+          errs.length > 0
+            ? t('admin.is2PropertyBookImportFailed')
+            : rpcErr.message || t('admin.is2PropertyBookImportFailed'),
         );
       }
       const res = asObj(data);
@@ -820,17 +1036,26 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setCountMismatch(apartmentCountMismatchInfo(errs));
         throw new Error(t('admin.is2PropertyBookImportFailed'));
       }
+      // Do not auto-send portal invites from first-run owners import.
       const importableRaw = Number(res.importable_count);
       setBookCommitSummary({
         clarificationCount: Number(res.clarification_count ?? 0) || 0,
         importableCount: Number.isFinite(importableRaw) ? importableRaw : null,
+        ownerRowCount: bookPayload.owners.length,
+        apartmentsWithOwnersCount: apartmentsWithOwnersCount(bookPayload.owners),
       });
-      setBookCommitted(true);
+      setBookOwnersCommitted(true);
       setNote(null);
-      // SETUP_IN_PROGRESS → READY → ACTIVE (idempotent when already ACTIVE).
-      await activateModule(PROPERTY_BOOK_MODULE);
-      const next = firstMetersStage({ water: moduleChoice.water, electricity: moduleChoice.electricity });
-      applyState(await completeFirstRunStage(supabase, { stage: 'property_book', nextStage: next }));
+      const next = firstMetersStage({
+        water: moduleChoice.water,
+        electricity: moduleChoice.electricity,
+      });
+      applyState(
+        await completeFirstRunStage(supabase, {
+          stage: 'property_book_owners',
+          nextStage: next,
+        }),
+      );
     });
   }
 
@@ -1284,7 +1509,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       case 'complex_card':
         return t('admin.firstRunStageComplex');
       case 'property_book':
-        return t('admin.firstRunStagePropertyBook');
+      case 'property_book_objects':
+        return t('admin.firstRunStagePropertyBookObjects');
+      case 'property_book_owners':
+        return t('admin.firstRunStagePropertyBookOwners');
       case 'meters_select':
         return t('admin.firstRunStageMetersSelect');
       case 'meters_water':
@@ -1313,12 +1541,16 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   }
 
   const bookNeedsComplexFix = hasApartmentCountMismatch(bookDry?.errors) || countMismatch != null;
+  const onBookStage =
+    stage === 'property_book' ||
+    stage === 'property_book_objects' ||
+    stage === 'property_book_owners';
 
   return (
     <FirstRunFrame
       t={t}
       stages={visibleStages}
-      stage={stage}
+      stage={stage === 'property_book' ? 'property_book_objects' : stage}
       stageRows={state?.stages}
       stageLabel={stageLabel}
       showBack={stage !== 'welcome'}
@@ -1327,7 +1559,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     >
       {dialog}
       {error &&
-      stage !== 'property_book' &&
+      !onBookStage &&
       stage !== 'meters_water' &&
       stage !== 'meters_electricity' &&
       stage !== 'support_fee_opening' &&
@@ -1335,7 +1567,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         <FirstRunErrorNote raw={error} t={t} />
       ) : null}
       {note &&
-      stage !== 'property_book' &&
+      !onBookStage &&
       stage !== 'meters_water' &&
       stage !== 'meters_electricity' &&
       stage !== 'support_fee_opening' &&
@@ -1370,25 +1602,60 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         />
       ) : null}
 
-      {stage === 'property_book' ? (
+      {stage === 'property_book' || stage === 'property_book_objects' ? (
         <FirstRunBookImport
           t={t}
+          phase="objects"
           apartmentCount={state?.complex.apartment_count != null ? String(state.complex.apartment_count) : '—'}
           busy={busy}
           dry={bookDry}
           errorRows={errorRows}
           countMismatch={countMismatch ?? (state?.complex.apartment_count != null ? { expected: state.complex.apartment_count, actual: null } : null)}
-          committed={bookCommitted}
+          committed={bookObjectsCommitted}
           commitSummary={bookCommitSummary}
           error={error}
           needsComplexFix={bookNeedsComplexFix}
+          previewObjects={bookPayload?.objects}
+          previewOwners={bookPayload?.owners}
           onDownload={() =>
-            downloadXlsx(buildPropertyBookIs2TemplateBuffer(locale), propertyBookTemplateFileName(locale))
+            downloadXlsx(
+              buildPropertyBookObjectsTemplateBuffer(locale),
+              propertyBookObjectsTemplateFileName(locale),
+            )
           }
-          onFile={(file) => void onBookFile(file)}
-          onCommit={() => void onBookCommit()}
+          onFile={(file) => void onBookObjectsFile(file)}
+          onCommit={() => void onBookObjectsCommit()}
+          onContinue={() => goStage('property_book_owners')}
+        />
+      ) : null}
+
+      {stage === 'property_book_owners' ? (
+        <FirstRunBookImport
+          t={t}
+          phase="owners"
+          apartmentCount={state?.complex.apartment_count != null ? String(state.complex.apartment_count) : '—'}
+          busy={busy}
+          dry={bookDry}
+          errorRows={errorRows}
+          countMismatch={countMismatch}
+          committed={bookOwnersCommitted}
+          commitSummary={bookCommitSummary}
+          error={error}
+          needsComplexFix={false}
+          previewObjects={bookPayload?.objects}
+          previewOwners={bookPayload?.owners}
+          onDownload={() =>
+            downloadXlsx(
+              buildPropertyBookOwnersTemplateBuffer(locale),
+              propertyBookOwnersTemplateFileName(locale),
+            )
+          }
+          onFile={(file) => void onBookOwnersFile(file)}
+          onCommit={() => void onBookOwnersCommit()}
           onContinue={() =>
-            goStage(firstMetersStage({ water: moduleChoice.water, electricity: moduleChoice.electricity }))
+            goStage(
+              firstMetersStage({ water: moduleChoice.water, electricity: moduleChoice.electricity }),
+            )
           }
         />
       ) : null}

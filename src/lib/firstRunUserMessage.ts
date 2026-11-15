@@ -4,11 +4,13 @@
  */
 
 import { propertyBookFieldLabel } from '@/lib/propertyBookHistory';
+import { propertyBookIdentityKey } from '@/lib/propertyBookIdentity';
 import {
   formatBookApartmentRef,
   formatExcelRowRanges,
   formatOwnerCountLocation,
   resolveBookPreviewSheetTitle,
+  type BookApartmentPreviewCard,
   type BookPreviewIssue,
 } from '@/lib/propertyBookImportPreview';
 
@@ -604,29 +606,127 @@ export type PresentBookPreviewOptions = {
   inCard?: boolean;
 };
 
-const PARTIAL_OPTIONAL_CODES = new Set(['owner_email_required']);
-
-function partialFieldLabel(code: string, t: T): string {
-  if (code === 'entity_kind_required') return t('admin.bookPreviewPartialFieldEntityKind');
-  if (code === 'owner_share_required') return t('admin.bookPreviewPartialFieldShare');
-  if (code === 'owner_email_required') return t('admin.bookPreviewPartialFieldEmail');
-  if (code === 'natural_name_required' || code === 'sole_trader_name_required') {
-    return t('admin.bookPreviewPartialFieldName');
-  }
-  if (code === 'legal_name_required') return t('admin.bookPreviewPartialFieldLegalName');
-  if (code === 'eik_required') return t('admin.bookPreviewPartialFieldEik');
-  if (code === 'ownership_type_required' || code === 'required:ownership_type') {
-    return t('admin.bookPreviewPartialFieldOwnerCount');
-  }
-  if (code === 'owner_vote_weight_mismatch') {
-    return t('admin.bookPreviewPartialFieldVoteWeight');
-  }
-  return '';
+function trimCell(value: unknown): string {
+  return String(value ?? '').trim();
 }
+
+function joinNaturalList(items: string[], t: T): string {
+  const uniq = [...new Set(items.filter(Boolean))];
+  if (uniq.length === 0) return '';
+  if (uniq.length === 1) return uniq[0]!;
+  const join = t('admin.bookPreviewPartialFieldsJoin');
+  if (uniq.length === 2) return `${uniq[0]}${join}${uniq[1]}`;
+  return `${uniq.slice(0, -1).join(', ')}${join}${uniq[uniq.length - 1]}`;
+}
+
+/** Filled owner payload field names (never PII values; never middle name). */
+function savedOwnerFieldLabels(row: Record<string, string>, t: T): string[] {
+  const out: string[] = [];
+  if (trimCell(row.first_name)) out.push(t('admin.bookPreviewSavedFieldFirstName'));
+  if (trimCell(row.last_name)) out.push(t('admin.bookPreviewSavedFieldLastName'));
+  if (trimCell(row.email)) out.push(t('admin.bookPreviewSavedFieldEmail'));
+  if (trimCell(row.phone) || trimCell(row.phone_secondary)) {
+    out.push(t('admin.bookPreviewSavedFieldPhone'));
+  }
+  if (trimCell(row.entity_name)) out.push(t('admin.bookPreviewSavedFieldEntityName'));
+  if (trimCell(row.eik_bulstat)) out.push(t('admin.bookPreviewSavedFieldEik'));
+  if (trimCell(row.entity_kind)) out.push(t('admin.bookPreviewClarifyFieldEntityKind'));
+  if (trimCell(row.ownership_share_percent)) out.push(t('admin.bookPreviewSavedFieldShare'));
+  return out;
+}
+
+function clarifyOwnerFieldLabels(
+  row: Record<string, string>,
+  softCodes: string[],
+  t: T,
+): string[] {
+  const codes = new Set(softCodes);
+  const out: string[] = [];
+  const needEntity =
+    !trimCell(row.entity_kind) ||
+    codes.has('entity_kind_required') ||
+    codes.has('entity_kind_invalid') ||
+    codes.has('invalid:entity_kind') ||
+    codes.has('invalid_entity_kind');
+  if (needEntity && !trimCell(row.entity_kind)) {
+    out.push(t('admin.bookPreviewClarifyFieldEntityKind'));
+  }
+  if (!trimCell(row.ownership_share_percent) || codes.has('owner_share_required')) {
+    if (!trimCell(row.ownership_share_percent)) {
+      out.push(t('admin.bookPreviewClarifyFieldShare'));
+    }
+  }
+  if (!trimCell(row.email) || codes.has('owner_email_required')) {
+    if (!trimCell(row.email)) out.push(t('admin.bookPreviewClarifyFieldEmail'));
+  }
+  if (
+    codes.has('natural_name_required') ||
+    codes.has('sole_trader_name_required') ||
+    (!trimCell(row.first_name) && !trimCell(row.last_name) && !trimCell(row.entity_name))
+  ) {
+    if (!trimCell(row.first_name) || !trimCell(row.last_name)) {
+      if (!trimCell(row.entity_name)) out.push(t('admin.bookPreviewClarifyFieldName'));
+    }
+  }
+  if (codes.has('legal_name_required') && !trimCell(row.entity_name)) {
+    out.push(t('admin.bookPreviewClarifyFieldLegalName'));
+  }
+  if (codes.has('eik_required') && !trimCell(row.eik_bulstat)) {
+    out.push(t('admin.bookPreviewClarifyFieldEik'));
+  }
+  if (
+    (codes.has('ownership_type_required') || codes.has('required:ownership_type')) &&
+    !trimCell(row.ownership_type)
+  ) {
+    out.push(t('admin.bookPreviewClarifyFieldOwnerCount'));
+  }
+  if (codes.has('owner_vote_weight_mismatch')) {
+    out.push(t('admin.bookPreviewClarifyFieldVoteWeight'));
+  }
+  return [...new Set(out)];
+}
+
+function ownersForCard(
+  card: Pick<BookApartmentPreviewCard, 'apartment' | 'sectionCode' | 'blockCode'>,
+  owners: Array<Record<string, string>>,
+): Record<string, string>[] {
+  const key = propertyBookIdentityKey({
+    apartment_number: card.apartment,
+    section_code: card.sectionCode,
+    block_code: card.blockCode,
+  });
+  if (!key) return [];
+  return owners.filter((row) => propertyBookIdentityKey(row) === key);
+}
+
+function ownerDisplayName(row: Record<string, string>): string {
+  const person = [trimCell(row.first_name), trimCell(row.last_name)].filter(Boolean).join(' ');
+  if (person) return person;
+  return trimCell(row.entity_name);
+}
+
+function softCodesFromIssue(issue: BookPreviewIssue | undefined): string[] {
+  if (!issue) return [];
+  return String(issue.value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export type BookApartmentCardBlock = {
+  key: string;
+  heading?: string;
+  lines: string[];
+};
 
 export type PresentBookApartmentCardIssueOptions = {
   /** Card has a blocking error — partial lead must not promise a save. */
   hasBlockingError?: boolean;
+  /** Owner rows from the uploaded file (for filled/missing field inventory). */
+  owners?: Array<Record<string, string>>;
+  apartment?: string;
+  sectionCode?: string;
+  blockCode?: string;
 };
 
 /** Structured body for an apartment-card issue (no apt/sheet/row repeats). */
@@ -640,30 +740,60 @@ export function presentBookApartmentCardIssueBody(
   }
 
   if (issue.reason === 'owner_partial_saved') {
-    const codes = String(issue.value || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const required: string[] = [];
-    const optional: string[] = [];
-    for (const code of codes) {
-      const label = partialFieldLabel(code, t);
-      if (!label) continue;
-      if (PARTIAL_OPTIONAL_CODES.has(code)) optional.push(label);
-      else required.push(label);
+    const cardOwners =
+      options?.apartment != null
+        ? ownersForCard(
+            {
+              apartment: options.apartment,
+              sectionCode: options.sectionCode || '',
+              blockCode: options.blockCode || '',
+            },
+            options.owners ?? [],
+          )
+        : options?.owners ?? [];
+    const softCodes = softCodesFromIssue(issue);
+    const row = cardOwners[0];
+    const saved = row ? savedOwnerFieldLabels(row, t) : [];
+    const clarify = row
+      ? clarifyOwnerFieldLabels(row, softCodes, t)
+      : softCodes
+          .map((code) => {
+            if (code === 'entity_kind_required') return t('admin.bookPreviewClarifyFieldEntityKind');
+            if (code === 'owner_share_required') return t('admin.bookPreviewClarifyFieldShare');
+            if (code === 'owner_email_required') return t('admin.bookPreviewClarifyFieldEmail');
+            if (code === 'natural_name_required' || code === 'sole_trader_name_required') {
+              return t('admin.bookPreviewClarifyFieldName');
+            }
+            if (code === 'legal_name_required') return t('admin.bookPreviewClarifyFieldLegalName');
+            if (code === 'eik_required') return t('admin.bookPreviewClarifyFieldEik');
+            if (code === 'ownership_type_required' || code === 'required:ownership_type') {
+              return t('admin.bookPreviewClarifyFieldOwnerCount');
+            }
+            if (code === 'owner_vote_weight_mismatch') {
+              return t('admin.bookPreviewClarifyFieldVoteWeight');
+            }
+            return '';
+          })
+          .filter(Boolean);
+    if (options?.hasBlockingError) {
+      return {
+        lead: clarify.length
+          ? t('admin.bookPreviewCanClarifyAfter', { fields: joinNaturalList(clarify, t) })
+          : t('admin.bookPreviewIssuePartialBlockedLead'),
+        bullets: [],
+        later: null,
+      };
     }
-    const uniqReq = [...new Set(required)];
-    const uniqOpt = [...new Set(optional)];
+    const lead =
+      saved.length > 0
+        ? t('admin.bookPreviewWillSave', { fields: joinNaturalList(saved, t) })
+        : t('admin.bookPreviewIssuePartialSavedLead');
     return {
-      lead: options?.hasBlockingError
-        ? t('admin.bookPreviewIssuePartialBlockedLead')
-        : t('admin.bookPreviewIssuePartialSavedLead'),
-      bullets: uniqReq,
+      lead,
+      bullets: [],
       later:
-        uniqOpt.length > 0
-          ? t('admin.bookPreviewIssuePartialLater', {
-              fields: uniqOpt.join(t('admin.bookPreviewPartialFieldsJoin')),
-            })
+        clarify.length > 0
+          ? t('admin.bookPreviewCanClarifyAfter', { fields: joinNaturalList(clarify, t) })
           : null,
     };
   }
@@ -673,6 +803,104 @@ export function presentBookApartmentCardIssueBody(
     bullets: [],
     later: null,
   };
+}
+
+/**
+ * One apartment card → operator-facing blocks.
+ * Soft/identity: no Excel sheet/row. Blocking: fix text + where once.
+ */
+export function presentBookApartmentCardContent(
+  card: BookApartmentPreviewCard,
+  owners: Array<Record<string, string>>,
+  t: T,
+): { blocks: BookApartmentCardBlock[]; where: string } {
+  const blocks: BookApartmentCardBlock[] = [];
+  const hasBlocking = card.issues.some((i) => i.severity === 'error');
+
+  for (const issue of card.issues) {
+    if (issue.severity !== 'error') continue;
+    blocks.push({
+      key: `error-${issue.reason}-${issue.rows.join(',')}`,
+      lines: [presentBookPreviewIssue(issue, t, { inCard: true })],
+    });
+  }
+
+  const identity = card.issues.find(
+    (i) => i.reason === 'owners_required' || i.reason === 'ownership_identity_incomplete',
+  );
+  if (identity) {
+    blocks.push({
+      key: 'identity',
+      lines: [t('admin.bookPreviewIssueOwnersMissing')],
+    });
+    return { blocks, where: '' };
+  }
+
+  const partial = card.issues.find((i) => i.reason === 'owner_partial_saved');
+  if (partial) {
+    const matched = ownersForCard(card, owners);
+    const softCodes = softCodesFromIssue(partial);
+
+    if (matched.length <= 1) {
+      const row = matched[0];
+      const saved = row ? savedOwnerFieldLabels(row, t) : [];
+      const clarify = row
+        ? clarifyOwnerFieldLabels(row, softCodes, t)
+        : clarifyOwnerFieldLabels({}, softCodes, t);
+      const lines: string[] = [];
+      if (!hasBlocking && saved.length > 0) {
+        lines.push(t('admin.bookPreviewWillSave', { fields: joinNaturalList(saved, t) }));
+      }
+      if (clarify.length > 0) {
+        lines.push(t('admin.bookPreviewCanClarifyAfter', { fields: joinNaturalList(clarify, t) }));
+      } else if (hasBlocking) {
+        // Blocking already listed; nothing more.
+      }
+      if (lines.length > 0) {
+        blocks.push({ key: 'partial', lines });
+      }
+    } else {
+      matched.forEach((row, idx) => {
+        const saved = savedOwnerFieldLabels(row, t);
+        const clarify = clarifyOwnerFieldLabels(row, softCodes, t);
+        const lines: string[] = [];
+        if (!hasBlocking && saved.length > 0) {
+          lines.push(t('admin.bookPreviewWillSave', { fields: joinNaturalList(saved, t) }));
+        }
+        if (clarify.length > 0) {
+          lines.push(t('admin.bookPreviewCanClarifyAfter', { fields: joinNaturalList(clarify, t) }));
+        }
+        if (lines.length === 0) return;
+        const name = ownerDisplayName(row);
+        const heading = name
+          ? t('admin.bookPreviewOwnerHeadingNamed', { n: idx + 1, name })
+          : t('admin.bookPreviewOwnerHeading', { n: idx + 1 });
+        blocks.push({
+          key: `owner-${idx}-${trimCell(row._row) || idx}`,
+          heading,
+          lines,
+        });
+      });
+    }
+  }
+
+  for (const issue of card.issues) {
+    if (issue.severity === 'error') continue;
+    if (
+      issue.reason === 'owner_partial_saved' ||
+      issue.reason === 'owners_required' ||
+      issue.reason === 'ownership_identity_incomplete'
+    ) {
+      continue;
+    }
+    blocks.push({
+      key: `other-${issue.reason}`,
+      lines: [presentBookPreviewIssue(issue, t, { inCard: true })],
+    });
+  }
+
+  const where = hasBlocking ? presentBookApartmentCardWhere(card.issues, t) : '';
+  return { blocks, where };
 }
 
 /** Full operator sentence for a grouped Book preview issue. */
@@ -694,19 +922,31 @@ export function presentBookPreviewIssue(
   const sectionCount = issue.candidateSections.length;
 
   if (issue.reason === 'section_code_required_for_disambiguation' && sectionsList) {
+    const row = rowsLabel || '';
     if (sectionCount > 0) {
-      return t('admin.bookPreviewIssueAmbiguousAptAction', {
-        apt: issue.apartment || '—',
-        count: sectionCount,
-        sections: sectionsList,
-        field,
-      });
+      return row
+        ? t('admin.bookPreviewIssueAmbiguousAptAction', {
+            apt: issue.apartment || '—',
+            count: sectionCount,
+            sections: sectionsList,
+            field,
+            row,
+            sheet,
+          })
+        : t('admin.bookPreviewIssueAmbiguousAptActionNoRow', {
+            apt: issue.apartment || '—',
+            count: sectionCount,
+            sections: sectionsList,
+            field,
+            sheet,
+          });
     }
     return t('admin.bookPreviewIssueAmbiguousApt', {
       sheet,
       apt: issue.apartment || '—',
       sections: sectionsList,
       field,
+      row: row || '—',
     });
   }
 
@@ -853,26 +1093,28 @@ export function presentImportSeverity(severity: string | undefined, t: T): strin
 /**
  * Sheet (+ row when known) under a card message.
  * Omits the row entirely when unknown — never shows «строка —».
+ * Soft/identity issues must not call this for apartment cards.
  */
 export function presentBookPreviewIssueWhere(issue: BookPreviewIssue, t: T): string {
+  // Ambiguous action already embeds sheet/row/column once.
+  if (issue.reason === 'section_code_required_for_disambiguation') return '';
   const sheet = resolveBookPreviewSheetTitle(issue, t);
   const rowsLabel = formatExcelRowRanges(issue.rows);
+  const field = presentImportField(issue.field, t);
   if (!sheet) return '';
+  if (rowsLabel && field && field !== '—') {
+    return t('admin.bookPreviewIssueSheetRowField', { sheet, row: rowsLabel, field });
+  }
   if (rowsLabel) return t('admin.bookPreviewIssueSheetRow', { sheet, row: rowsLabel });
   return t('admin.bookPreviewIssueSheetOnly', { sheet });
 }
 
-/** One where-line for a whole apartment card (prefer owners sheet + known rows). */
+/** Where-line for blocking apartment cards only (never soft/identity). */
 export function presentBookApartmentCardWhere(issues: BookPreviewIssue[], t: T): string {
-  if (issues.length === 0) return '';
+  const hard = issues.filter((i) => i.severity === 'error');
+  if (hard.length === 0) return '';
   const preferred =
-    issues.find(
-      (i) =>
-        (i.reason === 'owner_partial_saved' || i.reason === 'owners_required') &&
-        i.rows.length > 0,
-    ) ||
-    issues.find((i) => i.rows.length > 0) ||
-    issues[0]!;
+    hard.find((i) => i.rows.length > 0) || hard[0]!;
   return presentBookPreviewIssueWhere(preferred, t);
 }
 

@@ -89,7 +89,7 @@ describe('book preview apartment cards', () => {
     const missing = cards.find((c) => c.apartment === '20');
     expect(missing?.status).toBe('clarify');
     expect(presentBookPreviewIssue(missing!.issues[0]!, (k, p) => translate('ru', k, p))).toBe(
-      'Сведения о собственнике отсутствуют',
+      'Сведений о владельце пока нет. После импорта квартира будет отмечена как требующая уточнения. Добавьте сведения в Книге собственности.',
     );
   });
 

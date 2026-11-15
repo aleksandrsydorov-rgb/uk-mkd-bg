@@ -33,8 +33,7 @@ import {
   type FirstRunTariffPrepMap,
 } from '@/lib/firstRun';
 import {
-  presentBookApartmentCardIssueBody,
-  presentBookApartmentCardWhere,
+  presentBookApartmentCardContent,
   presentBookPreviewIssue,
   presentBookPreviewIssueWhere,
   presentFirstRunErrorRow,
@@ -700,34 +699,39 @@ export function FirstRunBookImport({
                           {aptRef} — {statusLabel}
                         </p>
                         <div style={{ margin: 0 }}>
-                          {card.issues.map((issue, idx) => {
-                            const body = presentBookApartmentCardIssueBody(issue, t, {
-                              hasBlockingError: card.status === 'error',
-                            });
-                            return (
-                              <div
-                                key={`${card.key}-${issue.reason}-${idx}`}
-                                style={{ marginBottom: idx === card.issues.length - 1 ? 4 : 8 }}
-                              >
-                                <div>{body.lead}</div>
-                                {body.bullets.length > 0 ? (
-                                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-                                    {body.bullets.map((b) => (
-                                      <li key={`${card.key}-${issue.reason}-${b}`}>{b}</li>
-                                    ))}
-                                  </ul>
-                                ) : null}
-                                {body.later ? (
-                                  <div style={{ marginTop: 4 }}>{body.later}</div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
                           {(() => {
-                            const where = presentBookApartmentCardWhere(card.issues, t);
-                            return where ? (
-                              <div style={{ opacity: 0.85, marginTop: 4 }}>{where}</div>
-                            ) : null;
+                            const content = presentBookApartmentCardContent(
+                              card,
+                              previewOwners ?? [],
+                              t,
+                            );
+                            return (
+                              <>
+                                {content.blocks.map((block, idx) => (
+                                  <div
+                                    key={block.key}
+                                    style={{
+                                      marginBottom:
+                                        idx === content.blocks.length - 1 && !content.where
+                                          ? 0
+                                          : 8,
+                                    }}
+                                  >
+                                    {block.heading ? (
+                                      <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                                        {block.heading}
+                                      </div>
+                                    ) : null}
+                                    {block.lines.map((line) => (
+                                      <div key={`${block.key}-${line}`}>{line}</div>
+                                    ))}
+                                  </div>
+                                ))}
+                                {content.where ? (
+                                  <div style={{ opacity: 0.85, marginTop: 4 }}>{content.where}</div>
+                                ) : null}
+                              </>
+                            );
                           })()}
                         </div>
                       </li>

@@ -102,9 +102,9 @@ export const BOOK_OWNERS_SHEET = 'owners';
 
 export const BOOK_OBJECTS_CSV_HEADERS = [
   'apartment_number',
-  'floor',
   'section_code',
   'block_code',
+  'floor',
   'purpose',
   'area_sqm',
   'living_area_sqm',

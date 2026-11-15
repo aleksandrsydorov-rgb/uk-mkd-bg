@@ -95,7 +95,7 @@ export const PROPERTY_BOOK_OBJECTS_SPEC: ImportTemplateSpec = {
       format: 'number',
       width: 10,
       label: { ru: 'Этаж', bg: 'Етаж', en: 'Floor' },
-      aliases: ['этаж'],
+      aliases: ['этаж', 'етаж', 'floor'],
       instruction: {
         ru: 'Номер этажа, целое число. Необязательно.',
         bg: 'Номер на етажа, цяло число. По желание.',

@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
+import { isValidIban } from '@/lib/iban';
 import {
   normalizeOpeningBalanceKind,
   normalizeInternetOpeningRow,
@@ -620,6 +621,10 @@ export function moduleChoiceToDraft(choice: FirstRunModuleChoice): {
   if (choice.electricity) modules.push('electricity');
   if (choice.internet) modules.push('internet');
   for (const key of choice.extra) {
+    // Import substages are wizard progress only — never module catalog keys.
+    if (key === 'property_book_objects' || key === 'property_book_owners' || key === 'property_book') {
+      continue;
+    }
     if (!modules.includes(key)) modules.push(key);
   }
   return {
@@ -1121,6 +1126,53 @@ export function validateComplexFormWithIban(
   return errors;
 }
 
+const COMPLEX_FIELD_ACTION_KEYS: Record<string, string> = {
+  display_name: 'admin.firstRunComplexAction_display_name',
+  address_country: 'admin.firstRunComplexAction_address_country',
+  address_city: 'admin.firstRunComplexAction_address_city',
+  address_street: 'admin.firstRunComplexAction_address_street',
+  address_building_number: 'admin.firstRunComplexAction_address_building_number',
+  apartment_count: 'admin.firstRunComplexAction_apartment_count',
+  contact_email: 'admin.firstRunComplexAction_contact_email',
+  mgmt_legal_name: 'admin.firstRunComplexAction_mgmt_legal_name',
+  mgmt_registration_country: 'admin.firstRunComplexAction_mgmt_registration_country',
+  mgmt_registration_number: 'admin.firstRunComplexAction_mgmt_registration_number',
+  mgmt_registered_address: 'admin.firstRunComplexAction_mgmt_registered_address',
+  mgmt_representative_name: 'admin.firstRunComplexAction_mgmt_representative_name',
+  mgmt_phone: 'admin.firstRunComplexAction_mgmt_phone',
+  mgmt_email: 'admin.firstRunComplexAction_mgmt_email',
+  mgmt_vat_number: 'admin.firstRunComplexAction_mgmt_vat_number',
+};
+
+/**
+ * User-facing summary for complex-card validation: field + what to do + retry hint.
+ * Codes like bank_0_iban map to the IBAN action line.
+ */
+export function presentComplexFormErrors(
+  codes: string[],
+  t: (key: string) => string,
+): string {
+  if (!codes.length) return t('admin.firstRunComplexInvalid');
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const code of codes) {
+    let actionKey = COMPLEX_FIELD_ACTION_KEYS[code];
+    if (!actionKey && /^bank_\d+_iban$/.test(code)) actionKey = 'admin.firstRunComplexAction_bank_iban';
+    if (!actionKey && /^bank_\d+_account_holder$/.test(code)) {
+      actionKey = 'admin.firstRunComplexAction_bank_account_holder';
+    }
+    if (!actionKey && /^bank_\d+_bank_name$/.test(code)) {
+      actionKey = 'admin.firstRunComplexAction_bank_name';
+    }
+    if (!actionKey) continue;
+    if (seen.has(actionKey)) continue;
+    seen.add(actionKey);
+    lines.push(t(actionKey));
+  }
+  if (lines.length === 0) return t('admin.firstRunComplexInvalid');
+  return `${lines.join(' ')} ${t('admin.firstRunComplexFixRetry')}`;
+}
+
 export function complexFormToPayload(
   form: FirstRunComplexForm,
   opts?: { asDraft?: boolean },
@@ -1131,7 +1183,13 @@ export function complexFormToPayload(
       if (!bankRowFilled(b)) return false;
       // Draft: skip incomplete rows so partial typing does not block autosave.
       if (asDraft) {
-        return Boolean(b.account_holder.trim() && b.bank_name.trim() && b.iban.trim());
+        // Skip incomplete / invalid IBANs so draft autosave never hits first_run: iban invalid.
+        return Boolean(
+          b.account_holder.trim() &&
+            b.bank_name.trim() &&
+            b.iban.trim() &&
+            isValidIban(b.iban),
+        );
       }
       return true;
     })

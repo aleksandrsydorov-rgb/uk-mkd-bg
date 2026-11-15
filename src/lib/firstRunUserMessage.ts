@@ -240,7 +240,16 @@ export function explainFirstRunFailure(raw: unknown, t: T): FirstRunErrorView {
     console.error('[first-run]', redactDiagnostic(text));
     return { message: t('admin.firstRunErrUnknown'), detail: null };
   }
-  // No script-based “looks human” heuristic — only the explicit dictionary above.
+  // Already user-facing copy (complex form actions, localized banners) — keep it.
+  // Do not console.error: that floods the console when Continue fails client-side validation.
+  if (
+    /[А-Яа-яЁёІіЇїЄєҐґ]/.test(text) ||
+    /[«»""]/.test(text) ||
+    /\b(Continue|Fix|enter|Enter|press|Press)\b/.test(text) ||
+    /Продължи|Продолжить|Исправьте|Поправете/.test(text)
+  ) {
+    return { message: text, detail: null };
+  }
   console.error('[first-run]', redactDiagnostic(text));
   return { message: t('admin.firstRunErrUnknown'), detail: null };
 }

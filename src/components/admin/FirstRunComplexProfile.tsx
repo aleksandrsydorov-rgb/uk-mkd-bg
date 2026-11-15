@@ -3,9 +3,11 @@
 import { Building2 } from 'lucide-react';
 import { FirstRunStageActions } from '@/components/admin/FirstRunFrame';
 import { FirstRunScreen } from '@/components/admin/FirstRunSteps';
+import { FirstRunStatusBanner } from '@/components/admin/FirstRunStatusBanner';
 import styles from './FirstRunFrame.module.css';
 import {
   emptyBankAccount,
+  presentComplexFormErrors,
   type FirstRunBankAccount,
   type FirstRunComplexForm,
 } from '@/lib/firstRun';
@@ -73,6 +75,13 @@ export function FirstRunComplexProfile({
       lead={t('admin.firstRunComplexLead')}
       busy={busy}
     >
+      {formErrors.length > 0 ? (
+        <FirstRunStatusBanner
+          tone="error"
+          title={t('admin.firstRunComplexInvalid')}
+          detail={presentComplexFormErrors(formErrors, t)}
+        />
+      ) : null}
       <div className={styles.group}>
         <h3 className={styles.groupTitle}>{t('admin.firstRunGroupComplex')}</h3>
         <div className={styles.formGrid}>

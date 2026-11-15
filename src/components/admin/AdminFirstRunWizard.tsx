@@ -35,6 +35,7 @@ import {
   stageAfterModuleSave,
   readTariffPrep,
   isFirstRunTariffPrepared,
+  presentComplexFormErrors,
   saveFirstRunProgress,
   validateMetersSelection,
   visibleFirstRunStages,
@@ -91,6 +92,7 @@ import {
   SUPPORT_FEE_IMPORT_SPEC,
   WATER_METERS_IMPORT_SPEC,
   aliasesFromSpec,
+  downloadImportTemplateBuffer,
   localizedTemplateFileName,
 } from '@/lib/importTemplates';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -180,15 +182,7 @@ type CrDryRun = {
 };
 
 function downloadXlsx(buf: ArrayBuffer, fileName: string) {
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadImportTemplateBuffer(buf, fileName);
 }
 
 function asObj(v: unknown): Record<string, unknown> {
@@ -786,21 +780,30 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     const errs = validateComplexFormWithIban(form, isValidIban);
     setFormErrors(errs);
     if (errs.length > 0) {
-      setError(t('admin.firstRunComplexInvalid'));
+      // Concrete field + action + retry hint (not the generic one-liner alone).
+      setError(presentComplexFormErrors(errs, t));
       return;
     }
     await run(async () => {
-      await saveFirstRunProgress(supabase, {
-        stage: 'complex_card',
-        complex: complexFormToPayload(form),
-      });
-      applyState(
-        await completeFirstRunStage(supabase, {
+      try {
+        await saveFirstRunProgress(supabase, {
           stage: 'complex_card',
-          nextStage: 'property_book_objects',
-        }),
-      );
-      goStage('property_book_objects');
+          complex: complexFormToPayload(form),
+        });
+        applyState(
+          await completeFirstRunStage(supabase, {
+            stage: 'complex_card',
+            nextStage: 'property_book_objects',
+          }),
+        );
+        goStage('property_book_objects');
+      } catch (e) {
+        const raw = e instanceof Error ? e.message : String(e);
+        if (/iban invalid/i.test(raw)) {
+          setFormErrors((prev) => (prev.includes('bank_0_iban') ? prev : [...prev, 'bank_0_iban']));
+        }
+        throw e;
+      }
     });
   }
 

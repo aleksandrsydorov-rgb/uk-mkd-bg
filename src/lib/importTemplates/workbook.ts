@@ -221,16 +221,27 @@ export function buildLocalizedImportWorkbookWithRows(
   return XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
 }
 
-export function downloadImportTemplateBuffer(buf: ArrayBuffer, fileBaseName: string): void {
-  const blob = new Blob([buf], {
+export function downloadImportTemplateBuffer(
+  buf: ArrayBuffer | Uint8Array,
+  fileBaseName: string,
+): void {
+  // Copy into a fresh Uint8Array so Blob always receives a plain BufferSource
+  // (XLSX may hand back ArrayBuffer or a view; some browsers skip the download otherwise).
+  const src = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const bytes = new Uint8Array(src.byteLength);
+  bytes.set(src);
+  const blob = new Blob([bytes], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = fileBaseName.endsWith('.xlsx') ? fileBaseName : `${fileBaseName}.xlsx`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 export function localizedTemplateFileName(

@@ -981,14 +981,146 @@ export function groupBookPreviewByApartment(issues: BookPreviewIssue[]): {
       }),
     };
   });
+  // Final display order is by entrance group + natural apartment number
+  // (see groupBookApartmentCardsByEntrance). Keep a stable fallback here.
   cards.sort((a, b) => {
-    if (a.status !== b.status) {
-      const rank = { error: 0, clarify: 1, ok: 2 };
-      return rank[a.status] - rank[b.status];
-    }
-    return a.apartment.localeCompare(b.apartment, undefined, { numeric: true });
+    const sec = (a.sectionCode || '').localeCompare(b.sectionCode || '', 'en', {
+      sensitivity: 'base',
+    });
+    if (sec !== 0) return sec;
+    const apt = a.apartment.localeCompare(b.apartment, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (apt !== 0) return apt;
+    return (a.blockCode || '').localeCompare(b.blockCode || '', 'en', {
+      sensitivity: 'base',
+    });
   });
   return { cards, unlinked };
+}
+
+/** One entrance (section) group in the apartment-card list. */
+export type BookApartmentEntranceGroup = {
+  key: string;
+  sectionCode: string;
+  cards: BookApartmentPreviewCard[];
+};
+
+/**
+ * Group apartment cards by entrance (section). Sort entrances A→… and apartments
+ * 1,2,9,10… inside each. Empty section last. Count = unique apartment cards.
+ */
+export function groupBookApartmentCardsByEntrance(
+  cards: BookApartmentPreviewCard[],
+): BookApartmentEntranceGroup[] {
+  const map = new Map<string, BookApartmentEntranceGroup>();
+  for (const card of cards) {
+    const section = (card.sectionCode || '').trim();
+    const key = section ? section.toLowerCase() : '\u0000';
+    let group = map.get(key);
+    if (!group) {
+      group = { key, sectionCode: section, cards: [] };
+      map.set(key, group);
+    }
+    group.cards.push(card);
+  }
+  const groups = [...map.values()].sort((a, b) => {
+    if (!a.sectionCode && b.sectionCode) return 1;
+    if (a.sectionCode && !b.sectionCode) return -1;
+    return a.sectionCode.localeCompare(b.sectionCode, 'en', { sensitivity: 'base' });
+  });
+  for (const group of groups) {
+    group.cards.sort((a, b) => {
+      const apt = a.apartment.localeCompare(b.apartment, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (apt !== 0) return apt;
+      return (a.blockCode || '').localeCompare(b.blockCode || '', 'en', {
+        sensitivity: 'base',
+      });
+    });
+  }
+  return groups;
+}
+
+/**
+ * Ensure every owner-row apartment appears as a card (status ok when no issues).
+ * Multi-owner rows for the same identity stay one card.
+ */
+export function supplementApartmentCardsFromOwners(
+  cards: BookApartmentPreviewCard[],
+  owners: Array<Record<string, string | null | undefined>>,
+): BookApartmentPreviewCard[] {
+  const byKey = new Map(cards.map((c) => [c.key, c]));
+  for (const row of owners) {
+    const parts = propertyBookIdentityParts(asIdentityRow(row));
+    if (!parts.apartmentNumber) continue;
+    // Rows without section/block stay out of entrance groups — ambiguous №
+    // without секция belongs in the unlinked/blocking list, not as «Без секции».
+    if (!parts.sectionCode && !parts.blockCode) continue;
+    const key = [
+      parts.apartmentNumber.toLowerCase(),
+      parts.sectionCode.toLowerCase(),
+      parts.blockCode.toLowerCase(),
+    ].join('\u0001');
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      key,
+      apartment: parts.apartmentNumber,
+      sectionCode: parts.sectionCode,
+      blockCode: parts.blockCode,
+      status: 'ok',
+      issues: [],
+    });
+  }
+  return [...byKey.values()];
+}
+
+/** Slavic/English plural forms for «N квартир(ы/а)» in entrance headers. */
+export function formatEntranceApartmentCount(n: number, t: TFn): string {
+  const abs = Math.abs(Math.trunc(n));
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  let form: 'one' | 'few' | 'many' = 'many';
+  if (mod10 === 1 && mod100 !== 11) form = 'one';
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) form = 'few';
+  return t(`admin.bookPreviewEntranceAptCount_${form}`, { n: abs });
+}
+
+export function formatEntranceGroupTitle(
+  group: Pick<BookApartmentEntranceGroup, 'sectionCode' | 'cards'>,
+  t: TFn,
+): string {
+  const countLabel = formatEntranceApartmentCount(group.cards.length, t);
+  const section = (group.sectionCode || '').trim();
+  if (!section) {
+    return t('admin.bookPreviewEntranceGroupPlain', { countLabel });
+  }
+  return t('admin.bookPreviewEntranceGroup', { section, countLabel });
+}
+
+/**
+ * Short card heading under an entrance group: «Квартира №2 — Требует уточнения».
+ * Block only when present (needed to distinguish identity).
+ */
+export function formatBookApartmentCardHeading(
+  t: TFn,
+  card: Pick<BookApartmentPreviewCard, 'apartment' | 'blockCode' | 'status'>,
+): string {
+  const status =
+    card.status === 'error'
+      ? t('admin.bookPreviewAptCardStatusError')
+      : card.status === 'clarify'
+        ? t('admin.bookPreviewAptCardStatusClarify')
+        : t('admin.bookPreviewAptCardStatusOk');
+  const apt = card.apartment || '—';
+  const block = (card.blockCode || '').trim();
+  if (block) {
+    return t('admin.bookPreviewAptCardTitleWithBlock', { apt, block, status });
+  }
+  return t('admin.bookPreviewAptCardTitle', { apt, status });
 }
 
 /** Soft owner-field codes that mean “will save, need to clarify …” (not identity-only). */

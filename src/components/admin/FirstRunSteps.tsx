@@ -49,10 +49,13 @@ import {
   buildBookPreviewIssues,
   buildBookSectionBreakdown,
   clarifyGroupSummary,
-  formatBookApartmentRef,
+  formatBookApartmentCardHeading,
+  formatEntranceGroupTitle,
   formatSectionCountsLine,
+  groupBookApartmentCardsByEntrance,
   groupBookPreviewByApartment,
   groupClarifyIssuesByReason,
+  supplementApartmentCardsFromOwners,
 } from '@/lib/propertyBookImportPreview';
 import {
   FirstRunTariffPrepBlock,
@@ -471,6 +474,10 @@ export function FirstRunBookImport({
   const clarifyIssues = issues.filter((i) => i.severity === 'warning');
   const clarifyGroups = groupClarifyIssuesByReason(clarifyIssues);
   const apartmentPreview = groupBookPreviewByApartment(issues);
+  const apartmentCards = isOwners
+    ? supplementApartmentCardsFromOwners(apartmentPreview.cards, previewOwners ?? [])
+    : apartmentPreview.cards;
+  const entranceGroups = groupBookApartmentCardsByEntrance(apartmentCards);
   const blocking = dry?.blockingErrorCount ?? blockingIssues.length;
   // Owners commit uses allow_overwrite — do not block the confirm button.
   const overwriteBlocked = !isOwners && dry?.requiresOverwriteConfirmation === true;
@@ -668,76 +675,78 @@ export function FirstRunBookImport({
             </div>
           ) : null}
 
-          {dry && !committed && (apartmentPreview.cards.length > 0 || apartmentPreview.unlinked.length > 0) ? (
+          {dry && !committed && (apartmentCards.length > 0 || apartmentPreview.unlinked.length > 0) ? (
             <div className={styles.tableWrap} style={{ marginTop: 12 }}>
               <p className={styles.importLabel}>{t('admin.bookPreviewAptCardsTitle')}</p>
-              {apartmentPreview.cards.length > 0 ? (
-                <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 0, listStyle: 'none' }}>
-                  {apartmentPreview.cards.map((card) => {
-                    const statusLabel =
-                      card.status === 'error'
-                        ? t('admin.bookPreviewAptCardStatusError')
-                        : card.status === 'clarify'
-                          ? t('admin.bookPreviewAptCardStatusClarify')
-                          : t('admin.bookPreviewAptCardStatusOk');
-                    const aptRef = formatBookApartmentRef(t, {
-                      apartmentNumber: card.apartment,
-                      sectionCode: card.sectionCode,
-                      blockCode: card.blockCode,
-                    });
-                    return (
-                      <li
-                        key={card.key}
-                        style={{
-                          marginBottom: 12,
-                          padding: '10px 12px',
-                          border: '1px solid var(--admin-border, #d8dde6)',
-                          borderRadius: 8,
-                        }}
+              {entranceGroups.length > 0 ? (
+                <div style={{ marginTop: 8 }}>
+                  {entranceGroups.map((group) => (
+                    <div key={group.key} style={{ marginBottom: 16 }}>
+                      <p className={styles.importLabel} style={{ marginBottom: 8 }}>
+                        {formatEntranceGroupTitle(group, t)}
+                      </p>
+                      <ul
+                        className={styles.hint}
+                        style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}
                       >
-                        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
-                          {aptRef} — {statusLabel}
-                        </p>
-                        <div style={{ margin: 0 }}>
-                          {(() => {
-                            const content = presentBookApartmentCardContent(
-                              card,
-                              previewOwners ?? [],
-                              t,
-                            );
-                            return (
-                              <>
-                                {content.blocks.map((block, idx) => (
-                                  <div
-                                    key={block.key}
-                                    style={{
-                                      marginBottom:
-                                        idx === content.blocks.length - 1 && !content.where
-                                          ? 0
-                                          : 8,
-                                    }}
-                                  >
-                                    {block.heading ? (
-                                      <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                                        {block.heading}
+                        {group.cards.map((card) => (
+                          <li
+                            key={card.key}
+                            style={{
+                              marginBottom: 12,
+                              padding: '10px 12px',
+                              border: '1px solid var(--admin-border, #d8dde6)',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
+                              {formatBookApartmentCardHeading(t, card)}
+                            </p>
+                            <div style={{ margin: 0 }}>
+                              {(() => {
+                                const content = presentBookApartmentCardContent(
+                                  card,
+                                  previewOwners ?? [],
+                                  t,
+                                );
+                                if (content.blocks.length === 0 && !content.where) return null;
+                                return (
+                                  <>
+                                    {content.blocks.map((block, idx) => (
+                                      <div
+                                        key={block.key}
+                                        style={{
+                                          marginBottom:
+                                            idx === content.blocks.length - 1 && !content.where
+                                              ? 0
+                                              : 8,
+                                        }}
+                                      >
+                                        {block.heading ? (
+                                          <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                                            {block.heading}
+                                          </div>
+                                        ) : null}
+                                        {block.lines.map((line) => (
+                                          <div key={`${block.key}-${line}`}>{line}</div>
+                                        ))}
+                                      </div>
+                                    ))}
+                                    {content.where ? (
+                                      <div style={{ opacity: 0.85, marginTop: 4 }}>
+                                        {content.where}
                                       </div>
                                     ) : null}
-                                    {block.lines.map((line) => (
-                                      <div key={`${block.key}-${line}`}>{line}</div>
-                                    ))}
-                                  </div>
-                                ))}
-                                {content.where ? (
-                                  <div style={{ opacity: 0.85, marginTop: 4 }}>{content.where}</div>
-                                ) : null}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
               ) : null}
               {apartmentPreview.unlinked.length > 0 ? (
                 <div style={{ marginTop: 12 }}>

@@ -244,7 +244,10 @@ export function parsePropertyBookWorkbookBuffer(
       wb.Sheets[name],
       BOOK_OBJECTS_CSV_HEADERS,
       PROPERTY_BOOK_OBJECTS_SPEC,
-    ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
+    )
+      .map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS))
+      // Apartments sub-step ignores ownership_type (filled on owners). Blank keeps DB value.
+      .map((row) => ({ ...row, ownership_type: '' }));
     return { objects, owners: [] };
   }
 
@@ -257,7 +260,16 @@ export function parsePropertyBookWorkbookBuffer(
       PROPERTY_BOOK_OWNERS_SPEC,
       BOOK_OWNERS_SPARSE_HEADERS,
     ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS));
-    return { objects: [], owners };
+    // Combined legacy workbook: keep Objects rows as ownership_type source for the owners step.
+    const objects =
+      objectsName && objectsName !== name
+        ? sheetToRecords(
+            wb.Sheets[objectsName],
+            BOOK_OBJECTS_CSV_HEADERS,
+            PROPERTY_BOOK_OBJECTS_SPEC,
+          ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS))
+        : [];
+    return { objects, owners };
   }
 
   const resolvedObjects = objectsName ?? dataSheets[0];
@@ -386,7 +398,6 @@ export const PROPERTY_BOOK_IMPORT_CLARIFICATION_OBJECT_FIELDS = [
   'purpose',
   'area_sqm',
   'ideal_parts_percent',
-  'ownership_type',
 ] as const;
 
 export const EMPTY_PROPERTY_BOOK_LIST_FILTERS: PropertyBookListFilters = {

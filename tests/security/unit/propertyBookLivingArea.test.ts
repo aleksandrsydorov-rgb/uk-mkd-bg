@@ -27,39 +27,36 @@ describe('property book living area', () => {
     });
   });
 
-  it('downloads the wizard template with living area after area in every locale', () => {
+  it('downloads the wizard apartments template without ownership type; ideal parts stay', () => {
     expect(objectHeaders('ru')).toEqual([
       'Апартамент',
-      'Этаж',
       'Секция',
       'Блок',
+      'Этаж',
       'Назначение',
       'Площадь, м²',
       'Жилая площадь, м²',
       'Идеальные части, %',
-      'Тип собственности',
     ]);
     expect(objectHeaders('bg')).toEqual([
       'Апартамент',
-      'Етаж',
       'Секция',
       'Блок',
+      'Етаж',
       'Предназначение',
       'Площ, м²',
       'Жилищна площ, м²',
       'Идеални части, %',
-      'Вид собственост',
     ]);
     expect(objectHeaders('en')).toEqual([
       'Apartment',
-      'Floor',
       'Section',
       'Block',
+      'Floor',
       'Purpose',
       'Area, m²',
       'Living area, m²',
       'Ideal parts, %',
-      'Ownership type',
     ]);
   });
 

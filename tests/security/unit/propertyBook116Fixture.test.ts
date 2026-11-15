@@ -36,12 +36,12 @@ function build116Buffer(includeLiving: boolean): ArrayBuffer {
     colLabel(PROPERTY_BOOK_OBJECTS_SPEC, 'area_sqm'),
     colLabel(PROPERTY_BOOK_OBJECTS_SPEC, 'living_area_sqm'),
     colLabel(PROPERTY_BOOK_OBJECTS_SPEC, 'ideal_parts_percent'),
-    colLabel(PROPERTY_BOOK_OBJECTS_SPEC, 'ownership_type'),
   ];
   const ownHeaders = [
     colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'apartment_number'),
     colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'section_code'),
     colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'block_code'),
+    colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'ownership_type'),
     colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'entity_kind'),
     colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'ownership_share_percent'),
     colLabel(PROPERTY_BOOK_OWNERS_SPEC, 'ideal_parts_percent'),
@@ -65,12 +65,12 @@ function build116Buffer(includeLiving: boolean): ArrayBuffer {
       area,
       living,
       '0,86',
-      'sole',
     ]);
     ownerRows.push([
       String(apt),
       section,
       '',
+      'sole',
       'natural_person',
       '100',
       '0,86',

@@ -3731,7 +3731,7 @@ export const ru = {
     bookImportSheetObjects: 'Объекты',
     bookImportSheetOwners: 'Собственники',
     bookImport_apartment_required: 'Не указан номер квартиры',
-    bookImport_invalid_ownership_type: 'Некорректный тип владения',
+    bookImport_invalid_ownership_type: 'Некорректный тип собственности',
     bookImport_invalid_area: 'Некорректная площадь',
     bookImport_invalid_living_area: 'Некорректная жилая площадь, м²',
     bookImport_invalid_ideal_parts: 'Некорректные идеальные части',
@@ -3745,7 +3745,9 @@ export const ru = {
     bookImport_sole_one_owner: 'Для единоличной собственности нужен один собственник',
     bookImport_shared_two_owners: 'Для совместной собственности нужно не меньше двух собственников',
     bookImport_ownership_type_conflict:
-      'В файле собственников для одной квартиры указаны разные типы владения (единоличная и долевая). Тип владения задаётся на шаге апартаментов.',
+      'В файле собственников для одной квартиры указаны разные типы собственности (единоличная и долевая). Исправьте расхождение.',
+    bookImport_ownership_type_sheet_conflict:
+      'Тип собственности на листе «Объекты» не совпадает с листом «Собственники». Исправьте расхождение.',
     bookImport_ideal_parts_sum: 'Сумма идеальных частей собственников не совпадает с объектом',
     bookImport_apartment_count_mismatch: 'Количество квартир в файле не совпадает с данными комплекса',
     bookImport_owner_without_object: 'Собственник указан для квартиры, которой нет на листе «Объекты»',
@@ -3797,6 +3799,10 @@ export const ru = {
       'Лист «{sheet}»: апартамент №{apt} есть в секциях {sections}. Заполните колонку «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
       '{aptRef} — не указан тип собственности. Лист «{sheet}», строка {row}, колонка «{field}».',
+    bookPreviewIssueOwnershipTypeConflict:
+      'Лист «{sheet}», строки {rows}: для {aptRef} в колонке «{field}» указаны разные значения ({values}). Исправьте расхождение.',
+    bookPreviewIssueOwnershipTypeSheetConflict:
+      '{aptRef}: тип собственности на листе «Объекты» ({objectsValue}) не совпадает с листом «Собственники» ({ownersValue}). Исправьте расхождение.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — недопустимое значение «{value}» в колонке «{field}». Лист «{sheet}», строка {row}. Допустимо: {allowed}.',
     bookPreviewIssueOwnersMissing: '{aptRef} — нет сведений о собственнике. Заполните лист «{sheet}».',
@@ -9004,7 +9010,9 @@ export const en: Messages = {
     bookImport_sole_one_owner: 'Sole ownership requires exactly one owner',
     bookImport_shared_two_owners: 'Shared ownership requires at least two owners',
     bookImport_ownership_type_conflict:
-      'The owners file lists conflicting ownership types (sole and shared / joint) for the same apartment. Ownership type is set on the apartments step.',
+      'The owners file lists conflicting ownership types (sole and shared) for the same apartment. Fix the mismatch.',
+    bookImport_ownership_type_sheet_conflict:
+      'Ownership type on the Objects sheet does not match the Owners sheet. Fix the mismatch.',
     bookImport_ideal_parts_sum: 'Owner ideal parts do not match the object total',
     bookImport_apartment_count_mismatch: 'Apartment count in the file does not match the complex data',
     bookImport_owner_without_object: 'Owner refers to an apartment missing from the Objects sheet',
@@ -9057,6 +9065,10 @@ export const en: Messages = {
       'Sheet “{sheet}”: apartment №{apt} exists in sections {sections}. Fill the “{field}” column.',
     bookPreviewIssueOwnershipTypeMissing:
       '{aptRef} — ownership type is not specified. Sheet “{sheet}”, row {row}, column “{field}”.',
+    bookPreviewIssueOwnershipTypeConflict:
+      'Sheet “{sheet}”, rows {rows}: {aptRef} has conflicting “{field}” values ({values}). Fix the mismatch.',
+    bookPreviewIssueOwnershipTypeSheetConflict:
+      '{aptRef}: ownership type on the Objects sheet ({objectsValue}) does not match the Owners sheet ({ownersValue}). Fix the mismatch.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — invalid value “{value}” in column “{field}”. Sheet “{sheet}”, row {row}. Allowed: {allowed}.',
     bookPreviewIssueOwnersMissing: '{aptRef} — no owner details. Fill the “{sheet}” sheet.',
@@ -14273,7 +14285,9 @@ export const bg: Messages = {
     bookImport_sole_one_owner: 'За еднолична собственост е нужен един собственик',
     bookImport_shared_two_owners: 'За съвместна собственост са нужни поне двама собственици',
     bookImport_ownership_type_conflict:
-      'Във файла със собственици за един апартамент са посочени различни видове собственост (еднолична и дялова). Видът собственост се задава на стъпката за апартаменти.',
+      'Във файла със собственици за един апартамент са посочени различни типове собственост (еднолична и дялова). Поправете разминаването.',
+    bookImport_ownership_type_sheet_conflict:
+      'Типът собственост в листа «Обекти» не съвпада с листа «Собственици». Поправете разминаването.',
     bookImport_ideal_parts_sum: 'Сборът на идеалните части не съвпада с обекта',
     bookImport_apartment_count_mismatch: 'Броят апартаменти във файла не съвпада с данните за комплекса',
     bookImport_owner_without_object: 'Собственикът е за апартамент, който липсва в листа «Обекти»',
@@ -14325,6 +14339,10 @@ export const bg: Messages = {
       'Лист «{sheet}»: апартамент №{apt} има в секции {sections}. Попълнете колоната «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
       '{aptRef} — не е посочен тип собственост. Лист «{sheet}», ред {row}, колона «{field}».',
+    bookPreviewIssueOwnershipTypeConflict:
+      'Лист «{sheet}», редове {rows}: за {aptRef} в колона «{field}» са посочени различни стойности ({values}). Поправете разминаването.',
+    bookPreviewIssueOwnershipTypeSheetConflict:
+      '{aptRef}: тип собственост в листа «Обекти» ({objectsValue}) не съвпада с листа «Собственици» ({ownersValue}). Поправете разминаването.',
     bookPreviewIssueInvalidEnum:
       '{aptRef} — недопустима стойност «{value}» в колона «{field}». Лист «{sheet}», ред {row}. Допустимо: {allowed}.',
     bookPreviewIssueOwnersMissing: '{aptRef} — няма данни за собственик. Попълнете листа «{sheet}».',

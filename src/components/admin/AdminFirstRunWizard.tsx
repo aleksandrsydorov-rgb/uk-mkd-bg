@@ -83,7 +83,8 @@ import {
 } from '@/lib/propertyBookAdmin';
 import {
   apartmentsWithOwnersCount,
-  ownersOwnershipTypeConflictRows,
+  applyOwnershipTypesToObjects,
+  collectOwnersStepOwnershipTypeConflicts,
 } from '@/lib/propertyBookImportPreview';
 import {
   CAPITAL_REPAIR_IMPORT_SPEC,
@@ -236,7 +237,12 @@ function isPropertyBookOwnersNoise(entry: unknown): boolean {
     return true;
   }
   // Ownership type is filled on the owners sub-step — not an apartments-step clarify.
-  if (code === 'ownership_type_required' || code === 'required:ownership_type') {
+  if (
+    code === 'ownership_type_required' ||
+    code === 'required:ownership_type' ||
+    code === 'ownership_type_invalid' ||
+    code === 'invalid:ownership_type'
+  ) {
     return true;
   }
   return false;
@@ -244,52 +250,6 @@ function isPropertyBookOwnersNoise(entry: unknown): boolean {
 
 function filterObjectsStepBookIssues(entries: unknown[]): unknown[] {
   return entries.filter((e) => !isPropertyBookOwnersNoise(e));
-}
-
-/** Apply a single consistent ownership_type from owner rows onto matching object stubs. */
-function mergeOwnersOwnershipTypeOntoObjects(
-  objects: Record<string, string>[],
-  owners: Array<Record<string, string>>,
-): Record<string, string>[] {
-  const byKey = new Map<string, string>();
-  for (const raw of owners) {
-    const apt = String(raw.apartment_number ?? '').trim();
-    if (!apt) continue;
-    const type = String(raw.ownership_type ?? '')
-      .trim()
-      .toLowerCase();
-    if (type !== 'sole' && type !== 'shared') continue;
-    const key = [
-      apt.toLowerCase(),
-      String(raw.section_code ?? '')
-        .trim()
-        .toLowerCase(),
-      String(raw.block_code ?? '')
-        .trim()
-        .toLowerCase(),
-    ].join('\u0001');
-    const prev = byKey.get(key);
-    if (prev && prev !== type) continue; // conflict handled separately
-    byKey.set(key, type);
-  }
-  return objects.map((obj) => {
-    const key = [
-      String(obj.apartment_number ?? '')
-        .trim()
-        .toLowerCase(),
-      String(obj.section_code ?? '')
-        .trim()
-        .toLowerCase(),
-      String(obj.block_code ?? '')
-        .trim()
-        .toLowerCase(),
-    ].join('\u0001');
-    const fromOwners = byKey.get(key);
-    // Only apply when owners rows agree on a type (conflicts are blocked earlier).
-    // Never invent a type when the file left it blank.
-    if (!fromOwners) return obj;
-    return { ...obj, ownership_type: fromOwners };
-  });
 }
 
 function bookStageIsComplete(
@@ -1027,7 +987,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setError(t('admin.is2PropertyBookEmptyOwners'));
         return;
       }
-      const conflictRows = ownersOwnershipTypeConflictRows(payload.owners);
+      // payload.objects = Objects-sheet rows from a combined legacy workbook (type source only).
+      const conflictRows = collectOwnersStepOwnershipTypeConflicts({
+        owners: payload.owners,
+        objectsFromFile: payload.objects,
+      });
       if (conflictRows.length > 0) {
         setBookDry({
           ok: false,
@@ -1054,7 +1018,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         setError(t('admin.is2PropertyBookEmptyObjects'));
         return;
       }
-      const objectsWithType = mergeOwnersOwnershipTypeOntoObjects(objectStubs, payload.owners);
+      const objectsWithType = applyOwnershipTypesToObjects(objectStubs, {
+        owners: payload.owners,
+        objectsFromFile: payload.objects,
+      });
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
         p_objects: objectsWithType,
         p_owners: payload.owners,

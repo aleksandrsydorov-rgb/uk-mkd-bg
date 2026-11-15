@@ -362,11 +362,12 @@ export function toImportTemplateLocale(value: string | null | undefined): Import
 }
 
 function emptyDataSheet(spec: ImportTemplateSpec, locale: ImportTemplateLocale): XLSX.WorkSheet {
-  const headers = spec.columns.map((c) => c.label[locale]);
+  const cols = templateColumns(spec);
+  const headers = cols.map((c) => c.label[locale]);
   const dataSheet = XLSX.utils.aoa_to_sheet([headers]);
   const reserve = 80;
   for (let r = 1; r < reserve; r += 1) {
-    spec.columns.forEach((col, c) => {
+    cols.forEach((col, c) => {
       if (col.format === 'text' || col.format === 'date' || !col.format) {
         dataSheet[XLSX.utils.encode_cell({ r, c })] = { t: 's', v: '', z: '@' };
       }
@@ -374,9 +375,9 @@ function emptyDataSheet(spec: ImportTemplateSpec, locale: ImportTemplateLocale):
   }
   dataSheet['!ref'] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: reserve - 1, c: Math.max(0, spec.columns.length - 1) },
+    e: { r: reserve - 1, c: Math.max(0, cols.length - 1) },
   });
-  applyColumnFormats(dataSheet, spec.columns, reserve);
+  applyColumnFormats(dataSheet, cols, reserve);
   return dataSheet;
 }
 
@@ -409,7 +410,7 @@ export function buildLocalizedMultiSheetImportWorkbook(
       locale === 'en' ? 'Format / rules' : locale === 'bg' ? 'Формат / правила' : 'Формат / правила',
       locale === 'en' ? 'Example' : locale === 'bg' ? 'Пример' : 'Пример',
     ]);
-    for (const col of spec.columns) {
+    for (const col of templateColumns(spec)) {
       aoa.push([
         col.label[locale],
         col.required

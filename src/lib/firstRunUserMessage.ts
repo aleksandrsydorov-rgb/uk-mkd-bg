@@ -405,6 +405,7 @@ export function importReasonI18nKey(raw: string): string | null {
     ownership_share_invalid: 'bookImport_invalid_share',
     ownership_type_invalid: 'bookImport_invalid_ownership_type',
     ownership_type_conflict: 'bookImport_ownership_type_conflict',
+    ownership_type_sheet_conflict: 'bookImport_ownership_type_sheet_conflict',
     'invalid:ownership_type': 'bookImport_invalid_ownership_type',
     'invalid:entity_kind': 'bookImport_invalid_entity_kind',
     entity_kind_invalid: 'bookImport_invalid_entity_kind',
@@ -625,6 +626,25 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
       sheet,
       row: rowsLabel || '—',
       field,
+    });
+  }
+
+  if (issue.reason === 'ownership_type_conflict') {
+    return t('admin.bookPreviewIssueOwnershipTypeConflict', {
+      aptRef,
+      sheet,
+      rows: rowsLabel || '—',
+      field,
+      values: issue.value || '—',
+    });
+  }
+
+  if (issue.reason === 'ownership_type_sheet_conflict') {
+    return t('admin.bookPreviewIssueOwnershipTypeSheetConflict', {
+      aptRef,
+      field,
+      objectsValue: issue.value.split('/')[0] || '—',
+      ownersValue: issue.value.split('/')[1] || '—',
     });
   }
 

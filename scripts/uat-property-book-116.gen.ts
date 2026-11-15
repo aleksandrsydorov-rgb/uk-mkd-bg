@@ -30,12 +30,12 @@ function build116Workbook(): ArrayBuffer {
     label(PROPERTY_BOOK_OBJECTS_SPEC, 'area_sqm', 'ru'),
     label(PROPERTY_BOOK_OBJECTS_SPEC, 'living_area_sqm', 'ru'),
     label(PROPERTY_BOOK_OBJECTS_SPEC, 'ideal_parts_percent', 'ru'),
-    label(PROPERTY_BOOK_OBJECTS_SPEC, 'ownership_type', 'ru'),
   ];
   const ownHeaders = [
     label(PROPERTY_BOOK_OWNERS_SPEC as typeof PROPERTY_BOOK_OBJECTS_SPEC, 'apartment_number', 'ru'),
     'Секция',
     'Блок',
+    label(PROPERTY_BOOK_OWNERS_SPEC as typeof PROPERTY_BOOK_OBJECTS_SPEC, 'ownership_type', 'ru'),
     label(PROPERTY_BOOK_OWNERS_SPEC as typeof PROPERTY_BOOK_OBJECTS_SPEC, 'entity_kind', 'ru'),
     label(PROPERTY_BOOK_OWNERS_SPEC as typeof PROPERTY_BOOK_OBJECTS_SPEC, 'ownership_share_percent', 'ru'),
     label(PROPERTY_BOOK_OWNERS_SPEC as typeof PROPERTY_BOOK_OBJECTS_SPEC, 'ideal_parts_percent', 'ru'),
@@ -57,12 +57,12 @@ function build116Workbook(): ArrayBuffer {
       area,
       living,
       '0,86',
-      'sole',
     ]);
     ownerRows.push([
       String(apt),
       section,
       '',
+      'sole',
       'natural_person',
       '100',
       '0,86',

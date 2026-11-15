@@ -206,10 +206,28 @@ function issueGroupKey(row: FirstRunErrorRow & { meta?: Record<string, unknown> 
   ].join('|');
 }
 
+function ownershipTypeKey(parts: {
+  apartmentNumber: string;
+  sectionCode: string;
+  blockCode: string;
+}): string {
+  return [
+    parts.apartmentNumber.toLowerCase(),
+    parts.sectionCode.toLowerCase(),
+    parts.blockCode.toLowerCase(),
+  ].join('\u0001');
+}
+
+function normalizeOwnershipType(raw: string | null | undefined): 'sole' | 'shared' | '' {
+  const type = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  return type === 'sole' || type === 'shared' ? type : '';
+}
+
 /**
- * Legacy owners files may still put ownership_type on owner rows.
- * Flag when the same apartment identity carries conflicting sole/shared values.
- * ownership_type remains apartment-level on objects; this is a file-side guard only.
+ * Owners-sheet rows: same apartment identity must not mix sole/shared.
+ * Returns blocking rows with all conflicting Excel line numbers.
  */
 export function ownersOwnershipTypeConflictRows(
   owners: BookPreviewOwnerRow[],
@@ -221,15 +239,9 @@ export function ownersOwnershipTypeConflictRows(
   for (const raw of owners) {
     const parts = propertyBookIdentityParts(asIdentityRow(raw));
     if (!parts.apartmentNumber) continue;
-    const type = String(raw.ownership_type ?? '')
-      .trim()
-      .toLowerCase();
-    if (type !== 'sole' && type !== 'shared') continue;
-    const key = [
-      parts.apartmentNumber.toLowerCase(),
-      parts.sectionCode.toLowerCase(),
-      parts.blockCode.toLowerCase(),
-    ].join('\u0001');
+    const type = normalizeOwnershipType(raw.ownership_type);
+    if (!type) continue;
+    const key = ownershipTypeKey(parts);
     let entry = byKey.get(key);
     if (!entry) {
       entry = {
@@ -248,9 +260,10 @@ export function ownersOwnershipTypeConflictRows(
   const out: FirstRunErrorRow[] = [];
   for (const entry of byKey.values()) {
     if (entry.types.size < 2) continue;
+    const rows = [...new Set(entry.rows)].sort((a, b) => a - b);
     out.push({
       sheet: 'owners',
-      row: entry.rows[0] != null ? String(entry.rows[0]) : '',
+      row: rows[0] != null ? String(rows[0]) : '',
       field: 'ownership_type',
       reason: 'ownership_type_conflict',
       apartment: entry.apt,
@@ -258,12 +271,139 @@ export function ownersOwnershipTypeConflictRows(
       meta: {
         sectionCode: entry.section,
         blockCode: entry.block,
-        sourceRows: [...new Set(entry.rows)].sort((a, b) => a - b),
+        sourceRows: rows,
         value: [...entry.types].sort().join('/'),
       },
     });
   }
   return out;
+}
+
+/**
+ * Combined legacy workbook: Objects-sheet type vs Owners-sheet type for the same
+ * apartment (section/block). Conflict blocks owners commit until resolved.
+ */
+export function objectsOwnersOwnershipTypeConflictRows(
+  objectsFromFile: BookPreviewObjectRow[],
+  owners: BookPreviewOwnerRow[],
+): FirstRunErrorRow[] {
+  const ownerTypeByKey = new Map<
+    string,
+    { apt: string; section: string; block: string; type: string; rows: number[] }
+  >();
+  for (const raw of owners) {
+    const parts = propertyBookIdentityParts(asIdentityRow(raw));
+    if (!parts.apartmentNumber) continue;
+    const type = normalizeOwnershipType(raw.ownership_type);
+    if (!type) continue;
+    const key = ownershipTypeKey(parts);
+    const prev = ownerTypeByKey.get(key);
+    const r = rowNum(raw._row);
+    if (!prev) {
+      ownerTypeByKey.set(key, {
+        apt: parts.apartmentNumber,
+        section: parts.sectionCode,
+        block: parts.blockCode,
+        type,
+        rows: r != null ? [r] : [],
+      });
+      continue;
+    }
+    if (r != null) prev.rows.push(r);
+  }
+
+  const out: FirstRunErrorRow[] = [];
+  for (const raw of objectsFromFile) {
+    const parts = propertyBookIdentityParts(asIdentityRow(raw));
+    if (!parts.apartmentNumber) continue;
+    const objType = normalizeOwnershipType(raw.ownership_type);
+    if (!objType) continue;
+    const key = ownershipTypeKey(parts);
+    const owner = ownerTypeByKey.get(key);
+    if (!owner || owner.type === objType) continue;
+    const objRow = rowNum(raw._row);
+    out.push({
+      sheet: 'owners',
+      row: owner.rows[0] != null ? String(owner.rows[0]) : objRow != null ? String(objRow) : '',
+      field: 'ownership_type',
+      reason: 'ownership_type_sheet_conflict',
+      apartment: parts.apartmentNumber,
+      severity: 'error',
+      meta: {
+        sectionCode: parts.sectionCode,
+        blockCode: parts.blockCode,
+        sourceRows: [...new Set([...owner.rows, ...(objRow != null ? [objRow] : [])])].sort(
+          (a, b) => a - b,
+        ),
+        value: `${objType}/${owner.type}`,
+        objectsValue: objType,
+        ownersValue: owner.type,
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * Resolve apartment-level ownership_type for the owners RPC payload.
+ * Priority: consistent owners-sheet value → objects-sheet (legacy combined) → existing stub.
+ * Never invents a type when all sources are blank.
+ */
+export function applyOwnershipTypesToObjects(
+  existingObjects: Array<Record<string, string>>,
+  opts: {
+    owners: BookPreviewOwnerRow[];
+    objectsFromFile?: BookPreviewObjectRow[];
+  },
+): Array<Record<string, string>> {
+  const fromOwners = new Map<string, string>();
+  for (const raw of opts.owners) {
+    const parts = propertyBookIdentityParts(asIdentityRow(raw));
+    if (!parts.apartmentNumber) continue;
+    const type = normalizeOwnershipType(raw.ownership_type);
+    if (!type) continue;
+    const key = ownershipTypeKey(parts);
+    const prev = fromOwners.get(key);
+    if (prev && prev !== type) continue;
+    fromOwners.set(key, type);
+  }
+  const fromObjects = new Map<string, string>();
+  for (const raw of opts.objectsFromFile ?? []) {
+    const parts = propertyBookIdentityParts(asIdentityRow(raw));
+    if (!parts.apartmentNumber) continue;
+    const type = normalizeOwnershipType(raw.ownership_type);
+    if (!type) continue;
+    fromObjects.set(ownershipTypeKey(parts), type);
+  }
+
+  return existingObjects.map((obj) => {
+    const parts = propertyBookIdentityParts(asIdentityRow(obj));
+    if (!parts.apartmentNumber) return obj;
+    const key = ownershipTypeKey(parts);
+    const ownersType = fromOwners.get(key);
+    if (ownersType) return { ...obj, ownership_type: ownersType };
+    const objectsType = fromObjects.get(key);
+    if (objectsType) {
+      const existing = normalizeOwnershipType(obj.ownership_type);
+      // Prefer file Objects type when stub empty; keep stub when already filled and file blank on owners.
+      if (!existing) return { ...obj, ownership_type: objectsType };
+      if (existing === objectsType) return obj;
+      // Differing stub vs objects file without owners type: keep stub (DB), objects used only for conflict vs owners.
+      return obj;
+    }
+    return obj;
+  });
+}
+
+/** All ownership-type blocking rows for the owners sub-step preview. */
+export function collectOwnersStepOwnershipTypeConflicts(opts: {
+  owners: BookPreviewOwnerRow[];
+  objectsFromFile?: BookPreviewObjectRow[];
+}): FirstRunErrorRow[] {
+  return [
+    ...ownersOwnershipTypeConflictRows(opts.owners),
+    ...objectsOwnersOwnershipTypeConflictRows(opts.objectsFromFile ?? [], opts.owners),
+  ];
 }
 
 /** Count distinct apartment identities that have at least one owner row. */
@@ -297,7 +437,10 @@ export function buildBookPreviewIssues(
   const objects = opts?.objects ?? [];
   const owners = opts?.owners ?? [];
   const aptSections = apartmentSectionsInObjects(objects);
-  const mergedRows = [...rows, ...ownersOwnershipTypeConflictRows(owners)];
+  const mergedRows = [
+    ...rows,
+    ...collectOwnersStepOwnershipTypeConflicts({ owners, objectsFromFile: objects }),
+  ];
 
   const enriched: Array<FirstRunErrorRow & { meta?: Record<string, unknown> }> = mergedRows.map((row) => {
     const meta: Record<string, unknown> = { ...(row.meta ?? {}) };

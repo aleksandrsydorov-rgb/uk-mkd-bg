@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyOwnershipTypesToObjects,
   buildBookPreviewIssues,
   buildBookSectionBreakdown,
   clarifyGroupSummary,
+  collectOwnersStepOwnershipTypeConflicts,
   formatExcelRowRanges,
   formatSectionCountsLine,
   groupClarifyIssuesByReason,
@@ -174,5 +176,102 @@ describe('propertyBookImportPreview', () => {
     );
     expect(issues[0]!.reason).toBe('section_code_required_for_disambiguation');
     expect(issues[0]!.candidateSections).toEqual(['A', 'Б', 'В']);
+  });
+
+  it('flags conflicting ownership_type rows on owners with all Excel line numbers', () => {
+    const conflicts = collectOwnersStepOwnershipTypeConflicts({
+      owners: [
+        { apartment_number: '3', section_code: 'A', ownership_type: 'sole', _row: '2' },
+        { apartment_number: '3', section_code: 'A', ownership_type: 'shared', _row: '5' },
+      ],
+    });
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('ownership_type_conflict');
+    expect(conflicts[0]!.meta?.sourceRows).toEqual([2, 5]);
+    expect(presentBookPreviewIssue(
+      {
+        severity: 'error',
+        reason: 'ownership_type_conflict',
+        sheet: 'owners',
+        field: 'ownership_type',
+        apartment: '3',
+        sectionCode: 'A',
+        blockCode: '',
+        rows: [2, 5],
+        candidateSections: [],
+        value: 'shared/sole',
+      },
+      tRu,
+    )).toContain('2, 5');
+    expect(presentBookPreviewIssue(
+      {
+        severity: 'error',
+        reason: 'ownership_type_conflict',
+        sheet: 'owners',
+        field: 'ownership_type',
+        apartment: '3',
+        sectionCode: 'A',
+        blockCode: '',
+        rows: [2, 5],
+        candidateSections: [],
+        value: 'shared/sole',
+      },
+      tBg,
+    )).toMatch(/разминаване|различни/);
+    expect(presentBookPreviewIssue(
+      {
+        severity: 'error',
+        reason: 'ownership_type_conflict',
+        sheet: 'owners',
+        field: 'ownership_type',
+        apartment: '3',
+        sectionCode: 'A',
+        blockCode: '',
+        rows: [2, 5],
+        candidateSections: [],
+        value: 'shared/sole',
+      },
+      tEn,
+    )).toMatch(/conflicting|mismatch/i);
+  });
+
+  it('flags Objects vs Owners sheet ownership_type conflicts for combined legacy workbooks', () => {
+    const conflicts = collectOwnersStepOwnershipTypeConflicts({
+      objectsFromFile: [
+        { apartment_number: '1', section_code: 'A', ownership_type: 'shared', _row: '2' },
+      ],
+      owners: [
+        { apartment_number: '1', section_code: 'A', ownership_type: 'sole', _row: '2' },
+      ],
+    });
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.reason).toBe('ownership_type_sheet_conflict');
+    expect(conflicts[0]!.meta?.objectsValue).toBe('shared');
+    expect(conflicts[0]!.meta?.ownersValue).toBe('sole');
+  });
+
+  it('applies owners-sheet type, then Objects legacy type, never invents blank', () => {
+    const stubs = [
+      { apartment_number: '1', section_code: 'A', block_code: '', ownership_type: '' },
+      { apartment_number: '2', section_code: 'A', block_code: '', ownership_type: 'sole' },
+      { apartment_number: '3', section_code: 'A', block_code: '', ownership_type: '' },
+      { apartment_number: '4', section_code: 'A', block_code: '', ownership_type: 'shared' },
+    ];
+    const out = applyOwnershipTypesToObjects(stubs, {
+      owners: [
+        { apartment_number: '1', section_code: 'A', ownership_type: 'sole' },
+        { apartment_number: '2', section_code: 'A', ownership_type: '' },
+        { apartment_number: '3', section_code: 'A', ownership_type: '' },
+      ],
+      objectsFromFile: [
+        { apartment_number: '2', section_code: 'A', ownership_type: 'shared' },
+        { apartment_number: '3', section_code: 'A', ownership_type: 'sole' },
+        { apartment_number: '4', section_code: 'A', ownership_type: 'sole' },
+      ],
+    });
+    expect(out[0]!.ownership_type).toBe('sole'); // from owners
+    expect(out[1]!.ownership_type).toBe('sole'); // keep stub; owners blank, Objects differs → keep DB
+    expect(out[2]!.ownership_type).toBe('sole'); // Objects legacy fills empty stub
+    expect(out[3]!.ownership_type).toBe('shared'); // keep stub; no owners type
   });
 });

@@ -1,15 +1,24 @@
 /**
  * SheetJS community build does not serialize worksheet dataValidations.
  * Patch the written .xlsx (ZIP) to inject an Excel list dropdown.
+ *
+ * Runs in the browser (wizard download) and in Node. Turbopack's zlib polyfill
+ * accepts only Buffer/string — never pass a bare Uint8Array to inflate/deflate.
+ * Written entries use store (method 0) so the write path does not depend on deflate.
  */
-import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { inflateRawSync } from 'node:zlib';
 
 type ZipEntry = {
   name: string;
-  compression: number;
-  bytes: Uint8Array;
+  bytes: Buffer;
   crc: number;
 };
+
+function asBuffer(data: ArrayBuffer | Uint8Array | Buffer): Buffer {
+  if (Buffer.isBuffer(data)) return data;
+  // Copy into a real Buffer — Uint8Array views / polyfill Buffers are rejected by zlib.
+  return Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+}
 
 function crc32(buf: Uint8Array): number {
   let c = ~0;
@@ -22,19 +31,15 @@ function crc32(buf: Uint8Array): number {
   return ~c >>> 0;
 }
 
-function u16(n: number): Uint8Array {
-  const b = new Uint8Array(2);
-  b[0] = n & 0xff;
-  b[1] = (n >>> 8) & 0xff;
+function u16(n: number): Buffer {
+  const b = Buffer.alloc(2);
+  b.writeUInt16LE(n >>> 0, 0);
   return b;
 }
 
-function u32(n: number): Uint8Array {
-  const b = new Uint8Array(4);
-  b[0] = n & 0xff;
-  b[1] = (n >>> 8) & 0xff;
-  b[2] = (n >>> 16) & 0xff;
-  b[3] = (n >>> 24) & 0xff;
+function u32(n: number): Buffer {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n >>> 0, 0);
   return b;
 }
 
@@ -55,52 +60,58 @@ function readZip(buf: Uint8Array): ZipEntry[] {
     const nameLen = buf[i + 26]! | (buf[i + 27]! << 8);
     const extraLen = buf[i + 28]! | (buf[i + 29]! << 8);
     const nameStart = i + 30;
-    const name = Buffer.from(buf.subarray(nameStart, nameStart + nameLen)).toString('utf8');
+    const name = asBuffer(buf.subarray(nameStart, nameStart + nameLen)).toString('utf8');
     const dataStart = nameStart + nameLen + extraLen;
-    const compressed = buf.subarray(dataStart, dataStart + compSize);
-    let bytes: Uint8Array;
-    if (compression === 0) bytes = compressed.slice();
-    else if (compression === 8) bytes = inflateRawSync(compressed);
-    else throw new Error(`xlsxListValidation: unsupported compression ${compression} for ${name}`);
-    entries.push({ name, compression: 8, bytes, crc: crc32(bytes) });
+    const compressed = asBuffer(buf.subarray(dataStart, dataStart + compSize));
+    let bytes: Buffer;
+    if (compression === 0) {
+      bytes = Buffer.from(compressed);
+    } else if (compression === 8) {
+      // Polyfill requires Buffer, not Uint8Array.
+      bytes = asBuffer(inflateRawSync(compressed));
+    } else {
+      throw new Error(`xlsxListValidation: unsupported compression ${compression} for ${name}`);
+    }
+    entries.push({ name, bytes, crc: crc32(bytes) });
     i = dataStart + compSize;
   }
   return entries;
 }
 
+/** Write ZIP with store (method 0) — no deflate; Excel accepts this. */
 function writeZip(entries: ZipEntry[]): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
   for (const entry of entries) {
     const nameBuf = Buffer.from(entry.name, 'utf8');
-    const compressed = deflateRawSync(entry.bytes);
+    const payload = asBuffer(entry.bytes);
     const local = Buffer.concat([
       Buffer.from([0x50, 0x4b, 0x03, 0x04]),
-      u16(20),
-      u16(0),
-      u16(8),
+      u16(20), // version needed
+      u16(0), // flags
+      u16(0), // compression = store
       u16(0),
       u16(0),
       u32(entry.crc),
-      u32(compressed.length),
-      u32(entry.bytes.length),
+      u32(payload.length),
+      u32(payload.length),
       u16(nameBuf.length),
       u16(0),
       nameBuf,
-      compressed,
+      payload,
     ]);
     const central = Buffer.concat([
       Buffer.from([0x50, 0x4b, 0x01, 0x02]),
       u16(20),
       u16(20),
       u16(0),
-      u16(8),
+      u16(0), // store
       u16(0),
       u16(0),
       u32(entry.crc),
-      u32(compressed.length),
-      u32(entry.bytes.length),
+      u32(payload.length),
+      u32(payload.length),
       u16(nameBuf.length),
       u16(0),
       u16(0),
@@ -137,8 +148,8 @@ function escapeXmlAttr(value: string): string {
 }
 
 /**
- * Inject a list data-validation dropdown into the first worksheet matching
- * `sheetFile` (e.g. `xl/worksheets/sheet1.xml`).
+ * Inject a list data-validation dropdown into the worksheet XML inside an .xlsx.
+ * Throws if the ZIP/XML cannot be patched — callers must not download a file without the list.
  */
 export function injectXlsxListValidation(
   xlsxBuf: ArrayBuffer | Uint8Array | Buffer,
@@ -152,11 +163,7 @@ export function injectXlsxListValidation(
     allowBlank?: boolean;
   },
 ): ArrayBuffer {
-  const input = Buffer.isBuffer(xlsxBuf)
-    ? new Uint8Array(xlsxBuf)
-    : xlsxBuf instanceof ArrayBuffer
-      ? new Uint8Array(xlsxBuf)
-      : xlsxBuf;
+  const input = asBuffer(xlsxBuf);
   const entries = readZip(input);
   const sheetFile =
     opts.sheetFile ??
@@ -165,7 +172,7 @@ export function injectXlsxListValidation(
   const entry = entries.find((e) => e.name === sheetFile);
   if (!entry) throw new Error(`xlsxListValidation: missing ${sheetFile}`);
 
-  let xml = Buffer.from(entry.bytes).toString('utf8');
+  let xml = entry.bytes.toString('utf8');
   xml = xml.replace(/<dataValidations\b[\s\S]*?<\/dataValidations>/gi, '');
   const formula = escapeXmlAttr(`"${opts.list}"`);
   const allowBlank = opts.allowBlank === false ? '0' : '1';

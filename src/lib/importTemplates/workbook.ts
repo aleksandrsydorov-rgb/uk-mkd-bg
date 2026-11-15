@@ -6,7 +6,10 @@ import type {
   ImportTemplateSpec,
   ResolvedImportHeaders,
 } from '@/lib/importTemplates/types';
-import { injectXlsxListValidation } from '@/lib/importTemplates/xlsxListValidation';
+import {
+  patchXlsxWorksheet,
+  type XlsxListValidationItem,
+} from '@/lib/importTemplates/xlsxListValidation';
 
 export const IMPORT_INSTRUCTION_SHEET: Record<ImportTemplateLocale, string> = {
   ru: 'Инструкция',
@@ -174,6 +177,13 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
   return sheet;
 }
 
+/** Blank data rows reserved under the header (Excel rows 2..N). */
+export function templateInputRowCount(spec: ImportTemplateSpec): number {
+  const n = spec.templateInputRows;
+  if (typeof n === 'number' && Number.isFinite(n) && n > 0) return Math.floor(n);
+  return 80;
+}
+
 /**
  * Build a localized import workbook:
  * - data sheet: header only (empty for user fill)
@@ -187,8 +197,9 @@ export function buildLocalizedImportWorkbook(
   const headers = cols.map((c) => c.label[locale]);
   const dataSheet = XLSX.utils.aoa_to_sheet([headers]);
   // Reserve empty typed rows so apartment / meter codes keep leading zeros when typed.
-  const reserve = 80;
-  for (let r = 1; r < reserve; r += 1) {
+  const inputRows = templateInputRowCount(spec);
+  const lastExcelRow = inputRows + 1; // header is row 1
+  for (let r = 1; r <= inputRows; r += 1) {
     cols.forEach((col, c) => {
       if (col.format === 'text' || col.format === 'date' || !col.format) {
         dataSheet[XLSX.utils.encode_cell({ r, c })] = { t: 's', v: '', z: '@' };
@@ -197,9 +208,9 @@ export function buildLocalizedImportWorkbook(
   }
   dataSheet['!ref'] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: reserve - 1, c: Math.max(0, cols.length - 1) },
+    e: { r: inputRows, c: Math.max(0, cols.length - 1) },
   });
-  applyColumnFormats(dataSheet, cols, reserve);
+  applyColumnFormats(dataSheet, cols, lastExcelRow);
 
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, dataSheet, spec.dataSheetName[locale].slice(0, 31));
@@ -209,30 +220,34 @@ export function buildLocalizedImportWorkbook(
     IMPORT_INSTRUCTION_SHEET[locale].slice(0, 31),
   );
   let buf = XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
-  buf = applyListValidations(buf, cols, reserve);
+  buf = applyWorksheetPatches(buf, cols, lastExcelRow);
   return buf;
 }
 
-/** Patch SheetJS output with Excel list dropdowns for columns that declare listValidation. */
-function applyListValidations(
+/** Patch SheetJS output: freeze header + all list dropdowns in one ZIP write. */
+function applyWorksheetPatches(
   buf: ArrayBuffer,
   cols: ImportColumnDef[],
-  reserveRows: number,
+  lastExcelRow: number,
 ): ArrayBuffer {
-  let out = buf;
+  const endRow = Math.max(2, lastExcelRow);
+  const listValidations: XlsxListValidationItem[] = [];
   cols.forEach((col, idx) => {
     if (!col.listValidation?.length) return;
     const colLetter = XLSX.utils.encode_col(idx);
-    const sqref = `${colLetter}2:${colLetter}${Math.max(2, reserveRows)}`;
-    out = injectXlsxListValidation(out, {
-      // First sheet in single-sheet templates is always the data sheet.
-      sheetFile: 'xl/worksheets/sheet1.xml',
-      sqref,
+    listValidations.push({
+      sqref: `${colLetter}2:${colLetter}${endRow}`,
       list: col.listValidation.join(','),
       allowBlank: true,
+      allowCustom: col.listValidationAllowCustom === true,
     });
   });
-  return out;
+  return patchXlsxWorksheet(buf, {
+    // First sheet in single-sheet templates is always the data sheet.
+    sheetFile: 'xl/worksheets/sheet1.xml',
+    listValidations,
+    freezeHeaderRows: 1,
+  });
 }
 
 /**
@@ -399,8 +414,9 @@ function emptyDataSheet(spec: ImportTemplateSpec, locale: ImportTemplateLocale):
   const cols = templateColumns(spec);
   const headers = cols.map((c) => c.label[locale]);
   const dataSheet = XLSX.utils.aoa_to_sheet([headers]);
-  const reserve = 80;
-  for (let r = 1; r < reserve; r += 1) {
+  const inputRows = templateInputRowCount(spec);
+  const lastExcelRow = inputRows + 1;
+  for (let r = 1; r <= inputRows; r += 1) {
     cols.forEach((col, c) => {
       if (col.format === 'text' || col.format === 'date' || !col.format) {
         dataSheet[XLSX.utils.encode_cell({ r, c })] = { t: 's', v: '', z: '@' };
@@ -409,9 +425,9 @@ function emptyDataSheet(spec: ImportTemplateSpec, locale: ImportTemplateLocale):
   }
   dataSheet['!ref'] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: reserve - 1, c: Math.max(0, cols.length - 1) },
+    e: { r: inputRows, c: Math.max(0, cols.length - 1) },
   });
-  applyColumnFormats(dataSheet, cols, reserve);
+  applyColumnFormats(dataSheet, cols, lastExcelRow);
   return dataSheet;
 }
 

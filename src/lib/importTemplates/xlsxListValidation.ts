@@ -1,6 +1,7 @@
 /**
- * SheetJS community build does not serialize worksheet dataValidations.
- * Patch the written .xlsx (ZIP) to inject an Excel list dropdown.
+ * SheetJS community build does not serialize worksheet dataValidations or freeze
+ * panes reliably. Patch the written .xlsx (ZIP) to inject Excel list dropdowns
+ * and a frozen header row.
  *
  * Runs in the browser (wizard download) and in Node. Turbopack's zlib polyfill
  * accepts only Buffer/string — never pass a bare Uint8Array to inflate/deflate.
@@ -12,6 +13,16 @@ type ZipEntry = {
   name: string;
   bytes: Buffer;
   crc: number;
+};
+
+export type XlsxListValidationItem = {
+  /** Excel range like `E2:E1001`. */
+  sqref: string;
+  /** Comma-separated list values, e.g. `0,1` or `sole,shared`. */
+  list: string;
+  allowBlank?: boolean;
+  /** Warning (not stop) so out-of-list values such as sole_trader remain typable. */
+  allowCustom?: boolean;
 };
 
 function asBuffer(data: ArrayBuffer | Uint8Array | Buffer): Buffer {
@@ -147,20 +158,65 @@ function escapeXmlAttr(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function applyFreezeHeader(xml: string, headerRows: number): string {
+  if (headerRows <= 0) return xml;
+  const ySplit = String(headerRows);
+  const topLeft = `A${headerRows + 1}`;
+  const pane =
+    `<pane ySplit="${ySplit}" topLeftCell="${topLeft}" ` +
+    `activePane="bottomLeft" state="frozen"/>` +
+    `<selection pane="bottomLeft" activeCell="${topLeft}" sqref="${topLeft}"/>`;
+  if (/<sheetViews\b[\s\S]*?<\/sheetViews>/i.test(xml)) {
+    return xml.replace(/<sheetViews\b[\s\S]*?<\/sheetViews>/i, () => {
+      return (
+        `<sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews>`
+      );
+    });
+  }
+  if (/<worksheet\b[^>]*>/i.test(xml)) {
+    return xml.replace(/<worksheet\b[^>]*>/i, (open) => {
+      return `${open}<sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews>`;
+    });
+  }
+  throw new Error('xlsxListValidation: cannot insert freeze pane');
+}
+
+function applyListValidationsXml(xml: string, items: XlsxListValidationItem[]): string {
+  let out = xml.replace(/<dataValidations\b[\s\S]*?<\/dataValidations>/gi, '');
+  if (!items.length) return out;
+  const body = items
+    .map((item) => {
+      const formula = escapeXmlAttr(`"${item.list}"`);
+      const allowBlank = item.allowBlank === false ? '0' : '1';
+      // showDropDown="1" hides the arrow in OOXML (inverted); keep 0 for visible dropdown.
+      const errorStyle = item.allowCustom ? ' errorStyle="warning"' : '';
+      return (
+        `<dataValidation type="list" allowBlank="${allowBlank}" showDropDown="0" ` +
+        `showErrorMessage="1"${errorStyle} sqref="${escapeXmlAttr(item.sqref)}">` +
+        `<formula1>${formula}</formula1>` +
+        `</dataValidation>`
+      );
+    })
+    .join('');
+  const block = `<dataValidations count="${items.length}">${body}</dataValidations>`;
+  if (!/<\/worksheet>/i.test(out)) {
+    throw new Error('xlsxListValidation: </worksheet> not found');
+  }
+  return out.replace(/<\/worksheet>/i, `${block}</worksheet>`);
+}
+
 /**
- * Inject a list data-validation dropdown into the worksheet XML inside an .xlsx.
+ * Patch worksheet XML: optional freeze panes + one or more list data-validations.
  * Throws if the ZIP/XML cannot be patched — callers must not download a file without the list.
  */
-export function injectXlsxListValidation(
+export function patchXlsxWorksheet(
   xlsxBuf: ArrayBuffer | Uint8Array | Buffer,
   opts: {
     /** ZIP path; default first worksheet. */
     sheetFile?: string;
-    /** Excel range like `E2:E500`. */
-    sqref: string;
-    /** Comma-separated list values, e.g. `0,1`. */
-    list: string;
-    allowBlank?: boolean;
+    listValidations?: XlsxListValidationItem[];
+    /** Freeze this many top rows (usually 1 for the header). */
+    freezeHeaderRows?: number;
   },
 ): ArrayBuffer {
   const input = asBuffer(xlsxBuf);
@@ -173,23 +229,48 @@ export function injectXlsxListValidation(
   if (!entry) throw new Error(`xlsxListValidation: missing ${sheetFile}`);
 
   let xml = entry.bytes.toString('utf8');
-  xml = xml.replace(/<dataValidations\b[\s\S]*?<\/dataValidations>/gi, '');
-  const formula = escapeXmlAttr(`"${opts.list}"`);
-  const allowBlank = opts.allowBlank === false ? '0' : '1';
-  // showDropDown="1" hides the arrow in OOXML (inverted); keep 0 for visible dropdown.
-  const block =
-    `<dataValidations count="1">` +
-    `<dataValidation type="list" allowBlank="${allowBlank}" showDropDown="0" ` +
-    `showErrorMessage="1" sqref="${escapeXmlAttr(opts.sqref)}">` +
-    `<formula1>${formula}</formula1>` +
-    `</dataValidation></dataValidations>`;
-  if (!/<\/worksheet>/i.test(xml)) {
-    throw new Error('xlsxListValidation: </worksheet> not found');
+  if (opts.freezeHeaderRows && opts.freezeHeaderRows > 0) {
+    xml = applyFreezeHeader(xml, opts.freezeHeaderRows);
   }
-  xml = xml.replace(/<\/worksheet>/i, `${block}</worksheet>`);
+  xml = applyListValidationsXml(xml, opts.listValidations ?? []);
+
+  // Fail closed when caller requested validations but none survived.
+  if ((opts.listValidations?.length ?? 0) > 0 && !/<dataValidation\b/i.test(xml)) {
+    throw new Error('xlsxListValidation: dataValidations missing after patch');
+  }
+  if (opts.freezeHeaderRows && opts.freezeHeaderRows > 0 && !/<pane\b/i.test(xml)) {
+    throw new Error('xlsxListValidation: freeze pane missing after patch');
+  }
+
   entry.bytes = Buffer.from(xml, 'utf8');
   entry.crc = crc32(entry.bytes);
 
   const out = writeZip(entries);
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+}
+
+/**
+ * Inject a single list data-validation dropdown into the worksheet XML inside an .xlsx.
+ */
+export function injectXlsxListValidation(
+  xlsxBuf: ArrayBuffer | Uint8Array | Buffer,
+  opts: {
+    sheetFile?: string;
+    sqref: string;
+    list: string;
+    allowBlank?: boolean;
+    allowCustom?: boolean;
+  },
+): ArrayBuffer {
+  return patchXlsxWorksheet(xlsxBuf, {
+    sheetFile: opts.sheetFile,
+    listValidations: [
+      {
+        sqref: opts.sqref,
+        list: opts.list,
+        allowBlank: opts.allowBlank,
+        allowCustom: opts.allowCustom,
+      },
+    ],
+  });
 }

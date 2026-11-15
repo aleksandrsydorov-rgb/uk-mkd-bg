@@ -32,6 +32,11 @@ export type ImportColumnDef = {
    * Applied after SheetJS write via ZIP patch (community build).
    */
   listValidation?: string[];
+  /**
+   * When true, list validation uses warning (not stop) so values outside the
+   * list (e.g. sole_trader) can still be typed while the dropdown stays intact.
+   */
+  listValidationAllowCustom?: boolean;
 };
 
 /** Worked example block on the Instruction sheet (never copied onto the data sheet). */
@@ -61,6 +66,12 @@ export type ImportTemplateSpec = {
   /** Optional scenario tables after the column guide (examples only). */
   instructionScenarios?: ImportInstructionScenario[];
   maxRows?: number;
+  /**
+   * Blank pre-formatted data rows on the template data sheet (not counting the
+   * header). Dropdowns and text formats span Excel rows 2..(templateInputRows+1).
+   * Default 80 when omitted.
+   */
+  templateInputRows?: number;
 };
 
 export type ResolvedImportHeaders = {

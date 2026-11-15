@@ -22,6 +22,7 @@ export {
   normalizeImportHeader,
   parseLocalizedImportBuffer,
   resolveImportHeaders,
+  templateInputRowCount,
   toImportTemplateLocale,
 } from '@/lib/importTemplates/workbook';
 

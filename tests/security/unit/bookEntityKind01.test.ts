@@ -13,7 +13,7 @@ import { splitPropertyBookOwnerRow } from '@/lib/moduleCore/adapters/propertyBoo
 import { presentBookPreviewIssue } from '@/lib/firstRunUserMessage';
 import { translate } from '@/i18n/translate';
 
-function zipHasDataValidation(buf: ArrayBuffer): boolean {
+function readSheet1Xml(buf: ArrayBuffer): string {
   const data = new Uint8Array(buf);
   let i = 0;
   while (i + 30 <= data.length) {
@@ -30,20 +30,19 @@ function zipHasDataValidation(buf: ArrayBuffer): boolean {
         comp === 0
           ? Buffer.from(payload).toString('utf8')
           : inflateRawSync(Buffer.from(payload)).toString('utf8');
-      if (
-        /sheet1\.xml$/i.test(name) &&
-        /dataValidation/i.test(text) &&
-        /(1,0|0,1)/.test(text)
-      ) {
-        return true;
-      }
+      if (/sheet1\.xml$/i.test(name)) return text;
       i = start + compSize;
       continue;
     }
     if (data[i] === 0x50 && data[i + 1] === 0x4b && data[i + 2] === 0x01 && data[i + 3] === 0x02) break;
     i += 1;
   }
-  return false;
+  return '';
+}
+
+function zipHasDataValidation(buf: ArrayBuffer): boolean {
+  const text = readSheet1Xml(buf);
+  return /dataValidation/i.test(text) && /(1,0|0,1)/.test(text) && /sole,shared/.test(text);
 }
 
 function ownersBook(rows: (string | number)[][]): ArrayBuffer {
@@ -103,21 +102,34 @@ describe('book entity_kind 0/1', () => {
     expect(byApt['16']).toBe('legal_entity');
   });
 
-  it('RU owners template filename and 1/0 dropdown + instruction decode', () => {
+  it('RU owners template filename, 1000-row dropdowns, freeze, instruction', () => {
     expect(propertyBookOwnersTemplateFileName('ru')).toBe(
       'шаблон-книга-собственности-собственники.xlsx',
     );
+    expect(PROPERTY_BOOK_OWNERS_SPEC.templateInputRows).toBe(1000);
     const buf = buildPropertyBookOwnersTemplateBuffer('ru');
     expect(zipHasDataValidation(buf)).toBe(true);
+    const sheetXml = readSheet1Xml(buf);
+    expect(sheetXml).toMatch(/sqref="D2:D1001"/);
+    expect(sheetXml).toMatch(/sqref="E2:E1001"/);
+    expect(sheetXml).toMatch(/state="frozen"/);
+    expect(sheetXml).toMatch(/errorStyle="warning"/);
     const wb = XLSX.read(buf, { type: 'array' });
+    const data = wb.Sheets['Собственники'];
+    expect(String(data['!ref'])).toMatch(/A1:O1001/i);
+    const dataRows = XLSX.utils.sheet_to_json<string[]>(data, { header: 1, raw: false });
+    const filled = dataRows.slice(1).filter((r) => (r ?? []).some((c) => String(c ?? '').trim()));
+    expect(filled.length).toBe(0);
     const instr = XLSX.utils
       .sheet_to_json<string[]>(wb.Sheets['Инструкция'], { header: 1 })
       .flat()
       .map(String)
       .join('\n');
-    expect(instr).toMatch(/1 — физическое лицо/);
-    expect(instr).toMatch(/0 — юридическое лицо/);
+    expect(instr).toMatch(/1 — физлицо|1 — физическое лицо/);
+    expect(instr).toMatch(/0 — юрлицо|0 — юридическое лицо/);
     expect(instr).toMatch(/sole_trader/);
+    expect(instr).toMatch(/60/);
+    expect(instr).toMatch(/40/);
   });
 
   it('presents invalid entity_kind with sheet/row/column/allowed values', () => {

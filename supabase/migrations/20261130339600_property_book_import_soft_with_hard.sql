@@ -23,7 +23,8 @@ begin
     return;
   end if;
 
-  v_old := $old$
+  -- Normalize CRLF→LF so Windows checkouts still match pg_get_functiondef.
+  v_old := replace($old$
     if jsonb_array_length(v_hard) > 0 then
       for v_code in select jsonb_array_elements_text(v_hard)
       loop
@@ -66,9 +67,9 @@ begin
         ));
       end loop;
     end if;
-  $old$;
+$old$, E'\r\n', E'\n');
 
-  v_new := $new$
+  v_new := replace($new$
     if jsonb_array_length(v_hard) > 0 then
       for v_code in select jsonb_array_elements_text(v_hard)
       loop
@@ -128,7 +129,7 @@ begin
         ));
       end loop;
     end if;
-  $new$;
+$new$, E'\r\n', E'\n');
 
   if position(v_old in v_def) = 0 then
     raise exception 'admin_import_property_book: expected hard/soft elsif block not found';

@@ -624,10 +624,16 @@ function partialFieldLabel(code: string, t: T): string {
   return '';
 }
 
+export type PresentBookApartmentCardIssueOptions = {
+  /** Card has a blocking error — partial lead must not promise a save. */
+  hasBlockingError?: boolean;
+};
+
 /** Structured body for an apartment-card issue (no apt/sheet/row repeats). */
 export function presentBookApartmentCardIssueBody(
   issue: BookPreviewIssue,
   t: T,
+  options?: PresentBookApartmentCardIssueOptions,
 ): { lead: string; bullets: string[]; later: string | null } {
   if (issue.reason === 'owners_required' || issue.reason === 'ownership_identity_incomplete') {
     return { lead: t('admin.bookPreviewIssueOwnersMissing'), bullets: [], later: null };
@@ -649,7 +655,9 @@ export function presentBookApartmentCardIssueBody(
     const uniqReq = [...new Set(required)];
     const uniqOpt = [...new Set(optional)];
     return {
-      lead: t('admin.bookPreviewIssuePartialSavedLead'),
+      lead: options?.hasBlockingError
+        ? t('admin.bookPreviewIssuePartialBlockedLead')
+        : t('admin.bookPreviewIssuePartialSavedLead'),
       bullets: uniqReq,
       later:
         uniqOpt.length > 0

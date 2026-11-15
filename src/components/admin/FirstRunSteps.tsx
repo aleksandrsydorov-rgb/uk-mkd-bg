@@ -701,7 +701,9 @@ export function FirstRunBookImport({
                         </p>
                         <div style={{ margin: 0 }}>
                           {card.issues.map((issue, idx) => {
-                            const body = presentBookApartmentCardIssueBody(issue, t);
+                            const body = presentBookApartmentCardIssueBody(issue, t, {
+                              hasBlockingError: card.status === 'error',
+                            });
                             return (
                               <div
                                 key={`${card.key}-${issue.reason}-${idx}`}

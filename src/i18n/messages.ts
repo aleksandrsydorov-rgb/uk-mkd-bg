@@ -3717,6 +3717,7 @@ export const ru = {
     bookPreviewIssuePartialSaved:
       'Имеющиеся сведения будут сохранены. Нужно уточнить: {fields}',
     bookPreviewIssuePartialSavedLead: 'Имеющиеся сведения будут сохранены.',
+    bookPreviewIssuePartialBlockedLead: 'Исправьте ошибку, чтобы сохранить данные.',
     bookPreviewIssuePartialNeedOne: 'Нужно уточнить: {field}.',
     bookPreviewIssuePartialBullet: '• {field}',
     bookPreviewIssuePartialLater: 'Можно добавить позже: {fields}.',
@@ -9042,6 +9043,7 @@ export const en: Messages = {
     bookIssue_ownership_identity_incomplete: 'Not enough data to create an owner',
     bookPreviewIssuePartialSaved: 'Existing details will be saved. Need to clarify: {fields}',
     bookPreviewIssuePartialSavedLead: 'Existing details will be saved.',
+    bookPreviewIssuePartialBlockedLead: 'Fix the error to save the data.',
     bookPreviewIssuePartialNeedOne: 'Need to clarify: {field}.',
     bookPreviewIssuePartialBullet: '• {field}',
     bookPreviewIssuePartialLater: 'Can be added later: {fields}.',
@@ -14377,6 +14379,7 @@ export const bg: Messages = {
     bookIssue_ownership_identity_incomplete: 'Недостатъчни данни за създаване на собственик',
     bookPreviewIssuePartialSaved: 'Наличните данни ще бъдат записани. Трябва да уточните: {fields}',
     bookPreviewIssuePartialSavedLead: 'Наличните данни ще бъдат записани.',
+    bookPreviewIssuePartialBlockedLead: 'Поправете грешката, за да запишете данните.',
     bookPreviewIssuePartialNeedOne: 'Трябва да уточните: {field}.',
     bookPreviewIssuePartialBullet: '• {field}',
     bookPreviewIssuePartialLater: 'Може да се добави по-късно: {fields}.',

@@ -86,7 +86,7 @@ describe('property book living area', () => {
       'Апартамент',
       'Секция',
       'Блок',
-      'Сколько владельцев у квартиры',
+      'Количество владельцев',
       'Кто владелец',
       'Доля владения, %',
     ]);
@@ -101,8 +101,8 @@ describe('property book living area', () => {
       .sheet_to_json<string[]>(wb.Sheets[IMPORT_INSTRUCTION_SHEET.ru], { header: 1 })
       .map((row) => row.map((c) => String(c ?? '')).join(' | '))
       .join('\n');
-    expect(instr).toMatch(/Один владелец/);
-    expect(instr).toMatch(/Несколько владельцев/);
+    expect(instr).toMatch(/Количество владельцев/);
+    expect(instr).not.toMatch(/Один владелец|Несколько владельцев|sole_trader|\bsole\b|\bshared\b/);
     expect(instr).toMatch(/60/);
     expect(instr).toMatch(/40/);
     expect(instr).toMatch(/Кто владелец/);
@@ -116,7 +116,7 @@ describe('property book living area', () => {
       })[0]
       ?.map(String);
     expect(combinedObj).not.toContain('Тип собственности');
-    expect(combinedObj).not.toContain('Сколько владельцев у квартиры');
+    expect(combinedObj).not.toContain('Количество владельцев');
   });
 
   it('accepts a fractional living area and rejects a non-positive value', () => {

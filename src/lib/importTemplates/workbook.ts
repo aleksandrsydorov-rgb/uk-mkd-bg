@@ -9,6 +9,7 @@ import type {
 import {
   patchXlsxWorksheet,
   type XlsxListValidationItem,
+  type XlsxWholeNumberValidationItem,
 } from '@/lib/importTemplates/xlsxListValidation';
 
 export const IMPORT_INSTRUCTION_SHEET: Record<ImportTemplateLocale, string> = {
@@ -142,9 +143,9 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
     ],
   ];
   for (const col of templateColumns(spec)) {
-    aoa.push([
-      col.label[locale],
-      col.required
+    const requiredCell =
+      col.requiredLabel?.[locale] ??
+      (col.required
         ? locale === 'en'
           ? 'Required'
           : locale === 'bg'
@@ -154,7 +155,10 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
           ? 'Optional'
           : locale === 'bg'
             ? 'Не'
-            : 'Необязательно',
+            : 'Необязательно');
+    aoa.push([
+      col.label[locale],
+      requiredCell,
       col.instruction[locale],
       col.example != null && col.example !== ''
         ? localizedListValidationExample(col, col.example, locale)
@@ -256,7 +260,7 @@ export function localizedListValidationExample(
   return raw;
 }
 
-/** Patch SheetJS output: freeze header + all list dropdowns in one ZIP write. */
+/** Patch SheetJS output: freeze header + list/whole validations in one ZIP write. */
 function applyWorksheetPatches(
   buf: ArrayBuffer,
   cols: ImportColumnDef[],
@@ -265,21 +269,32 @@ function applyWorksheetPatches(
 ): ArrayBuffer {
   const endRow = Math.max(2, lastExcelRow);
   const listValidations: XlsxListValidationItem[] = [];
+  const wholeNumberValidations: XlsxWholeNumberValidationItem[] = [];
   cols.forEach((col, idx) => {
-    const values = columnListValidationValues(col, locale);
-    if (!values?.length) return;
     const colLetter = XLSX.utils.encode_col(idx);
-    listValidations.push({
-      sqref: `${colLetter}2:${colLetter}${endRow}`,
-      list: values.join(','),
-      allowBlank: true,
-      allowCustom: col.listValidationAllowCustom === true,
-    });
+    const sqref = `${colLetter}2:${colLetter}${endRow}`;
+    const values = columnListValidationValues(col, locale);
+    if (values?.length) {
+      listValidations.push({
+        sqref,
+        list: values.join(','),
+        allowBlank: true,
+        allowCustom: col.listValidationAllowCustom === true,
+      });
+    }
+    if (col.wholeNumberValidation) {
+      wholeNumberValidations.push({
+        sqref,
+        min: col.wholeNumberValidation.min ?? 1,
+        allowBlank: col.wholeNumberValidation.allowBlank !== false,
+      });
+    }
   });
   return patchXlsxWorksheet(buf, {
     // First sheet in single-sheet templates is always the data sheet.
     sheetFile: 'xl/worksheets/sheet1.xml',
     listValidations,
+    wholeNumberValidations,
     freezeHeaderRows: 1,
   });
 }

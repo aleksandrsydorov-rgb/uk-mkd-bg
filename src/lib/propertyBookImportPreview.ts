@@ -120,6 +120,26 @@ export function formatBookApartmentRef(
   return t('admin.bookPreviewAptRefPlain', { apt });
 }
 
+/** Owner-count mismatch location: «Подъезд Б, квартира №15». */
+export function formatOwnerCountLocation(
+  t: TFn,
+  parts: { apartmentNumber: string; sectionCode?: string; blockCode?: string },
+): string {
+  const apt = parts.apartmentNumber || '—';
+  const section = (parts.sectionCode || '').trim();
+  const block = (parts.blockCode || '').trim();
+  if (section && block) {
+    return t('admin.bookOwnerCountLocSectionBlock', { section, block, apt });
+  }
+  if (section) {
+    return t('admin.bookOwnerCountLocSection', { section, apt });
+  }
+  if (block) {
+    return t('admin.bookOwnerCountLocBlock', { block, apt });
+  }
+  return t('admin.bookOwnerCountLocPlain', { apt });
+}
+
 export function buildBookSectionBreakdown(
   objects: BookPreviewObjectRow[],
 ): { total: number; sections: BookSectionBucket[] } {
@@ -218,12 +238,50 @@ function ownershipTypeKey(parts: {
   ].join('\u0001');
 }
 
+/** Positive whole owner-count from a cell (number or text like "2" / "2.0"). */
+export function parsePositiveOwnerCount(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw < 1) return null;
+    if (!Number.isInteger(raw)) return null;
+    return raw;
+  }
+  if (typeof raw === 'boolean') return null;
+  const s = String(raw)
+    .trim()
+    .replace(/\u00a0/g, ' ')
+    .replace(',', '.');
+  if (!s) return null;
+  if (!/^\d+(\.0+)?$/.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 1 || !Number.isInteger(n)) return null;
+  return n;
+}
+
+/**
+ * Exact declared owner count when the cell carries a number or sole (=1).
+ * Legacy “shared” / “Multiple owners” has no exact N → null.
+ * Empty → null.
+ */
+export function parseDeclaredOwnerCount(raw: unknown): number | null {
+  if (raw == null) return null;
+  const asNum = parsePositiveOwnerCount(raw);
+  if (asNum != null) return asNum;
+  const type = normalizeOwnershipType(raw == null ? '' : String(raw));
+  if (type === 'sole') return 1;
+  return null;
+}
+
 /**
  * Normalize apartment-level ownership count from template / legacy files.
- * Accepts sole/shared and localized “One owner” / “Multiple owners” labels.
+ * Accepts 1 / 2 / 3…, sole/shared, and localized “One owner” / “Multiple owners”.
  */
 export function normalizeOwnershipType(raw: string | null | undefined): 'sole' | 'shared' | '' {
-  const type = String(raw ?? '')
+  if (raw == null) return '';
+  const asNum = parsePositiveOwnerCount(raw);
+  if (asNum === 1) return 'sole';
+  if (asNum != null && asNum >= 2) return 'shared';
+  const type = String(raw)
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -254,15 +312,25 @@ export function normalizeOwnershipType(raw: string | null | undefined): 'sole' |
   return '';
 }
 
-/** Coerce a parsed ownership_type cell to sole/shared (keep unknown text for errors). */
+/**
+ * Coerce a parsed ownership_type cell.
+ * Positive integers stay as "1"/"2"/"3…" so count checks keep the declared N.
+ * Legacy labels become sole/shared. Unknown non-empty text is kept for errors.
+ */
 export function coerceOwnershipTypeField(raw: unknown): string {
-  const normalized = normalizeOwnershipType(raw == null ? '' : String(raw));
+  if (raw == null) return '';
+  const asNum = parsePositiveOwnerCount(raw);
+  if (asNum != null) return String(asNum);
+  const asText = String(raw).trim();
+  if (!asText) return '';
+  const normalized = normalizeOwnershipType(asText);
   if (normalized) return normalized;
-  return String(raw ?? '').trim();
+  return asText;
 }
 
 /**
- * Owners-sheet rows: same apartment identity must not mix sole/shared.
+ * Owners-sheet rows: same apartment identity must not mix sole/shared
+ * or different declared owner counts (e.g. 2 vs 3).
  * Returns blocking rows with all conflicting Excel line numbers.
  */
 export function ownersOwnershipTypeConflictRows(
@@ -270,13 +338,21 @@ export function ownersOwnershipTypeConflictRows(
 ): FirstRunErrorRow[] {
   const byKey = new Map<
     string,
-    { apt: string; section: string; block: string; types: Set<string>; rows: number[] }
+    {
+      apt: string;
+      section: string;
+      block: string;
+      types: Set<string>;
+      counts: Set<number>;
+      rows: number[];
+    }
   >();
   for (const raw of owners) {
     const parts = propertyBookIdentityParts(asIdentityRow(raw));
     if (!parts.apartmentNumber) continue;
     const type = normalizeOwnershipType(raw.ownership_type);
-    if (!type) continue;
+    const count = parseDeclaredOwnerCount(raw.ownership_type);
+    if (!type && count == null) continue;
     const key = ownershipTypeKey(parts);
     let entry = byKey.get(key);
     if (!entry) {
@@ -285,30 +361,103 @@ export function ownersOwnershipTypeConflictRows(
         section: parts.sectionCode,
         block: parts.blockCode,
         types: new Set(),
+        counts: new Set(),
         rows: [],
       };
       byKey.set(key, entry);
     }
-    entry.types.add(type);
+    if (type) entry.types.add(type);
+    if (count != null) entry.counts.add(count);
     const r = rowNum(raw._row);
     if (r != null) entry.rows.push(r);
   }
   const out: FirstRunErrorRow[] = [];
   for (const entry of byKey.values()) {
-    if (entry.types.size < 2) continue;
+    const countConflict = entry.counts.size >= 2;
+    const typeConflict = entry.types.size >= 2;
+    if (!countConflict && !typeConflict) continue;
     const rows = [...new Set(entry.rows)].sort((a, b) => a - b);
     out.push({
       sheet: 'owners',
       row: rows[0] != null ? String(rows[0]) : '',
       field: 'ownership_type',
-      reason: 'ownership_type_conflict',
+      reason: countConflict ? 'owner_count_conflict' : 'ownership_type_conflict',
       apartment: entry.apt,
       severity: 'error',
       meta: {
         sectionCode: entry.section,
         blockCode: entry.block,
         sourceRows: rows,
-        value: [...entry.types].sort().join('/'),
+        value: countConflict
+          ? [...entry.counts].sort((a, b) => a - b).join('/')
+          : [...entry.types].sort().join('/'),
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * When a full owner list declares N owners for an apartment, the file must
+ * contain exactly N owner rows for that apartment. Blank count = partial update
+ * (skip this check). Legacy “shared” without a number also skips exact match.
+ */
+export function ownersOwnerCountMismatchRows(
+  owners: BookPreviewOwnerRow[],
+): FirstRunErrorRow[] {
+  const byKey = new Map<
+    string,
+    {
+      apt: string;
+      section: string;
+      block: string;
+      counts: Set<number>;
+      rows: number[];
+      rowCount: number;
+    }
+  >();
+  for (const raw of owners) {
+    const parts = propertyBookIdentityParts(asIdentityRow(raw));
+    if (!parts.apartmentNumber) continue;
+    const key = ownershipTypeKey(parts);
+    let entry = byKey.get(key);
+    if (!entry) {
+      entry = {
+        apt: parts.apartmentNumber,
+        section: parts.sectionCode,
+        block: parts.blockCode,
+        counts: new Set(),
+        rows: [],
+        rowCount: 0,
+      };
+      byKey.set(key, entry);
+    }
+    entry.rowCount += 1;
+    const count = parseDeclaredOwnerCount(raw.ownership_type);
+    if (count != null) entry.counts.add(count);
+    const r = rowNum(raw._row);
+    if (r != null) entry.rows.push(r);
+  }
+  const out: FirstRunErrorRow[] = [];
+  for (const entry of byKey.values()) {
+    if (entry.counts.size !== 1) continue;
+    const declared = [...entry.counts][0]!;
+    if (declared === entry.rowCount) continue;
+    const rows = [...new Set(entry.rows)].sort((a, b) => a - b);
+    out.push({
+      sheet: 'owners',
+      row: rows[0] != null ? String(rows[0]) : '',
+      field: 'ownership_type',
+      reason: 'owner_count_mismatch',
+      apartment: entry.apt,
+      severity: 'error',
+      meta: {
+        sectionCode: entry.section,
+        blockCode: entry.block,
+        sourceRows: rows,
+        declared,
+        actual: entry.rowCount,
+        value: `${declared}/${entry.rowCount}`,
       },
     });
   }
@@ -431,13 +580,14 @@ export function applyOwnershipTypesToObjects(
   });
 }
 
-/** All ownership-type blocking rows for the owners sub-step preview. */
+/** All ownership-type / owner-count blocking rows for the owners sub-step preview. */
 export function collectOwnersStepOwnershipTypeConflicts(opts: {
   owners: BookPreviewOwnerRow[];
   objectsFromFile?: BookPreviewObjectRow[];
 }): FirstRunErrorRow[] {
   return [
     ...ownersOwnershipTypeConflictRows(opts.owners),
+    ...ownersOwnerCountMismatchRows(opts.owners),
     ...objectsOwnersOwnershipTypeConflictRows(opts.objectsFromFile ?? [], opts.owners),
   ];
 }

@@ -3717,7 +3717,7 @@ export const ru = {
     bookIssue_purpose_required: 'Не указано назначение',
     bookIssue_area_required: 'Не указана площадь',
     bookIssue_object_ideal_parts_required: 'Не указаны идеальные части объекта',
-    bookIssue_ownership_type_required: 'Не указан тип собственности',
+    bookIssue_ownership_type_required: 'Не указано количество владельцев',
     bookIssue_owner_share_required: 'Не указана доля собственности',
     bookIssue_owner_ideal_parts_required: 'Не указаны идеальные части собственника',
     bookIssue_entity_kind_required: 'Не указан тип собственника',
@@ -3727,11 +3727,12 @@ export const ru = {
     bookImportSeverityError: 'Ошибка',
     bookImportSeverityWarning: 'Уточнение',
     bookImportFieldOwners: 'Собственники',
+    bookImportFieldOwnerCount: 'Количество владельцев',
     bookImportFieldObjects: 'Объект',
     bookImportSheetObjects: 'Объекты',
     bookImportSheetOwners: 'Собственники',
     bookImport_apartment_required: 'Не указан номер квартиры',
-    bookImport_invalid_ownership_type: 'Некорректный тип собственности',
+    bookImport_invalid_ownership_type: 'Некорректное количество владельцев',
     bookImport_invalid_area: 'Некорректная площадь',
     bookImport_invalid_living_area: 'Некорректная жилая площадь, м²',
     bookImport_invalid_ideal_parts: 'Некорректные идеальные части',
@@ -3748,6 +3749,10 @@ export const ru = {
       'В файле собственников для одной квартиры указаны разные типы собственности (единоличная и долевая). Исправьте расхождение.',
     bookImport_ownership_type_sheet_conflict:
       'Тип собственности на листе «Объекты» не совпадает с листом «Собственники». Исправьте расхождение.',
+    bookImport_owner_count_conflict:
+      'В строках одной квартиры указано разное количество владельцев. Исправьте расхождение.',
+    bookImport_owner_count_mismatch:
+      'Количество владельцев в файле не совпадает с числом заполненных строк по квартире.',
     bookImport_ideal_parts_sum: 'Сумма идеальных частей собственников не совпадает с объектом',
     bookImport_apartment_count_mismatch: 'Количество квартир в файле не совпадает с данными комплекса',
     bookImport_owner_without_object: 'Собственник указан для квартиры, которой нет на листе «Объекты»',
@@ -3776,6 +3781,10 @@ export const ru = {
     bookPreviewAptRefSectionBlock: 'Блок {block} · подъезд {section} · ап. №{apt}',
     bookPreviewAptRefBlock: 'Блок {block} · ап. №{apt}',
     bookPreviewAptRefPlain: 'ап. №{apt}',
+    bookOwnerCountLocSection: 'Подъезд {section}, квартира №{apt}',
+    bookOwnerCountLocSectionBlock: 'Блок {block}, подъезд {section}, квартира №{apt}',
+    bookOwnerCountLocBlock: 'Блок {block}, квартира №{apt}',
+    bookOwnerCountLocPlain: 'Квартира №{apt}',
     bookPreviewSectionOnly: 'Секция {section} — {count}',
     bookPreviewSectionWithBlock: 'Секция {section} · блок {block} — {count}',
     bookPreviewBlockOnly: 'Блок {block} — {count}',
@@ -3798,9 +3807,13 @@ export const ru = {
     bookPreviewIssueAmbiguousApt:
       'Лист «{sheet}»: апартамент №{apt} есть в секциях {sections}. Заполните колонку «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
-      '{aptRef} — не указан тип собственности. Лист «{sheet}», строка {row}, колонка «{field}».',
+      '{aptRef} — не указано количество владельцев. Лист «{sheet}», строка {row}, колонка «{field}».',
     bookPreviewIssueOwnershipTypeConflict:
       'Лист «{sheet}», строки {rows}: для {aptRef} в колонке «{field}» указаны разные значения ({values}). Исправьте расхождение.',
+    bookPreviewIssueOwnerCountConflict:
+      'Лист «{sheet}», строки {rows}: для {aptRef} в колонке «{field}» указано разное количество владельцев ({values}). Исправьте расхождение.',
+    bookPreviewIssueOwnerCountMismatch:
+      '{location}: указано {declared} владельца, заполнена {actual} строка',
     bookPreviewIssueOwnershipTypeSheetConflict:
       '{aptRef}: тип собственности на листе «Объекты» ({objectsValue}) не совпадает с листом «Собственники» ({ownersValue}). Исправьте расхождение.',
     bookPreviewIssueInvalidEnum:
@@ -3808,9 +3821,9 @@ export const ru = {
     bookPreviewIssueOwnersMissing: '{aptRef} — нет сведений о собственнике. Заполните лист «{sheet}».',
     bookPreviewIssueGenericRows: 'Лист «{sheet}», строки {rows}, {aptRef}, колонка «{field}»: {reason}',
     bookPreviewIssueGeneric: 'Лист «{sheet}», {aptRef}, колонка «{field}»: {reason}',
-    bookPreviewAllowedOwnershipTypes: 'sole (единоличная), shared (долевая)',
+    bookPreviewAllowedOwnershipTypes: '1, 2, 3… (положительное целое число)',
     bookPreviewAllowedEntityKinds:
-      '1 (физическое лицо), 0 (юридическое лицо); также natural_person, legal_entity, sole_trader (ЕТ)',
+      '1 (физическое лицо), 0 (юридическое лицо), ЕТ',
     bookPreviewCountLabelApartments: 'квартиры',
     bookPreviewCountLabelBlockingRows: 'строки с ошибками',
     bookPreviewCountLabelClarifyUnits: 'квартиры с уточнениями',
@@ -8982,7 +8995,7 @@ export const en: Messages = {
     bookIssue_purpose_required: 'Purpose missing',
     bookIssue_area_required: 'Area missing',
     bookIssue_object_ideal_parts_required: 'Object ideal parts missing',
-    bookIssue_ownership_type_required: 'Ownership type is not specified',
+    bookIssue_ownership_type_required: 'Number of owners is not specified',
     bookIssue_owner_share_required: 'Ownership share missing',
     bookIssue_owner_ideal_parts_required: 'Owner ideal parts missing',
     bookIssue_entity_kind_required: 'Entity kind missing',
@@ -8992,11 +9005,12 @@ export const en: Messages = {
     bookImportSeverityError: 'Error',
     bookImportSeverityWarning: 'Clarification',
     bookImportFieldOwners: 'Owners',
+    bookImportFieldOwnerCount: 'Number of owners',
     bookImportFieldObjects: 'Object',
     bookImportSheetObjects: 'Objects',
     bookImportSheetOwners: 'Owners',
     bookImport_apartment_required: 'Apartment number is missing',
-    bookImport_invalid_ownership_type: 'Invalid ownership type',
+    bookImport_invalid_ownership_type: 'Invalid number of owners',
     bookImport_invalid_area: 'Invalid area',
     bookImport_invalid_living_area: 'Invalid living area, m²',
     bookImport_invalid_ideal_parts: 'Invalid ideal parts',
@@ -9013,6 +9027,10 @@ export const en: Messages = {
       'The owners file lists conflicting ownership types (sole and shared) for the same apartment. Fix the mismatch.',
     bookImport_ownership_type_sheet_conflict:
       'Ownership type on the Objects sheet does not match the Owners sheet. Fix the mismatch.',
+    bookImport_owner_count_conflict:
+      'Rows for the same apartment list different owner counts. Fix the mismatch.',
+    bookImport_owner_count_mismatch:
+      'The declared number of owners does not match the number of rows for that apartment.',
     bookImport_ideal_parts_sum: 'Owner ideal parts do not match the object total',
     bookImport_apartment_count_mismatch: 'Apartment count in the file does not match the complex data',
     bookImport_owner_without_object: 'Owner refers to an apartment missing from the Objects sheet',
@@ -9042,6 +9060,10 @@ export const en: Messages = {
     bookPreviewAptRefSectionBlock: 'Block {block} · entrance {section} · apt. №{apt}',
     bookPreviewAptRefBlock: 'Block {block} · apt. №{apt}',
     bookPreviewAptRefPlain: 'apt. №{apt}',
+    bookOwnerCountLocSection: 'Entrance {section}, apartment №{apt}',
+    bookOwnerCountLocSectionBlock: 'Block {block}, entrance {section}, apartment №{apt}',
+    bookOwnerCountLocBlock: 'Block {block}, apartment №{apt}',
+    bookOwnerCountLocPlain: 'Apartment №{apt}',
     bookPreviewSectionOnly: 'Section {section} — {count}',
     bookPreviewSectionWithBlock: 'Section {section} · block {block} — {count}',
     bookPreviewBlockOnly: 'Block {block} — {count}',
@@ -9064,9 +9086,13 @@ export const en: Messages = {
     bookPreviewIssueAmbiguousApt:
       'Sheet “{sheet}”: apartment №{apt} exists in sections {sections}. Fill the “{field}” column.',
     bookPreviewIssueOwnershipTypeMissing:
-      '{aptRef} — ownership type is not specified. Sheet “{sheet}”, row {row}, column “{field}”.',
+      '{aptRef} — number of owners is not specified. Sheet “{sheet}”, row {row}, column “{field}”.',
     bookPreviewIssueOwnershipTypeConflict:
       'Sheet “{sheet}”, rows {rows}: {aptRef} has conflicting “{field}” values ({values}). Fix the mismatch.',
+    bookPreviewIssueOwnerCountConflict:
+      'Sheet “{sheet}”, rows {rows}: {aptRef} has conflicting owner counts in “{field}” ({values}). Fix the mismatch.',
+    bookPreviewIssueOwnerCountMismatch:
+      '{location}: {declared} owners declared, {actual} row filled',
     bookPreviewIssueOwnershipTypeSheetConflict:
       '{aptRef}: ownership type on the Objects sheet ({objectsValue}) does not match the Owners sheet ({ownersValue}). Fix the mismatch.',
     bookPreviewIssueInvalidEnum:
@@ -9074,9 +9100,8 @@ export const en: Messages = {
     bookPreviewIssueOwnersMissing: '{aptRef} — no owner details. Fill the “{sheet}” sheet.',
     bookPreviewIssueGenericRows: 'Sheet “{sheet}”, rows {rows}, {aptRef}, column “{field}”: {reason}',
     bookPreviewIssueGeneric: 'Sheet “{sheet}”, {aptRef}, column “{field}”: {reason}',
-    bookPreviewAllowedOwnershipTypes: 'sole, shared',
-    bookPreviewAllowedEntityKinds:
-      '1 (natural person), 0 (legal entity); also natural_person, legal_entity, sole_trader',
+    bookPreviewAllowedOwnershipTypes: '1, 2, 3… (positive whole number)',
+    bookPreviewAllowedEntityKinds: '1 (natural person), 0 (legal entity), Sole trader',
     bookPreviewCountLabelApartments: 'apartments',
     bookPreviewCountLabelBlockingRows: 'rows with errors',
     bookPreviewCountLabelClarifyUnits: 'apartments needing clarification',
@@ -14258,7 +14283,7 @@ export const bg: Messages = {
     bookIssue_purpose_required: 'Липсва предназначение',
     bookIssue_area_required: 'Липсва площ',
     bookIssue_object_ideal_parts_required: 'Липсват идеални части на обекта',
-    bookIssue_ownership_type_required: 'Не е посочен тип собственост',
+    bookIssue_ownership_type_required: 'Не е посочен броят собственици',
     bookIssue_owner_share_required: 'Липсва дял',
     bookIssue_owner_ideal_parts_required: 'Липсват идеални части на собственика',
     bookIssue_entity_kind_required: 'Липсва вид собственик',
@@ -14268,11 +14293,12 @@ export const bg: Messages = {
     bookImportSeverityError: 'Грешка',
     bookImportSeverityWarning: 'Уточнение',
     bookImportFieldOwners: 'Собственици',
+    bookImportFieldOwnerCount: 'Брой собственици',
     bookImportFieldObjects: 'Обект',
     bookImportSheetObjects: 'Обекти',
     bookImportSheetOwners: 'Собственици',
     bookImport_apartment_required: 'Липсва номер на апартамента',
-    bookImport_invalid_ownership_type: 'Невалиден тип собственост',
+    bookImport_invalid_ownership_type: 'Невалиден брой собственици',
     bookImport_invalid_area: 'Невалидна площ',
     bookImport_invalid_living_area: 'Невалидна жилищна площ, м²',
     bookImport_invalid_ideal_parts: 'Невалидни идеални части',
@@ -14289,6 +14315,10 @@ export const bg: Messages = {
       'Във файла със собственици за един апартамент са посочени различни типове собственост (еднолична и дялова). Поправете разминаването.',
     bookImport_ownership_type_sheet_conflict:
       'Типът собственост в листа «Обекти» не съвпада с листа «Собственици». Поправете разминаването.',
+    bookImport_owner_count_conflict:
+      'В редовете за един апартамент е посочен различен брой собственици. Поправете разминаването.',
+    bookImport_owner_count_mismatch:
+      'Посоченият брой собственици не съвпада с броя попълнени редове за апартамента.',
     bookImport_ideal_parts_sum: 'Сборът на идеалните части не съвпада с обекта',
     bookImport_apartment_count_mismatch: 'Броят апартаменти във файла не съвпада с данните за комплекса',
     bookImport_owner_without_object: 'Собственикът е за апартамент, който липсва в листа «Обекти»',
@@ -14317,6 +14347,10 @@ export const bg: Messages = {
     bookPreviewAptRefSectionBlock: 'Блок {block} · вход {section} · ап. №{apt}',
     bookPreviewAptRefBlock: 'Блок {block} · ап. №{apt}',
     bookPreviewAptRefPlain: 'ап. №{apt}',
+    bookOwnerCountLocSection: 'Вход {section}, апартамент №{apt}',
+    bookOwnerCountLocSectionBlock: 'Блок {block}, вход {section}, апартамент №{apt}',
+    bookOwnerCountLocBlock: 'Блок {block}, апартамент №{apt}',
+    bookOwnerCountLocPlain: 'Апартамент №{apt}',
     bookPreviewSectionOnly: 'Секция {section} — {count}',
     bookPreviewSectionWithBlock: 'Секция {section} · блок {block} — {count}',
     bookPreviewBlockOnly: 'Блок {block} — {count}',
@@ -14339,9 +14373,13 @@ export const bg: Messages = {
     bookPreviewIssueAmbiguousApt:
       'Лист «{sheet}»: апартамент №{apt} има в секции {sections}. Попълнете колоната «{field}».',
     bookPreviewIssueOwnershipTypeMissing:
-      '{aptRef} — не е посочен тип собственост. Лист «{sheet}», ред {row}, колона «{field}».',
+      '{aptRef} — не е посочен броят собственици. Лист «{sheet}», ред {row}, колона «{field}».',
     bookPreviewIssueOwnershipTypeConflict:
       'Лист «{sheet}», редове {rows}: за {aptRef} в колона «{field}» са посочени различни стойности ({values}). Поправете разминаването.',
+    bookPreviewIssueOwnerCountConflict:
+      'Лист «{sheet}», редове {rows}: за {aptRef} в колона «{field}» е посочен различен брой собственици ({values}). Поправете разминаването.',
+    bookPreviewIssueOwnerCountMismatch:
+      '{location}: посочени са {declared} собственика, попълнен е {actual} ред',
     bookPreviewIssueOwnershipTypeSheetConflict:
       '{aptRef}: тип собственост в листа «Обекти» ({objectsValue}) не съвпада с листа «Собственици» ({ownersValue}). Поправете разминаването.',
     bookPreviewIssueInvalidEnum:
@@ -14349,9 +14387,8 @@ export const bg: Messages = {
     bookPreviewIssueOwnersMissing: '{aptRef} — няма данни за собственик. Попълнете листа «{sheet}».',
     bookPreviewIssueGenericRows: 'Лист «{sheet}», редове {rows}, {aptRef}, колона «{field}»: {reason}',
     bookPreviewIssueGeneric: 'Лист «{sheet}», {aptRef}, колона «{field}»: {reason}',
-    bookPreviewAllowedOwnershipTypes: 'sole (еднолична), shared (дялова)',
-    bookPreviewAllowedEntityKinds:
-      '1 (физическо лице), 0 (юридическо лице); също natural_person, legal_entity, sole_trader (ЕТ)',
+    bookPreviewAllowedOwnershipTypes: '1, 2, 3… (положително цяло число)',
+    bookPreviewAllowedEntityKinds: '1 (физическо лице), 0 (юридическо лице), ЕТ',
     bookPreviewCountLabelApartments: 'апартаменти',
     bookPreviewCountLabelBlockingRows: 'редове с грешки',
     bookPreviewCountLabelClarifyUnits: 'апартаменти с уточнения',

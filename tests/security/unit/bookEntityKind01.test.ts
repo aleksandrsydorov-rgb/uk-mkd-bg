@@ -45,7 +45,7 @@ function zipHasDataValidation(buf: ArrayBuffer): boolean {
   return (
     /dataValidation/i.test(text) &&
     /(1,0|0,1)/.test(text) &&
-    (/sole,shared/.test(text) || /Один владелец|One owner|Един собственик/.test(text))
+    /type="whole"/i.test(text)
   );
 }
 
@@ -68,6 +68,8 @@ describe('book entity_kind 0/1', () => {
     expect(normalizeBookEntityKindInput('natural_person')).toBe('natural_person');
     expect(normalizeBookEntityKindInput('legal_entity')).toBe('legal_entity');
     expect(normalizeBookEntityKindInput('sole_trader')).toBe('sole_trader');
+    expect(normalizeBookEntityKindInput('ЕТ')).toBe('sole_trader');
+    expect(normalizeBookEntityKindInput('Sole trader')).toBe('sole_trader');
     expect(normalizeBookEntityKindInput('2')).toBeNull();
     expect(coerceBookEntityKindField(0)).toBe('legal_entity');
     expect(coerceBookEntityKindField('')).toBe('');
@@ -135,15 +137,16 @@ describe('book entity_kind 0/1', () => {
       .map(String)
       .join('\n');
     expect(instr).toMatch(/Кто владелец/);
-    expect(instr).toMatch(/Сколько владельцев у квартиры/);
-    expect(instr).toMatch(/Один владелец/);
-    expect(instr).toMatch(/Несколько владельцев/);
+    expect(instr).toMatch(/Количество владельцев/);
+    expect(instr).not.toMatch(/Один владелец|Несколько владельцев/);
+    expect(instr).not.toMatch(/sole_trader|natural_person|legal_entity|\bsole\b|\bshared\b/);
     expect(instr).toMatch(/1 — физлицо|1 — физическое лицо/);
     expect(instr).toMatch(/0 — юрлицо|0 — юридическое лицо/);
-    expect(instr).toMatch(/sole_trader/);
+    expect(instr).toMatch(/ЕТ/);
     expect(instr).toMatch(/60/);
     expect(instr).toMatch(/40/);
-    expect(sheetXml).toMatch(/Один владелец,Несколько владельцев/);
+    expect(sheetXml).toMatch(/type="whole"/i);
+    expect(sheetXml).toMatch(/sqref="D2:D1001"/);
   });
 
   it('presents invalid entity_kind with sheet/row/column/allowed values', () => {

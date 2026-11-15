@@ -41,6 +41,20 @@ export type ImportColumnDef = {
    * list (e.g. sole_trader) can still be typed while the dropdown stays intact.
    */
   listValidationAllowCustom?: boolean;
+  /**
+   * Excel whole-number validation on the data sheet (positive integers by default).
+   * Applied after SheetJS write via the same ZIP patch as list dropdowns.
+   */
+  wholeNumberValidation?: {
+    /** Minimum allowed value (default 1). */
+    min?: number;
+    allowBlank?: boolean;
+  };
+  /**
+   * Override for the Instruction “Required” column (e.g. conditional required).
+   * When set, replaces the generic Required / Optional label.
+   */
+  requiredLabel?: Record<ImportTemplateLocale, string>;
 };
 
 /** Worked example block on the Instruction sheet (never copied onto the data sheet). */

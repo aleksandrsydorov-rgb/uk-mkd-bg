@@ -9,7 +9,6 @@ import {
   BOOK_ENTITY_KINDS,
   BOOK_OBJECTS_SHEET,
   BOOK_OWNERS_SHEET,
-  OWNERSHIP_TYPES,
   buildPropertyBookTemplateBuffer,
   coerceBookEntityKindField,
   propertyBookTemplateFileName,
@@ -32,6 +31,7 @@ import {
   propertyBookIdentityLabel,
   propertyBookIdentityParts,
 } from '@/lib/propertyBookIdentity';
+import { normalizeOwnershipType } from '@/lib/propertyBookImportPreview';
 
 export const PROPERTY_BOOK_MODULE_KEY = 'property_book';
 export const PROPERTY_BOOK_SETUP_SCHEMA_VERSION = '1.0';
@@ -49,7 +49,6 @@ export const DEFAULT_PROPERTY_BOOK_OPENING_POLICY: PropertyBookOpeningPolicy = {
 };
 
 const ENTITY_KIND_SET = new Set<string>(BOOK_ENTITY_KINDS);
-const OWNERSHIP_SET = new Set<string>(OWNERSHIP_TYPES);
 
 function normApt(value: string | undefined | null): string {
   return normalizePropertyBookApartmentNumber(value).toLowerCase();
@@ -71,10 +70,7 @@ export function splitPropertyBookObjectProps(row: Record<string, string>): Prope
   if (!row.ideal_parts_percent?.trim()) warnings.push('required:ideal_parts_percent');
   // Ownership type is set on the owners step in two-step first-run; empty is not an
   // objects-sheet clarification. Invalid non-empty values remain hard errors.
-  if (
-    row.ownership_type?.trim() &&
-    !OWNERSHIP_SET.has(row.ownership_type.trim().toLowerCase())
-  ) {
+  if (row.ownership_type?.trim() && !normalizeOwnershipType(row.ownership_type)) {
     errors.push('invalid:ownership_type');
   }
   const area = parseImportDecimal(row.area_sqm);

@@ -7,6 +7,7 @@ import { propertyBookFieldLabel } from '@/lib/propertyBookHistory';
 import {
   formatBookApartmentRef,
   formatExcelRowRanges,
+  formatOwnerCountLocation,
   type BookPreviewIssue,
 } from '@/lib/propertyBookImportPreview';
 
@@ -406,6 +407,8 @@ export function importReasonI18nKey(raw: string): string | null {
     ownership_type_invalid: 'bookImport_invalid_ownership_type',
     ownership_type_conflict: 'bookImport_ownership_type_conflict',
     ownership_type_sheet_conflict: 'bookImport_ownership_type_sheet_conflict',
+    owner_count_conflict: 'bookImport_owner_count_conflict',
+    owner_count_mismatch: 'bookImport_owner_count_mismatch',
     'invalid:ownership_type': 'bookImport_invalid_ownership_type',
     'invalid:entity_kind': 'bookImport_invalid_entity_kind',
     entity_kind_invalid: 'bookImport_invalid_entity_kind',
@@ -552,6 +555,8 @@ export function presentImportField(raw: string, t: T): string {
   if (field === 'objects') return t('admin.bookImportFieldObjects');
   if (field === 'opening_balance_kind') return t('admin.is3ColOpeningBalanceKind');
   if (field === 'opening_balance_eur') return t('admin.is3ColOpeningBalanceEur');
+  // Owners-template column (import preview), not the Book UI “ownership type” label.
+  if (field === 'ownership_type') return t('admin.bookImportFieldOwnerCount');
   return propertyBookFieldLabel(field, t);
 }
 
@@ -629,13 +634,32 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
     });
   }
 
-  if (issue.reason === 'ownership_type_conflict') {
-    return t('admin.bookPreviewIssueOwnershipTypeConflict', {
-      aptRef,
-      sheet,
-      rows: rowsLabel || '—',
-      field,
-      values: issue.value || '—',
+  if (issue.reason === 'ownership_type_conflict' || issue.reason === 'owner_count_conflict') {
+    return t(
+      issue.reason === 'owner_count_conflict'
+        ? 'admin.bookPreviewIssueOwnerCountConflict'
+        : 'admin.bookPreviewIssueOwnershipTypeConflict',
+      {
+        aptRef,
+        sheet,
+        rows: rowsLabel || '—',
+        field,
+        values: issue.value || '—',
+      },
+    );
+  }
+
+  if (issue.reason === 'owner_count_mismatch') {
+    const [declaredPart, actualPart] = issue.value.split('/');
+    const location = formatOwnerCountLocation(t, {
+      apartmentNumber: issue.apartment || '—',
+      sectionCode: issue.sectionCode,
+      blockCode: issue.blockCode,
+    });
+    return t('admin.bookPreviewIssueOwnerCountMismatch', {
+      location,
+      declared: declaredPart || '—',
+      actual: actualPart || '—',
     });
   }
 

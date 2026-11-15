@@ -25,6 +25,18 @@ export type XlsxListValidationItem = {
   allowCustom?: boolean;
 };
 
+/** Whole-number (integer) data-validation for a worksheet range. */
+export type XlsxWholeNumberValidationItem = {
+  sqref: string;
+  /** Minimum inclusive value (default 1). */
+  min?: number;
+  allowBlank?: boolean;
+};
+
+export type XlsxDataValidationItem =
+  | ({ kind: 'list' } & XlsxListValidationItem)
+  | ({ kind: 'whole' } & XlsxWholeNumberValidationItem);
+
 function asBuffer(data: ArrayBuffer | Uint8Array | Buffer): Buffer {
   if (Buffer.isBuffer(data)) return data;
   // Copy into a real Buffer — Uint8Array views / polyfill Buffers are rejected by zlib.
@@ -200,29 +212,38 @@ function insertDataValidationsBlock(xml: string, block: string): string {
   return xml.replace(/<\/worksheet>/i, `${block}</worksheet>`);
 }
 
-function applyListValidationsXml(xml: string, items: XlsxListValidationItem[]): string {
+function renderDataValidationXml(item: XlsxDataValidationItem): string {
+  const allowBlank = item.allowBlank === false ? '0' : '1';
+  if (item.kind === 'whole') {
+    const min = item.min == null || !Number.isFinite(item.min) ? 1 : Math.floor(item.min);
+    return (
+      `<dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="${allowBlank}" ` +
+      `showErrorMessage="1" sqref="${escapeXmlAttr(item.sqref)}">` +
+      `<formula1>${min}</formula1>` +
+      `</dataValidation>`
+    );
+  }
+  const formula = escapeXmlAttr(`"${item.list}"`);
+  // showDropDown="1" hides the arrow in OOXML (inverted); keep 0 for visible dropdown.
+  const errorStyle = item.allowCustom ? ' errorStyle="warning"' : '';
+  return (
+    `<dataValidation type="list" allowBlank="${allowBlank}" showDropDown="0" ` +
+    `showErrorMessage="1"${errorStyle} sqref="${escapeXmlAttr(item.sqref)}">` +
+    `<formula1>${formula}</formula1>` +
+    `</dataValidation>`
+  );
+}
+
+function applyDataValidationsXml(xml: string, items: XlsxDataValidationItem[]): string {
   let out = xml.replace(/<dataValidations\b[\s\S]*?<\/dataValidations>/gi, '');
   if (!items.length) return out;
-  const body = items
-    .map((item) => {
-      const formula = escapeXmlAttr(`"${item.list}"`);
-      const allowBlank = item.allowBlank === false ? '0' : '1';
-      // showDropDown="1" hides the arrow in OOXML (inverted); keep 0 for visible dropdown.
-      const errorStyle = item.allowCustom ? ' errorStyle="warning"' : '';
-      return (
-        `<dataValidation type="list" allowBlank="${allowBlank}" showDropDown="0" ` +
-        `showErrorMessage="1"${errorStyle} sqref="${escapeXmlAttr(item.sqref)}">` +
-        `<formula1>${formula}</formula1>` +
-        `</dataValidation>`
-      );
-    })
-    .join('');
+  const body = items.map(renderDataValidationXml).join('');
   const block = `<dataValidations count="${items.length}">${body}</dataValidations>`;
   return insertDataValidationsBlock(out, block);
 }
 
 /**
- * Patch worksheet XML: optional freeze panes + one or more list data-validations.
+ * Patch worksheet XML: optional freeze panes + one or more data-validations.
  * Throws if the ZIP/XML cannot be patched — callers must not download a file without the list.
  */
 export function patchXlsxWorksheet(
@@ -231,6 +252,7 @@ export function patchXlsxWorksheet(
     /** ZIP path; default first worksheet. */
     sheetFile?: string;
     listValidations?: XlsxListValidationItem[];
+    wholeNumberValidations?: XlsxWholeNumberValidationItem[];
     /** Freeze this many top rows (usually 1 for the header). */
     freezeHeaderRows?: number;
   },
@@ -248,10 +270,14 @@ export function patchXlsxWorksheet(
   if (opts.freezeHeaderRows && opts.freezeHeaderRows > 0) {
     xml = applyFreezeHeader(xml, opts.freezeHeaderRows);
   }
-  xml = applyListValidationsXml(xml, opts.listValidations ?? []);
+  const validations: XlsxDataValidationItem[] = [
+    ...(opts.listValidations ?? []).map((item) => ({ kind: 'list' as const, ...item })),
+    ...(opts.wholeNumberValidations ?? []).map((item) => ({ kind: 'whole' as const, ...item })),
+  ];
+  xml = applyDataValidationsXml(xml, validations);
 
   // Fail closed when caller requested validations but none survived.
-  if ((opts.listValidations?.length ?? 0) > 0 && !/<dataValidation\b/i.test(xml)) {
+  if (validations.length > 0 && !/<dataValidation\b/i.test(xml)) {
     throw new Error('xlsxListValidation: dataValidations missing after patch');
   }
   if (opts.freezeHeaderRows && opts.freezeHeaderRows > 0 && !/<pane\b/i.test(xml)) {
@@ -262,7 +288,7 @@ export function patchXlsxWorksheet(
   entry.crc = crc32(entry.bytes);
 
   const out = writeZip(entries);
-  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+  return Uint8Array.from(out).buffer;
 }
 
 /**

@@ -169,6 +169,10 @@ export type FirstRunErrorRow = {
     sectionCode?: string;
     blockCode?: string;
     value?: string;
+    declared?: number | string;
+    actual?: number | string;
+    objectsValue?: string;
+    ownersValue?: string;
   };
 };
 

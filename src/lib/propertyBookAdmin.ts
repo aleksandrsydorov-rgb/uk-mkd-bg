@@ -68,7 +68,14 @@ export function normalizeBookEntityKindInput(raw: unknown): BookEntityKind | '' 
   ) {
     return 'legal_entity';
   }
-  if (s === 'sole_trader' || s === 'et' || s === 'ет' || s === 'sole trader') {
+  if (
+    s === 'sole_trader' ||
+    s === 'et' ||
+    s === 'ет' ||
+    s === 'sole trader' ||
+    s === 'единоличный торговец' ||
+    s === 'едноличен търговец'
+  ) {
     return 'sole_trader';
   }
   return null;

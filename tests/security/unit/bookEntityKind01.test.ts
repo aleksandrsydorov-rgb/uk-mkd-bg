@@ -44,7 +44,7 @@ function zipHasDataValidation(buf: ArrayBuffer): boolean {
   const text = readSheet1Xml(buf);
   return (
     /dataValidation/i.test(text) &&
-    /(1,0|0,1)/.test(text) &&
+    /Физическое лицо|Individual|Физическо лице/.test(text) &&
     /type="whole"/i.test(text)
   );
 }
@@ -70,6 +70,12 @@ describe('book entity_kind 0/1', () => {
     expect(normalizeBookEntityKindInput('sole_trader')).toBe('sole_trader');
     expect(normalizeBookEntityKindInput('ЕТ')).toBe('sole_trader');
     expect(normalizeBookEntityKindInput('Sole trader')).toBe('sole_trader');
+    expect(normalizeBookEntityKindInput('Физическое лицо')).toBe('natural_person');
+    expect(normalizeBookEntityKindInput('Юридическое лицо')).toBe('legal_entity');
+    expect(normalizeBookEntityKindInput('Individual')).toBe('natural_person');
+    expect(normalizeBookEntityKindInput('Legal entity')).toBe('legal_entity');
+    expect(normalizeBookEntityKindInput('Физическо лице')).toBe('natural_person');
+    expect(normalizeBookEntityKindInput('Юридическо лице')).toBe('legal_entity');
     expect(normalizeBookEntityKindInput('2')).toBeNull();
     expect(coerceBookEntityKindField(0)).toBe('legal_entity');
     expect(coerceBookEntityKindField('')).toBe('');
@@ -140,12 +146,13 @@ describe('book entity_kind 0/1', () => {
     expect(instr).toMatch(/Количество владельцев/);
     expect(instr).not.toMatch(/Один владелец|Несколько владельцев/);
     expect(instr).not.toMatch(/sole_trader|natural_person|legal_entity|\bsole\b|\bshared\b/);
-    expect(instr).toMatch(/1 — физлицо|1 — физическое лицо/);
-    expect(instr).toMatch(/0 — юрлицо|0 — юридическое лицо/);
+    expect(instr).toMatch(/Физическое лицо/);
+    expect(instr).toMatch(/Юридическое лицо/);
     expect(instr).toMatch(/ЕТ/);
     expect(instr).toMatch(/60/);
     expect(instr).toMatch(/40/);
     expect(sheetXml).toMatch(/type="whole"/i);
+    expect(sheetXml).toMatch(/Физическое лицо,Юридическое лицо/);
     expect(sheetXml).toMatch(/sqref="D2:D1001"/);
   });
 
@@ -167,9 +174,9 @@ describe('book entity_kind 0/1', () => {
     );
     expect(msg).toMatch(/Собственники|owners/i);
     expect(msg).toMatch(/3/);
-    expect(msg).toMatch(/Тип собственника|Тип лица|Owner type|entity_kind/i);
-    expect(msg).toMatch(/1 \(физическое лицо\)/);
-    expect(msg).toMatch(/0 \(юридическое лицо\)/);
+    expect(msg).toMatch(/Тип собственника|Тип лица|Owner type|Кто владелец|entity_kind/i);
+    expect(msg).toMatch(/Физическое лицо/);
+    expect(msg).toMatch(/Юридическое лицо/);
     expect(msg).toContain('2');
   });
 });

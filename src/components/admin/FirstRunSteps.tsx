@@ -32,7 +32,11 @@ import {
   type FirstRunModuleChoice,
   type FirstRunTariffPrepMap,
 } from '@/lib/firstRun';
-import { presentBookPreviewIssue, presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
+import {
+  presentBookPreviewIssue,
+  presentBookPreviewIssueWhere,
+  presentFirstRunErrorRow,
+} from '@/lib/firstRunUserMessage';
 import {
   formatMeterMoney,
   formatMeterReadingCell,
@@ -44,7 +48,9 @@ import {
   buildBookPreviewIssues,
   buildBookSectionBreakdown,
   clarifyGroupSummary,
+  formatBookApartmentRef,
   formatSectionCountsLine,
+  groupBookPreviewByApartment,
   groupClarifyIssuesByReason,
 } from '@/lib/propertyBookImportPreview';
 import {
@@ -463,6 +469,7 @@ export function FirstRunBookImport({
   const blockingIssues = issues.filter((i) => i.severity === 'error');
   const clarifyIssues = issues.filter((i) => i.severity === 'warning');
   const clarifyGroups = groupClarifyIssuesByReason(clarifyIssues);
+  const apartmentPreview = groupBookPreviewByApartment(issues);
   const blocking = dry?.blockingErrorCount ?? blockingIssues.length;
   // Owners commit uses allow_overwrite — do not block the confirm button.
   const overwriteBlocked = !isOwners && dry?.requiresOverwriteConfirmation === true;
@@ -660,21 +667,71 @@ export function FirstRunBookImport({
             </div>
           ) : null}
 
-          {dry && !committed && blockingIssues.length > 0 ? (
+          {dry && !committed && (apartmentPreview.cards.length > 0 || apartmentPreview.unlinked.length > 0) ? (
             <div className={styles.tableWrap} style={{ marginTop: 12 }}>
-              <p className={styles.importLabel}>{t('admin.bookPreviewBlockingTitle')}</p>
-              <p className={styles.hint}>{t('admin.bookPreviewBlockingHint')}</p>
-              <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                {blockingIssues.map((issue, idx) => (
-                  <li key={`block-${issue.reason}-${issue.apartment}-${idx}`}>
-                    {presentBookPreviewIssue(issue, t)}
-                  </li>
-                ))}
-              </ul>
+              <p className={styles.importLabel}>{t('admin.bookPreviewAptCardsTitle')}</p>
+              {apartmentPreview.cards.length > 0 ? (
+                <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 0, listStyle: 'none' }}>
+                  {apartmentPreview.cards.map((card) => {
+                    const statusLabel =
+                      card.status === 'error'
+                        ? t('admin.bookPreviewAptCardStatusError')
+                        : card.status === 'clarify'
+                          ? t('admin.bookPreviewAptCardStatusClarify')
+                          : t('admin.bookPreviewAptCardStatusOk');
+                    const aptRef = formatBookApartmentRef(t, {
+                      apartmentNumber: card.apartment,
+                      sectionCode: card.sectionCode,
+                      blockCode: card.blockCode,
+                    });
+                    return (
+                      <li
+                        key={card.key}
+                        style={{
+                          marginBottom: 12,
+                          padding: '10px 12px',
+                          border: '1px solid var(--admin-border, #d8dde6)',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
+                          {aptRef} — {statusLabel}
+                        </p>
+                        <ul style={{ margin: 0, paddingLeft: 18 }}>
+                          {card.issues.map((issue, idx) => (
+                            <li key={`${card.key}-${issue.reason}-${idx}`} style={{ marginBottom: 4 }}>
+                              <div>{presentBookPreviewIssue(issue, t)}</div>
+                              <div style={{ opacity: 0.85 }}>
+                                {presentBookPreviewIssueWhere(issue, t)}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              {apartmentPreview.unlinked.length > 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  <p className={styles.importLabel}>{t('admin.bookPreviewUnlinkedRowsTitle')}</p>
+                  <p className={styles.hint}>{t('admin.bookPreviewUnlinkedHint')}</p>
+                  <ul className={styles.hint} style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                    {apartmentPreview.unlinked.map((row) => (
+                      <li key={row.key} style={{ marginBottom: 6 }}>
+                        <div>{presentBookPreviewIssue(row.issue, t)}</div>
+                        <div style={{ opacity: 0.85 }}>
+                          {presentBookPreviewIssueWhere(row.issue, t)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
-          {dry && !committed && clarifyGroups.length > 0 ? (
+          {dry && !committed && !isOwners && clarifyGroups.length > 0 && apartmentPreview.cards.length === 0 ? (
             <div className={styles.tableWrap} style={{ marginTop: 12 }}>
               <p className={styles.importLabel}>{t('admin.bookPreviewClarifyTitle')}</p>
               <p className={styles.hint}>{t('admin.bookPreviewClarifyHint')}</p>

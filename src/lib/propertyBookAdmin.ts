@@ -62,6 +62,7 @@ export function normalizeBookEntityKindInput(raw: unknown): BookEntityKind | '' 
   if (
     s === 'legal_entity' ||
     s === 'company' ||
+    s === 'legal entity' ||
     s === 'юрлицо' ||
     s === 'юридическое лицо' ||
     s === 'юридическо лице'
@@ -278,9 +279,81 @@ function coerceOwnersOwnershipType(rows: Record<string, string>[]): Record<strin
   }));
 }
 
+/** Person / org fields that mean the row carries owner payload (not identity alone). */
+const OWNER_PAYLOAD_KEYS = [
+  'entity_kind',
+  'first_name',
+  'middle_name',
+  'last_name',
+  'entity_name',
+  'eik_bulstat',
+  'email',
+  'phone',
+  'phone_secondary',
+  'ownership_share_percent',
+  'ideal_parts_percent',
+] as const;
+
+function ownerPayloadFilled(row: Record<string, string>): boolean {
+  return OWNER_PAYLOAD_KEYS.some((k) => String(row[k] ?? '').trim() !== '');
+}
+
+/**
+ * Fully blank data row (no apartment, no owner fields, no count).
+ * Template-preformatted empty rows must be skipped silently.
+ */
+export function isPropertyBookOwnerRowBlank(row: Record<string, string>): boolean {
+  if (String(row.apartment_number ?? '').trim()) return false;
+  if (String(row.section_code ?? '').trim() || String(row.block_code ?? '').trim()) return false;
+  if (String(row.ownership_type ?? '').trim()) return false;
+  return !ownerPayloadFilled(row);
+}
+
+/**
+ * Apartment identity present, but no owner person/org fields.
+ * Used as a placeholder: mark clarify, do not create an empty owner.
+ */
+export function isPropertyBookOwnerIdentityOnly(row: Record<string, string>): boolean {
+  if (!String(row.apartment_number ?? '').trim()) return false;
+  return !ownerPayloadFilled(row);
+}
+
+/**
+ * Split parsed owners: drop blank rows; keep identity-only out of the RPC payload
+ * (creatable owners only). Identity-only apartments still clarify via missing owners
+ * on the objects stubs.
+ */
+export function partitionPropertyBookOwnerRows(rows: Record<string, string>[]): {
+  creatable: Record<string, string>[];
+  identityOnly: Record<string, string>[];
+  blankSkipped: number;
+} {
+  const creatable: Record<string, string>[] = [];
+  const identityOnly: Record<string, string>[] = [];
+  let blankSkipped = 0;
+  for (const row of rows) {
+    if (isPropertyBookOwnerRowBlank(row)) {
+      blankSkipped += 1;
+      continue;
+    }
+    if (isPropertyBookOwnerIdentityOnly(row)) {
+      identityOnly.push(row);
+      continue;
+    }
+    creatable.push(row);
+  }
+  return { creatable, identityOnly, blankSkipped };
+}
+
 export type PropertyBookWorkbookPayload = {
   objects: Record<string, string>[];
+  /** Creatable owner rows sent to import RPC (never identity-only / blank). */
   owners: Record<string, string>[];
+  /**
+   * Identity-only apartment rows kept for preview Excel-row hints only.
+   * Never passed to admin_import_property_book.
+   */
+  ownersPreviewExtra?: Record<string, string>[];
 };
 
 function specSheetNames(spec: ImportTemplateSpec): Set<string> {
@@ -342,7 +415,7 @@ export function parsePropertyBookWorkbookBuffer(
           BOOK_OWNERS_SPARSE_HEADERS,
         ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
       ),
-    );
+    ).filter((row) => !isPropertyBookOwnerRowBlank(row));
     // Combined legacy workbook: keep Objects rows as ownership_type source for the owners step.
     const objects =
       objectsName && objectsName !== name
@@ -377,7 +450,7 @@ export function parsePropertyBookWorkbookBuffer(
         BOOK_OWNERS_SPARSE_HEADERS,
       ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
     ),
-  );
+  ).filter((row) => !isPropertyBookOwnerRowBlank(row));
 
   return { objects, owners };
 }

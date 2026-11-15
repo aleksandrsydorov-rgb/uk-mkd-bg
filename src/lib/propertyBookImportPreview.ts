@@ -711,6 +711,65 @@ export function buildBookPreviewIssues(
       if (!row.sheet || row.sheet === 'validation') meta.forceSheet = 'owners';
     }
 
+    // Soft owner-field warnings from RPC often lack Excel row / section — attach from file.
+    const ownerSoftFieldByReason: Record<string, string> = {
+      owner_email_required: 'email',
+      owner_share_required: 'ownership_share_percent',
+      owner_ideal_parts_required: 'ideal_parts_percent',
+      owner_ideal_parts_sum_mismatch: 'ideal_parts_percent',
+      natural_name_required: 'first_name',
+      legal_name_required: 'entity_name',
+      eik_required: 'eik_bulstat',
+      entity_kind_required: 'entity_kind',
+      sole_trader_name_required: 'entity_name',
+      ownership_identity_incomplete: 'owners',
+      owners_required: 'owners',
+      shares_must_sum_100: 'ownership_share_percent',
+    };
+    if (aptKey && ownerSoftFieldByReason[row.reason]) {
+      const matchedOwners = owners.filter((o) => {
+        const p = propertyBookIdentityParts(asIdentityRow(o));
+        if (p.apartmentNumber.toLowerCase() !== aptKey) return false;
+        if (
+          meta.sectionCode &&
+          p.sectionCode.toLowerCase() !== String(meta.sectionCode).toLowerCase()
+        ) {
+          return false;
+        }
+        if (
+          meta.blockCode &&
+          p.blockCode.toLowerCase() !== String(meta.blockCode).toLowerCase()
+        ) {
+          return false;
+        }
+        return true;
+      });
+      if (matchedOwners.length) {
+        const first = propertyBookIdentityParts(asIdentityRow(matchedOwners[0]!));
+        meta.sectionCode = meta.sectionCode || first.sectionCode;
+        meta.blockCode = meta.blockCode || first.blockCode;
+        if (!Array.isArray(meta.sourceRows) || (meta.sourceRows as number[]).length === 0) {
+          meta.sourceRows = matchedOwners
+            .map((o) => rowNum(o._row))
+            .filter((n): n is number => n != null);
+        }
+      } else {
+        const obj = objects.find((o) => {
+          const p = propertyBookIdentityParts(asIdentityRow(o));
+          return p.apartmentNumber.toLowerCase() === aptKey;
+        });
+        if (obj) {
+          const p = propertyBookIdentityParts(asIdentityRow(obj));
+          meta.sectionCode = meta.sectionCode || p.sectionCode;
+          meta.blockCode = meta.blockCode || p.blockCode;
+        }
+      }
+      if (!row.field || row.field === 'owners') {
+        meta.forceField = ownerSoftFieldByReason[row.reason];
+      }
+      if (!row.sheet || row.sheet === 'validation') meta.forceSheet = 'owners';
+    }
+
     return {
       ...row,
       reason: String(meta.forceReason || row.reason),
@@ -822,6 +881,91 @@ export function groupClarifyIssuesByReason(issues: BookPreviewIssue[]): ClarifyI
     map.set(issue.reason, list);
   }
   return [...map.entries()].map(([reason, grouped]) => ({ reason, issues: grouped }));
+}
+
+export type BookApartmentPreviewStatus = 'error' | 'clarify' | 'ok';
+
+/** One apartment card in the two-step import preview. */
+export type BookApartmentPreviewCard = {
+  key: string;
+  apartment: string;
+  sectionCode: string;
+  blockCode: string;
+  status: BookApartmentPreviewStatus;
+  issues: BookPreviewIssue[];
+};
+
+/** Rows that could not be tied to an apartment identity. */
+export type BookUnlinkedPreviewRow = {
+  key: string;
+  issue: BookPreviewIssue;
+};
+
+function apartmentCardKey(issue: BookPreviewIssue): string | null {
+  const apt = (issue.apartment || '').trim();
+  if (!apt || apt === '—') return null;
+  // Ambiguous № without section stays unlinked until the operator fills section/block.
+  if (issue.reason === 'section_code_required_for_disambiguation') return null;
+  return [
+    apt.toLowerCase(),
+    (issue.sectionCode || '').trim().toLowerCase(),
+    (issue.blockCode || '').trim().toLowerCase(),
+  ].join('\u0001');
+}
+
+/**
+ * Group preview issues into one card per apartment (section + block) plus
+ * unlinked rows (no apartment / ambiguous number).
+ */
+export function groupBookPreviewByApartment(issues: BookPreviewIssue[]): {
+  cards: BookApartmentPreviewCard[];
+  unlinked: BookUnlinkedPreviewRow[];
+} {
+  const byKey = new Map<string, BookApartmentPreviewCard>();
+  const unlinked: BookUnlinkedPreviewRow[] = [];
+  for (const issue of issues) {
+    const key = apartmentCardKey(issue);
+    if (!key) {
+      unlinked.push({
+        key: `unlinked-${issue.reason}-${issue.rows.join(',')}-${issue.field}-${unlinked.length}`,
+        issue,
+      });
+      continue;
+    }
+    let card = byKey.get(key);
+    if (!card) {
+      card = {
+        key,
+        apartment: issue.apartment,
+        sectionCode: issue.sectionCode,
+        blockCode: issue.blockCode,
+        status: 'ok',
+        issues: [],
+      };
+      byKey.set(key, card);
+    }
+    card.issues.push(issue);
+  }
+  const cards = [...byKey.values()].map((card) => {
+    const hasError = card.issues.some((i) => i.severity === 'error');
+    const hasWarn = card.issues.some((i) => i.severity === 'warning');
+    return {
+      ...card,
+      status: (hasError ? 'error' : hasWarn ? 'clarify' : 'ok') as BookApartmentPreviewStatus,
+      issues: [...card.issues].sort((a, b) => {
+        if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
+        return (a.rows[0] ?? 0) - (b.rows[0] ?? 0);
+      }),
+    };
+  });
+  cards.sort((a, b) => {
+    if (a.status !== b.status) {
+      const rank = { error: 0, clarify: 1, ok: 2 };
+      return rank[a.status] - rank[b.status];
+    }
+    return a.apartment.localeCompare(b.apartment, undefined, { numeric: true });
+  });
+  return { cards, unlinked };
 }
 
 export function clarifyGroupSummary(group: ClarifyIssueGroup, t: TFn): string {

@@ -693,10 +693,7 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
   }
 
   if (issue.reason === 'owners_required') {
-    return t('admin.bookPreviewIssueOwnersMissing', {
-      aptRef,
-      sheet: presentImportSheet('owners', 'owners', t),
-    });
+    return t('admin.bookPreviewIssueOwnersMissing');
   }
 
   const base = presentImportReason(issue.reason, t, {
@@ -722,6 +719,13 @@ export function presentBookPreviewIssue(issue: BookPreviewIssue, t: T): string {
 
 export function presentImportSeverity(severity: string | undefined, t: T): string {
   return severity === 'warning' ? t('admin.bookImportSeverityWarning') : t('admin.bookImportSeverityError');
+}
+
+/** Excel row + field line under a card issue (when determinable). */
+export function presentBookPreviewIssueWhere(issue: BookPreviewIssue, t: T): string {
+  const field = presentImportField(issue.field, t);
+  const rowsLabel = formatExcelRowRanges(issue.rows) || '—';
+  return t('admin.bookPreviewIssueExcelWhere', { row: rowsLabel, field });
 }
 
 export type PresentedImportErrorRow = {

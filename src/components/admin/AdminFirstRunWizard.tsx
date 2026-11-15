@@ -79,6 +79,7 @@ import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapt
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
 import {
   parsePropertyBookWorkbook,
+  partitionPropertyBookOwnerRows,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
 import {
@@ -983,13 +984,16 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     if (!file) return;
     await run(async () => {
       const payload = await parsePropertyBookWorkbook(file, 'owners');
-      if (payload.owners.length === 0) {
+      const partitioned = partitionPropertyBookOwnerRows(payload.owners);
+      // Identity-only rows are placeholders (clarify via missing owners); blank rows already dropped.
+      const ownersForImport = partitioned.creatable;
+      if (ownersForImport.length === 0 && partitioned.identityOnly.length === 0) {
         setError(t('admin.is2PropertyBookEmptyOwners'));
         return;
       }
       // payload.objects = Objects-sheet rows from a combined legacy workbook (type source only).
       const conflictRows = collectOwnersStepOwnershipTypeConflicts({
-        owners: payload.owners,
+        owners: ownersForImport,
         objectsFromFile: payload.objects,
       });
       if (conflictRows.length > 0) {
@@ -1010,7 +1014,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           expectedApartmentCount: null,
         });
         setErrorRows(conflictRows);
-        setBookPayload(payload);
+        setBookPayload({
+          ...payload,
+          owners: ownersForImport,
+          ownersPreviewExtra: partitioned.identityOnly,
+        });
         return;
       }
       const objectStubs = await loadExistingBookObjectStubs();
@@ -1019,19 +1027,23 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         return;
       }
       const objectsWithType = applyOwnershipTypesToObjects(objectStubs, {
-        owners: payload.owners,
+        owners: ownersForImport,
         objectsFromFile: payload.objects,
       });
       const { data, error: rpcErr } = await supabase.rpc('admin_import_property_book', {
         p_objects: objectsWithType,
-        p_owners: payload.owners,
+        p_owners: ownersForImport,
         p_dry_run: true,
         p_allow_create_missing: false,
         p_allow_overwrite: true,
       });
       if (rpcErr) throw new Error(rpcErr.message);
       applyBookDryRun(asObj(data), { filterOwnersNoise: false, ignoreOverwriteBlock: true });
-      setBookPayload({ objects: objectsWithType, owners: payload.owners });
+      setBookPayload({
+        objects: objectsWithType,
+        owners: ownersForImport,
+        ownersPreviewExtra: partitioned.identityOnly,
+      });
     });
   }
 
@@ -1668,7 +1680,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           error={error}
           needsComplexFix={false}
           previewObjects={bookPayload?.objects}
-          previewOwners={bookPayload?.owners}
+          previewOwners={[
+            ...(bookPayload?.owners ?? []),
+            ...(bookPayload?.ownersPreviewExtra ?? []),
+          ]}
           onDownload={() =>
             downloadXlsx(
               buildPropertyBookOwnersTemplateBuffer(locale),

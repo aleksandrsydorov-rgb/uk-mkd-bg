@@ -715,8 +715,7 @@ export function buildBookPreviewIssues(
     const ownerSoftFieldByReason: Record<string, string> = {
       owner_email_required: 'email',
       owner_share_required: 'ownership_share_percent',
-      owner_ideal_parts_required: 'ideal_parts_percent',
-      owner_ideal_parts_sum_mismatch: 'ideal_parts_percent',
+      owner_vote_weight_mismatch: 'ownership_share_percent',
       natural_name_required: 'first_name',
       legal_name_required: 'entity_name',
       eik_required: 'eik_bulstat',

@@ -213,7 +213,8 @@ describe('IS-2 · XLSX template BG/RU/EN', () => {
     for (const locale of ['ru', 'bg', 'en'] as const) {
       const wb = XLSX.read(buildPropertyBookIs2TemplateBuffer(locale), { type: 'array' });
       const [objName, ownName] = wb.SheetNames;
-      XLSX.utils.sheet_add_aoa(wb.Sheets[objName], [['12', '3']], { origin: 'A2' });
+      // Objects template: A apt · B section · C block · D floor
+      XLSX.utils.sheet_add_aoa(wb.Sheets[objName], [['12', '', '', '3']], { origin: 'A2' });
       XLSX.utils.sheet_add_aoa(wb.Sheets[ownName], [['12']], { origin: 'A2' });
       const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
       const parsed = parsePropertyBookWorkbookBuffer(buf);

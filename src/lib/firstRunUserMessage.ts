@@ -385,6 +385,7 @@ export function importReasonI18nKey(raw: string): string | null {
     eik_required: 'bookIssue_eik_required',
     owner_share_required: 'bookIssue_owner_share_required',
     owner_ideal_parts_required: 'bookIssue_owner_ideal_parts_required',
+    owner_vote_weight_mismatch: 'bookIssue_owner_vote_weight_mismatch',
     entity_kind_required: 'bookIssue_entity_kind_required',
     sole_trader_name_required: 'bookIssue_sole_trader_name_required',
     ownership_identity_incomplete: 'bookIssue_ownership_identity_incomplete',

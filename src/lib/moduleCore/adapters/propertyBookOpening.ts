@@ -322,11 +322,6 @@ export function classifyPropertyBookOpeningRows(
       const ownershipType = String(objOp?.data.ownership_type ?? '')
         .trim()
         .toLowerCase();
-      const objectIdeal = parseImportDecimal(String(objOp?.data.ideal_parts_percent ?? ''));
-      const idealSum = group.reduce(
-        (acc, r) => acc + (parseImportDecimal(r.ideal_parts_percent) ?? 0),
-        0,
-      );
       const kindOf = (r: Record<string, string>) =>
         String(r.entity_kind ?? '').trim().toLowerCase();
       const legalN = group.filter((r) => kindOf(r) === 'legal_entity').length;
@@ -340,27 +335,8 @@ export function classifyPropertyBookOpeningRows(
       if (ownershipType === 'shared' && soleOwners && first) {
         errors.push('shared_requires_two_owners');
       }
-      if (
-        first &&
-        ownershipType === 'shared' &&
-        objectIdeal != null &&
-        Number.isFinite(objectIdeal) &&
-        group.some((r) => String(r.ideal_parts_percent ?? '').trim()) &&
-        Math.abs(idealSum - objectIdeal) > 0.01
-      ) {
-        errors.push('owner_ideal_parts_sum_mismatch');
-      }
-      if (
-        first &&
-        ownershipType === 'sole' &&
-        soleOwners &&
-        objectIdeal != null &&
-        Number.isFinite(objectIdeal) &&
-        group.some((r) => String(r.ideal_parts_percent ?? '').trim()) &&
-        Math.abs(idealSum - objectIdeal) > 0.01
-      ) {
-        errors.push('sole_ideal_parts_mismatch');
-      }
+      // Owner ideal-parts column is legacy: apartment ideal parts live on Objects;
+      // vote weight = apartment ideal × ownership share / 100 (no sum check here).
     }
 
     let operation: ImportRowOperation = 'error';

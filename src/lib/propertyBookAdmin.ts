@@ -291,7 +291,7 @@ const OWNER_PAYLOAD_KEYS = [
   'phone',
   'phone_secondary',
   'ownership_share_percent',
-  'ideal_parts_percent',
+  // ideal_parts_percent is apartment-level (Objects step); legacy owner column is ignored for creatable detection
 ] as const;
 
 function ownerPayloadFilled(row: Record<string, string>): boolean {

@@ -105,6 +105,11 @@ import {
 } from '@/lib/emailCoreAdapters';
 import { presentPropertyBookHistoryEntry } from '@/lib/propertyBookHistory';
 import { formatIdealPartsPercent, ownershipComposition } from '@/lib/propertyBook';
+import {
+  computeOwnerVoteWeightPercent,
+  ownerDocumentedIdealDiverges,
+  parseOptionalPercent,
+} from '@/lib/propertyBookVoteWeight';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { normalizeFirstRunErrors, type FirstRunErrorRow } from '@/lib/firstRun';
 import { presentImportReason } from '@/lib/firstRunUserMessage';
@@ -1972,6 +1977,20 @@ export function AdminPropertyBook({
                   const idealFmt =
                     formatIdealPartsPercent(owner.ideal_parts_percent, locale) ??
                     displayValue(owner.ideal_parts_percent, empty);
+                  const computedWeight = computeOwnerVoteWeightPercent(
+                    parseOptionalPercent(idealParts),
+                    parseOptionalPercent(owner.ownership_share_percent),
+                  );
+                  const documentedIdeal = parseOptionalPercent(owner.ideal_parts_percent);
+                  const weightMismatch = ownerDocumentedIdealDiverges(
+                    documentedIdeal,
+                    computedWeight,
+                  );
+                  const weightFmt =
+                    computedWeight != null
+                      ? (formatIdealPartsPercent(String(computedWeight), locale) ??
+                        String(computedWeight))
+                      : null;
                   if (!cardEditing) {
                     return (
                       <div key={owner.id ?? idx} className={`${adminCardClass} space-y-2 p-5`}>
@@ -2001,11 +2020,28 @@ export function AdminPropertyBook({
                             }
                           />
                           <AdminInfoRow
-                            label={t('admin.bookOwnerIdeal')}
+                            label={t('admin.bookVoteWeight')}
                             value={
-                              owner.ideal_parts_percent.trim() ? `${idealFmt} %` : empty
+                              weightFmt != null
+                                ? `${weightFmt} %`
+                                : t('admin.bookVoteWeightClarify')
                             }
                           />
+                          {weightMismatch && documentedIdeal != null ? (
+                            <AdminInfoRow
+                              label={t('admin.bookOwnerIdeal')}
+                              value={t('admin.bookVoteWeightMismatch', {
+                                documented:
+                                  formatIdealPartsPercent(String(documentedIdeal), locale) ??
+                                  String(documentedIdeal),
+                              })}
+                            />
+                          ) : owner.ideal_parts_percent.trim() ? (
+                            <AdminInfoRow
+                              label={t('admin.bookOwnerIdeal')}
+                              value={`${idealFmt} %`}
+                            />
+                          ) : null}
                           {owner.entity_kind === 'legal_entity' ||
                           owner.entity_kind === 'sole_trader' ? (
                             <>

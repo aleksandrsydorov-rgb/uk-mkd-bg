@@ -133,7 +133,7 @@ describe('book entity_kind 0/1', () => {
     if (ignoredAt >= 0) expect(dvAt).toBeLessThan(ignoredAt);
     const wb = XLSX.read(buf, { type: 'array' });
     const data = wb.Sheets['Собственники'];
-    expect(String(data['!ref'])).toMatch(/A1:O1001/i);
+    expect(String(data['!ref'])).toMatch(/A1:N1001/i);
     const dataRows = XLSX.utils.sheet_to_json<string[]>(data, { header: 1, raw: false });
     const filled = dataRows.slice(1).filter((r) => (r ?? []).some((c) => String(c ?? '').trim()));
     expect(filled.length).toBe(0);

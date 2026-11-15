@@ -501,6 +501,30 @@ export function buildBookPreviewIssues(
       if (!row.field) meta.forceField = 'ownership_type';
     }
 
+    if (
+      (row.reason === 'entity_kind_invalid' ||
+        row.reason === 'invalid:entity_kind' ||
+        row.reason === 'invalid_entity_kind') &&
+      !meta.value
+    ) {
+      const owner = owners.find((o) => {
+        const p = propertyBookIdentityParts(asIdentityRow(o));
+        const r = rowNum(o._row);
+        const rowMatch = row.row ? r === rowNum(row.row) : true;
+        return (
+          rowMatch &&
+          p.apartmentNumber.toLowerCase() === aptKey &&
+          (!meta.sectionCode ||
+            p.sectionCode.toLowerCase() === String(meta.sectionCode).toLowerCase())
+        );
+      });
+      if (owner?.entity_kind != null && String(owner.entity_kind).trim() !== '') {
+        meta.value = String(owner.entity_kind).trim();
+      }
+      if (!row.field) meta.forceField = 'entity_kind';
+      if (!row.sheet || row.sheet === 'validation') meta.forceSheet = 'owners';
+    }
+
     return {
       ...row,
       reason: String(meta.forceReason || row.reason),

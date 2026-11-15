@@ -11,6 +11,7 @@ import {
   BOOK_OWNERS_SHEET,
   OWNERSHIP_TYPES,
   buildPropertyBookTemplateBuffer,
+  coerceBookEntityKindField,
   propertyBookTemplateFileName,
   type PropertyBookWorkbookPayload,
 } from '@/lib/propertyBookAdmin';
@@ -97,6 +98,10 @@ export function splitPropertyBookOwnerRow(row: Record<string, string>): Property
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
+  const coerced = coerceBookEntityKindField(row.entity_kind);
+  if (coerced !== (row.entity_kind ?? '')) {
+    row.entity_kind = coerced;
+  }
   const kind = (row.entity_kind ?? '').trim().toLowerCase();
   if (!kind) warnings.push('required:entity_kind');
   else if (!ENTITY_KIND_SET.has(kind)) errors.push('invalid:entity_kind');

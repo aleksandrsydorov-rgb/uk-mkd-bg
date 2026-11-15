@@ -74,8 +74,8 @@ function displayScalar(raw: unknown, t: PropertyBookHistoryTranslate): string {
     if (!s || s === 'null') return t('admin.bookHistEmptyValue');
     if (s === 'sole') return t('admin.bookType_sole');
     if (s === 'shared') return t('admin.bookType_shared');
-    if (s === 'natural_person') return t('admin.bookEntity_natural_person');
-    if (s === 'legal_entity') return t('admin.bookEntity_legal_entity');
+    if (s === 'natural_person' || s === '1') return t('admin.bookEntity_natural_person');
+    if (s === 'legal_entity' || s === '0') return t('admin.bookEntity_legal_entity');
     if (s === 'sole_trader') return t('admin.bookEntity_sole_trader');
     if (s === 'owner') return t('admin.bookHistRelationOwner');
     if (s === 'document') return t('admin.bookHistSrcDocument');

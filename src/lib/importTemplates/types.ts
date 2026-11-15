@@ -27,6 +27,11 @@ export type ImportColumnDef = {
    * from downloaded templates and instruction tables. Default true.
    */
   includeInTemplate?: boolean;
+  /**
+   * Excel list dropdown for the data sheet (values joined as `"a,b"` formula).
+   * Applied after SheetJS write via ZIP patch (community build).
+   */
+  listValidation?: string[];
 };
 
 /** Worked example block on the Instruction sheet (never copied onto the data sheet). */

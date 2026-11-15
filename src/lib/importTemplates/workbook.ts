@@ -6,6 +6,7 @@ import type {
   ImportTemplateSpec,
   ResolvedImportHeaders,
 } from '@/lib/importTemplates/types';
+import { injectXlsxListValidation } from '@/lib/importTemplates/xlsxListValidation';
 
 export const IMPORT_INSTRUCTION_SHEET: Record<ImportTemplateLocale, string> = {
   ru: 'Инструкция',
@@ -207,7 +208,31 @@ export function buildLocalizedImportWorkbook(
     buildInstructionSheet(spec, locale),
     IMPORT_INSTRUCTION_SHEET[locale].slice(0, 31),
   );
-  return XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  let buf = XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  buf = applyListValidations(buf, cols, reserve);
+  return buf;
+}
+
+/** Patch SheetJS output with Excel list dropdowns for columns that declare listValidation. */
+function applyListValidations(
+  buf: ArrayBuffer,
+  cols: ImportColumnDef[],
+  reserveRows: number,
+): ArrayBuffer {
+  let out = buf;
+  cols.forEach((col, idx) => {
+    if (!col.listValidation?.length) return;
+    const colLetter = XLSX.utils.encode_col(idx);
+    const sqref = `${colLetter}2:${colLetter}${Math.max(2, reserveRows)}`;
+    out = injectXlsxListValidation(out, {
+      // First sheet in single-sheet templates is always the data sheet.
+      sheetFile: 'xl/worksheets/sheet1.xml',
+      sqref,
+      list: col.listValidation.join(','),
+      allowBlank: true,
+    });
+  });
+  return out;
 }
 
 /**

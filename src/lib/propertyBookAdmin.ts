@@ -26,6 +26,60 @@ export type OwnershipType = (typeof OWNERSHIP_TYPES)[number];
 export const BOOK_ENTITY_KINDS = ['natural_person', 'legal_entity', 'sole_trader'] as const;
 export type BookEntityKind = (typeof BOOK_ENTITY_KINDS)[number];
 
+/**
+ * Map template / legacy owner-type cells to canonical DB values.
+ * Template codes: 1 = natural person, 0 = legal entity.
+ * Empty → ''; unrecognized non-empty → null (invalid).
+ * Numeric Excel 0 must not be treated as blank.
+ */
+export function normalizeBookEntityKindInput(raw: unknown): BookEntityKind | '' | null {
+  if (raw == null) return '';
+  if (typeof raw === 'number') {
+    if (Number.isNaN(raw)) return null;
+    if (raw === 0) return 'legal_entity';
+    if (raw === 1) return 'natural_person';
+    return null;
+  }
+  if (typeof raw === 'boolean') return raw ? 'natural_person' : 'legal_entity';
+  const s = String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/\u00a0/g, ' ')
+    .replace(',', '.');
+  if (!s) return '';
+  if (s === '0' || s === '0.0') return 'legal_entity';
+  if (s === '1' || s === '1.0') return 'natural_person';
+  if (
+    s === 'natural_person' ||
+    s === 'individual' ||
+    s === 'физлицо' ||
+    s === 'физическое лицо' ||
+    s === 'физическо лице'
+  ) {
+    return 'natural_person';
+  }
+  if (
+    s === 'legal_entity' ||
+    s === 'company' ||
+    s === 'юрлицо' ||
+    s === 'юридическое лицо' ||
+    s === 'юридическо лице'
+  ) {
+    return 'legal_entity';
+  }
+  if (s === 'sole_trader' || s === 'et' || s === 'ет' || s === 'sole trader') {
+    return 'sole_trader';
+  }
+  return null;
+}
+
+/** Coerce a parsed owner row field: keep invalid originals for error display. */
+export function coerceBookEntityKindField(raw: unknown): string {
+  const normalized = normalizeBookEntityKindInput(raw);
+  if (normalized === null) return String(raw ?? '').trim();
+  return normalized;
+}
+
 export type PropertyBookClarificationIssue = {
   scope?: string;
   code?: string;
@@ -163,12 +217,13 @@ function sheetToRecords(
   sparseHeaders: ReadonlySet<string> = new Set(),
 ): Record<string, string>[] {
   if (!sheet) return [];
+  // raw:true keeps Excel numeric 0 (legal entity) from collapsing to a blank string.
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: '',
-    raw: false,
+    raw: true,
   });
   const keyMap = spec ? headerKeyMap(spec) : null;
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: true });
   const headerRow = Array.isArray(aoa[0]) ? aoa[0] : [];
   const presentCanonical = new Set<string>();
   for (const cell of headerRow) {
@@ -182,9 +237,11 @@ function sheetToRecords(
     for (const key of Object.keys(row)) {
       const rawKey = String(key).trim();
       const canonical = keyMap?.get(normalizeImportHeader(rawKey)) ?? rawKey;
+      const next = cellToString(row[key]);
       // First matching column wins; never let a duplicate header blank a filled value.
-      if (canonical in out && out[canonical]) continue;
-      out[canonical] = cellToString(row[key]);
+      // Treat "0" as filled (legal-entity code).
+      if (canonical in out && String(out[canonical] ?? '').trim() !== '') continue;
+      out[canonical] = next;
     }
     for (const h of requiredHeaders) {
       if (h in out) continue;
@@ -195,8 +252,15 @@ function sheetToRecords(
     out._row = String(idx + 2);
     return out;
   }).filter((row) =>
-    requiredHeaders.some((h) => (row[h] ?? '').trim() !== ''),
+    requiredHeaders.some((h) => String(row[h] ?? '').trim() !== ''),
   );
+}
+
+function coerceOwnersEntityKind(rows: Record<string, string>[]): Record<string, string>[] {
+  return rows.map((row) => ({
+    ...row,
+    entity_kind: coerceBookEntityKindField(row.entity_kind),
+  }));
 }
 
 export type PropertyBookWorkbookPayload = {
@@ -254,12 +318,14 @@ export function parsePropertyBookWorkbookBuffer(
   if (mode === 'owners') {
     const name = ownersName ?? dataSheets.find((n) => n !== objectsName) ?? dataSheets[0];
     if (!name) throw new Error('Excel must contain an Owners sheet');
-    const owners = sheetToRecords(
-      wb.Sheets[name],
-      BOOK_OWNERS_CSV_HEADERS,
-      PROPERTY_BOOK_OWNERS_SPEC,
-      BOOK_OWNERS_SPARSE_HEADERS,
-    ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS));
+    const owners = coerceOwnersEntityKind(
+      sheetToRecords(
+        wb.Sheets[name],
+        BOOK_OWNERS_CSV_HEADERS,
+        PROPERTY_BOOK_OWNERS_SPEC,
+        BOOK_OWNERS_SPARSE_HEADERS,
+      ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
+    );
     // Combined legacy workbook: keep Objects rows as ownership_type source for the owners step.
     const objects =
       objectsName && objectsName !== name
@@ -285,12 +351,14 @@ export function parsePropertyBookWorkbookBuffer(
     BOOK_OBJECTS_CSV_HEADERS,
     PROPERTY_BOOK_OBJECTS_SPEC,
   ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
-  const owners = sheetToRecords(
-    wb.Sheets[resolvedOwners],
-    BOOK_OWNERS_CSV_HEADERS,
-    PROPERTY_BOOK_OWNERS_SPEC,
-    BOOK_OWNERS_SPARSE_HEADERS,
-  ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS));
+  const owners = coerceOwnersEntityKind(
+    sheetToRecords(
+      wb.Sheets[resolvedOwners],
+      BOOK_OWNERS_CSV_HEADERS,
+      PROPERTY_BOOK_OWNERS_SPEC,
+      BOOK_OWNERS_SPARSE_HEADERS,
+    ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
+  );
 
   return { objects, owners };
 }

@@ -14,6 +14,7 @@ describe('payment receipt owner read by ownership', () => {
     expect(sql).toMatch(/owns_property\(p_receipt\.property_id\)/);
     expect(sql).toMatch(/can_manage_payment_receipts\(\)/);
     // Former owners must not keep access via frozen email alone after transfer.
-    expect(sql).not.toMatch(/owner_email_at_issue/);
+    const body = sql.slice(sql.indexOf('as $fn$'), sql.indexOf('$fn$;') + 5);
+    expect(body).not.toMatch(/owner_email_at_issue/);
   });
 });

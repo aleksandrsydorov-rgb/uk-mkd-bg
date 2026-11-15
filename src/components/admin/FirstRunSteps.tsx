@@ -3,6 +3,7 @@
 import { useState, type ReactNode, type Ref } from 'react';
 import {
   BookOpen,
+  Check,
   ClipboardList,
   Droplets,
   FileText,
@@ -164,8 +165,7 @@ const MODULE_PURPOSE: Record<string, string> = {
 };
 
 const LOCKED = [
-  { key: 'property_book_objects', label: 'admin.firstRunStagePropertyBookObjects', icon: BookOpen, iconClass: 'text-indigo-600' },
-  { key: 'property_book_owners', label: 'admin.firstRunStagePropertyBookOwners', icon: BookOpen, iconClass: 'text-indigo-700' },
+  { key: 'property_book', label: 'admin.firstRunStagePropertyBook', icon: BookOpen, iconClass: 'text-indigo-600' },
   { key: 'support_fee', label: 'admin.moduleSupportFee', icon: Wallet, iconClass: 'text-emerald-600' },
   { key: 'capital_repair', label: 'admin.moduleCapitalRepair', icon: Landmark, iconClass: 'text-orange-700' },
   { key: 'budget', label: 'admin.firstRunStageBudget', icon: Wallet, iconClass: 'text-teal-700' },
@@ -179,8 +179,9 @@ function moduleTitle(t: T, key: string, fallback: string): string {
 }
 
 function cardTitle(t: T, key: string, fallback: string): string {
-  if (key === 'property_book' || key === 'property_book_objects') return t('admin.firstRunStagePropertyBookObjects');
-  if (key === 'property_book_owners') return t('admin.firstRunStagePropertyBookOwners');
+  if (key === 'property_book' || key === 'property_book_objects' || key === 'property_book_owners') {
+    return t('admin.firstRunStagePropertyBook');
+  }
   if (key === 'budget') return t('admin.firstRunStageBudget');
   return moduleTitle(t, key, fallback);
 }
@@ -205,7 +206,12 @@ export function FirstRunModulesSelect({
   const { locale } = useI18n();
   const locked = new Set<string>(LOCKED.map((item) => item.key));
   const visible = catalog.filter(
-    (row) => row.implemented === true && row.module_key !== 'tariffs' && !isPlatformCoreModuleKey(row.module_key),
+    (row) =>
+      row.implemented === true &&
+      row.module_key !== 'tariffs' &&
+      row.module_key !== 'property_book_objects' &&
+      row.module_key !== 'property_book_owners' &&
+      !isPlatformCoreModuleKey(row.module_key),
   );
   for (const item of LOCKED) {
     if (!visible.some((row) => row.module_key === item.key)) {
@@ -214,7 +220,7 @@ export function FirstRunModulesSelect({
         enabled: true,
         default_name: t(item.label),
         category:
-          item.key === 'property_book_objects' || item.key === 'property_book_owners'
+          item.key === 'property_book'
             ? 'documents'
             : item.key === 'budget'
               ? 'finance'
@@ -466,9 +472,6 @@ export function FirstRunBookImport({
       : t('admin.bookImportSummaryFoundOnly', {
           found: String(found ?? '—'),
         });
-  const title = isOwners
-    ? t('admin.firstRunBookOwnersTitle')
-    : t('admin.firstRunBookObjectsTitle');
   const lead = isOwners
     ? t('admin.firstRunBookOwnersLead')
     : t('admin.firstRunBookObjectsLead').replace('{n}', apartmentCount);
@@ -477,10 +480,36 @@ export function FirstRunBookImport({
     <FirstRunScreen
       icon={BookOpen}
       iconClass={isOwners ? 'text-indigo-700' : 'text-indigo-600'}
-      title={title}
+      title={t('admin.firstRunStagePropertyBook')}
       lead={lead}
       busy={busy}
     >
+      <ol className={styles.bookSubstages} aria-label={t('admin.firstRunStagePropertyBook')}>
+        <li
+          className={`${styles.bookSubstage} ${!isOwners ? styles.bookSubstageCurrent : ''} ${
+            isOwners || committed ? styles.bookSubstageDone : ''
+          }`}
+          aria-current={!isOwners ? 'step' : undefined}
+        >
+          <span className={styles.bookSubstageIndex}>1</span>
+          <span className={styles.bookSubstageLabel}>{t('admin.firstRunBookSubstageApartments')}</span>
+          {isOwners || (committed && !isOwners) ? (
+            <Check className={styles.bookSubstageCheck} aria-hidden="true" />
+          ) : null}
+        </li>
+        <li
+          className={`${styles.bookSubstage} ${isOwners ? styles.bookSubstageCurrent : ''} ${
+            isOwners && committed ? styles.bookSubstageDone : ''
+          }`}
+          aria-current={isOwners ? 'step' : undefined}
+        >
+          <span className={styles.bookSubstageIndex}>2</span>
+          <span className={styles.bookSubstageLabel}>{t('admin.firstRunBookSubstageOwners')}</span>
+          {isOwners && committed ? (
+            <Check className={styles.bookSubstageCheck} aria-hidden="true" />
+          ) : null}
+        </li>
+      </ol>
       <FirstRunStatusStack>
         {error ? (
           <FirstRunStatusBanner tone="error" title={t('admin.firstRunBookOpFailedTitle')} detail={error} />

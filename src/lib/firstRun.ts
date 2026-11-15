@@ -468,13 +468,38 @@ export function resolveFirstRunResumeStage(state: FirstRunState | null | undefin
   return stage;
 }
 
+/** Sidebar/nav collapses objects+owners into one “Property Book” step. */
+export function isPropertyBookInternalStage(stage: FirstRunStageKey | string): boolean {
+  return (
+    stage === 'property_book' ||
+    stage === 'property_book_objects' ||
+    stage === 'property_book_owners'
+  );
+}
+
+/** Map internal book stages to the single sidebar key. */
+export function firstRunNavStage(stage: FirstRunStageKey): FirstRunStageKey {
+  return isPropertyBookInternalStage(stage) ? 'property_book' : stage;
+}
+
+/** Property Book nav item is complete only when both internal stages (or legacy) are done. */
+export function propertyBookNavComplete(
+  rows: { stage_key: string; status: string }[] | undefined,
+): boolean {
+  const done = (key: string) =>
+    rows?.some((row) => row.stage_key === key && row.status === 'complete') ?? false;
+  if (done('property_book')) return true;
+  return done('property_book_objects') && done('property_book_owners');
+}
+
 /** Wizard steps for the saved choice. Optional stages stay hidden until selected. */
 export function visibleFirstRunStages(
   selection: { water: boolean; electricity: boolean; budget?: boolean; internet?: boolean } | null,
 ): FirstRunStageKey[] {
   return FIRST_RUN_STAGES.filter((s) => {
     if (s === 'meters_select') return false;
-    if (s === 'property_book') return false;
+    // One sidebar item for the book; objects/owners are internal substages.
+    if (s === 'property_book_objects' || s === 'property_book_owners') return false;
     if (s === 'meters_water') return selection?.water === true;
     if (s === 'meters_electricity') return selection?.electricity === true;
     if (s === 'internet_opening') return selection?.internet === true;
@@ -484,6 +509,7 @@ export function visibleFirstRunStages(
 
 /**
  * Previous step on the visible wizard route (not browser history).
+ * Inside Property Book, Back moves owners → apartments, then apartments → complex card.
  * Legacy `meters_select` is not listed in the sidebar — Back returns to the property book.
  */
 export function previousVisibleStage(
@@ -491,10 +517,17 @@ export function previousVisibleStage(
   current: FirstRunStageKey,
 ): FirstRunStageKey | null {
   if (current === 'meters_select') return 'property_book_owners';
-  if (current === 'property_book') return 'complex_card';
-  const index = stages.indexOf(current);
+  if (current === 'property_book_owners') return 'property_book_objects';
+  if (current === 'property_book_objects' || current === 'property_book') return 'complex_card';
+  const navCurrent = firstRunNavStage(current);
+  const index = stages.indexOf(navCurrent);
   if (index <= 0) return null;
-  return stages[index - 1] ?? null;
+  const prev = stages[index - 1] ?? null;
+  // Leaving a later stage “Back” into the book lands on the unfinished substage.
+  if (prev === 'property_book') {
+    return 'property_book_owners';
+  }
+  return prev;
 }
 
 // ---------------------------------------------------------------------------

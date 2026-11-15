@@ -29,7 +29,12 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
-import type { FirstRunStageKey, FirstRunStageRow } from '@/lib/firstRun';
+import {
+  firstRunNavStage,
+  propertyBookNavComplete,
+  type FirstRunStageKey,
+  type FirstRunStageRow,
+} from '@/lib/firstRun';
 import styles from './FirstRunFrame.module.css';
 
 type FirstRunNavContextValue = {
@@ -126,6 +131,7 @@ type FrameProps = {
 };
 
 function isStageComplete(key: FirstRunStageKey, rows: FirstRunStageRow[] | undefined): boolean {
+  if (key === 'property_book') return propertyBookNavComplete(rows);
   return rows?.some((row) => row.stage_key === key && row.status === 'complete') ?? false;
 }
 
@@ -142,11 +148,12 @@ export function FirstRunFrame({
   children,
 }: FrameProps) {
   const [open, setOpen] = useState(initialStepsOpen);
-  const index = Math.max(0, stages.indexOf(stage));
+  const navStage = firstRunNavStage(stage);
+  const index = Math.max(0, stages.indexOf(navStage));
   const progress = t('admin.firstRunProgress')
     .replace('{n}', String(index + 1))
     .replace('{total}', String(stages.length));
-  const CurrentIcon = STAGE_ICON[stage];
+  const CurrentIcon = STAGE_ICON[navStage] ?? STAGE_ICON[stage];
   const seenStage = useRef(stage);
   const navValue = useMemo<FirstRunNavContextValue>(
     () => ({
@@ -165,7 +172,7 @@ export function FirstRunFrame({
   }, [stage]);
 
   function renderStep(key: FirstRunStageKey) {
-    const current = key === stage;
+    const current = key === navStage;
     const complete = isStageComplete(key, stageRows);
     const Icon = STAGE_ICON[key];
     return (
@@ -208,9 +215,9 @@ export function FirstRunFrame({
               aria-controls="first-run-step-list"
               onClick={() => setOpen((value) => !value)}
             >
-              <CurrentIcon className={`${styles.stepIcon} ${ICON_CLASS[stage]}`} aria-hidden="true" />
+              <CurrentIcon className={`${styles.stepIcon} ${ICON_CLASS[navStage] ?? ICON_CLASS[stage]}`} aria-hidden="true" />
               <span className={styles.mobileText}>
-                <span className={styles.mobileCurrent}>{stageLabel(stage)}</span>
+                <span className={styles.mobileCurrent}>{stageLabel(navStage)}</span>
                 <span className={styles.progress}>{progress}</span>
               </span>
               <ChevronDown className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`} aria-hidden="true" />

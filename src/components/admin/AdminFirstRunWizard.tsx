@@ -1510,9 +1510,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         return t('admin.firstRunStageComplex');
       case 'property_book':
       case 'property_book_objects':
-        return t('admin.firstRunStagePropertyBookObjects');
       case 'property_book_owners':
-        return t('admin.firstRunStagePropertyBookOwners');
+        return t('admin.firstRunStagePropertyBook');
       case 'meters_select':
         return t('admin.firstRunStageMetersSelect');
       case 'meters_water':
@@ -1550,7 +1549,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     <FirstRunFrame
       t={t}
       stages={visibleStages}
-      stage={stage === 'property_book' ? 'property_book_objects' : stage}
+      stage={stage}
       stageRows={state?.stages}
       stageLabel={stageLabel}
       showBack={stage !== 'welcome'}

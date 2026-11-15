@@ -159,6 +159,15 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
   for (const line of spec.notes?.[locale] ?? []) {
     aoa.push([line]);
   }
+  const cols = templateColumns(spec);
+  for (const scenario of spec.instructionScenarios ?? []) {
+    aoa.push([]);
+    aoa.push([scenario.title[locale]]);
+    aoa.push(cols.map((c) => c.label[locale]));
+    for (const row of scenario.rows) {
+      aoa.push(cols.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))));
+    }
+  }
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
   sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 56 }, { wch: 22 }];
   return sheet;
@@ -410,7 +419,8 @@ export function buildLocalizedMultiSheetImportWorkbook(
       locale === 'en' ? 'Format / rules' : locale === 'bg' ? 'Формат / правила' : 'Формат / правила',
       locale === 'en' ? 'Example' : locale === 'bg' ? 'Пример' : 'Пример',
     ]);
-    for (const col of templateColumns(spec)) {
+    const cols = templateColumns(spec);
+    for (const col of cols) {
       aoa.push([
         col.label[locale],
         col.required
@@ -427,6 +437,14 @@ export function buildLocalizedMultiSheetImportWorkbook(
         col.instruction[locale],
         col.example ?? '',
       ]);
+    }
+    for (const scenario of spec.instructionScenarios ?? []) {
+      aoa.push([]);
+      aoa.push([scenario.title[locale]]);
+      aoa.push(cols.map((c) => c.label[locale]));
+      for (const row of scenario.rows) {
+        aoa.push(cols.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))));
+      }
     }
     aoa.push([]);
   }

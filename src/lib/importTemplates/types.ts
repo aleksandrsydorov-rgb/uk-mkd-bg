@@ -29,6 +29,13 @@ export type ImportColumnDef = {
   includeInTemplate?: boolean;
 };
 
+/** Worked example block on the Instruction sheet (never copied onto the data sheet). */
+export type ImportInstructionScenario = {
+  title: Record<ImportTemplateLocale, string>;
+  /** Values keyed by column `key`; omitted keys render as empty cells. */
+  rows: Array<Record<string, string>>;
+};
+
 export type ImportTemplateSpec = {
   /** Stable id for tests / logging. */
   id: string;
@@ -46,6 +53,8 @@ export type ImportTemplateSpec = {
   title: Record<ImportTemplateLocale, string>;
   /** Extra prose lines after the column table on Instruction. */
   notes?: Record<ImportTemplateLocale, string[]>;
+  /** Optional scenario tables after the column guide (examples only). */
+  instructionScenarios?: ImportInstructionScenario[];
   maxRows?: number;
 };
 

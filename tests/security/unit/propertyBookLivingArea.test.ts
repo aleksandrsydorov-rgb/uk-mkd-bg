@@ -1,14 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { PROPERTY_BOOK_OBJECTS_SPEC } from '@/lib/importTemplates/specs/propertyBook';
-import { parsePropertyBookWorkbookBuffer } from '@/lib/propertyBookAdmin';
+import {
+  PROPERTY_BOOK_OBJECTS_SPEC,
+  PROPERTY_BOOK_OWNERS_SPEC,
+} from '@/lib/importTemplates/specs/propertyBook';
+import {
+  buildPropertyBookObjectsTemplateBuffer,
+  buildPropertyBookOwnersTemplateBuffer,
+  parsePropertyBookWorkbookBuffer,
+  propertyBookObjectsTemplateFileName,
+  propertyBookOwnersTemplateFileName,
+} from '@/lib/propertyBookAdmin';
 import { buildPropertyBookIs2TemplateBuffer, splitPropertyBookObjectProps } from '@/lib/moduleCore/adapters/propertyBookOpening';
+import { IMPORT_INSTRUCTION_SHEET } from '@/lib/importTemplates/workbook';
 import { importReasonI18nKey } from '@/lib/firstRunUserMessage';
 
 function objectHeaders(locale: 'ru' | 'bg' | 'en'): string[] {
-  const buf = buildPropertyBookIs2TemplateBuffer(locale);
+  const buf = buildPropertyBookObjectsTemplateBuffer(locale);
   const wb = XLSX.read(buf, { type: 'array' });
   const sheet = wb.Sheets[PROPERTY_BOOK_OBJECTS_SPEC.dataSheetName[locale]];
+  const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+  return (rows[0] ?? []).map((cell) => String(cell));
+}
+
+function ownersHeaders(locale: 'ru' | 'bg' | 'en'): string[] {
+  const buf = buildPropertyBookOwnersTemplateBuffer(locale);
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheet = wb.Sheets[PROPERTY_BOOK_OWNERS_SPEC.dataSheetName[locale]];
   const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
   return (rows[0] ?? []).map((cell) => String(cell));
 }
@@ -58,6 +76,45 @@ describe('property book living area', () => {
       'Living area, m²',
       'Ideal parts, %',
     ]);
+    expect(propertyBookObjectsTemplateFileName('ru')).toBe(
+      'шаблон-книга-собственности-апартаменты.xlsx',
+    );
+  });
+
+  it('downloads owners template with ownership type after block and scenario examples', () => {
+    expect(ownersHeaders('ru').slice(0, 6)).toEqual([
+      'Апартамент',
+      'Секция',
+      'Блок',
+      'Тип собственности',
+      'Тип собственника',
+      'Доля владения, %',
+    ]);
+    expect(ownersHeaders('ru')).toEqual(
+      expect.arrayContaining(['Основной телефон', 'Дополнительный телефон']),
+    );
+    expect(propertyBookOwnersTemplateFileName('en')).toBe('property-book-owners-template.xlsx');
+
+    const buf = buildPropertyBookOwnersTemplateBuffer('ru');
+    const wb = XLSX.read(buf, { type: 'array' });
+    const instr = XLSX.utils
+      .sheet_to_json<string[]>(wb.Sheets[IMPORT_INSTRUCTION_SHEET.ru], { header: 1 })
+      .map((row) => row.map((c) => String(c ?? '')).join(' | '))
+      .join('\n');
+    expect(instr).toMatch(/один собственник|sole/i);
+    expect(instr).toMatch(/60/);
+    expect(instr).toMatch(/40/);
+    expect(instr).toMatch(/Тип собственника/);
+    expect(PROPERTY_BOOK_OWNERS_SPEC.instructionScenarios?.length).toBeGreaterThanOrEqual(3);
+
+    // Combined IS2 template still omits ownership type from Objects sheet.
+    const combined = XLSX.read(buildPropertyBookIs2TemplateBuffer('ru'), { type: 'array' });
+    const combinedObj = XLSX.utils
+      .sheet_to_json<string[]>(combined.Sheets[PROPERTY_BOOK_OBJECTS_SPEC.dataSheetName.ru], {
+        header: 1,
+      })[0]
+      ?.map(String);
+    expect(combinedObj).not.toContain('Тип собственности');
   });
 
   it('accepts a fractional living area and rejects a non-positive value', () => {

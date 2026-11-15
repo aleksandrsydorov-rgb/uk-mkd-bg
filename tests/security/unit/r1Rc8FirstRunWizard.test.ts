@@ -768,7 +768,7 @@ describe('R1-RC8 first-run · packaging', () => {
         MIG_TARIFF_PERIOD,
       ]),
     );
-    expect(manifest.expectedChronologicalMigrationCount).toBe(220);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(221);
     expect(manifest.chronologicalMigrationTree).toEqual(
       expect.arrayContaining([
         'supabase/migrations/20261130324000_r1_rc8_first_run_internet_before_tariffs_advance.sql',
@@ -927,4 +927,5 @@ describe('R1-RC8 first-run · packaging', () => {
     expect(translate('bg', 'admin.firstRunStay')).toBe('Остани');
   });
 });
+
 

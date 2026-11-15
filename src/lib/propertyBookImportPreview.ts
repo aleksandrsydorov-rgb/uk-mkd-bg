@@ -692,10 +692,9 @@ export function buildBookPreviewIssues(
     }
 
     if (
-      (row.reason === 'entity_kind_invalid' ||
-        row.reason === 'invalid:entity_kind' ||
-        row.reason === 'invalid_entity_kind') &&
-      !meta.value
+      row.reason === 'entity_kind_invalid' ||
+      row.reason === 'invalid:entity_kind' ||
+      row.reason === 'invalid_entity_kind'
     ) {
       const owner = owners.find((o) => {
         const p = propertyBookIdentityParts(asIdentityRow(o));
@@ -708,11 +707,26 @@ export function buildBookPreviewIssues(
             p.sectionCode.toLowerCase() === String(meta.sectionCode).toLowerCase())
         );
       });
-      if (owner?.entity_kind != null && String(owner.entity_kind).trim() !== '') {
-        meta.value = String(owner.entity_kind).trim();
+      if (owner) {
+        const p = propertyBookIdentityParts(asIdentityRow(owner));
+        meta.sectionCode = meta.sectionCode || p.sectionCode;
+        meta.blockCode = meta.blockCode || p.blockCode;
+        if (!Array.isArray(meta.sourceRows) || (meta.sourceRows as number[]).length === 0) {
+          const r = rowNum(owner._row);
+          if (r != null) meta.sourceRows = [r];
+        }
+        const fileSheet = String(owner._sheet ?? '').trim();
+        if (fileSheet) meta.forceSheet = fileSheet;
+        if (!meta.value && owner.entity_kind != null && String(owner.entity_kind).trim() !== '') {
+          meta.value = String(owner.entity_kind).trim();
+        }
       }
-      if (!row.field) meta.forceField = 'entity_kind';
-      if (!row.sheet || row.sheet === 'validation') meta.forceSheet = 'owners';
+      if (!row.field || row.field === 'owners' || row.field === 'validation') {
+        meta.forceField = 'entity_kind';
+      }
+      if (!meta.forceSheet && (!row.sheet || row.sheet === 'validation' || row.sheet === 'objects')) {
+        meta.forceSheet = 'owners';
+      }
     }
 
     // Soft owner-field warnings from RPC often lack Excel row / section — attach from file.

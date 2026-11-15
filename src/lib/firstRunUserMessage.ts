@@ -414,6 +414,8 @@ export function importReasonI18nKey(raw: string): string | null {
     'invalid:ownership_type': 'bookImport_invalid_ownership_type',
     'invalid:entity_kind': 'bookImport_invalid_entity_kind',
     entity_kind_invalid: 'bookImport_invalid_entity_kind',
+    invalid_entity_kind: 'bookImport_invalid_entity_kind',
+    invalid_ownership_type: 'bookImport_invalid_ownership_type',
     unknown_apartment: 'importIssue_unknown_apartment',
     opening_balance_conflict_same_apartment: 'importIssue_opening_balance_conflict_same_apartment',
     overlapping_paid_periods: 'importIssue_overlapping_paid_periods',
@@ -767,13 +769,15 @@ export function presentBookPreviewIssue(
   if (
     issue.reason === 'ownership_type_invalid' ||
     issue.reason === 'invalid:ownership_type' ||
+    issue.reason === 'invalid_ownership_type' ||
     issue.reason === 'entity_kind_invalid' ||
-    issue.reason === 'invalid:entity_kind'
+    issue.reason === 'invalid:entity_kind' ||
+    issue.reason === 'invalid_entity_kind'
   ) {
-    const allowed =
-      issue.reason.includes('entity_kind')
-        ? t('admin.bookPreviewAllowedEntityKinds')
-        : t('admin.bookPreviewAllowedOwnershipTypes');
+    const isEntityKind = issue.reason.includes('entity_kind');
+    const allowed = isEntityKind
+      ? t('admin.bookPreviewAllowedEntityKinds')
+      : t('admin.bookPreviewAllowedOwnershipTypes');
     return inCard
       ? t('admin.bookPreviewIssueInvalidEnumCard', {
           field,

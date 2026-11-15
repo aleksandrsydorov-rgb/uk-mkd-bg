@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('payment receipt owner read by ownership', () => {
-  it('lets current owns_property readers open receipts without matching owner_email_at_issue', () => {
+  it('grants current owns_property readers access without email-at-issue matching', () => {
     const sql = fs.readFileSync(
       path.join(
         process.cwd(),
@@ -12,11 +12,8 @@ describe('payment receipt owner read by ownership', () => {
       'utf8',
     );
     expect(sql).toMatch(/owns_property\(p_receipt\.property_id\)/);
-    expect(sql).toMatch(/owner_email_at_issue/);
     expect(sql).toMatch(/can_manage_payment_receipts\(\)/);
-    // Must not require email match AND ownership together.
-    expect(sql).not.toMatch(
-      /owns_property\(p_receipt\.property_id\)\s*\n\s*and p_receipt\.owner_email_at_issue/i,
-    );
+    // Former owners must not keep access via frozen email alone after transfer.
+    expect(sql).not.toMatch(/owner_email_at_issue/);
   });
 });

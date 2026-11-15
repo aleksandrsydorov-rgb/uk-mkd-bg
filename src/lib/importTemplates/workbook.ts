@@ -156,7 +156,9 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
             ? 'Не'
             : 'Необязательно',
       col.instruction[locale],
-      col.example ?? '',
+      col.example != null && col.example !== ''
+        ? localizedListValidationExample(col, col.example, locale)
+        : '',
     ]);
   }
   aoa.push([]);
@@ -169,7 +171,13 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
     aoa.push([scenario.title[locale]]);
     aoa.push(cols.map((c) => c.label[locale]));
     for (const row of scenario.rows) {
-      aoa.push(cols.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))));
+      aoa.push(
+        cols.map((c) =>
+          sanitizeSpreadsheetCell(
+            localizedListValidationExample(c, String(row[c.key] ?? ''), locale),
+          ),
+        ),
+      );
     }
   }
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
@@ -220,8 +228,32 @@ export function buildLocalizedImportWorkbook(
     IMPORT_INSTRUCTION_SHEET[locale].slice(0, 31),
   );
   let buf = XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
-  buf = applyWorksheetPatches(buf, cols, lastExcelRow);
+  buf = applyWorksheetPatches(buf, cols, lastExcelRow, locale);
   return buf;
+}
+
+function columnListValidationValues(
+  col: ImportColumnDef,
+  locale: ImportTemplateLocale,
+): string[] | undefined {
+  const byLocale = col.listValidationByLocale?.[locale];
+  if (byLocale?.length) return byLocale;
+  if (col.listValidation?.length) return col.listValidation;
+  return undefined;
+}
+
+/** Map a canonical listValidation token (e.g. sole) to the locale dropdown label. */
+export function localizedListValidationExample(
+  col: ImportColumnDef,
+  canonicalOrRaw: string,
+  locale: ImportTemplateLocale,
+): string {
+  const raw = String(canonicalOrRaw ?? '');
+  const canonical = col.listValidation ?? [];
+  const localized = columnListValidationValues(col, locale) ?? [];
+  const idx = canonical.findIndex((v) => v === raw);
+  if (idx >= 0 && localized[idx]) return localized[idx]!;
+  return raw;
 }
 
 /** Patch SheetJS output: freeze header + all list dropdowns in one ZIP write. */
@@ -229,15 +261,17 @@ function applyWorksheetPatches(
   buf: ArrayBuffer,
   cols: ImportColumnDef[],
   lastExcelRow: number,
+  locale: ImportTemplateLocale,
 ): ArrayBuffer {
   const endRow = Math.max(2, lastExcelRow);
   const listValidations: XlsxListValidationItem[] = [];
   cols.forEach((col, idx) => {
-    if (!col.listValidation?.length) return;
+    const values = columnListValidationValues(col, locale);
+    if (!values?.length) return;
     const colLetter = XLSX.utils.encode_col(idx);
     listValidations.push({
       sqref: `${colLetter}2:${colLetter}${endRow}`,
-      list: col.listValidation.join(','),
+      list: values.join(','),
       allowBlank: true,
       allowCustom: col.listValidationAllowCustom === true,
     });
@@ -476,7 +510,9 @@ export function buildLocalizedMultiSheetImportWorkbook(
               ? 'Не'
               : 'Необязательно',
         col.instruction[locale],
-        col.example ?? '',
+        col.example != null && col.example !== ''
+          ? localizedListValidationExample(col, col.example, locale)
+          : '',
       ]);
     }
     for (const scenario of spec.instructionScenarios ?? []) {
@@ -484,7 +520,13 @@ export function buildLocalizedMultiSheetImportWorkbook(
       aoa.push([scenario.title[locale]]);
       aoa.push(cols.map((c) => c.label[locale]));
       for (const row of scenario.rows) {
-        aoa.push(cols.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))));
+        aoa.push(
+          cols.map((c) =>
+            sanitizeSpreadsheetCell(
+              localizedListValidationExample(c, String(row[c.key] ?? ''), locale),
+            ),
+          ),
+        );
       }
     }
     aoa.push([]);

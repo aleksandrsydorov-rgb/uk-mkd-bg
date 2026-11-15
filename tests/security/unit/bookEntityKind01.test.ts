@@ -42,7 +42,11 @@ function readSheet1Xml(buf: ArrayBuffer): string {
 
 function zipHasDataValidation(buf: ArrayBuffer): boolean {
   const text = readSheet1Xml(buf);
-  return /dataValidation/i.test(text) && /(1,0|0,1)/.test(text) && /sole,shared/.test(text);
+  return (
+    /dataValidation/i.test(text) &&
+    /(1,0|0,1)/.test(text) &&
+    (/sole,shared/.test(text) || /Один владелец|One owner|Един собственик/.test(text))
+  );
 }
 
 function ownersBook(rows: (string | number)[][]): ArrayBuffer {
@@ -130,11 +134,16 @@ describe('book entity_kind 0/1', () => {
       .flat()
       .map(String)
       .join('\n');
+    expect(instr).toMatch(/Кто владелец/);
+    expect(instr).toMatch(/Сколько владельцев у квартиры/);
+    expect(instr).toMatch(/Один владелец/);
+    expect(instr).toMatch(/Несколько владельцев/);
     expect(instr).toMatch(/1 — физлицо|1 — физическое лицо/);
     expect(instr).toMatch(/0 — юрлицо|0 — юридическое лицо/);
     expect(instr).toMatch(/sole_trader/);
     expect(instr).toMatch(/60/);
     expect(instr).toMatch(/40/);
+    expect(sheetXml).toMatch(/Один владелец,Несколько владельцев/);
   });
 
   it('presents invalid entity_kind with sheet/row/column/allowed values', () => {

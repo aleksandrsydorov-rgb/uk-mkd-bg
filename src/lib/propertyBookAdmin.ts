@@ -19,6 +19,7 @@ import {
   PROPERTY_BOOK_OWNER_NUMERIC_FIELDS,
   normalizePropertyBookNumericFields,
 } from '@/lib/propertyBookIdentity';
+import { coerceOwnershipTypeField } from '@/lib/propertyBookImportPreview';
 
 export const OWNERSHIP_TYPES = ['sole', 'shared'] as const;
 export type OwnershipType = (typeof OWNERSHIP_TYPES)[number];
@@ -263,6 +264,13 @@ function coerceOwnersEntityKind(rows: Record<string, string>[]): Record<string, 
   }));
 }
 
+function coerceOwnersOwnershipType(rows: Record<string, string>[]): Record<string, string>[] {
+  return rows.map((row) => ({
+    ...row,
+    ownership_type: coerceOwnershipTypeField(row.ownership_type),
+  }));
+}
+
 export type PropertyBookWorkbookPayload = {
   objects: Record<string, string>[];
   owners: Record<string, string>[];
@@ -318,13 +326,15 @@ export function parsePropertyBookWorkbookBuffer(
   if (mode === 'owners') {
     const name = ownersName ?? dataSheets.find((n) => n !== objectsName) ?? dataSheets[0];
     if (!name) throw new Error('Excel must contain an Owners sheet');
-    const owners = coerceOwnersEntityKind(
-      sheetToRecords(
-        wb.Sheets[name],
-        BOOK_OWNERS_CSV_HEADERS,
-        PROPERTY_BOOK_OWNERS_SPEC,
-        BOOK_OWNERS_SPARSE_HEADERS,
-      ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
+    const owners = coerceOwnersOwnershipType(
+      coerceOwnersEntityKind(
+        sheetToRecords(
+          wb.Sheets[name],
+          BOOK_OWNERS_CSV_HEADERS,
+          PROPERTY_BOOK_OWNERS_SPEC,
+          BOOK_OWNERS_SPARSE_HEADERS,
+        ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
+      ),
     );
     // Combined legacy workbook: keep Objects rows as ownership_type source for the owners step.
     const objects =
@@ -351,13 +361,15 @@ export function parsePropertyBookWorkbookBuffer(
     BOOK_OBJECTS_CSV_HEADERS,
     PROPERTY_BOOK_OBJECTS_SPEC,
   ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OBJECT_NUMERIC_FIELDS));
-  const owners = coerceOwnersEntityKind(
-    sheetToRecords(
-      wb.Sheets[resolvedOwners],
-      BOOK_OWNERS_CSV_HEADERS,
-      PROPERTY_BOOK_OWNERS_SPEC,
-      BOOK_OWNERS_SPARSE_HEADERS,
-    ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
+  const owners = coerceOwnersOwnershipType(
+    coerceOwnersEntityKind(
+      sheetToRecords(
+        wb.Sheets[resolvedOwners],
+        BOOK_OWNERS_CSV_HEADERS,
+        PROPERTY_BOOK_OWNERS_SPEC,
+        BOOK_OWNERS_SPARSE_HEADERS,
+      ).map((row) => normalizePropertyBookNumericFields(row, PROPERTY_BOOK_OWNER_NUMERIC_FIELDS)),
+    ),
   );
 
   return { objects, owners };

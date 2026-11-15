@@ -218,11 +218,47 @@ function ownershipTypeKey(parts: {
   ].join('\u0001');
 }
 
-function normalizeOwnershipType(raw: string | null | undefined): 'sole' | 'shared' | '' {
+/**
+ * Normalize apartment-level ownership count from template / legacy files.
+ * Accepts sole/shared and localized “One owner” / “Multiple owners” labels.
+ */
+export function normalizeOwnershipType(raw: string | null | undefined): 'sole' | 'shared' | '' {
   const type = String(raw ?? '')
     .trim()
-    .toLowerCase();
-  return type === 'sole' || type === 'shared' ? type : '';
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\u00a0/g, ' ');
+  if (!type) return '';
+  if (
+    type === 'sole' ||
+    type === 'one owner' ||
+    type === 'один владелец' ||
+    type === 'един собственик' ||
+    type === 'единоличная' ||
+    type === 'еднолична'
+  ) {
+    return 'sole';
+  }
+  if (
+    type === 'shared' ||
+    type === 'multiple owners' ||
+    type === 'несколько владельцев' ||
+    type === 'няколко собственици' ||
+    type === 'совместная' ||
+    type === 'долевая' ||
+    type === 'съвместна' ||
+    type === 'дялова'
+  ) {
+    return 'shared';
+  }
+  return '';
+}
+
+/** Coerce a parsed ownership_type cell to sole/shared (keep unknown text for errors). */
+export function coerceOwnershipTypeField(raw: unknown): string {
+  const normalized = normalizeOwnershipType(raw == null ? '' : String(raw));
+  if (normalized) return normalized;
+  return String(raw ?? '').trim();
 }
 
 /**

@@ -30,8 +30,12 @@ export type ImportColumnDef = {
   /**
    * Excel list dropdown for the data sheet (values joined as `"a,b"` formula).
    * Applied after SheetJS write via ZIP patch (community build).
+   * Used when `listValidationByLocale` is omitted, or as the canonical order
+   * for mapping scenario examples (index-aligned with each locale list).
    */
   listValidation?: string[];
+  /** Locale-specific dropdown labels (e.g. ownership count wording). */
+  listValidationByLocale?: Record<ImportTemplateLocale, string[]>;
   /**
    * When true, list validation uses warning (not stop) so values outside the
    * list (e.g. sole_trader) can still be typed while the dropdown stays intact.

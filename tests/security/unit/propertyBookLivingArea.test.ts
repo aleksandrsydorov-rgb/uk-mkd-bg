@@ -52,7 +52,7 @@ describe('property book living area', () => {
       'Блок',
       'Этаж',
       'Назначение',
-      'Площадь, м²',
+      'Общая площадь, м²',
       'Жилая площадь, м²',
       'Идеальные части, %',
     ]);
@@ -62,7 +62,7 @@ describe('property book living area', () => {
       'Блок',
       'Етаж',
       'Предназначение',
-      'Площ, м²',
+      'Обща площ, м²',
       'Жилищна площ, м²',
       'Идеални части, %',
     ]);
@@ -72,7 +72,7 @@ describe('property book living area', () => {
       'Block',
       'Floor',
       'Purpose',
-      'Area, m²',
+      'Total area, m²',
       'Living area, m²',
       'Ideal parts, %',
     ]);
@@ -81,13 +81,13 @@ describe('property book living area', () => {
     );
   });
 
-  it('downloads owners template with ownership type after block and scenario examples', () => {
+  it('downloads owners template with owner-count / who-owns after block and scenario examples', () => {
     expect(ownersHeaders('ru').slice(0, 6)).toEqual([
       'Апартамент',
       'Секция',
       'Блок',
-      'Тип собственности',
-      'Тип собственника',
+      'Сколько владельцев у квартиры',
+      'Кто владелец',
       'Доля владения, %',
     ]);
     expect(ownersHeaders('ru')).toEqual(
@@ -101,11 +101,12 @@ describe('property book living area', () => {
       .sheet_to_json<string[]>(wb.Sheets[IMPORT_INSTRUCTION_SHEET.ru], { header: 1 })
       .map((row) => row.map((c) => String(c ?? '')).join(' | '))
       .join('\n');
-    expect(instr).toMatch(/один собственник|sole/i);
+    expect(instr).toMatch(/Один владелец/);
+    expect(instr).toMatch(/Несколько владельцев/);
     expect(instr).toMatch(/60/);
     expect(instr).toMatch(/40/);
-    expect(instr).toMatch(/Тип собственника/);
-    expect(PROPERTY_BOOK_OWNERS_SPEC.instructionScenarios?.length).toBeGreaterThanOrEqual(3);
+    expect(instr).toMatch(/Кто владелец/);
+    expect(PROPERTY_BOOK_OWNERS_SPEC.instructionScenarios?.length).toBe(2);
 
     // Combined IS2 template still omits ownership type from Objects sheet.
     const combined = XLSX.read(buildPropertyBookIs2TemplateBuffer('ru'), { type: 'array' });
@@ -115,6 +116,7 @@ describe('property book living area', () => {
       })[0]
       ?.map(String);
     expect(combinedObj).not.toContain('Тип собственности');
+    expect(combinedObj).not.toContain('Сколько владельцев у квартиры');
   });
 
   it('accepts a fractional living area and rejects a non-positive value', () => {

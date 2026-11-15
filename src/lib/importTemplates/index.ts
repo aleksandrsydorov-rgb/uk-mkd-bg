@@ -17,6 +17,7 @@ export {
   findImportDataSheet,
   isInstructionSheetName,
   labelsFromSpec,
+  localizedListValidationExample,
   localizedTemplateFileName,
   missingColumnsMessage,
   normalizeImportHeader,

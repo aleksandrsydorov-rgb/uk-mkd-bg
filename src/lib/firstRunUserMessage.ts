@@ -576,6 +576,8 @@ export function presentImportField(raw: string, t: T): string {
   if (field === 'section_code') return t('admin.is3ColSection');
   if (field === 'block_code') return t('admin.is3ColBlock');
   if (field === 'connection_state' || field === 'status') return t('admin.is5ColConnectionState');
+  if (field === 'support_fee_opening') return t('admin.firstRunStageSupportFee');
+  if (field === 'billing_year') return t('admin.firstRunSfColYear');
   return propertyBookFieldLabel(field, t);
 }
 

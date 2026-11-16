@@ -175,6 +175,7 @@ type SfDryRun = {
   skippedExisting: number;
   debtSum: number;
   creditSum: number;
+  rpcRows?: unknown[];
 };
 
 type CrDryRun = {
@@ -1268,6 +1269,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         skippedExisting: Number(res.skipped_existing_count ?? 0) || 0,
         debtSum: Number(reconcile.remaining_debt_sum ?? 0) || 0,
         creditSum: Number(reconcile.opening_overpayment_sum ?? 0) || 0,
+        rpcRows: rowsOut,
       });
       setErrorRows(normalizeFirstRunErrors(errors));
       setSfRows(parsed.rows);
@@ -1783,6 +1785,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           t={t}
           busy={busy}
           dry={sfDry}
+          rows={sfRows}
           errorRows={errorRows}
           committed={sfCommitted}
           canCommit={Boolean(sfDry?.ok && sfRows)}

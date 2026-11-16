@@ -386,16 +386,22 @@ export default function HomePage() {
         router.replace('/admin');
         return;
       }
+      const access = await resolveAccess(authenticatedEmail, supabase);
+      if (access.isStaff) {
+        router.replace(await resolveAdminEntryPath(access, supabase));
+        return;
+      }
+      const { loadOwnerFirstLoginStatus, ownerEntryPath } = await import('@/lib/ownerOnboarding');
+      const ownerStatus = await loadOwnerFirstLoginStatus(supabase, locale);
+      if (ownerStatus?.must_complete_profile || ownerStatus?.must_accept_terms) {
+        router.replace(ownerEntryPath(ownerStatus, '/account'));
+        return;
+      }
       if (acceptance?.must_accept) {
         router.replace(acceptPath('/account'));
         return;
       }
-      const access = await resolveAccess(authenticatedEmail, supabase);
-      if (access.isStaff) {
-        router.replace(await resolveAdminEntryPath(access, supabase));
-      } else {
-        router.replace(resolveStaffHome(access));
-      }
+      router.replace(resolveStaffHome(access));
     } catch (err: unknown) {
       setLoginError(toUserFacingMessage(err, t, { context: 'login', fallback: t('common.errLogin') }));
     } finally {

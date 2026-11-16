@@ -562,6 +562,13 @@ export default function AccountPage() {
       setAccessProfile(null);
       setProperties([]);
       try {
+        const { loadOwnerFirstLoginStatus, ownerEntryPath } = await import('@/lib/ownerOnboarding');
+        const ownerStatus = await loadOwnerFirstLoginStatus(supabase, locale);
+        if (ownerStatus?.must_complete_profile || ownerStatus?.must_accept_terms) {
+          redirecting = true;
+          router.replace(ownerEntryPath(ownerStatus, returnTo));
+          return;
+        }
         const acceptance = await loadAcceptanceStatus(supabase, locale);
         if (acceptance?.must_accept) {
           redirecting = true;

@@ -15,7 +15,7 @@ import {
   signupOtpVerifyTypes,
 } from '@/lib/auth/emailConfirmation';
 import { useI18n } from '@/i18n/I18nProvider';
-import { acceptPath, loadAcceptanceStatus } from '@/lib/portalLegal/acceptance';
+import { loadOwnerFirstLoginStatus, ownerEntryPath } from '@/lib/ownerOnboarding';
 import { BrandMark } from '@/components/BrandMark';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
@@ -49,8 +49,8 @@ function InviteAcceptInner() {
       p_mark_accepted: true,
     });
     if (accErr) throw accErr;
-    const acceptance = await loadAcceptanceStatus(supabase, locale);
-    router.replace(acceptance?.must_accept ? acceptPath('/account') : '/account');
+    const status = await loadOwnerFirstLoginStatus(supabase, locale);
+    router.replace(ownerEntryPath(status, '/account'));
   }
 
   function mapInviteRpcError(msg: string): string {
@@ -123,8 +123,8 @@ function InviteAcceptInner() {
           });
           if (accErr) throw accErr;
           if (!cancelled) {
-            const acceptance = await loadAcceptanceStatus(supabase, locale);
-            router.replace(acceptance?.must_accept ? acceptPath('/account') : '/account');
+            const status = await loadOwnerFirstLoginStatus(supabase, locale);
+            router.replace(ownerEntryPath(status, '/account'));
           }
           return;
         }

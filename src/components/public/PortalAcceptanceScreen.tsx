@@ -87,6 +87,12 @@ export function PortalAcceptanceScreen() {
       const nextStatus = await loadAcceptanceStatus(supabase, locale);
       if (cancelled) return;
       setError('');
+      const { loadOwnerFirstLoginStatus, onboardingPath } = await import('@/lib/ownerOnboarding');
+      const ownerStatus = await loadOwnerFirstLoginStatus(supabase, locale);
+      if (ownerStatus?.must_complete_profile) {
+        router.replace(onboardingPath(next));
+        return;
+      }
       if (!nextStatus || nextStatus.role === 'staff' || nextStatus.role === 'admin' || !nextStatus.must_accept) {
         router.replace(next);
         return;

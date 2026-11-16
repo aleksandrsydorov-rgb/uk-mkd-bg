@@ -1,21 +1,20 @@
-# Выкат портала «Амадеус XI» — support-fee soft-defer opening (233 → 234)
+# Выкат портала «Амадеус XI» — first-run row previews (поверх 234)
 
-Актуальный пакет для оператора: `tmp/r1_rc8_sf_opening_soft_234/`
+Актуальный пакет для оператора: `tmp/r1_rc8_first_run_previews_234/`
 (см. `DEPLOY.md`, `RELEASE.txt`, `SHA256SUMS` внутри каталога).
 
-На VPS сейчас ожидается схема `233 / 20261130340100` (utility-opening-233-display).
-Этот пакет поднимает схему до `234 / 20261130340200` и переключает образ.
+На VPS сейчас ожидается схема `234 / 20261130340200`.
+Этот пакет **только образ** (интернет / бюджет УК / начальные расходы + уже проверенный КР-предпросмотр `0040f1b`).
 
 Кратко:
 
 | | Значение |
 |---|---|
-| Build SHA | `18ca0eb31b5551a400e993ab0b62b14ebed009ef` |
-| Image | `amadeus11-app:1.0.0-rc8-sf-opening-soft-234` |
-| Image ID | `sha256:aac84c7548f722d297631932b810b9261700296a17908f5feb94fb46ed582985` |
-| TAR SHA256 | `75815ea98c5db7248d2731005d43609aa30f62d3ece9935c61edaa5823325398` |
-| Схема | `233 / 20261130340100` → `234 / 20261130340200` |
+| Build SHA | `a47be6a63641f367cd305c380e97c4aeaf2fd480` |
+| Image | `amadeus11-app:1.0.0-rc8-first-run-previews-234` |
+| Image ID | `sha256:462053beded286ca9610dabec61407332f5c16c067645b1351fc63d5e0da0930` |
+| TAR SHA256 | `25e3c8e47159994556d8420acffd005063c3e0cba77bee5b0bf85d9729f9abfb` |
+| Схема | `234 / 20261130340200` (без PostgreSQL) |
 
-Полная инструкция выката, миграции, health и отката —
-в `tmp/r1_rc8_sf_opening_soft_234/DEPLOY.md`.
-
+Полная инструкция выката и health —
+в `tmp/r1_rc8_first_run_previews_234/DEPLOY.md`.

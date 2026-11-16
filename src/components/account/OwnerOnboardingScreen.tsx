@@ -66,6 +66,7 @@ export function OwnerOnboardingScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [ukBlocked, setUkBlocked] = useState(false);
+  const [ukFields, setUkFields] = useState<string[]>([]);
   const [props, setProps] = useState<OwnerOnboardingProperty[]>([]);
   const [forms, setForms] = useState<
     Record<
@@ -102,6 +103,8 @@ export function OwnerOnboardingScreen() {
     }
     setProps(status.properties);
     const nextForms: typeof forms = {};
+    const blockedFields: string[] = [];
+    let blocked = false;
     for (const p of status.properties) {
       nextForms[p.property_id] = {
         first_name: p.first_name ?? '',
@@ -111,10 +114,15 @@ export function OwnerOnboardingScreen() {
         phone: p.phone ?? '',
       };
       const uk = p.clarification?.uk_only_fields ?? [];
-      if (Array.isArray(uk) && uk.length > 0 && !(p.clarification?.owner_can_complete)) {
-        setUkBlocked(true);
+      if (Array.isArray(uk) && uk.length > 0 && !p.access_ready && !(p.clarification?.owner_can_complete)) {
+        blocked = true;
+        for (const f of uk) {
+          if (typeof f === 'string' && !blockedFields.includes(f)) blockedFields.push(f);
+        }
       }
     }
+    setUkBlocked(blocked);
+    setUkFields(blockedFields);
     setForms(nextForms);
     setLoading(false);
   }
@@ -199,7 +207,18 @@ export function OwnerOnboardingScreen() {
         <p>{t('onboarding.lead')}</p>
         {loading ? <p>{t('common.loading')}</p> : null}
         {error ? <p className="legal-note">{error}</p> : null}
-        {ukBlocked ? <p className="legal-note">{t('onboarding.ukOnlyFields')}</p> : null}
+        {ukBlocked ? (
+          <p className="legal-note" data-testid="onboarding-uk-only">
+            {t('onboarding.ukOnlyFields')}
+            {ukFields.length > 0
+              ? ` ${t('onboarding.ukOnlyFieldList', {
+                  fields: ukFields
+                    .map((f) => t(`onboarding.field_${f}` as 'onboarding.field_ownership_share_percent'))
+                    .join(', '),
+                })}`
+              : ''}
+          </p>
+        ) : null}
         {!loading && incomplete.length > 0 ? (
           <form className="space-y-6" onSubmit={(e) => void handleSave(e)}>
             {incomplete.map((p) => {

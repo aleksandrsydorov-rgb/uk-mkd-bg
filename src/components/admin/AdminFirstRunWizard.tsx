@@ -187,6 +187,7 @@ type CrDryRun = {
   skippedExisting: number;
   debtSum: number;
   creditSum: number;
+  rpcRows?: unknown[];
 };
 
 function downloadXlsx(buf: ArrayBuffer, fileName: string) {
@@ -1365,6 +1366,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         skippedExisting: Number(res.skipped_existing_count ?? 0) || 0,
         debtSum: Number(reconcile.remaining_debt_sum ?? 0) || 0,
         creditSum: Number(reconcile.opening_overpayment_sum ?? 0) || 0,
+        rpcRows: rowsOut,
       });
       setErrorRows(normalizeFirstRunErrors(errors));
       setCrRows(parsed.rows);
@@ -1821,6 +1823,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           t={t}
           busy={busy}
           dry={crDry}
+          rows={crRows}
           errorRows={errorRows}
           committed={crCommitted}
           canCommit={Boolean(crDry?.ok && crRows)}

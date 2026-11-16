@@ -14,6 +14,13 @@ import {
   formatSfEntranceTitle,
   presentSfOutcome,
 } from '@/lib/firstRunSupportFeePreview';
+import {
+  buildCapitalRepairOpeningPreview,
+  formatCrAptHeading,
+  formatCrBalanceLabel,
+  formatCrEntranceTitle,
+  presentCrOutcome,
+} from '@/lib/firstRunCapitalRepairPreview';
 import { FirstRunStageActions } from '@/components/admin/FirstRunFrame';
 import { FirstRunErrorTable, FirstRunScreen } from '@/components/admin/FirstRunSteps';
 import {
@@ -360,6 +367,7 @@ export function FirstRunCapitalRepair({
   t,
   busy,
   dry,
+  rows,
   errorRows,
   committed,
   canCommit,
@@ -388,6 +396,7 @@ export function FirstRunCapitalRepair({
   t: T;
   busy: boolean;
   dry: OpeningDry | null;
+  rows: Record<string, string>[] | null;
   errorRows: FirstRunErrorRow[];
   committed: boolean;
   canCommit: boolean;
@@ -419,6 +428,14 @@ export function FirstRunCapitalRepair({
     isFirstRunTariffPrepared('capital_repair', tariffPrep ?? {}),
   );
   const showImportForm = openingUnlocked || committed;
+  const preview = useMemo(() => {
+    if (!rows || rows.length === 0 || committed) return null;
+    return buildCapitalRepairOpeningPreview(rows, {
+      rpcRows: dry?.rpcRows,
+      errorRows,
+      t,
+    });
+  }, [rows, dry?.rpcRows, errorRows, committed, t]);
   return (
     <FirstRunScreen
       icon={Landmark}
@@ -438,15 +455,15 @@ export function FirstRunCapitalRepair({
               .replace('{rows}', String(dry.rowCount))
               .replace('{create}', String(dry.createCount))
               .replace('{skipped}', String(dry.skippedExisting))
-              .replace('{debt}', String(dry.debtSum))
-              .replace('{credit}', String(dry.creditSum))}
+              .replace('{debt}', formatMeterMoney(preview?.debtSum ?? dry.debtSum, locale))
+              .replace('{credit}', formatMeterMoney(preview?.creditSum ?? dry.creditSum, locale))}
           />
         ) : null}
         {!committed && dry && !dry.ok ? (
           <FirstRunStatusBanner
             tone="error"
             title={t('admin.firstRunOpeningCheckFailTitle')}
-            detail={t('admin.firstRunCrDryRunErrors').replace('{n}', String(dry.errors.length))}
+            detail={t('admin.firstRunCrBlockingDetail')}
           />
         ) : null}
         {committed && !openingUnlocked ? (
@@ -500,11 +517,84 @@ export function FirstRunCapitalRepair({
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-            {dry && !committed && dry.ok ? (
-              <OpeningStats dry={dry} t={t} locale={locale} previewCounts={null} />
+            {dry && !committed ? (
+              <OpeningStats
+                dry={dry}
+                t={t}
+                locale={locale}
+                previewCounts={
+                  preview
+                    ? {
+                        debtCount: preview.debtCount,
+                        creditCount: preview.creditCount,
+                        zeroCount: preview.zeroCount,
+                        debtSum: preview.debtSum,
+                        creditSum: preview.creditSum,
+                      }
+                    : null
+                }
+              />
             ) : null}
             {!dry && !committed ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
-            <div className={styles.tableWrap}>
+            {preview && preview.groups.length > 0 && !committed ? (
+              <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+                <p className={styles.importLabel}>{t('admin.firstRunSfPreviewTitle')}</p>
+                <p className={styles.hint}>{t('admin.firstRunSfPreviewHint')}</p>
+                {preview.groups.map((group) => (
+                  <div key={`cr-g-${group.key}`} style={{ marginTop: 12 }}>
+                    <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
+                      {formatCrEntranceTitle(group, t)}
+                    </p>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>{t('admin.firstRunSfColApt')}</th>
+                          <th>{t('admin.firstRunSfColYear')}</th>
+                          <th>{t('admin.firstRunCrColTitle')}</th>
+                          <th>{t('admin.firstRunSfColAssessed')}</th>
+                          <th>{t('admin.firstRunSfColPaid')}</th>
+                          <th>{t('admin.firstRunSfColBalance')}</th>
+                          <th>{t('admin.firstRunSfColAction')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.items.map((item) => (
+                          <tr key={item.key}>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>
+                                {formatCrAptHeading(item, t)}
+                                {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                              </div>
+                              {item.errorText ? (
+                                <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
+                                  {item.errorText}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>{item.billingYear || '—'}</td>
+                            <td>{item.assessmentTitle || '—'}</td>
+                            <td>
+                              {item.assessed == null ? '—' : `${formatMeterMoney(item.assessed, locale)} €`}
+                            </td>
+                            <td>
+                              {item.paid == null ? '—' : `${formatMeterMoney(item.paid, locale)} €`}
+                            </td>
+                            <td>{formatCrBalanceLabel(item, t, locale)}</td>
+                            <td>{presentCrOutcome(item.outcome, t)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className={styles.tableWrap} style={{ marginTop: 8 }}>
+              {!dry?.ok && errorRows.length > 0 ? (
+                <p className={styles.hint} style={{ marginBottom: 8 }}>
+                  {t('admin.firstRunCrBlockingDetail')}
+                </p>
+              ) : null}
               <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
             </div>
           </div>
@@ -519,7 +609,7 @@ export function FirstRunCapitalRepair({
                 <button
                   type="button"
                   className={styles.primary}
-                  disabled={busy || !canCommit || !openingUnlocked}
+                  disabled={busy || !canCommit || !openingUnlocked || !dry?.ok}
                   onClick={onCommit}
                 >
                   {busy ? t('admin.firstRunImporting') : t('admin.firstRunCrCommit')}

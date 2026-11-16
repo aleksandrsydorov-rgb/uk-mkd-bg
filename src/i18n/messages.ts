@@ -2101,6 +2101,11 @@ export const ru = {
       'В шаблоне заполните обязательные колонки: номер квартиры, расчётный год, дата перехода, вид остатка (ноль / долг / переплата) и сумма в евро при долге или переплате. Несколько строк на одну квартиру допустимы только если так задумано в шаблоне.',
     firstRunCrDownload: 'Скачать шаблон XLSX',
     firstRunCrUpload: 'Загрузить заполненный файл',
+    firstRunCrColTitle: 'Название начисления',
+    firstRunCrBlockingDetail:
+      'Импорт остатков КР сейчас недоступен. Исправьте ошибки в файле и загрузите его снова.',
+    firstRunCrErrorAptSection: 'Квартира №{apt} · вход {section}',
+    firstRunCrErrorColumn: 'колонка «{column}»',
     firstRunCrDryRunOk:
       'Предпросмотр: строк {rows}, будет создано {create}, уже есть {skipped}. Долг Σ {debt} €, переплата Σ {credit} €. Начисления и платежи не создаются — можно подтвердить импорт.',
     firstRunCrDryRunErrors: 'Ошибок: {n}. Исправьте файл и загрузите снова.',
@@ -7595,6 +7600,11 @@ export const en: Messages = {
       'In the template fill required columns: apartment number, billing year, transition date, balance kind (zero / debt / overpayment), and the euro amount for debt or overpayment.',
     firstRunCrDownload: 'Download XLSX template',
     firstRunCrUpload: 'Upload file',
+    firstRunCrColTitle: 'Assessment title',
+    firstRunCrBlockingDetail:
+      'Capital-repair balance import is unavailable right now. Fix the errors in the file and upload it again.',
+    firstRunCrErrorAptSection: 'Apartment №{apt} · entrance {section}',
+    firstRunCrErrorColumn: 'column “{column}”',
     firstRunCrDryRunOk:
       'Check passed: {rows} rows, create {create}, already present {skipped}. Debt Σ {debt} €, overpayment Σ {credit} €.',
     firstRunCrDryRunErrors: 'Errors: {n}. Fix the file and upload again.',
@@ -13082,6 +13092,11 @@ export const bg: Messages = {
       'В шаблона попълнете задължителните колони: номер на апартамент, отчетна година, дата на преход, вид остатък (нула / дълг / преплата) и сума в евро при дълг или преплата.',
     firstRunCrDownload: 'Изтегляне на XLSX шаблон',
     firstRunCrUpload: 'Качване на файл',
+    firstRunCrColTitle: 'Наименование на начислението',
+    firstRunCrBlockingDetail:
+      'Импортът на салда КР в момента е недостъпен. Поправете грешките във файла и го качете отново.',
+    firstRunCrErrorAptSection: 'Апартамент №{apt} · вход {section}',
+    firstRunCrErrorColumn: 'колона „{column}“',
     firstRunCrDryRunOk:
       'Проверката е успешна: редове {rows}, за създаване {create}, вече има {skipped}. Дълг Σ {debt} €, преплата Σ {credit} €.',
     firstRunCrDryRunErrors: 'Грешки: {n}. Поправете файла и качете отново.',

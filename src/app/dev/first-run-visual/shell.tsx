@@ -741,6 +741,38 @@ export function FirstRunVisualShell() {
             notes="Начален запис на касата към датата. Не е текущ остатък на фонда."
             note={null}
             error={null}
+            rows={[
+              {
+                apartment_number: '1',
+                section_code: 'A',
+                billing_year: '2025',
+                assessment_title: 'Капитальный ремонт 2025',
+                assessed_amount: '120',
+                historically_paid_amount: '105',
+                remaining_debt: '15',
+                opening_overpayment: '0',
+              },
+              {
+                apartment_number: '2',
+                section_code: 'A',
+                billing_year: '2025',
+                assessment_title: 'Капитальный ремонт 2025',
+                assessed_amount: '120',
+                historically_paid_amount: '140',
+                remaining_debt: '0',
+                opening_overpayment: '20',
+              },
+              {
+                apartment_number: '3',
+                section_code: 'A',
+                billing_year: '2025',
+                assessment_title: 'Капитальный ремонт 2025',
+                assessed_amount: '100',
+                historically_paid_amount: '100',
+                remaining_debt: '0',
+                opening_overpayment: '0',
+              },
+            ]}
             dry={{
               ok: true,
               errors: [],

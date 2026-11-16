@@ -140,6 +140,10 @@ export function AdminInternet({
   const [periodQuoteBusy, setPeriodQuoteBusy] = useState(false);
   const [periodConfirmBusy, setPeriodConfirmBusy] = useState(false);
   const periodKeyRef = useRef(crypto.randomUUID());
+  const [openingPending, setOpeningPending] = useState(false);
+  const [openingState, setOpeningState] = useState<'active' | 'inactive'>('inactive');
+  const [openingConnDate, setOpeningConnDate] = useState('');
+  const [openingConfirmBusy, setOpeningConfirmBusy] = useState(false);
 
   const loadFund = useCallback(async () => {
     if (!canSee) return;
@@ -180,11 +184,12 @@ export function AdminInternet({
       setLedger([]);
       setBalance(emptyBalance());
       setSubscription(null);
+      setOpeningPending(false);
       return;
     }
     setPropLoading(true);
     const pid = Number(propertyId);
-    const [ledgerRes, balanceRes, subRes] = await Promise.all([
+    const [ledgerRes, balanceRes, subRes, pendingRes] = await Promise.all([
       supabase
         .from('internet_ledger')
         .select('*')
@@ -193,8 +198,16 @@ export function AdminInternet({
         .limit(40),
       supabase.rpc('get_internet_balance', { p_property_id: pid }),
       supabase.from('internet_subscriptions').select('*').eq('property_id', pid).maybeSingle(),
+      supabase
+        .from('utility_opening_pending' as never)
+        .select('id')
+        .eq('property_id', pid)
+        .eq('utility', 'internet')
+        .eq('status', 'needs_initial')
+        .limit(1),
     ]);
     setPropLoading(false);
+    setOpeningPending(Array.isArray(pendingRes.data) && pendingRes.data.length > 0);
     if (ledgerRes.error && !isMissingRelation(ledgerRes.error, 'internet_ledger')) {
       setError(toUserFacingMessage(ledgerRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
       setLedger([]);
@@ -283,6 +296,33 @@ export function AdminInternet({
         ? t('receipt.paySavedPdfFailed')
         : t('receipt.payRegistered', { amount: amountLabel }),
     );
+    await Promise.all([loadProperty(), loadFund()]);
+  }
+
+  async function handleConfirmInternetOpening(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSee || propertyId === '' || openingConfirmBusy) return;
+    setOpeningConfirmBusy(true);
+    setError(null);
+    setSuccess(null);
+    const { error: rpcErr } = await supabase.rpc('admin_confirm_internet_opening' as never, {
+      p_property_id: Number(propertyId),
+      p_connection_state: openingState,
+      p_connection_date: openingConnDate.trim() || null,
+      p_transition_date: null,
+      p_paid_through: null,
+      p_opening_debt: 0,
+      p_opening_credit: 0,
+      p_source_reference: null,
+      p_notes: null,
+    } as never);
+    setOpeningConfirmBusy(false);
+    if (rpcErr) {
+      setError(toUserFacingMessage(rpcErr, t, { fallback: t('admin.errGeneric') }));
+      return;
+    }
+    setSuccess(t('common.saved'));
+    setOpeningPending(false);
     await Promise.all([loadProperty(), loadFund()]);
   }
 
@@ -534,46 +574,89 @@ export function AdminInternet({
             </p>
             {propLoading ? (
               <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
-            ) : subscription ? (
-              <div className="mt-3 space-y-1 text-sm text-secondary">
-                {(subscription as { opening_confirmed_at?: string | null }).opening_confirmed_at == null ? (
-                  <AdminInlineAlert tone="warning">
-                    {t('openingStatus_needs_initial_internet')}
-                  </AdminInlineAlert>
-                ) : null}
-                <p className="font-semibold text-foreground">
-                  {t(internetStatusMessageKey(subscription.status))}
-                </p>
-                {subscription.period_start ? (
-                  <p>
-                    {t('account.internetConnectedSince')}: {formatOwnerDate(subscription.period_start, locale)}
-                  </p>
-                ) : null}
-                {subscription.billing_day != null ? (
-                  <p>
-                    {t('account.internetBillingDay', { n: String(subscription.billing_day) })}
-                    {subscription.next_charge_on
-                      ? ` · ${t('account.internetNextCharge')}: ${formatOwnerDate(subscription.next_charge_on, locale)}`
-                      : ''}
-                  </p>
-                ) : null}
-                {subscription.status === 'active' ? (
-                  <AdminPrimaryButton
-                    type="button"
-                    className="mt-3"
-                    disabled={debtBusy}
-                    onClick={() => void handleDebtDisconnect()}
-                  >
-                    {debtBusy ? t('common.saving') : t('admin.internetDebtDisconnect')}
-                  </AdminPrimaryButton>
-                ) : null}
-              </div>
             ) : (
-              <div className="mt-3 space-y-2">
-                <AdminInlineAlert tone="warning">
-                  {t('openingStatus_needs_initial_internet')}
-                </AdminInlineAlert>
-                <p className="text-sm text-muted">{t('admin.internetNoSub')}</p>
+              <div className="mt-3 space-y-2 text-sm text-secondary">
+                {(() => {
+                  const confirmedAt = (subscription as { opening_confirmed_at?: string | null } | null)
+                    ?.opening_confirmed_at;
+                  const needsInitial =
+                    openingPending || !subscription || confirmedAt == null;
+                  return needsInitial ? (
+                    <>
+                      <AdminInlineAlert tone="warning">
+                        {t('openingStatus_needs_initial_internet')}
+                      </AdminInlineAlert>
+                      <form onSubmit={handleConfirmInternetOpening} className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <label className="grid gap-1">
+                          <span>{t('admin.internet')}</span>
+                          <select
+                            className={fieldClass}
+                            value={openingState}
+                            onChange={(e) =>
+                              setOpeningState(e.target.value === 'active' ? 'active' : 'inactive')
+                            }
+                            data-testid="internet-opening-state"
+                          >
+                            <option value="inactive">{t('admin.internetStatusInactive')}</option>
+                            <option value="active">{t('admin.internetStatusActive')}</option>
+                          </select>
+                        </label>
+                        <label className="grid gap-1">
+                          <span>{t('account.internetConnectedSince')}</span>
+                          <input
+                            className={fieldClass}
+                            type="date"
+                            value={openingConnDate}
+                            onChange={(e) => setOpeningConnDate(e.target.value)}
+                            data-testid="internet-opening-conn-date"
+                          />
+                        </label>
+                        <div className="sm:col-span-2">
+                          <AdminPrimaryButton
+                            type="submit"
+                            disabled={openingConfirmBusy}
+                            data-testid="internet-opening-confirm"
+                          >
+                            {openingConfirmBusy ? t('common.saving') : t('common.confirm')}
+                          </AdminPrimaryButton>
+                        </div>
+                      </form>
+                    </>
+                  ) : null;
+                })()}
+                {subscription ? (
+                  <>
+                    <p className="font-semibold text-foreground">
+                      {t(internetStatusMessageKey(subscription.status))}
+                    </p>
+                    {subscription.period_start ? (
+                      <p>
+                        {t('account.internetConnectedSince')}:{' '}
+                        {formatOwnerDate(subscription.period_start, locale)}
+                      </p>
+                    ) : null}
+                    {subscription.billing_day != null ? (
+                      <p>
+                        {t('account.internetBillingDay', { n: String(subscription.billing_day) })}
+                        {subscription.next_charge_on
+                          ? ` · ${t('account.internetNextCharge')}: ${formatOwnerDate(subscription.next_charge_on, locale)}`
+                          : ''}
+                      </p>
+                    ) : null}
+                    {subscription.status === 'active' ? (
+                      <AdminPrimaryButton
+                        type="button"
+                        className="mt-3"
+                        disabled={debtBusy}
+                        onClick={() => void handleDebtDisconnect()}
+                      >
+                        {debtBusy ? t('common.saving') : t('admin.internetDebtDisconnect')}
+                      </AdminPrimaryButton>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-muted">{t('admin.internetNoSub')}</p>
+                )}
               </div>
             )}
           </div>

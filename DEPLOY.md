@@ -1,17 +1,19 @@
-# Выкат портала «Амадеус XI» — двухэтапная Книга собственности и группировка по входам (219 → 228)
+# Выкат портала «Амадеус XI» — soft-opening display поверх schema 233
 
-Актуальный пакет для оператора: `tmp/r1_rc8_book_owners_228/`  
+Актуальный пакет для оператора: `tmp/r1_rc8_utility_opening_233_display/`  
 (см. `DEPLOY.md`, `RELEASE.txt`, `SHA256SUMS` внутри каталога).
+
+Если на VPS ещё нет схемы `233 / 20261130340100`, сначала пакет  
+`tmp/r1_rc8_utility_opening_233/` (миграции 399→401), затем этот образ.
 
 Кратко:
 
 | | Значение |
 |---|---|
-| Build SHA | `3cbf6ee7a99436a8b3f108c2f48ad4cc9d7a4e37` |
-| Feature SHA | `33864693095d6439fbea4caac0b4d98d0a9584a5` |
-| Image | `amadeus11-app:1.0.0-rc8-book-owners-228` |
-| Image ID | `sha256:b143359c13da3d11860ebc2cb8ab9d6c629633d0819f6ce70e428bfe3091f83c` |
-| Схема | `219 / 20261130338700` → `228 / 20261130339600` |
+| Build SHA | `58f6796fc20ae2f140c9a66ca3d783d16553c0b2` |
+| Image | `amadeus11-app:1.0.0-rc8-utility-opening-233-display` |
+| Image ID | `sha256:ed24f4a80081a84b1010c4a9294a01b0a30ee49f188ae90b055b9e89302bbdd5` |
+| Схема | без изменений: `233 / 20261130340100` (только образ) |
 
-Полная инструкция выката, резервной копии, миграций, health и отката —
-в `tmp/r1_rc8_book_owners_228/DEPLOY.md`.
+Полная инструкция выката, health и отката —
+в `tmp/r1_rc8_utility_opening_233_display/DEPLOY.md`.

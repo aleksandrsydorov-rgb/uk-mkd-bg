@@ -2424,13 +2424,13 @@ function AdminPortal() {
     setElMeterBusy(true);
     setError(null);
     try {
-      const { error } = await supabase.rpc('assign_electricity_meter', {
+      const { error } = await supabase.rpc('admin_confirm_electricity_opening' as never, {
         p_property_id: propertyId,
         p_meter_number: elMeterNumber.trim(),
         p_initial_day_reading: Number(day.toFixed(3)),
         p_initial_night_reading: Number(night.toFixed(3)),
         p_installed_at: elInstalledAt,
-      });
+      } as never);
       if (error) throw new Error(t(mapAdminRpcError(error.message)));
       setShowElAssign(false);
       setElMeterNumber('');
@@ -4496,12 +4496,28 @@ function AdminPortal() {
             {elTab === 'meter' && (() => {
               const canElMeter = canManageElectricityMeter(staffRole, staffActive);
               const fieldClass = adminFieldClass;
+              const elNeedsInitial =
+                !activeEl ||
+                (activeEl as { opening_confirmed_at?: string | null }).opening_confirmed_at == null;
               return (
                 <div className="rounded-[14px] border border-border bg-background px-4 py-3">
                   <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.elMeter')}</p>
+                  {elNeedsInitial ? (
+                    <div className="mt-3">
+                      <AdminInlineAlert tone="warning">
+                        {t('openingStatus_needs_initial_readings')}
+                      </AdminInlineAlert>
+                    </div>
+                  ) : null}
                   {!activeEl ? (
                     <div className="mt-3">
-                      <AdminEmptyState title={t('admin.noElectricityMeter')} />
+                      <AdminEmptyState
+                        title={
+                          elNeedsInitial
+                            ? t('openingStatus_needs_initial_readings')
+                            : t('admin.noElectricityMeter')
+                        }
+                      />
                     </div>
                   ) : (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">

@@ -153,6 +153,7 @@ export function AdminFirstRunInternetOpening({
 
   const [none, setNone] = useState(savedNone);
   const [importCount, setImportCount] = useState(0);
+  const [subscriptionCount, setSubscriptionCount] = useState(0);
   const [rows, setRows] = useState<Record<string, string>[] | null>(null);
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown> | null>(null);
   const [previewCommitted, setPreviewCommitted] = useState(false);
@@ -176,11 +177,15 @@ export function AdminFirstRunInternetOpening({
   }, [onNavHandle]);
 
   const refreshImports = useCallback(async () => {
-    const importsRes = await supabase
-      .from('internet_opening_imports')
-      .select('property_id', { count: 'exact', head: true });
-    setImportCount(importsRes.count ?? 0);
-    if ((importsRes.count ?? 0) > 0) setCommitted(true);
+    const [importsRes, subsRes] = await Promise.all([
+      supabase.from('internet_opening_imports').select('property_id', { count: 'exact', head: true }),
+      supabase.from('internet_subscriptions').select('id', { count: 'exact', head: true }),
+    ]);
+    const imports = importsRes.count ?? 0;
+    const subs = subsRes.count ?? 0;
+    setImportCount(imports);
+    setSubscriptionCount(subs);
+    if (imports > 0) setCommitted(true);
   }, [supabase]);
 
   useEffect(() => {
@@ -188,6 +193,18 @@ export function AdminFirstRunInternetOpening({
       /* ignore until tables exist */
     });
   }, [refreshImports]);
+
+  /** Connections or opening rows already inventarised — «none» is not allowed. */
+  const hasExistingOpeningData = importCount > 0 || subscriptionCount > 0;
+  const noneBlocked = hasExistingOpeningData;
+
+  useEffect(() => {
+    if (noneBlocked) {
+      setNone(false);
+      return;
+    }
+    setNone(savedNone);
+  }, [noneBlocked, savedNone]);
 
   const canContinue = (none || importCount > 0 || committed) && openingUnlocked;
 
@@ -515,14 +532,23 @@ export function AdminFirstRunInternetOpening({
               <input
                 type="checkbox"
                 checked={none}
-                disabled={busy || importCount > 0 || committed || !openingUnlocked}
+                disabled={busy || noneBlocked || !openingUnlocked}
                 onChange={(e) => {
+                  // Local UI only until «Продолжить» / Continue confirms the stage.
                   setNone(e.target.checked);
                   setError(null);
                 }}
               />
               <span>{t('admin.firstRunInternetOpeningNone')}</span>
             </label>
+            {noneBlocked ? (
+              <p className={styles.hint} role="status">
+                {t('admin.firstRunInternetOpeningNoneBlocked')}
+              </p>
+            ) : null}
+            {none && !noneBlocked ? (
+              <p className={styles.hint}>{t('admin.firstRunInternetOpeningNoneHint')}</p>
+            ) : null}
 
             {!none ? (
               <div className={styles.importGrid}>

@@ -1766,6 +1766,10 @@ export const ru = {
     firstRunInternetOpeningHint:
       'Долг и переплата вводятся отдельно. Импорт не создаёт повторное начисление за уже оплаченный период.',
     firstRunInternetOpeningNone: 'На момент настройки подключений и начальных остатков нет',
+    firstRunInternetOpeningNoneBlocked:
+      'Уже есть подключения или начальные остатки интернета. Отметить «данных нет» нельзя — существующие данные сохраняются. Загрузите файл для сверки или продолжите, если импорт уже выполнен.',
+    firstRunInternetOpeningNoneHint:
+      'Файл не нужен. Нажмите «Продолжить», чтобы зафиксировать отсутствие подключений и остатков. Пока вы не нажмёте «Продолжить», в базу ничего не записывается.',
     firstRunInternetDownload: 'Скачать шаблон интернета',
     firstRunInternetUpload: 'Загрузить XLSX',
     firstRunInternetTemplateHint:
@@ -7278,6 +7282,10 @@ export const en: Messages = {
     firstRunInternetOpeningHint:
       'Debt and overpayment are entered separately. Import does not re-charge an already paid period.',
     firstRunInternetOpeningNone: 'No connections or opening balances at setup time',
+    firstRunInternetOpeningNoneBlocked:
+      'Internet connections or opening balances already exist. You cannot mark “no data” — existing data is kept. Upload a file to review or continue if import is already done.',
+    firstRunInternetOpeningNoneHint:
+      'No file needed. Click Continue to record that there are no connections or balances. Nothing is written to the database until you click Continue.',
     firstRunInternetDownload: 'Download internet template',
     firstRunInternetUpload: 'Upload XLSX',
     firstRunInternetTemplateHint:
@@ -12777,6 +12785,10 @@ export const bg: Messages = {
     firstRunInternetOpeningHint:
       'Дълг и надплащане се въвеждат отделно. Импортът не създава повторно начисление за вече платен период.',
     firstRunInternetOpeningNone: 'Към момента на настройката няма връзки и начални остатъци',
+    firstRunInternetOpeningNoneBlocked:
+      'Вече има интернет връзки или начални остатъци. Не може да отбележите „няма данни“ — наличните данни се запазват. Качете файл за сверка или продължете, ако импортът вече е направен.',
+    firstRunInternetOpeningNoneHint:
+      'Файл не е нужен. Натиснете „Напред“, за да фиксирате липсата на връзки и остатъци. До „Напред“ в базата нищо не се записва.',
     firstRunInternetDownload: 'Изтегли шаблон за интернет',
     firstRunInternetUpload: 'Качи XLSX',
     firstRunInternetTemplateHint:

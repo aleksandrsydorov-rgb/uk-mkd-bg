@@ -70,6 +70,36 @@ export function propertyBookIdentityLabel(parts: PropertyBookIdentityParts): str
   return apt;
 }
 
+/** Canonical human example used in templates, forms and error hints (RU/BG/EN share the same numbers). */
+export const PROPERTY_BOOK_IDENTITY_FORMAT_EXAMPLE = 'Апартамент 2 · Секция Б · Блок 3';
+
+export function propertyBookIdentityFormatHint(parts?: Partial<PropertyBookIdentityParts>): string {
+  const apt = parts?.apartmentNumber?.trim() || '2';
+  const section = parts?.sectionCode?.trim() || 'Б';
+  const block = parts?.blockCode?.trim() || '3';
+  return `Апартамент ${apt} · Секция ${section} · Блок ${block}`;
+}
+
+/**
+ * Detect swapped Section/Block columns: numeric section + letter-like block.
+ * Returns a stable error code or null when format looks acceptable.
+ */
+export function sectionBlockFormatError(
+  sectionCode: string | null | undefined,
+  blockCode: string | null | undefined,
+): 'section_block_fields_swapped' | 'section_code_looks_like_block_number' | null {
+  const section = String(sectionCode ?? '').trim();
+  const block = String(blockCode ?? '').trim();
+  if (!section) return null;
+  const sectionIsNumeric = /^[0-9]+$/.test(section);
+  const blockIsLetter = /^[A-Za-zА-Яа-яЁёІіЇїЄє]$/.test(block);
+  if (sectionIsNumeric && blockIsLetter) return 'section_block_fields_swapped';
+  if (sectionIsNumeric && (!block || /^[0-9]+$/.test(block))) {
+    return 'section_code_looks_like_block_number';
+  }
+  return null;
+}
+
 /**
  * Parse spreadsheet decimals: accepts `85.40`, `85,40`, optional spaces.
  * Thousands separators: `1 085,40` or `1.085,40` (EU) / `1,085.40` (US).

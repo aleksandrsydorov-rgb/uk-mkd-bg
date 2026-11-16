@@ -979,7 +979,14 @@ export function FirstRunMetersImport({
   utility: FirstRunMeterUtility;
   t: T;
   busy: boolean;
-  dry: { ok: boolean; rowCount: number; skippedExisting: number } | null;
+  dry: {
+    ok: boolean;
+    rowCount: number;
+    skippedExisting: number;
+    deferredCount?: number;
+    preservedCount?: number;
+    warnings?: unknown[];
+  } | null;
   rows: Record<string, string>[] | null;
   errorRows: FirstRunErrorRow[];
   committed: boolean;
@@ -1024,6 +1031,16 @@ export function FirstRunMetersImport({
             detail={t('admin.firstRunMetersDryRunOk')
               .replace('{rows}', String(dry.rowCount))
               .replace('{skipped}', String(dry.skippedExisting))}
+          />
+        ) : null}
+        {!committed && dry?.ok && (dry.deferredCount ?? 0) > 0 ? (
+          <FirstRunStatusBanner
+            tone="warning"
+            title={t('openingStatus_needs_initial_readings')}
+            detail={t('importIssue_needs_initial_readings').replace(
+              '{n}',
+              String(dry.deferredCount),
+            )}
           />
         ) : null}
         {!committed && dry && !dry.ok ? (

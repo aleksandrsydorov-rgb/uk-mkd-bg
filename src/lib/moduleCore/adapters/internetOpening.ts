@@ -29,6 +29,7 @@ export const INTERNET_OPENING_STATUSES = ['active', 'inactive'] as const;
 export const INTERNET_OPENING_HEADERS = [
   'apartment_number',
   'section_code',
+  'block_code',
   'connection_state',
   'connection_date',
   'paid_period_start',
@@ -211,10 +212,15 @@ export function normalizeInternetConnectionState(raw: string | undefined | null)
   if (
     v === 'inactive' ||
     v === 'disconnected' ||
+    v === 'not connected' ||
     v === 'отключен' ||
     v === 'отключён' ||
     v === 'изключен' ||
-    v === 'неактивен'
+    v === 'неактивен' ||
+    v === 'не подключен' ||
+    v === 'не подключён' ||
+    v === 'не е свързан' ||
+    v === 'несвързан'
   ) {
     return 'inactive';
   }
@@ -226,12 +232,9 @@ export function normalizeInternetConnectionState(raw: string | undefined | null)
  * Accepts v1.1 columns and legacy IS-5 aliases.
  */
 export function normalizeInternetOpeningRow(row: Record<string, string>): Record<string, string> {
-  const status =
-    normalizeInternetConnectionState(row.connection_state) ||
-    normalizeInternetConnectionState(row.status) ||
-    String(row.connection_state || row.status || '')
-      .trim()
-      .toLowerCase();
+  const rawState = String(row.connection_state ?? row.status ?? '').trim();
+  const canonical = normalizeInternetConnectionState(rawState);
+  const status = canonical ?? (rawState ? rawState.toLowerCase() : '');
   const paidEnd = String(row.paid_period_end ?? row.paid_through ?? '').trim();
   const paidStart = String(row.paid_period_start ?? '').trim();
   const credit = String(row.opening_credit ?? row.opening_overpayment ?? '').trim();
@@ -264,9 +267,9 @@ export function validateInternetOpeningRow(row: Record<string, string>): string[
   const tariff = n.tariff_code.toLowerCase();
   if (tariff && tariff !== INTERNET_TARIFF_KEY) errors.push('unsupported:tariff_code');
 
+  const rawState = String(row.connection_state ?? row.status ?? '').trim();
   const status = n.status;
-  if (!status) errors.push('required:connection_state');
-  else if (!INTERNET_OPENING_STATUSES.includes(status as (typeof INTERNET_OPENING_STATUSES)[number])) {
+  if (rawState && !INTERNET_OPENING_STATUSES.includes(status as (typeof INTERNET_OPENING_STATUSES)[number])) {
     errors.push('unsupported:connection_state');
   }
 
@@ -319,6 +322,14 @@ export function validateInternetOpeningRow(row: Record<string, string>): string[
   return errors;
 }
 
+/** Soft opening: missing connection state → warning (defer), not a hard error. */
+export function internetOpeningRowWarnings(row: Record<string, string>): string[] {
+  const warnings: string[] = [];
+  const rawState = String(row.connection_state ?? row.status ?? '').trim();
+  if (!rawState) warnings.push('needs_initial_internet_state');
+  return warnings;
+}
+
 function bump(
   counters: {
     createCount: number;
@@ -326,12 +337,14 @@ function bump(
     skipCount: number;
     errorCount: number;
     conflictCount: number;
+    deferCount: number;
   },
   op: ImportRowOperation | 'conflict',
 ) {
   if (op === 'create') counters.createCount += 1;
   else if (op === 'update') counters.updateCount += 1;
   else if (op === 'skip') counters.skipCount += 1;
+  else if (op === 'defer') counters.deferCount += 1;
   else if (op === 'conflict') counters.conflictCount += 1;
   else counters.errorCount += 1;
 }
@@ -346,6 +359,7 @@ export function classifyInternetOpeningRows(
     skipCount: 0,
     errorCount: 0,
     conflictCount: 0,
+    deferCount: 0,
   };
   const previewRows: ImportPreviewRow[] = [];
   /** First row per apartment carries subscription fields; later rows may add paid periods. */
@@ -354,7 +368,8 @@ export function classifyInternetOpeningRows(
   rows.forEach((rawIn, idx) => {
     const raw = normalizeInternetOpeningRow(rawIn);
     const rowNumber = idx + 2;
-    const errors = validateInternetOpeningRow(raw);
+    const errors = validateInternetOpeningRow(rawIn);
+    const warnings = internetOpeningRowWarnings(rawIn);
     const apt = normApt(raw.apartment_number);
     const resolved = apt ? resolveApartmentPropertyId(ctx.apartmentsByNumber, raw) : {};
     const propertyId = resolved.propertyId;
@@ -452,6 +467,9 @@ export function classifyInternetOpeningRows(
           previewClass = 'CONFLICT';
           errors.push('conflict:existing_subscription');
         }
+      } else if (warnings.includes('needs_initial_internet_state')) {
+        operation = 'defer';
+        previewClass = 'DEFER';
       } else {
         operation = 'create';
         previewClass = 'CREATE';
@@ -490,6 +508,7 @@ export function classifyInternetOpeningRows(
         no_work_orders: 'true',
       },
       errors,
+      warnings: warnings.length ? warnings : undefined,
       matchKey: apt || undefined,
     });
   });
@@ -501,6 +520,7 @@ export function classifyInternetOpeningRows(
     updateCount: counters.updateCount,
     skipCount: counters.skipCount,
     errorCount: counters.errorCount + counters.conflictCount,
+    warningCount: counters.deferCount,
     conflictCount: counters.conflictCount,
   };
 }

@@ -434,6 +434,10 @@ export function importReasonI18nKey(raw: string): string | null {
     next_charge_not_scheduled_paid_period_expired: 'importIssue_next_charge_not_scheduled_paid_period_expired',
     next_charge_not_scheduled_paid_through_today: 'importIssue_next_charge_not_scheduled_paid_through_today',
     inactive_with_active_paid_period: 'importIssue_inactive_with_active_paid_period',
+    needs_initial_readings: 'importIssue_needs_initial_readings',
+    needs_initial_internet_state: 'importIssue_needs_initial_internet_state',
+    section_block_fields_swapped: 'importIssue_section_block_fields_swapped',
+    section_code_looks_like_block_number: 'importIssue_section_code_looks_like_block_number',
   };
   const hit = direct[code.toLowerCase()];
   return hit ? `admin.${hit}` : null;

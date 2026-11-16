@@ -20,6 +20,7 @@ import {
   apartmentScopeKeyFromRow,
   buildApartmentIdentityLookup,
   resolveApartmentPropertyId,
+  sectionBlockFormatError,
   type ApartmentLookupBundle,
   type ApartmentLookupRow,
 } from '@/lib/propertyBookIdentity';
@@ -58,6 +59,7 @@ export const DEFAULT_METER_OPENING_POLICY: MeterOpeningPolicy = {
 export const WATER_METER_HEADERS = [
   'apartment_number',
   'section_code',
+  'block_code',
   'meter_number',
   'initial_reading',
   'installed_at',
@@ -68,6 +70,7 @@ export const WATER_METER_HEADERS = [
 export const ELECTRICITY_METER_HEADERS = [
   'apartment_number',
   'section_code',
+  'block_code',
   'meter_number',
   'initial_day_reading',
   'initial_night_reading',
@@ -79,7 +82,8 @@ export const ELECTRICITY_METER_HEADERS = [
 /** Human BG labels for new templates; parsers still accept snake_case keys. */
 export const WATER_METER_HEADER_LABELS_BG: Record<(typeof WATER_METER_HEADERS)[number], string> = {
   apartment_number: 'Апартамент',
-  section_code: 'Секция / вход',
+  section_code: 'Секция',
+  block_code: 'Блок',
   meter_number: 'Номер на водомер',
   initial_reading: 'Начално показание',
   installed_at: 'Дата на монтаж',
@@ -92,7 +96,8 @@ export const ELECTRICITY_METER_HEADER_LABELS_BG: Record<
   string
 > = {
   apartment_number: 'Апартамент',
-  section_code: 'Секция / вход',
+  section_code: 'Секция',
+  block_code: 'Блок',
   meter_number: 'Номер на електромер',
   initial_day_reading: 'Начално (ден)',
   initial_night_reading: 'Начално (нощ)',
@@ -207,13 +212,23 @@ export function collectApartmentOpeningBalanceConflicts(
   return conflicts;
 }
 
+/** Soft opening: missing meter/readings → warnings (defer), not hard errors. */
 export function validateWaterMeterRow(row: Record<string, string>): string[] {
   const errors: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
-  if (!row.meter_number?.trim()) errors.push('required:meter_number');
-  if (parseNonNegNumber(row.initial_reading) == null) errors.push('invalid:initial_reading');
-  const date = parseInstalledAtDate(row.installed_at);
-  if (!date.ok) errors.push(date.error);
+  const fmt = sectionBlockFormatError(row.section_code, row.block_code);
+  if (fmt === 'section_block_fields_swapped') errors.push('section_block_fields_swapped');
+  const hasMeter = Boolean(row.meter_number?.trim());
+  const readingRaw = String(row.initial_reading ?? '').trim();
+  const reading = readingRaw === '' ? null : parseNonNegNumber(row.initial_reading);
+  if (readingRaw && reading == null) errors.push('invalid:initial_reading');
+  const installedRaw = String(row.installed_at ?? '').trim();
+  if (installedRaw) {
+    const date = parseInstalledAtDate(row.installed_at);
+    if (!date.ok) errors.push(date.error);
+  } else if (hasMeter && reading != null) {
+    errors.push('required:installed_at');
+  }
   errors.push(...validateOpeningBalanceFields(row));
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
@@ -221,21 +236,50 @@ export function validateWaterMeterRow(row: Record<string, string>): string[] {
   return errors;
 }
 
+export function waterMeterRowWarnings(row: Record<string, string>): string[] {
+  const warnings: string[] = [];
+  const hasMeter = Boolean(row.meter_number?.trim());
+  const readingRaw = String(row.initial_reading ?? '').trim();
+  const reading = readingRaw === '' ? null : parseNonNegNumber(row.initial_reading);
+  if (!hasMeter || reading == null) warnings.push('needs_initial_readings');
+  return warnings;
+}
+
 export function validateElectricityMeterRow(row: Record<string, string>): string[] {
   const errors: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
-  if (!row.meter_number?.trim()) errors.push('required:meter_number');
-  if (parseNonNegNumber(row.initial_day_reading) == null) errors.push('invalid:initial_day_reading');
-  if (parseNonNegNumber(row.initial_night_reading) == null) {
-    errors.push('invalid:initial_night_reading');
+  const fmt = sectionBlockFormatError(row.section_code, row.block_code);
+  if (fmt === 'section_block_fields_swapped') errors.push('section_block_fields_swapped');
+  const hasMeter = Boolean(row.meter_number?.trim());
+  const dayRaw = String(row.initial_day_reading ?? '').trim();
+  const nightRaw = String(row.initial_night_reading ?? '').trim();
+  const day = dayRaw === '' ? null : parseNonNegNumber(row.initial_day_reading);
+  const night = nightRaw === '' ? null : parseNonNegNumber(row.initial_night_reading);
+  if (dayRaw && day == null) errors.push('invalid:initial_day_reading');
+  if (nightRaw && night == null) errors.push('invalid:initial_night_reading');
+  const installedRaw = String(row.installed_at ?? '').trim();
+  if (installedRaw) {
+    const date = parseInstalledAtDate(row.installed_at);
+    if (!date.ok) errors.push(date.error);
+  } else if (hasMeter && day != null && night != null) {
+    errors.push('required:installed_at');
   }
-  const date = parseInstalledAtDate(row.installed_at);
-  if (!date.ok) errors.push(date.error);
   errors.push(...validateOpeningBalanceFields(row));
   if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
     errors.push('untrusted_property_id');
   }
   return errors;
+}
+
+export function electricityMeterRowWarnings(row: Record<string, string>): string[] {
+  const warnings: string[] = [];
+  const hasMeter = Boolean(row.meter_number?.trim());
+  const dayRaw = String(row.initial_day_reading ?? '').trim();
+  const nightRaw = String(row.initial_night_reading ?? '').trim();
+  const day = dayRaw === '' ? null : parseNonNegNumber(row.initial_day_reading);
+  const night = nightRaw === '' ? null : parseNonNegNumber(row.initial_night_reading);
+  if (!hasMeter || day == null || night == null) warnings.push('needs_initial_readings');
+  return warnings;
 }
 
 /**
@@ -264,12 +308,19 @@ export type MeterClassifyContext = {
 };
 
 function bump(
-  counters: { createCount: number; updateCount: number; skipCount: number; errorCount: number },
+  counters: {
+    createCount: number;
+    updateCount: number;
+    skipCount: number;
+    errorCount: number;
+    deferCount: number;
+  },
   op: ImportRowOperation,
 ) {
   if (op === 'create') counters.createCount += 1;
   else if (op === 'update') counters.updateCount += 1;
   else if (op === 'skip') counters.skipCount += 1;
+  else if (op === 'defer') counters.deferCount += 1;
   else counters.errorCount += 1;
 }
 
@@ -283,16 +334,19 @@ function classifyMeterOpeningRows(
   rows: Record<string, string>[],
   ctx: MeterClassifyContext,
   validate: (row: Record<string, string>) => string[],
+  softWarnings: (row: Record<string, string>) => string[],
 ): ImportPreviewResult {
   const policy = ctx.policy ?? DEFAULT_METER_OPENING_POLICY;
-  const counters = { createCount: 0, updateCount: 0, skipCount: 0, errorCount: 0 };
+  const counters = { createCount: 0, updateCount: 0, skipCount: 0, errorCount: 0, deferCount: 0 };
   const previewRows: ImportPreviewRow[] = [];
   const serialsInFile = new Map<string, number>();
   const balanceConflicts = collectApartmentOpeningBalanceConflicts(rows);
 
   rows.forEach((raw, idx) => {
     const rowNumber = idx + 2;
+    // Fully blank identity+utility rows are skipped by parsers upstream; keep defensive no-op.
     const errors = validate(raw);
+    const warnings = softWarnings(raw);
     const apt = normApt(raw.apartment_number);
     const serial = normSerial(raw.meter_number);
     const resolved = apt ? resolveApartmentPropertyId(ctx.apartmentsByNumber, raw) : {};
@@ -313,8 +367,10 @@ function classifyMeterOpeningRows(
 
     let operation: ImportRowOperation = 'error';
     if (errors.length === 0 && propertyId != null) {
-      if (serialOwner != null || ctx.existingActiveSerials.has(serial)) {
+      if (serialOwner != null || (serial && ctx.existingActiveSerials.has(serial))) {
         operation = policy.allowReplace ? 'update' : 'skip';
+      } else if (warnings.includes('needs_initial_readings')) {
+        operation = 'defer';
       } else {
         operation = 'create';
       }
@@ -334,6 +390,7 @@ function classifyMeterOpeningRows(
       operation,
       data,
       errors,
+      warnings: warnings.length ? warnings : undefined,
       matchKey: serial || apt || undefined,
     });
   });
@@ -341,6 +398,7 @@ function classifyMeterOpeningRows(
   return {
     schemaVersion: METERS_SETUP_SCHEMA_VERSION,
     rows: previewRows,
+    warningCount: counters.deferCount,
     ...counters,
   };
 }
@@ -349,14 +407,20 @@ export function classifyWaterMeterOpeningRows(
   rows: Record<string, string>[],
   ctx: MeterClassifyContext,
 ): ImportPreviewResult {
-  return classifyMeterOpeningRows('water', rows, ctx, validateWaterMeterRow);
+  return classifyMeterOpeningRows('water', rows, ctx, validateWaterMeterRow, waterMeterRowWarnings);
 }
 
 export function classifyElectricityMeterOpeningRows(
   rows: Record<string, string>[],
   ctx: MeterClassifyContext,
 ): ImportPreviewResult {
-  return classifyMeterOpeningRows('electricity', rows, ctx, validateElectricityMeterRow);
+  return classifyMeterOpeningRows(
+    'electricity',
+    rows,
+    ctx,
+    validateElectricityMeterRow,
+    electricityMeterRowWarnings,
+  );
 }
 
 /**

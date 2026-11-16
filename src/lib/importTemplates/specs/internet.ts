@@ -1,4 +1,8 @@
 import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+import {
+  OPENING_IDENTITY_COLUMNS,
+  OPENING_IDENTITY_FORMAT_NOTE,
+} from '@/lib/importTemplates/identityColumns';
 
 export const INTERNET_IMPORT_SPEC: ImportTemplateSpec = {
   id: 'internet_opening',
@@ -21,63 +25,34 @@ export const INTERNET_IMPORT_SPEC: ImportTemplateSpec = {
   notes: {
     ru: [
       'Заполняйте только лист «Подключения». Примеры в этой инструкции не импортируются.',
-      'Одна строка — один апартамент. Номер берите из Книги собственности.',
+      OPENING_IDENTITY_FORMAT_NOTE.ru,
+      'Одна строка — один апартамент.',
+      'Состояние подключения можно оставить пустым — строка импортируется со статусом «Нужно указать начальное состояние»; пустое не означает «отключён».',
       'Если оплаченный период известен, укажите его начало и окончание: следующее начисление будет после окончания.',
       'Даты вводите в формате ГГГГ-ММ-ДД. Долг и переплата — в евро; платежи при загрузке не создаются.',
     ],
     bg: [
       'Попълвайте само листа «Връзки». Примерите в тази инструкция не се импортират.',
-      'Един ред — един апартамент. Номерът е от Книгата.',
+      OPENING_IDENTITY_FORMAT_NOTE.bg,
+      'Един ред — един апартамент.',
+      'Състоянието на връзката може да остане празно — редът се импортира със статус «Трябва да се посочи начално състояние»; празно ≠ изключен.',
       'Ако платеният период е известен, посочете начало и край: следващото начисление ще е след края.',
       'Датите са във формат ГГГГ-ММ-ДД. Дългът и преплатата са в евро; плащания не се създават.',
     ],
     en: [
       'Fill only the Subscriptions sheet. Examples on this Instructions sheet are not imported.',
-      'One row per apartment. Use the apartment number from the Property Book.',
+      OPENING_IDENTITY_FORMAT_NOTE.en,
+      'One row per apartment.',
+      'Connection state may be empty — the row imports with status “Needs initial internet state”; empty does not mean disconnected.',
       'If the paid period is known, give its start and end: the next charge falls after the end date.',
       'Dates use YYYY-MM-DD. Debt and overpayment are in euros; no payments are created.',
     ],
   },
   columns: [
-    {
-      key: 'apartment_number',
-      required: true,
-      format: 'text',
-      width: 16,
-      label: { ru: 'Апартамент', bg: 'Апартамент', en: 'Apartment' },
-      aliases: [
-        'apartment',
-        'apt',
-        'кв',
-        'квартира',
-        'номер апартамента',
-        'номер на апартамент',
-        'apartment number',
-      ],
-      instruction: {
-        ru: 'Номер апартамента из Книги. Обязательно.',
-        bg: 'Номер на апартамента от Книгата. Задължително.',
-        en: 'Apartment number from the Property Book. Required.',
-      },
-      example: '101',
-    },
-    {
-      key: 'section_code',
-      required: false,
-      format: 'text',
-      width: 14,
-      label: { ru: 'Секция / подъезд', bg: 'Секция / вход', en: 'Section / entrance' },
-      aliases: ['section', 'entrance', 'подъезд', 'секция', 'вход'],
-      instruction: {
-        ru: 'Обязательно, если один и тот же номер квартиры есть в разных подъездах.',
-        bg: 'Задължително, ако същият номер апартамент съществува в различни входове.',
-        en: 'Required when the same apartment number exists in more than one entrance.',
-      },
-      example: 'A',
-    },
+    ...OPENING_IDENTITY_COLUMNS,
     {
       key: 'connection_state',
-      required: true,
+      required: false,
       format: 'text',
       width: 22,
       label: {
@@ -87,9 +62,9 @@ export const INTERNET_IMPORT_SPEC: ImportTemplateSpec = {
       },
       aliases: ['status', 'state', 'статус', 'состояние', 'състояние'],
       instruction: {
-        ru: 'Подключён или отключён (active / inactive). Обязательно.',
-        bg: 'Свързан или изключен (active / inactive). Задължително.',
-        en: 'Connected or disconnected (active / inactive). Required.',
+        ru: 'Подключён или отключён (active / inactive). Можно оставить пустым — тогда «Нужно указать начальное состояние». Пустое ≠ отключён.',
+        bg: 'Свързан или изключен (active / inactive). Може да остане празно — тогава «Трябва начално състояние». Празно ≠ изключен.',
+        en: 'Connected or disconnected (active / inactive). May be empty — then “Needs initial internet state”. Empty ≠ disconnected.',
       },
       example: 'Подключён',
     },

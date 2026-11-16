@@ -66,7 +66,7 @@ export type ModuleRegistration = {
   legalOrOperationalGates?: string[];
 };
 
-export type ImportRowOperation = 'create' | 'update' | 'skip' | 'error';
+export type ImportRowOperation = 'create' | 'update' | 'skip' | 'error' | 'defer';
 
 export type ImportPreviewRow = {
   rowNumber: number;

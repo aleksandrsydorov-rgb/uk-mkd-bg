@@ -1,4 +1,8 @@
 import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+import {
+  OPENING_IDENTITY_COLUMNS,
+  OPENING_IDENTITY_FORMAT_NOTE,
+} from '@/lib/importTemplates/identityColumns';
 
 export const SUPPORT_FEE_IMPORT_SPEC: ImportTemplateSpec = {
   id: 'support_fee_opening',
@@ -21,60 +25,28 @@ export const SUPPORT_FEE_IMPORT_SPEC: ImportTemplateSpec = {
   notes: {
     ru: [
       'Заполняйте только лист «Начальные остатки». Примеры в этой инструкции не импортируются.',
-      'Одна строка — один апартамент и один год начисления. Номер апартамента берите из Книги собственности.',
+      OPENING_IDENTITY_FORMAT_NOTE.ru,
+      'Одна строка — один апартамент и один год начисления.',
       'Остаток долга и переплата указываются на дату перехода. Платежи при загрузке не создаются.',
       'Даты вводите в формате ГГГГ-ММ-ДД, суммы — в евро.',
     ],
     bg: [
       'Попълвайте само листа «Начални салда». Примерите в тази инструкция не се импортират.',
-      'Един ред — един апартамент и една година на начисляване. Номерът на апартамента е от Книгата.',
+      OPENING_IDENTITY_FORMAT_NOTE.bg,
+      'Един ред — един апартамент и една година на начисляване.',
       'Остатъкът от дълга и преплатата се посочват към датата на преминаване. Плащания не се създават.',
       'Датите са във формат ГГГГ-ММ-ДД, сумите — в евро.',
     ],
     en: [
       'Fill only the Opening balances sheet. Examples on this Instructions sheet are not imported.',
-      'One row per apartment and billing year. Use the apartment number from the Property Book.',
+      OPENING_IDENTITY_FORMAT_NOTE.en,
+      'One row per apartment and billing year.',
       'Remaining debt and overpayment are stated as of the transition date. No payments are created.',
       'Dates use YYYY-MM-DD, amounts are in euros.',
     ],
   },
   columns: [
-    {
-      key: 'apartment_number',
-      required: true,
-      format: 'text',
-      width: 16,
-      label: { ru: 'Апартамент', bg: 'Апартамент', en: 'Apartment' },
-      aliases: [
-        'apartment',
-        'apt',
-        'кв',
-        'квартира',
-        'номер апартамента',
-        'номер на апартамент',
-        'apartment number',
-      ],
-      instruction: {
-        ru: 'Номер апартамента из Книги. Обязательно.',
-        bg: 'Номер на апартамента от Книгата. Задължително.',
-        en: 'Apartment number from the Property Book. Required.',
-      },
-      example: '101',
-    },
-    {
-      key: 'section_code',
-      required: false,
-      format: 'text',
-      width: 14,
-      label: { ru: 'Секция / подъезд', bg: 'Секция / вход', en: 'Section / entrance' },
-      aliases: ['section', 'entrance', 'подъезд', 'секция', 'вход'],
-      instruction: {
-        ru: 'Обязательно, если один и тот же номер квартиры есть в разных подъездах.',
-        bg: 'Задължително, ако същият номер апартамент съществува в различни входове.',
-        en: 'Required when the same apartment number exists in more than one entrance.',
-      },
-      example: 'A',
-    },
+    ...OPENING_IDENTITY_COLUMNS,
     {
       key: 'billing_year',
       required: true,

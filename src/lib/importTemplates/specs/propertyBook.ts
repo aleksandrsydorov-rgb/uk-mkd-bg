@@ -1,4 +1,9 @@
 import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+import {
+  OPENING_BLOCK_COLUMN,
+  OPENING_IDENTITY_FORMAT_NOTE,
+  OPENING_SECTION_COLUMN,
+} from '@/lib/importTemplates/identityColumns';
 
 export const PROPERTY_BOOK_OBJECTS_SPEC: ImportTemplateSpec = {
   id: 'property_book_objects',
@@ -21,19 +26,19 @@ export const PROPERTY_BOOK_OBJECTS_SPEC: ImportTemplateSpec = {
   notes: {
     ru: [
       'Одна строка — одна квартира. Заполняйте только лист данных; примеры ниже не импортируются.',
-      'Секцию укажите, если один и тот же номер есть в разных подъездах. Блок — если в комплексе несколько зданий с одинаковой нумерацией.',
+      OPENING_IDENTITY_FORMAT_NOTE.ru,
       '«Общая площадь, м²» — вся площадь объекта. «Жилая площадь, м²» — только жилая. «Идеальные части, %» — доля объекта в доме числом (например 1,25). Неизвестное можно оставить пустым.',
       'Дальше: загрузите файл на шаге «Апартаменты», проверьте предпросмотр и подтвердите импорт. Собственников загрузите отдельным файлом на следующем подэтапе.',
     ],
     bg: [
       'Един ред — един апартамент. Попълвайте само листа с данни; примерите по-долу не се импортират.',
-      'Попълнете секция, ако същият номер се повтаря в различни входове. Блок — ако в комплекса има няколко сгради с еднаква номерация.',
+      OPENING_IDENTITY_FORMAT_NOTE.bg,
       '«Обща площ, м²» е цялата площ. «Жилищна площ, м²» е само жилищната. «Идеални части, %» — делът на обекта в сградата като число (напр. 1,25). Неизвестното може да остане празно.',
       'След това: качете файла на стъпка «Апартаменти», проверете прегледа и потвърдете импорта. Собствениците се качват с отделен файл на следващия под етап.',
     ],
     en: [
       'One row per apartment. Fill only the data sheet; examples below are not imported.',
-      'Fill Section when the same number exists in different entrances. Fill Block when several buildings reuse the same numbering.',
+      OPENING_IDENTITY_FORMAT_NOTE.en,
       '“Total area, m²” is the whole object. “Living area, m²” is living space only. “Ideal parts, %” is the object’s share in the building as a number (e.g. 1.25). Unknown values may stay empty.',
       'Next: upload this file on the Apartments step, check the preview, and confirm the import. Upload owners with a separate file on the next sub-step.',
     ],
@@ -47,9 +52,9 @@ export const PROPERTY_BOOK_OBJECTS_SPEC: ImportTemplateSpec = {
       },
       rows: [
         {
-          apartment_number: '12',
+          apartment_number: '2',
           section_code: 'A',
-          block_code: '',
+          block_code: '3',
           floor: '3',
           purpose: 'апартамент',
           area_sqm: '64.5',
@@ -57,9 +62,9 @@ export const PROPERTY_BOOK_OBJECTS_SPEC: ImportTemplateSpec = {
           ideal_parts_percent: '1.25',
         },
         {
-          apartment_number: '12',
+          apartment_number: '2',
           section_code: 'Б',
-          block_code: '',
+          block_code: '3',
           floor: '3',
           purpose: 'апартамент',
           area_sqm: '71',
@@ -86,40 +91,14 @@ export const PROPERTY_BOOK_OBJECTS_SPEC: ImportTemplateSpec = {
         'apartment number',
       ],
       instruction: {
-        ru: 'Номер апартамента (текст, ведущие нули сохраняются). Обязательно.',
-        bg: 'Номер на апартамента (текст, водещите нули се запазват). Задължително.',
-        en: 'Apartment number (text, leading zeros kept). Required.',
+        ru: 'Номер апартамента (текст, ведущие нули сохраняются), например 2. Обязательно. Пример полной записи: Апартамент 2 · Секция Б · Блок 3.',
+        bg: 'Номер на апартамента (текст, водещите нули се запазват), например 2. Задължително. Пример: Апартамент 2 · Секция Б · Блок 3.',
+        en: 'Apartment number (text, leading zeros kept), e.g. 2. Required. Full example: Apartment 2 · Section B · Block 3.',
       },
-      example: '12',
+      example: '2',
     },
-    {
-      key: 'section_code',
-      required: false,
-      format: 'text',
-      width: 12,
-      label: { ru: 'Секция', bg: 'Секция', en: 'Section' },
-      aliases: ['section', 'секция', 'вход', 'подъезд', 'код секции', 'код на секция'],
-      instruction: {
-        ru: 'Секция или подъезд, например A. Обязательна, если один и тот же номер квартиры встречается в разных подъездах.',
-        bg: 'Секция или вход, напр. A. Задължителна, ако един и същ номер се повтаря в различни входове.',
-        en: 'Section or entrance, e.g. A. Required when the same apartment number appears in different entrances.',
-      },
-      example: 'A',
-    },
-    {
-      key: 'block_code',
-      required: false,
-      format: 'text',
-      width: 12,
-      label: { ru: 'Блок', bg: 'Блок', en: 'Block' },
-      aliases: ['block', 'блок', 'корпус', 'код блока', 'код на блок'],
-      instruction: {
-        ru: 'Блок или корпус, например 1. Нужен, если в комплексе несколько зданий с одинаковой нумерацией.',
-        bg: 'Блок или корпус, напр. 1. Нужен, ако в комплекса има няколко сгради с еднаква номерация.',
-        en: 'Block or building, e.g. 1. Needed when several buildings reuse the same apartment numbers.',
-      },
-      example: '1',
-    },
+    OPENING_SECTION_COLUMN,
+    OPENING_BLOCK_COLUMN,
     {
       key: 'floor',
       required: false,
@@ -273,6 +252,7 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
   notes: {
     ru: [
       'Одна строка — один владелец. Заполняйте только лист данных (заголовок закреплён). Примеры ниже не импортируются.',
+      OPENING_IDENTITY_FORMAT_NOTE.ru,
       'Апартамент, секция и блок должны совпадать с уже сохранённым объектом на шаге «Апартаменты».',
       'Если владельцев несколько — отдельная строка на каждого с теми же реквизитами квартиры. В каждой строке укажите одно и то же «Количество владельцев» (например 2).',
       '«Кто владелец»: выберите «Физическое лицо» или «Юридическое лицо». Для ЕТ введите «ЕТ».',
@@ -282,6 +262,7 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
     ],
     bg: [
       'Един ред — един собственик. Попълвайте само листа с данни (заглавката е замразена). Примерите по-долу не се импортират.',
+      OPENING_IDENTITY_FORMAT_NOTE.bg,
       'Апартамент, секция и блок трябва да съвпадат със вече записания обект на стъпката «Апартаменти».',
       'При няколко собственици — отделен ред за всеки със същите реквизити. Във всеки ред посочете един и същ «Брой собственици» (напр. 2).',
       '«Кой е собственик»: изберете „Физическо лице“ или „Юридическо лице“. За ЕТ въведете „ЕТ“.',
@@ -291,6 +272,7 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
     ],
     en: [
       'One row per owner. Fill only the data sheet (header frozen). Examples below are not imported.',
+      OPENING_IDENTITY_FORMAT_NOTE.en,
       'Apartment, section and block must match an apartment already saved on the Apartments step.',
       'If there are several owners, add one row each with the same apartment identity. Put the same “Number of owners” on every row (e.g. 2).',
       '“Who owns”: choose “Individual” or “Legal entity”. For a sole trader enter “Sole trader”.',
@@ -308,9 +290,9 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
       },
       rows: [
         {
-          apartment_number: '12',
-          section_code: 'A',
-          block_code: '',
+          apartment_number: '2',
+          section_code: 'Б',
+          block_code: '3',
           ownership_type: '1',
           entity_kind: '1',
           ownership_share_percent: '100',
@@ -333,9 +315,9 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
       },
       rows: [
         {
-          apartment_number: '15',
-          section_code: 'A',
-          block_code: '',
+          apartment_number: '2',
+          section_code: 'Б',
+          block_code: '3',
           ownership_type: '2',
           entity_kind: '1',
           ownership_share_percent: '60',
@@ -349,9 +331,9 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
           eik_bulstat: '',
         },
         {
-          apartment_number: '15',
-          section_code: 'A',
-          block_code: '',
+          apartment_number: '2',
+          section_code: 'Б',
+          block_code: '3',
           ownership_type: '2',
           entity_kind: '0',
           ownership_share_percent: '40',
@@ -384,40 +366,14 @@ export const PROPERTY_BOOK_OWNERS_SPEC: ImportTemplateSpec = {
         'apartment number',
       ],
       instruction: {
-        ru: 'Номер апартамента, как на шаге апартаментов. Обязательно.',
-        bg: 'Номер на апартамента, както на стъпката за апартаменти. Задължително.',
-        en: 'Apartment number as on the apartments step. Required.',
+        ru: 'Номер апартамента, как на шаге апартаментов, например 2. Обязательно. Пример: Апартамент 2 · Секция Б · Блок 3.',
+        bg: 'Номер на апартамента, както на стъпката за апартаменти, например 2. Задължително. Пример: Апартамент 2 · Секция Б · Блок 3.',
+        en: 'Apartment number as on the apartments step, e.g. 2. Required. Example: Apartment 2 · Section B · Block 3.',
       },
-      example: '12',
+      example: '2',
     },
-    {
-      key: 'section_code',
-      required: false,
-      format: 'text',
-      width: 12,
-      label: { ru: 'Секция', bg: 'Секция', en: 'Section' },
-      aliases: ['section', 'секция', 'вход', 'подъезд', 'код секции', 'код на секция'],
-      instruction: {
-        ru: 'Секция/подъезд. Обязательна, если № квартиры есть в нескольких секциях. Не выбирается автоматически.',
-        bg: 'Секция/вход. Задължителна, ако № се повтаря в няколко секции. Не се избира автоматично.',
-        en: 'Section/entrance. Required when the apartment number exists in several sections. Never auto-assigned.',
-      },
-      example: 'A',
-    },
-    {
-      key: 'block_code',
-      required: false,
-      format: 'text',
-      width: 12,
-      label: { ru: 'Блок', bg: 'Блок', en: 'Block' },
-      aliases: ['block', 'блок', 'корпус', 'код блока', 'код на блок'],
-      instruction: {
-        ru: 'Блок, если используется в комплексе.',
-        bg: 'Блок, ако се ползва в комплекса.',
-        en: 'Block, when used in the complex.',
-      },
-      example: '1',
-    },
+    OPENING_SECTION_COLUMN,
+    OPENING_BLOCK_COLUMN,
     {
       key: 'ownership_type',
       required: false,

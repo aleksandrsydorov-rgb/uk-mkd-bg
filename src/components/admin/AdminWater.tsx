@@ -145,6 +145,7 @@ export function AdminWater({
     onPropertyChange?.(id);
   }
   const [meters, setMeters] = useState<WaterMeter[]>([]);
+  const [needsInitialOpening, setNeedsInitialOpening] = useState(false);
   const [tariff, setTariff] = useState<CurrentWaterTariffView | null>(null);
   const [readings, setReadings] = useState<WaterReading[]>([]);
   const [ledger, setLedger] = useState<WaterLedger[]>([]);
@@ -261,6 +262,7 @@ export function AdminWater({
       setReadings([]);
       setLedger([]);
       setBalance(emptyBalance());
+      setNeedsInitialOpening(false);
       return;
     }
     setMeterLoading(true);
@@ -278,9 +280,16 @@ export function AdminWater({
       .order('reading_date', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(200);
+    const pendingQ = supabase
+      .from('utility_opening_pending' as never)
+      .select('id, status')
+      .eq('property_id', pid)
+      .eq('utility', 'water')
+      .eq('status', 'needs_initial')
+      .limit(1);
 
     if (canFinance) {
-      const [metersRes, readingsRes, ledgerRes, balanceRes] = await Promise.all([
+      const [metersRes, readingsRes, ledgerRes, balanceRes, pendingRes] = await Promise.all([
         meterQ,
         readingQ,
         supabase
@@ -290,6 +299,7 @@ export function AdminWater({
           .order('created_at', { ascending: false })
           .limit(30),
         supabase.rpc('get_water_balance', { p_property_id: pid }),
+        pendingQ,
       ]);
       setMeterLoading(false);
       if (metersRes.error && !isMissingRelation(metersRes.error, 'water_meters')) {
@@ -298,7 +308,8 @@ export function AdminWater({
       if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) {
         setError(toUserFacingMessage(readingsRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
       }
-      setMeters((metersRes.data ?? []) as WaterMeter[]);
+      const meterRows = (metersRes.data ?? []) as Array<WaterMeter & { opening_confirmed_at?: string | null }>;
+      setMeters(meterRows);
       setReadings((readingsRes.data ?? []) as WaterReading[]);
       if (!ledgerRes.error) setLedger((ledgerRes.data ?? []) as WaterLedger[]);
       else setLedger([]);
@@ -310,10 +321,15 @@ export function AdminWater({
         adjustments_credit_eur: Number(row.adjustments_credit_eur),
         balance_eur: Number(row.balance_eur),
       } : emptyBalance());
+      const active = meterRows.find((m) => !m.retired_at) ?? null;
+      const pendingRows = Array.isArray(pendingRes.data) ? pendingRes.data : [];
+      setNeedsInitialOpening(
+        pendingRows.length > 0 || (active != null && active.opening_confirmed_at == null),
+      );
       return;
     }
 
-    const [metersRes, readingsRes] = await Promise.all([meterQ, readingQ]);
+    const [metersRes, readingsRes, pendingRes] = await Promise.all([meterQ, readingQ, pendingQ]);
     setMeterLoading(false);
     if (metersRes.error && !isMissingRelation(metersRes.error, 'water_meters')) {
       setError(toUserFacingMessage(metersRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
@@ -321,10 +337,16 @@ export function AdminWater({
     if (readingsRes.error && !isMissingRelation(readingsRes.error, 'water_readings')) {
       setError(toUserFacingMessage(readingsRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
     }
-    setMeters((metersRes.data ?? []) as WaterMeter[]);
+    const meterRows = (metersRes.data ?? []) as Array<WaterMeter & { opening_confirmed_at?: string | null }>;
+    setMeters(meterRows);
     setReadings((readingsRes.data ?? []) as WaterReading[]);
     setLedger([]);
     setBalance(emptyBalance());
+    const active = meterRows.find((m) => !m.retired_at) ?? null;
+    const pendingRows = Array.isArray(pendingRes.data) ? pendingRes.data : [];
+    setNeedsInitialOpening(
+      pendingRows.length > 0 || (active != null && active.opening_confirmed_at == null) || (!active && pendingRows.length > 0),
+    );
   }, [canFinance, canSee, propertyId, supabase, t]);
 
   useEffect(() => {
@@ -372,12 +394,13 @@ export function AdminWater({
       return;
     }
     setMeterBusy(true);
-    const { error: rpcErr } = await supabase.rpc('assign_water_meter', {
+    // Confirm baseline via soft-opening RPC (no consumption charge on this reading).
+    const { error: rpcErr } = await supabase.rpc('admin_confirm_water_opening' as never, {
       p_property_id: Number(propertyId),
       p_meter_number: number,
       p_initial_reading: initial,
       p_installed_at: installedAt,
-    });
+    } as never);
     setMeterBusy(false);
     if (rpcErr) {
       rpcFail(rpcErr.message);
@@ -716,11 +739,22 @@ export function AdminWater({
       {activeTab === 'meter' && (
       <div className={adminCardClass + ' p-4 md:p-5'}>
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterStatus')}</p>
+        {needsInitialOpening ? (
+          <AdminInlineAlert tone="warning">
+            {t('openingStatus_needs_initial_readings')}
+          </AdminInlineAlert>
+        ) : null}
         {meterLoading ? (
           <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
         ) : !activeMeter ? (
           <div className="mt-3">
-            <AdminEmptyState title={t('admin.noWaterMeter')} />
+            <AdminEmptyState
+              title={
+                needsInitialOpening
+                  ? t('openingStatus_needs_initial_readings')
+                  : t('admin.noWaterMeter')
+              }
+            />
           </div>
         ) : (
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

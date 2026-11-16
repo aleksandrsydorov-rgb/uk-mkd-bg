@@ -536,6 +536,11 @@ export function AdminInternet({
               <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
             ) : subscription ? (
               <div className="mt-3 space-y-1 text-sm text-secondary">
+                {(subscription as { opening_confirmed_at?: string | null }).opening_confirmed_at == null ? (
+                  <AdminInlineAlert tone="warning">
+                    {t('openingStatus_needs_initial_internet')}
+                  </AdminInlineAlert>
+                ) : null}
                 <p className="font-semibold text-foreground">
                   {t(internetStatusMessageKey(subscription.status))}
                 </p>
@@ -564,7 +569,12 @@ export function AdminInternet({
                 ) : null}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-muted">{t('admin.internetNoSub')}</p>
+              <div className="mt-3 space-y-2">
+                <AdminInlineAlert tone="warning">
+                  {t('openingStatus_needs_initial_internet')}
+                </AdminInlineAlert>
+                <p className="text-sm text-muted">{t('admin.internetNoSub')}</p>
+              </div>
             )}
           </div>
 

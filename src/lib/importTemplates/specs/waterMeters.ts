@@ -1,4 +1,8 @@
 import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+import {
+  OPENING_IDENTITY_COLUMNS,
+  OPENING_IDENTITY_FORMAT_NOTE,
+} from '@/lib/importTemplates/identityColumns';
 
 export const WATER_METERS_IMPORT_SPEC: ImportTemplateSpec = {
   id: 'water_meters_opening',
@@ -21,58 +25,34 @@ export const WATER_METERS_IMPORT_SPEC: ImportTemplateSpec = {
   notes: {
     ru: [
       'Заполняйте только лист «Счётчики». Примеры в этой инструкции не импортируются.',
-      'Апартамент указывается номером из Книги собственности (не внутренний id).',
-      'Несколько счётчиков на один апартамент — отдельная строка на каждый номер.',
-      'Начальный остаток задаётся один раз на апартамент. На дополнительных счётчиках оставьте тип пустым или «ноль».',
+      OPENING_IDENTITY_FORMAT_NOTE.ru,
+      'Строка квартиры из Книги собственности импортируется даже без номера счётчика и показаний — статус «Нужно внести начальные показания». Полностью пустые строки пропускаются.',
+      'Пустое показание не становится 0. Явно введённый 0 — допустимое значение. Повторный импорт с пустыми полями не стирает уже сохранённые данные.',
+      'Несколько счётчиков на один апартамент — отдельная строка на каждый номер. Начальный остаток — один раз на апартамент.',
       'Дата установки: ГГГГ-ММ-ДД. Тип остатка: ноль / долг / переплата (или zero / debt / overpayment).',
     ],
     bg: [
       'Попълвайте само листа «Водомери». Примерите тук не се импортират.',
-      'Апартаментът се посочва с номера от Книгата (не вътрешен id).',
-      'Няколко водомера за един апартамент — отделен ред за всеки номер.',
-      'Началното салдо е веднъж на апартамент. При допълнителни водомери оставете типа празен или «нула».',
+      OPENING_IDENTITY_FORMAT_NOTE.bg,
+      'Ред за апартамент от Книгата се импортира и без номер на водомер и показания — статус «Трябва да се въведат начални показания». Напълно празните редове се пропускат.',
+      'Празно показание не става 0. Изрично въведено 0 е валидно. Повторен импорт с празни полета не изтрива вече записаните данни.',
+      'Няколко водомера за един апартамент — отделен ред за всеки номер. Началното салдо е веднъж на апартамент.',
       'Дата: ГГГГ-ММ-ДД. Тип салдо: нула / дълг / преплата (или zero / debt / overpayment).',
     ],
     en: [
       'Fill only the Meters sheet. Examples on this Instructions sheet are not imported.',
-      'Use the apartment number from the Property Book (not an internal id).',
-      'Multiple meters for one apartment: one row per meter number.',
-      'Opening balance applies once per apartment. On extra meters leave kind empty or “zero”.',
+      OPENING_IDENTITY_FORMAT_NOTE.en,
+      'A Property Book apartment row imports even without meter number and readings — status “Needs initial readings”. Fully blank rows are skipped.',
+      'An empty reading is not turned into 0. An explicit 0 is a valid reading. Re-import with blank fields does not wipe saved data.',
+      'Multiple meters for one apartment: one row per meter number. Opening balance once per apartment.',
       'Install date: YYYY-MM-DD. Balance kind: zero / debt / overpayment (localized words also accepted).',
     ],
   },
   columns: [
-    {
-      key: 'apartment_number',
-      required: true,
-      format: 'text',
-      width: 16,
-      label: { ru: 'Апартамент', bg: 'Апартамент', en: 'Apartment' },
-      aliases: ['apartment', 'apt', 'кв', 'квартира'],
-      instruction: {
-        ru: 'Номер апартамента из Книги. Обязательно.',
-        bg: 'Номер на апартамента от Книгата. Задължително.',
-        en: 'Apartment number from the Property Book. Required.',
-      },
-      example: '12',
-    },
-    {
-      key: 'section_code',
-      required: false,
-      format: 'text',
-      width: 14,
-      label: { ru: 'Секция / подъезд', bg: 'Секция / вход', en: 'Section / entrance' },
-      aliases: ['section', 'entrance', 'подъезд', 'секция', 'вход'],
-      instruction: {
-        ru: 'Обязательно, если один и тот же номер квартиры есть в разных подъездах.',
-        bg: 'Задължително, ако същият номер апартамент съществува в различни входове.',
-        en: 'Required when the same apartment number exists in more than one entrance.',
-      },
-      example: 'A',
-    },
+    ...OPENING_IDENTITY_COLUMNS,
     {
       key: 'meter_number',
-      required: true,
+      required: false,
       format: 'text',
       width: 20,
       label: {
@@ -82,15 +62,15 @@ export const WATER_METERS_IMPORT_SPEC: ImportTemplateSpec = {
       },
       aliases: ['meter', 'serial', 'номер прибора', 'номер водомера', 'номер на водомер'],
       instruction: {
-        ru: 'Заводской или учётный номер. Текст — ведущие нули сохраняются. Обязательно.',
-        bg: 'Сериен / отчетен номер. Текст — водещите нули се запазват. Задължително.',
-        en: 'Serial or registry number. Stored as text (leading zeros kept). Required.',
+        ru: 'Заводской или учётный номер. Можно оставить пустым — тогда статус «Нужно внести начальные показания».',
+        bg: 'Сериен / отчетен номер. Може да остане празен — тогава статус «Трябва да се въведат начални показания».',
+        en: 'Serial or registry number. May be empty — then status “Needs initial readings”.',
       },
       example: 'W-12-001',
     },
     {
       key: 'initial_reading',
-      required: true,
+      required: false,
       format: 'number',
       width: 18,
       label: {
@@ -100,15 +80,15 @@ export const WATER_METERS_IMPORT_SPEC: ImportTemplateSpec = {
       },
       aliases: ['initial', 'reading', 'показание'],
       instruction: {
-        ru: 'Показание на дату установки (≥ 0). Обязательно.',
-        bg: 'Показание към датата на монтаж (≥ 0). Задължительно.',
-        en: 'Reading at install date (≥ 0). Required.',
+        ru: 'Показание на дату установки (≥ 0). Пусто ≠ 0. Явный 0 допустим.',
+        bg: 'Показание към датата на монтаж (≥ 0). Празно ≠ 0. Изрично 0 е валидно.',
+        en: 'Reading at install date (≥ 0). Empty ≠ 0. Explicit 0 is valid.',
       },
       example: '12.5',
     },
     {
       key: 'installed_at',
-      required: true,
+      required: false,
       format: 'date',
       width: 16,
       label: {
@@ -118,9 +98,9 @@ export const WATER_METERS_IMPORT_SPEC: ImportTemplateSpec = {
       },
       aliases: ['installed', 'install_date', 'date', 'дата монтажа', 'дата на монтаж'],
       instruction: {
-        ru: 'Дата ГГГГ-ММ-ДД, не позже сегодня. Обязательно.',
-        bg: 'Дата ГГГГ-ММ-ДД, не по-късно от днес. Задължително.',
-        en: 'Date YYYY-MM-DD, not in the future. Required.',
+        ru: 'Дата ГГГГ-ММ-ДД, не позже сегодня. Нужна, когда заполнены номер счётчика и показание.',
+        bg: 'Дата ГГГГ-ММ-ДД, не по-късно от днес. Нужна, когато са попълнени номер и показание.',
+        en: 'Date YYYY-MM-DD, not in the future. Required when meter number and reading are filled.',
       },
       example: '2026-01-15',
     },

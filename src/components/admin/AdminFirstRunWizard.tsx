@@ -160,8 +160,11 @@ type BookDryRun = {
 type MetersDryRun = {
   ok: boolean;
   errors: unknown[];
+  warnings: unknown[];
   rowCount: number;
   skippedExisting: number;
+  deferredCount: number;
+  preservedCount: number;
 };
 
 type SfDryRun = {
@@ -1165,12 +1168,17 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       if (rpcErr) throw new Error(rpcErr.message);
       const res = asObj(data);
       const errors = Array.isArray(res.errors) ? res.errors : [];
+      const warnings = Array.isArray(res.warnings) ? res.warnings : [];
       setMeterDry({
         ok: res.ok === true && errors.length === 0,
         errors,
+        warnings,
         rowCount: parsed.rows.length,
         skippedExisting: Number(res.skipped_existing_count ?? 0) || 0,
+        deferredCount: Number(res.deferred_count ?? warnings.length) || 0,
+        preservedCount: Number(res.preserved_count ?? 0) || 0,
       });
+      // Preview: show blocking errors separately from deferrable warnings.
       setErrorRows(metersErrorRows(errors));
       setMeterRows(parsed.rows);
     });

@@ -1835,7 +1835,9 @@ export function AdminPropertyBook({
                     className={shortFieldClass}
                     value={sectionCode}
                     onChange={(e) => setSectionCode(e.target.value)}
+                    placeholder="Б"
                   />
+                  <span className="text-[11px] text-muted">{t('propertyIdentity_format_hint')}</span>
                 </label>
                 <label className="grid gap-1 text-sm text-secondary">
                   {t('admin.bookBlock')}
@@ -1843,6 +1845,7 @@ export function AdminPropertyBook({
                     className={shortFieldClass}
                     value={blockCode}
                     onChange={(e) => setBlockCode(e.target.value)}
+                    placeholder="3"
                   />
                 </label>
                 <label className="grid gap-1 text-sm text-secondary sm:col-span-2">

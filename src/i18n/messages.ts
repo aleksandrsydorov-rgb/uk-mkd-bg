@@ -3933,6 +3933,18 @@ export const ru = {
     importIssue_existing_opening_obligation: 'Уже есть начальное обязательство за этот период',
     importIssue_untrusted_assessment_id: 'Нельзя передавать внутренний идентификатор начисления в файле',
     importIssue_unknown_apartment: 'Квартира не найдена в книге собственности',
+    importIssue_needs_initial_readings:
+      'Номер счётчика или начальные показания не указаны — строка импортируется, нужно внести показания позже.',
+    importIssue_needs_initial_internet_state:
+      'Состояние подключения не указано — строка импортируется, нужно указать подключён или отключён позже.',
+    importIssue_section_block_fields_swapped:
+      'В колонке «Секция» указано похоже на номер блока. Укажите букву входа, например Б. Номер блока — в колонке «Блок».',
+    importIssue_section_code_looks_like_block_number:
+      'В колонке «Секция» указан номер, похожий на блок. Секция — буква входа (например Б), номер блока — в колонке «Блок».',
+    openingStatus_needs_initial_readings: 'Нужно внести начальные показания',
+    openingStatus_needs_initial_internet: 'Нужно указать начальное состояние интернета',
+    propertyIdentity_format_hint:
+      'Апартамент — номер, например 2. Секция — буква входа, например Б. Блок — номер блока, например 3. Ключ сопоставления — все три поля.',
     bookImport_overwrite_required: 'Данные отличаются от уже сохранённых — подтвердите перезапись',
 
     firstRunBookStatImportable: 'К импорту',
@@ -9310,6 +9322,18 @@ export const en: Messages = {
     importIssue_existing_opening_obligation: 'An opening obligation already exists for this period',
     importIssue_untrusted_assessment_id: 'Do not include an internal assessment id in the file',
     importIssue_unknown_apartment: 'Apartment not found in the property book',
+    importIssue_needs_initial_readings:
+      'Meter number or opening readings are missing — the row still imports; enter readings later.',
+    importIssue_needs_initial_internet_state:
+      'Connection state is missing — the row still imports; specify connected or disconnected later.',
+    importIssue_section_block_fields_swapped:
+      'In the Section column the value looks like a block number. Enter the entrance letter, e.g. B. Put the block number in Block.',
+    importIssue_section_code_looks_like_block_number:
+      'The Section column looks like a block number. Section is the entrance letter (e.g. B); block number goes in Block.',
+    openingStatus_needs_initial_readings: 'Needs initial readings',
+    openingStatus_needs_initial_internet: 'Needs initial internet state',
+    propertyIdentity_format_hint:
+      'Apartment — number, e.g. 2. Section — entrance letter, e.g. B. Block — block number, e.g. 3. Match key is all three fields.',
     bookImport_overwrite_required: 'Data differs from what is already saved — confirm overwrite',
 
     firstRunBookStatImportable: 'Importable',
@@ -14696,6 +14720,18 @@ export const bg: Messages = {
     importIssue_existing_opening_obligation: 'Вече има начално задължение за този период',
     importIssue_untrusted_assessment_id: 'Не подавайте вътрешен идентификатор на начисление във файла',
     importIssue_unknown_apartment: 'Апартаментът не е намерен в книгата на собствеността',
+    importIssue_needs_initial_readings:
+      'Липсва номер на уред или начални показания — редът се импортира, показанията се въвеждат по-късно.',
+    importIssue_needs_initial_internet_state:
+      'Липсва състояние на връзката — редът се импортира, посочете свързан/изключен по-късно.',
+    importIssue_section_block_fields_swapped:
+      'В колоната «Секция» е посочено нещо като номер на блок. Въведете буква на входа, напр. Б. Номерът на блока — в колоната «Блок».',
+    importIssue_section_code_looks_like_block_number:
+      'В колоната «Секция» е посочен номер, приличащ на блок. Секцията е буква на входа (напр. Б), номер на блок — в колоната «Блок».',
+    openingStatus_needs_initial_readings: 'Трябва да се въведат начални показания',
+    openingStatus_needs_initial_internet: 'Трябва да се посочи начално състояние на интернета',
+    propertyIdentity_format_hint:
+      'Апартамент — номер, напр. 2. Секция — буква на входа, напр. Б. Блок — номер на блок, напр. 3. Ключ за съпоставяне — и трите полета.',
     bookImport_overwrite_required: 'Данните се различават от вече записаните — потвърдете презапис',
 
     firstRunBookStatImportable: 'За импорт',

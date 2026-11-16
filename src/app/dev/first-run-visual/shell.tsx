@@ -624,6 +624,61 @@ export function FirstRunVisualShell() {
             onSaveTariffPrep={async (next) => {
               setTariffPrep(next);
             }}
+            rows={
+              view === 'sf-error'
+                ? [
+                    {
+                      apartment_number: '12',
+                      section_code: 'A',
+                      billing_year: '2026',
+                      assessed_amount: '',
+                      historically_paid_amount: '',
+                      remaining_debt: 'abc',
+                      opening_overpayment: '',
+                      transition_date: '2026-01-01',
+                      source_reference: '',
+                      notes: '',
+                    },
+                    {
+                      apartment_number: '14-А',
+                      section_code: 'A',
+                      billing_year: '',
+                      assessed_amount: '10',
+                      historically_paid_amount: '0',
+                      remaining_debt: '10',
+                      opening_overpayment: '0',
+                      transition_date: '2026-01-01',
+                      source_reference: '',
+                      notes: '',
+                    },
+                  ]
+                : [
+                    {
+                      apartment_number: '1',
+                      section_code: 'A',
+                      billing_year: '2026',
+                      assessed_amount: '120',
+                      historically_paid_amount: '40',
+                      remaining_debt: '80',
+                      opening_overpayment: '0',
+                      transition_date: '2026-01-01',
+                      source_reference: 'ledger',
+                      notes: '',
+                    },
+                    {
+                      apartment_number: '2',
+                      section_code: 'A',
+                      billing_year: '2026',
+                      assessed_amount: '',
+                      historically_paid_amount: '',
+                      remaining_debt: '',
+                      opening_overpayment: '',
+                      transition_date: '2026-01-01',
+                      source_reference: '',
+                      notes: '',
+                    },
+                  ]
+            }
             dry={
               view === 'sf-error'
                 ? {

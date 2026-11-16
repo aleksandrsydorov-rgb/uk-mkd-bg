@@ -145,7 +145,11 @@ declare
   v_field text;
   v_has_any_field boolean;
 begin
-  perform public.admin_assert_module_initial_setup_writable('support_fee');
+  -- Dry-run (preview / reimport check) stays available after initial setup.
+  -- Apply still requires writable initial-setup (wizard) unless only soft-blank rows.
+  if not coalesce(p_dry_run, true) then
+    perform public.admin_assert_module_initial_setup_writable('support_fee');
+  end if;
 
   if auth.uid() is null or v_email is null or length(btrim(v_email)) = 0 then
     raise exception 'admin_import_support_fee_opening: authentication required' using errcode = '42501';
@@ -884,3 +888,49 @@ revoke all on function public.admin_confirm_support_fee_opening(
 grant execute on function public.admin_confirm_support_fee_opening(
   bigint, integer, numeric, numeric, numeric, numeric, date, text, text, uuid
 ) to authenticated;
+
+-- Card confirm after wizard: import_support_fee_opening_state must not require
+-- initial-setup writability when a needs_initial pending slot exists (mirrors
+-- 20261130340000 soft-opening confirm for water/electricity).
+do $patch_sf_soft$
+declare
+  def text;
+  newdef text;
+  needle text := 'perform public.admin_assert_module_initial_setup_writable(''support_fee'');';
+  replacement text := $b$if not exists (
+    select 1 from public.support_fee_opening_pending as u
+    where u.property_id = p_property_id
+      and u.status = 'needs_initial'
+  ) then
+    perform public.admin_assert_module_initial_setup_writable('support_fee');
+  end if;$b$;
+begin
+  select pg_get_functiondef(p.oid) into def
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'import_support_fee_opening_state'
+  order by p.oid
+  limit 1;
+
+  if def is null then
+    raise exception 'patch: import_support_fee_opening_state missing';
+  end if;
+  if position('support_fee_opening_pending' in def) > 0
+     and position('needs_initial' in def) > 0
+     and position('admin_assert_module_initial_setup_writable' in def) > 0 then
+    -- already soft-confirm aware
+    raise notice 'import_support_fee_opening_state already soft-confirm aware';
+    return;
+  end if;
+  if position(needle in def) = 0 then
+    raise exception 'patch: expected setup gate not found in import_support_fee_opening_state';
+  end if;
+  newdef := replace(def, needle, replacement);
+  if newdef = def then
+    raise exception 'patch: replace produced no change';
+  end if;
+  execute newdef;
+  raise notice 'patched import_support_fee_opening_state for soft-defer card confirm';
+end;
+$patch_sf_soft$;

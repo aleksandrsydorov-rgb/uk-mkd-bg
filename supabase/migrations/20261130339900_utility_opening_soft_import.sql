@@ -108,9 +108,12 @@ begin
   if new.reading_kind is distinct from 'operational' then
     return new;
   end if;
+  if new.electricity_meter_id is null then
+    return new;
+  end if;
   if exists (
     select 1 from public.electricity_meters m
-    where m.id = new.meter_id
+    where m.id = new.electricity_meter_id
       and m.opening_confirmed_at is null
   ) then
     raise exception 'electricity_opening_not_confirmed'

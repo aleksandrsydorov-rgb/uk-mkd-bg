@@ -10,7 +10,6 @@ import {
   presentImportCommitOutcome,
   presentInternetConnectionState,
 } from '@/lib/firstRunUserMessage';
-import { formatSfAptHeading, formatSfEntranceTitle } from '@/lib/firstRunSupportFeePreview';
 
 export type InetPreviewOutcome = 'create' | 'update' | 'skip' | 'defer' | 'error' | 'unknown';
 
@@ -272,7 +271,30 @@ export function buildInternetOpeningPreview(
   };
 }
 
-export { formatSfAptHeading as formatInetAptHeading, formatSfEntranceTitle as formatInetEntranceTitle };
+export function formatInetAptHeading(item: Pick<InetPreviewItem, 'apartment' | 'blockCode'>, t: T): string {
+  const apt = item.apartment || '—';
+  if (item.blockCode) {
+    return t('admin.firstRunSfAptWithBlock', { apt, block: item.blockCode });
+  }
+  return t('admin.firstRunSfAptHeading', { apt });
+}
+
+export function formatInetEntranceTitle(
+  group: Pick<InetPreviewEntranceGroup, 'sectionCode' | 'items'>,
+  t: T,
+): string {
+  const n = group.items.length;
+  const abs = Math.abs(Math.trunc(n));
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  let form: 'one' | 'few' | 'many' = 'many';
+  if (mod10 === 1 && mod100 !== 11) form = 'one';
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) form = 'few';
+  const countLabel = t(`admin.bookPreviewEntranceAptCount_${form}`, { n: abs });
+  const section = (group.sectionCode || '').trim();
+  if (!section) return t('admin.bookPreviewEntranceGroupPlain', { countLabel });
+  return t('admin.bookPreviewEntranceGroup', { section, countLabel });
+}
 
 /** Fallback outcome label via shared dictionary (committed path). */
 export function presentInetRpcOutcome(raw: string, t: T, committed?: boolean): string {

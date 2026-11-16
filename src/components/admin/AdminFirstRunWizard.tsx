@@ -315,10 +315,18 @@ function moduleXlsxHeaderAliases(schema: { columns: { key: string }[] }): Record
       'Section',
     ];
   }
+  if (!aliases.block_code) aliases.block_code = ['block_code'];
+  aliases.block_code = [
+    ...aliases.block_code,
+    'Блок',
+    'Block',
+    'корпус',
+    'код блока',
+  ];
   if (aliases.meter_number) aliases.meter_number = [...aliases.meter_number, 'Номер на електромер'];
   for (const spec of MODULE_XLSX_IMPORT_SPECS) {
     for (const [key, list] of Object.entries(aliasesFromSpec(spec))) {
-      if (!aliases[key]) continue;
+      if (!aliases[key]) aliases[key] = [key];
       aliases[key] = [...new Set([...aliases[key], ...list])];
     }
   }

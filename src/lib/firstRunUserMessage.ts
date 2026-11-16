@@ -1174,17 +1174,30 @@ export function presentFirstRunErrorRow(
     issue.reason === 'ownership_type_required' ||
     issue.reason === 'required:ownership_type' ||
     issue.reason === 'owners_required' ||
+    issue.reason === 'section_block_fields_swapped' ||
+    issue.reason === 'section_code_looks_like_block_number' ||
     issue.reason.includes('invalid');
+  let reasonText = rich
+    ? presentBookPreviewIssue(issue, t)
+    : presentImportReason(row.reason, t, {
+        severity,
+        nothingSaved: options?.nothingSaved,
+      });
+  if (
+    issue.reason === 'section_block_fields_swapped' ||
+    issue.reason === 'section_code_looks_like_block_number'
+  ) {
+    const base = presentImportReason(issue.reason, t, { severity });
+    const apt = row.apartment || '—';
+    const excelRow = formatExcelRowRanges(issue.rows) || row.row || '—';
+    const field = presentImportField(row.field || 'section_code', t);
+    reasonText = `${base} [кв. ${apt}, строка ${excelRow}, ${field}]`;
+  }
   return {
     row: formatExcelRowRanges(issue.rows) || row.row || '—',
     apartment: row.apartment || '—',
     field: presentImportField(row.field, t),
-    reason: rich
-      ? presentBookPreviewIssue(issue, t)
-      : presentImportReason(row.reason, t, {
-          severity,
-          nothingSaved: options?.nothingSaved,
-        }),
+    reason: reasonText,
     sheet: presentImportSheet(row.sheet, row.field, t),
     severity,
     severityLabel: presentImportSeverity(severity, t),

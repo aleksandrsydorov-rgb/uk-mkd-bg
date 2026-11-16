@@ -81,12 +81,18 @@ export const internetOpeningAdapter: ModuleSetupAdapter = {
           {
             key: 'section_code',
             required: false,
-            example: 'A',
+            example: 'Б',
             labelKey: 'is5ColSection',
           },
           {
+            key: 'block_code',
+            required: false,
+            example: '3',
+            labelKey: 'is3ColBlock',
+          },
+          {
             key: 'connection_state',
-            required: true,
+            required: false,
             example: 'Подключён',
             labelKey: 'is5ColConnectionState',
           },

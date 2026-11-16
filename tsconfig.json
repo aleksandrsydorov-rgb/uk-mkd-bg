@@ -40,7 +40,9 @@
     ".next-build-verify/types/**/*.ts",
     ".next-build-verify/dev/types/**/*.ts",
     ".next-uat3068-build/types/**/*.ts",
-    ".next-uat3068-build/dev/types/**/*.ts"
+    ".next-uat3068-build/dev/types/**/*.ts",
+    ".next-uxf3079/types/**/*.ts",
+    ".next-uxf3079/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

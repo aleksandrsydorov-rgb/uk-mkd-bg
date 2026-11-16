@@ -17,7 +17,9 @@ import {
   applyOpeningAmountDraft,
   buildOpeningTotalsTemplateBuffer,
   openingAmountEditBaseline,
+  openingPreviewAction,
   parseOpeningTotalsMatrix,
+  presentOpeningPreviewAction,
   readFirstSheetMatrix,
   rebuildOpeningTotalParse,
   type OpeningTotalIssue,
@@ -707,6 +709,7 @@ export function AdminFirstRunOpeningExpenses({
                       <th>{t('admin.firstRunOpeningColPlan')}</th>
                       <th>{t('admin.firstRunOpeningColSpent')}</th>
                       <th>{t('admin.firstRunOpeningColRemainder')}</th>
+                      <th>{t('admin.firstRunSfColAction')}</th>
                       <th>{t('admin.firstRunOpeningColCheck')}</th>
                     </tr>
                   </thead>
@@ -720,6 +723,15 @@ export function AdminFirstRunOpeningExpenses({
                         ),
                       );
                       const isEmpty = row.draftRaw.trim() === '';
+                      const cat = rows.find((r) => r.code.toLowerCase() === row.code.toLowerCase());
+                      const baselineAmt = cat ? baseline[cat.category_id] : undefined;
+                      const action = openingPreviewAction(baselineAmt, row.amount, hasError);
+                      const spentDisplay =
+                        row.amount != null
+                          ? moneyEur(row.amount)
+                          : isEmpty
+                            ? '—'
+                            : row.draftRaw;
                       return (
                         <tr
                           key={`opening-preview-${row.key}-${row.code}`}
@@ -765,14 +777,17 @@ export function AdminFirstRunOpeningExpenses({
                                   </button>
                                 ) : null}
                               </div>
-                              {isEmpty ? (
+                              {!isEmpty || row.amount === 0 ? (
+                                <p className={styles.amountEditHint}>{spentDisplay}</p>
+                              ) : (
                                 <p className={styles.amountEditHint}>{t('admin.firstRunOpeningSetZeroHint')}</p>
-                              ) : null}
+                              )}
                             </div>
                           </td>
                           <td>
                             {row.remainder != null ? moneyEur(row.remainder) : '—'}
                           </td>
+                          <td>{presentOpeningPreviewAction(action, t)}</td>
                           <td
                             className={
                               hasError ? styles.fieldError : hasWarn ? styles.warnNoteInline : undefined

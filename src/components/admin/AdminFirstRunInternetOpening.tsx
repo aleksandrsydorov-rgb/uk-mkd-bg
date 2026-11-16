@@ -28,11 +28,13 @@ import {
 } from '@/lib/firstRunUserMessage';
 import {
   buildInternetOpeningClarify,
-  formatMeterClarifyHeading,
-  formatMeterEntranceGroupTitle,
   presentInternetReadySummary,
-  presentMeterClarifyMessage,
 } from '@/lib/firstRunMetersImportPreview';
+import {
+  buildInternetOpeningPreview,
+  formatInetAptHeading,
+  formatInetEntranceTitle,
+} from '@/lib/firstRunInternetOpeningPreview';
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   downloadInternetIs5Template,
@@ -286,6 +288,16 @@ export function AdminFirstRunInternetOpening({
     const sofia = String(asObj(previewPayload.summary).as_of ?? new Date().toISOString().slice(0, 10));
     return mapPreview(previewPayload, sofia, { committed: previewCommitted });
   }, [previewPayload, previewCommitted, mapPreview]);
+
+  const groupedPreview = useMemo(() => {
+    if (!rows || rows.length === 0 || committed) return null;
+    const rpcList = previewPayload && Array.isArray(previewPayload.rows) ? previewPayload.rows : [];
+    return buildInternetOpeningPreview(rows, {
+      rpcRows: rpcList,
+      errorRows,
+      t,
+    });
+  }, [rows, previewPayload, errorRows, committed, t]);
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -565,54 +577,49 @@ export function AdminFirstRunInternetOpening({
                   ) : !committed ? (
                     <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
                   ) : null}
-                  {dryOk && previewPayload && !committed
-                    ? (() => {
-                        const clarify = buildInternetOpeningClarify(
-                          Array.isArray(previewPayload.rows)
-                            ? (previewPayload.rows as Record<string, unknown>[])
-                            : [],
-                        );
-                        if (clarify.groups.length === 0) return null;
-                        return (
-                          <div className={styles.tableWrap} style={{ marginTop: 12 }}>
-                            <p className={styles.importLabel}>{t('admin.firstRunInternetClarifyTitle')}</p>
-                            <p className={styles.hint}>{t('admin.firstRunMetersClarifyHint')}</p>
-                            <div style={{ marginTop: 8 }}>
-                              {clarify.groups.map((group) => (
-                                <div key={`inet-g-${group.key}`} style={{ marginBottom: 12 }}>
-                                  <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                                    {formatMeterEntranceGroupTitle(group, t)}
-                                  </p>
-                                  <ul className={styles.hint} style={{ margin: 0, paddingLeft: 18 }}>
-                                    {group.items.map((item, idx) => (
-                                      <li
-                                        key={`inet-c-${item.key}-${idx}`}
-                                        style={{
-                                          marginBottom: 8,
-                                          padding: '8px 10px',
-                                          border: '1px solid #e5e7eb',
-                                          borderRadius: 8,
-                                          background: '#fff',
-                                          listStyle: 'none',
-                                          marginLeft: -18,
-                                        }}
-                                      >
-                                        <p style={{ margin: '0 0 4px', fontWeight: 600 }}>
-                                          {formatMeterClarifyHeading(item, t)}
-                                          {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                                        </p>
-                                        <div>{presentMeterClarifyMessage(item, t)}</div>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
+                  {groupedPreview && groupedPreview.groups.length > 0 && !committed ? (
+                    <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+                      <p className={styles.importLabel}>{t('admin.firstRunSfPreviewTitle')}</p>
+                      <p className={styles.hint}>{t('admin.firstRunSfPreviewHint')}</p>
+                      {groupedPreview.groups.map((group) => (
+                        <div key={`inet-g-${group.key}`} style={{ marginTop: 12 }}>
+                          <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
+                            {formatInetEntranceTitle(group, t)}
+                          </p>
+                          <table className={styles.table}>
+                            <thead>
+                              <tr>
+                                <th>{t('admin.firstRunSfColApt')}</th>
+                                <th>{t('admin.is5ColConnectionState')}</th>
+                                <th>{t('admin.firstRunInternetPaidPeriodCol')}</th>
+                                <th>{t('admin.firstRunSfColAction')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((item) => (
+                                <tr key={item.key}>
+                                  <td>
+                                    <div style={{ fontWeight: 600 }}>
+                                      {formatInetAptHeading(item, t)}
+                                      {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                                    </div>
+                                    {item.errorText ? (
+                                      <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
+                                        {item.errorText}
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td>{item.connectionStateLabel}</td>
+                                  <td>{item.tariffOrPeriod}</td>
+                                  <td>{item.outcomeLabel}</td>
+                                </tr>
                               ))}
-                            </div>
-                          </div>
-                        );
-                      })()
-                    : null}
-                  {previewRows.length > 0 ? (
+                            </tbody>
+                          </table>
+                        </div>
+                      ))}
+                    </div>
+                  ) : previewRows.length > 0 ? (
                     <div className={styles.tableWrap}>
                       <p className={styles.hint}>{t('admin.internetImportPreviewGeneralNote')}</p>
                       <table className={styles.table}>

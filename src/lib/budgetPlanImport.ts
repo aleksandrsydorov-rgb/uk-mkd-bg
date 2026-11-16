@@ -83,6 +83,8 @@ export type BudgetPlanIssue = {
   raw?: string;
 };
 
+export type BudgetPreviewAction = 'create' | 'update' | 'unchanged' | 'error' | 'skip';
+
 /** Leaf rows shown in the preview table (sections/totals are skipped, not listed as articles). */
 export type BudgetPlanPreviewRow = {
   row: number;
@@ -93,6 +95,9 @@ export type BudgetPlanPreviewRow = {
   /** Original amount cell for display when invalid. */
   amountRaw: string;
   issues: BudgetPlanIssueReason[];
+  /** Existing plan amount for this code when known (client enrich). */
+  priorAmount?: number | null;
+  action?: BudgetPreviewAction;
 };
 
 export type BudgetPlanParse = {
@@ -101,6 +106,68 @@ export type BudgetPlanParse = {
   skipped: BudgetPlanSkip[];
   issues: BudgetPlanIssue[];
 };
+
+/** Attach create/update/unchanged actions from existing plan amounts by category code. */
+export function enrichBudgetPreviewWithExisting(
+  parsed: BudgetPlanParse,
+  existingByCode: Map<string, number>,
+): BudgetPlanParse {
+  const previewRows = parsed.previewRows.map((row) => {
+    if (row.issues.length > 0 || row.amount == null) {
+      return { ...row, priorAmount: null, action: 'error' as BudgetPreviewAction };
+    }
+    const key = row.code.trim().toLowerCase();
+    if (!key) return { ...row, priorAmount: null, action: 'error' as BudgetPreviewAction };
+    if (!existingByCode.has(key)) {
+      return { ...row, priorAmount: null, action: 'create' as BudgetPreviewAction };
+    }
+    const prior = existingByCode.get(key) ?? 0;
+    const same = Math.abs(prior - row.amount) < 0.0001;
+    return {
+      ...row,
+      priorAmount: prior,
+      action: (same ? 'unchanged' : 'update') as BudgetPreviewAction,
+    };
+  });
+  return { ...parsed, previewRows };
+}
+
+export function presentBudgetPreviewAction(
+  action: BudgetPreviewAction | undefined,
+  t: (key: string) => string,
+): string {
+  if (action === 'create') return t('admin.internetImportOutcomeWillCreate');
+  if (action === 'update') return t('admin.internetImportOutcomeWillUpdate');
+  if (action === 'unchanged') return t('admin.internetImportOutcomeWillSkip');
+  if (action === 'error') return t('admin.internetImportOutcomeError');
+  if (action === 'skip') return t('admin.internetImportOutcomeWillSkip');
+  return '—';
+}
+
+export type OpeningPreviewAction = 'create' | 'update' | 'unchanged' | 'error';
+
+export function openingPreviewAction(
+  baselineAmount: number | undefined,
+  newAmount: number | null,
+  hasIssues: boolean,
+): OpeningPreviewAction {
+  if (hasIssues || newAmount == null) return 'error';
+  if (baselineAmount == null || !Number.isFinite(baselineAmount) || baselineAmount <= 0) {
+    return newAmount === 0 ? 'unchanged' : 'create';
+  }
+  if (Math.abs(baselineAmount - newAmount) < 0.0001) return 'unchanged';
+  return 'update';
+}
+
+export function presentOpeningPreviewAction(
+  action: OpeningPreviewAction,
+  t: (key: string) => string,
+): string {
+  if (action === 'create') return t('admin.internetImportOutcomeWillCreate');
+  if (action === 'update') return t('admin.internetImportOutcomeWillUpdate');
+  if (action === 'unchanged') return t('admin.internetImportOutcomeWillSkip');
+  return t('admin.internetImportOutcomeError');
+}
 
 function normHeader(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');

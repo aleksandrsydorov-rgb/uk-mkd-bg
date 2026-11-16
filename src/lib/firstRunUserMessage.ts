@@ -288,11 +288,19 @@ export function importReasonI18nKey(raw: string): string | null {
   if (/^duplicate_rows:/i.test(code)) return null;
 
   const prefixed = code.match(
-    /^(required|invalid|duplicate_in_file|missing_apartment|unsupported|inconsistent|mutually_exclusive|conflict|duplicate_serial):(.+)$/i,
+    /^(required|invalid|incomplete|duplicate_in_file|missing_apartment|unsupported|inconsistent|mutually_exclusive|conflict|duplicate_serial):(.+)$/i,
   );
   if (prefixed) {
     const kind = prefixed[1].toLowerCase();
     const field = prefixed[2].trim().toLowerCase();
+    if (kind === 'incomplete') {
+      const inc: Record<string, string> = {
+        paid_period_end: 'importIssue_incomplete_paid_period_end',
+        paid_period_start: 'importIssue_incomplete_paid_period_start',
+        paid_through: 'importIssue_incomplete_paid_period_end',
+      };
+      return inc[field] ? `admin.${inc[field]}` : null;
+    }
     if (kind === 'required') {
       const soft: Record<string, string> = {
         purpose: 'bookIssue_purpose_required',
@@ -429,6 +437,9 @@ export function importReasonI18nKey(raw: string): string | null {
     overlapping_paid_periods: 'importIssue_overlapping_paid_periods',
     'inconsistent:connection_state': 'importIssue_inconsistent_connection_state',
     opening_correction_requires_confirm: 'importIssue_opening_correction_requires_confirm',
+    conflict_existing_subscription: 'importIssue_conflict_existing_subscription',
+    'incomplete:paid_period_end': 'importIssue_incomplete_paid_period_end',
+    'incomplete:paid_period_start': 'importIssue_incomplete_paid_period_start',
     connection_date_unknown: 'importIssue_connection_date_unknown',
     // Internet opening preview warnings / soft notes
     paid_through_only_no_period_start: 'importIssue_paid_through_only_no_period_start',
@@ -492,6 +503,9 @@ export function presentImportCommitOutcome(
         SKIP: 'admin.internetImportOutcomeWillSkip',
         SKIPPED: 'admin.internetImportOutcomeWillSkip',
         SKIPPED_EXISTING: 'admin.internetImportOutcomeWillSkip',
+        DEFER: 'admin.firstRunInternetPreviewStateEmpty',
+        DEFERRED: 'admin.firstRunInternetPreviewStateEmpty',
+        NEEDS_INITIAL: 'admin.firstRunInternetPreviewStateEmpty',
         CONFLICT: 'admin.internetImportOutcomeConflict',
         ERROR: 'admin.internetImportOutcomeError',
         FAILED: 'admin.internetImportOutcomeError',
@@ -583,6 +597,9 @@ export function presentImportField(raw: string, t: T): string {
   if (field === 'section_code') return t('admin.is3ColSection');
   if (field === 'block_code') return t('admin.is3ColBlock');
   if (field === 'connection_state' || field === 'status') return t('admin.is5ColConnectionState');
+  if (field === 'internet_opening') return t('admin.firstRunStageInternetOpening');
+  if (field === 'paid_period_end' || field === 'paid_through') return t('admin.is5ColPaidThrough');
+  if (field === 'paid_period_start') return t('admin.is5ColPaidPeriodStart');
   if (field === 'support_fee_opening') return t('admin.firstRunStageSupportFee');
   if (field === 'billing_year') return t('admin.firstRunSfColYear');
   return propertyBookFieldLabel(field, t);

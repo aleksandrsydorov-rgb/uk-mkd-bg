@@ -32,6 +32,8 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { BUDGET_PLAN_IMPORT_SPEC, localizedTemplateFileName } from '@/lib/importTemplates';
 import {
   buildBudgetPlanTemplateBuffer,
+  enrichBudgetPreviewWithExisting,
+  presentBudgetPreviewAction,
   readBudgetPlanWorkbook,
   type BudgetPlanIssue,
   type BudgetPlanParse,
@@ -431,8 +433,23 @@ export function AdminFirstRunBudget({
     setFormError(null);
     setImportNote(null);
     const parsed = readBudgetPlanWorkbook(await file.arrayBuffer());
-    setImportPreview(parsed);
-    setImportIssues(parsed.issues);
+    const existingByCode = new Map<string, number>();
+    for (const line of lines) {
+      const code = String(line.category_code ?? '').trim().toLowerCase();
+      if (code) existingByCode.set(code, Number(line.planned_amount_eur) || 0);
+    }
+    // Also map via planCategories id → code when lines empty but amounts seeded.
+    for (const cat of planCategories) {
+      const code = cat.code.trim().toLowerCase();
+      if (!code || existingByCode.has(code)) continue;
+      const raw = amounts[cat.id];
+      if (raw == null || String(raw).trim() === '') continue;
+      const n = Number(String(raw).replace(',', '.'));
+      if (Number.isFinite(n)) existingByCode.set(code, n);
+    }
+    const enriched = enrichBudgetPreviewWithExisting(parsed, existingByCode);
+    setImportPreview(enriched);
+    setImportIssues(enriched.issues);
   }
 
   async function onConfirmImport() {
@@ -717,6 +734,9 @@ export function AdminFirstRunBudget({
                       </table>
                     </div>
                   ) : null}
+                  <p className={styles.hint} style={{ marginTop: 8 }}>
+                    {t('admin.firstRunBudgetPreviewYear').replace('{year}', String(calendarYear || '—'))}
+                  </p>
                   <div className={styles.tableWrap}>
                     <table className={styles.table}>
                       <thead>
@@ -724,7 +744,9 @@ export function AdminFirstRunBudget({
                           <th>{t('admin.firstRunBudgetImportColRow')}</th>
                           <th>{t('admin.firstRunBudgetImportColCode')}</th>
                           <th>{t('admin.firstRunBudgetImportColName')}</th>
+                          <th>{t('admin.firstRunBudgetImportColPrior')}</th>
                           <th>{t('admin.firstRunBudgetImportColAmount')}</th>
+                          <th>{t('admin.firstRunSfColAction')}</th>
                           <th>{t('admin.firstRunBudgetImportColNotes')}</th>
                         </tr>
                       </thead>
@@ -739,14 +761,20 @@ export function AdminFirstRunBudget({
                               : row.amountRaw.trim() !== ''
                                 ? row.amountRaw
                                 : '—';
+                          const priorText =
+                            row.priorAmount != null && Number.isFinite(row.priorAmount)
+                              ? moneyEur(row.priorAmount)
+                              : '—';
                           return (
                             <tr key={`preview-${row.row}-${row.code}`}>
                               <td>{row.row}</td>
                               <td>{row.code || '—'}</td>
                               <td>{row.name || '—'}</td>
+                              <td>{priorText}</td>
                               <td className={row.amount == null && row.issues.length > 0 ? styles.fieldError : undefined}>
                                 {amountText}
                               </td>
+                              <td>{presentBudgetPreviewAction(row.action, t)}</td>
                               <td className={notes.length > 0 ? styles.fieldError : undefined}>
                                 {notes.join(' · ') || '—'}
                               </td>

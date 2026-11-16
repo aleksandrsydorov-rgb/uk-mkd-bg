@@ -2106,6 +2106,10 @@ export const ru = {
       'Импорт остатков КР сейчас недоступен. Исправьте ошибки в файле и загрузите его снова.',
     firstRunCrErrorAptSection: 'Квартира №{apt} · вход {section}',
     firstRunCrErrorColumn: 'колонка «{column}»',
+    firstRunInternetPreviewStateEmpty: 'Можно дополнить позже',
+    firstRunInternetPreviewStateInactive: 'Не подключён',
+    firstRunBudgetImportColPrior: 'Было, €',
+    firstRunBudgetPreviewYear: 'Год плана: {year}',
     firstRunCrDryRunOk:
       'Предпросмотр: строк {rows}, будет создано {create}, уже есть {skipped}. Долг Σ {debt} €, переплата Σ {credit} €. Начисления и платежи не создаются — можно подтвердить импорт.',
     firstRunCrDryRunErrors: 'Ошибок: {n}. Исправьте файл и загрузите снова.',
@@ -2474,6 +2478,12 @@ export const ru = {
     importIssue_inconsistent_connection_state: 'У одной квартиры в файле указаны разные состояния подключения.',
     importIssue_opening_correction_requires_confirm:
       'Уже импортированные данные отличаются. Подтвердите явную корректировку (было → станет).',
+    importIssue_conflict_existing_subscription:
+      'По этой квартире уже есть подключение к интернету. Исправьте строку или подтвердите корректировку, если она предусмотрена.',
+    importIssue_incomplete_paid_period_end:
+      'Указано начало оплаченного периода без окончания. Заполните колонку «Оплачено по».',
+    importIssue_incomplete_paid_period_start:
+      'Указано окончание оплаченного периода без начала. Заполните колонку «Начало оплаченного периода».',
     is3MetersSsotNote:
       'Приборы учёта хранятся в основных списках воды и электричества. Книга — источник апартаментов. Показания и начисления на этом шаге не создаются.',
     is3MetersManualHint:
@@ -7605,6 +7615,10 @@ export const en: Messages = {
       'Capital-repair balance import is unavailable right now. Fix the errors in the file and upload it again.',
     firstRunCrErrorAptSection: 'Apartment №{apt} · entrance {section}',
     firstRunCrErrorColumn: 'column “{column}”',
+    firstRunInternetPreviewStateEmpty: 'Can complete later',
+    firstRunInternetPreviewStateInactive: 'Not connected',
+    firstRunBudgetImportColPrior: 'Was, €',
+    firstRunBudgetPreviewYear: 'Plan year: {year}',
     firstRunCrDryRunOk:
       'Check passed: {rows} rows, create {create}, already present {skipped}. Debt Σ {debt} €, overpayment Σ {credit} €.',
     firstRunCrDryRunErrors: 'Errors: {n}. Fix the file and upload again.',
@@ -7966,6 +7980,12 @@ export const en: Messages = {
     importIssue_inconsistent_connection_state: 'The same apartment has different connection states in the file.',
     importIssue_opening_correction_requires_confirm:
       'Already imported data differs. Confirm an explicit correction (was → will).',
+    importIssue_conflict_existing_subscription:
+      'This apartment already has an internet subscription. Fix the row or confirm a correction when the import allows it.',
+    importIssue_incomplete_paid_period_end:
+      'Paid period start is set without an end. Fill the “Paid through” column.',
+    importIssue_incomplete_paid_period_start:
+      'Paid period end is set without a start. Fill the “Paid period start” column.',
     is3MetersSsotNote:
       'Meters are stored in the main water and electricity meter lists. The Property Book is the source of apartments. Reading rows are not saved at this step.',
     is3MetersManualHint:
@@ -13097,6 +13117,10 @@ export const bg: Messages = {
       'Импортът на салда КР в момента е недостъпен. Поправете грешките във файла и го качете отново.',
     firstRunCrErrorAptSection: 'Апартамент №{apt} · вход {section}',
     firstRunCrErrorColumn: 'колона „{column}“',
+    firstRunInternetPreviewStateEmpty: 'Може да се допълни по-късно',
+    firstRunInternetPreviewStateInactive: 'Не е свързан',
+    firstRunBudgetImportColPrior: 'Беше, €',
+    firstRunBudgetPreviewYear: 'Година на плана: {year}',
     firstRunCrDryRunOk:
       'Проверката е успешна: редове {rows}, за създаване {create}, вече има {skipped}. Дълг Σ {debt} €, преплата Σ {credit} €.',
     firstRunCrDryRunErrors: 'Грешки: {n}. Поправете файла и качете отново.',
@@ -13463,6 +13487,12 @@ export const bg: Messages = {
     importIssue_inconsistent_connection_state: 'За един апартамент във файла са посочени различни състояния на връзката.',
     importIssue_opening_correction_requires_confirm:
       'Вече импортираните данни се различават. Потвърдете явна корекция (беше → ще бъде).',
+    importIssue_conflict_existing_subscription:
+      'За този апартамент вече има интернет абонамент. Поправете реда или потвърдете корекция, ако импортът я допуска.',
+    importIssue_incomplete_paid_period_end:
+      'Посочено е начало на платен период без край. Попълнете колоната «Платено до».',
+    importIssue_incomplete_paid_period_start:
+      'Посочен е край на платен период без начало. Попълнете колоната «Начало на платен период».',
     is3MetersSsotNote:
       'Уредите се записват в основните списъци на водомерите и електромерите. Книгата е източникът за апартаментите. Редовете с показания не се записват на тази стъпка.',
     is3MetersManualHint:

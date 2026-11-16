@@ -119,6 +119,7 @@ export const INTERNET_IMPORT_SPEC: ImportTemplateSpec = {
         'paid_to',
         'paid period end',
         'paid period end / paid through',
+        'конец оплаченного периода',
         'окончание оплаченного периода',
         'окончание оплаченного периода / оплачено по',
         'край на платен период',

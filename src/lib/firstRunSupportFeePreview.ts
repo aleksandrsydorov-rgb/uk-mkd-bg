@@ -7,9 +7,9 @@ import { formatMeterMoney } from '@/lib/firstRunMetersPreview';
 import type { FirstRunErrorRow } from '@/lib/firstRun';
 import { presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
 
-export type SfPreviewOutcome = 'create' | 'skip' | 'error' | 'unknown';
+export type SfPreviewOutcome = 'create' | 'skip' | 'defer' | 'error' | 'unknown';
 
-export type SfPreviewBalanceKind = 'debt' | 'credit' | 'zero';
+export type SfPreviewBalanceKind = 'debt' | 'credit' | 'zero' | 'empty';
 
 export type SfPreviewItem = {
   key: string;
@@ -18,10 +18,10 @@ export type SfPreviewItem = {
   sectionCode: string;
   blockCode: string;
   billingYear: string;
-  assessed: number;
-  paid: number;
-  remainingDebt: number;
-  overpayment: number;
+  assessed: number | null;
+  paid: number | null;
+  remainingDebt: number | null;
+  overpayment: number | null;
   balanceKind: SfPreviewBalanceKind;
   outcome: SfPreviewOutcome;
   errorText: string | null;
@@ -38,6 +38,7 @@ export type SfPreviewSummary = {
   debtCount: number;
   creditCount: number;
   zeroCount: number;
+  deferCount: number;
   debtSum: number;
   creditSum: number;
   createCount: number;
@@ -53,16 +54,24 @@ function trim(v: unknown): string {
   return v == null ? '' : String(v).trim();
 }
 
-function money(raw: unknown): number {
+/** Parse money; empty → null (do not substitute 0). */
+function moneyOrNull(raw: unknown): number | null {
   const s = trim(raw).replace(',', '.');
-  if (!s) return 0;
+  if (!s) return null;
   const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
-function balanceKind(remaining: number, over: number): SfPreviewBalanceKind {
-  if (remaining > 0.0001) return 'debt';
-  if (over > 0.0001) return 'credit';
+function balanceKind(
+  remaining: number | null,
+  over: number | null,
+  amountsBlank: boolean,
+): SfPreviewBalanceKind {
+  if (amountsBlank) return 'empty';
+  const rem = remaining ?? 0;
+  const ov = over ?? 0;
+  if (rem > 0.0001) return 'debt';
+  if (ov > 0.0001) return 'credit';
   return 'zero';
 }
 
@@ -70,6 +79,7 @@ function mapOutcome(raw: unknown): SfPreviewOutcome {
   const o = trim(raw).toUpperCase();
   if (o === 'CREATE' || o === 'CREATED') return 'create';
   if (o === 'SKIP' || o === 'SKIPPED' || o === 'SKIPPED_EXISTING') return 'skip';
+  if (o === 'DEFER' || o === 'DEFERRED' || o === 'NEEDS_INITIAL') return 'defer';
   if (o === 'ERROR' || o === 'FAILED' || o === 'CONFLICT') return 'error';
   return 'unknown';
 }
@@ -83,11 +93,18 @@ export function formatSfBalanceLabel(
   t: T,
   locale: string,
 ): string {
+  if (item.balanceKind === 'empty') {
+    return t('admin.firstRunSfBalanceEmpty');
+  }
   if (item.balanceKind === 'debt') {
-    return t('admin.firstRunSfBalanceDebt', { amount: formatMeterMoney(item.remainingDebt, locale) });
+    return t('admin.firstRunSfBalanceDebt', {
+      amount: formatMeterMoney(item.remainingDebt ?? 0, locale),
+    });
   }
   if (item.balanceKind === 'credit') {
-    return t('admin.firstRunSfBalanceCredit', { amount: formatMeterMoney(item.overpayment, locale) });
+    return t('admin.firstRunSfBalanceCredit', {
+      amount: formatMeterMoney(item.overpayment ?? 0, locale),
+    });
   }
   return t('admin.firstRunSfBalanceZero', { amount: formatMeterMoney(0, locale) });
 }
@@ -95,6 +112,7 @@ export function formatSfBalanceLabel(
 export function presentSfOutcome(outcome: SfPreviewOutcome, t: T): string {
   if (outcome === 'create') return t('admin.firstRunSfOutcomeCreate');
   if (outcome === 'skip') return t('admin.firstRunSfOutcomeSkip');
+  if (outcome === 'defer') return t('admin.firstRunSfOutcomeDefer');
   if (outcome === 'error') return t('admin.firstRunSfOutcomeError');
   return t('admin.firstRunSfOutcomeUnknown');
 }
@@ -201,6 +219,7 @@ export function buildSupportFeeOpeningPreview(
   let debtCount = 0;
   let creditCount = 0;
   let zeroCount = 0;
+  let deferCount = 0;
   let debtSum = 0;
   let creditSum = 0;
   let createCount = 0;
@@ -213,11 +232,26 @@ export function buildSupportFeeOpeningPreview(
     const sectionCode = trim(row.section_code);
     const blockCode = trim(row.block_code);
     const billingYear = trim(row.billing_year);
-    const assessed = money(row.assessed_amount);
-    const paid = money(row.historically_paid_amount);
-    const remainingDebt = money(row.remaining_debt);
-    const overpayment = money(row.opening_overpayment);
-    const kind = balanceKind(remainingDebt, overpayment);
+    const assessed = moneyOrNull(row.assessed_amount);
+    const paid = moneyOrNull(row.historically_paid_amount);
+    const remainingDebt = moneyOrNull(row.remaining_debt);
+    const overpayment = moneyOrNull(row.opening_overpayment);
+    const amountsBlank =
+      assessed == null && paid == null && remainingDebt == null && overpayment == null;
+    // Skip fully blank Excel rows in the preview table.
+    if (
+      !apartment &&
+      !sectionCode &&
+      !blockCode &&
+      !billingYear &&
+      amountsBlank &&
+      !trim(row.transition_date) &&
+      !trim(row.source_reference) &&
+      !trim(row.notes)
+    ) {
+      return;
+    }
+    const kind = balanceKind(remainingDebt, overpayment, amountsBlank);
 
     const rpc =
       rpcByRow.get(excelRow) ??
@@ -259,21 +293,21 @@ export function buildSupportFeeOpeningPreview(
         errorText = uniqueErrs.map((e) => e.reason).join(' · ');
       }
     } else if (outcome === 'unknown' && !rpc) {
-      // No RPC hit and no error — still show as create candidate when dry-run ok path used file only
-      outcome = 'create';
+      outcome = amountsBlank && apartment ? 'defer' : 'create';
     }
 
     if (kind === 'debt') {
       debtCount += 1;
-      debtSum += remainingDebt;
+      debtSum += remainingDebt ?? 0;
     } else if (kind === 'credit') {
       creditCount += 1;
-      creditSum += overpayment;
-    } else {
+      creditSum += overpayment ?? 0;
+    } else if (kind === 'zero') {
       zeroCount += 1;
     }
     if (outcome === 'create') createCount += 1;
     else if (outcome === 'skip') skipCount += 1;
+    else if (outcome === 'defer') deferCount += 1;
     else if (outcome === 'error') errorCount += 1;
 
     items.push({
@@ -298,6 +332,7 @@ export function buildSupportFeeOpeningPreview(
     debtCount,
     creditCount,
     zeroCount,
+    deferCount,
     debtSum: Math.round(debtSum * 100) / 100,
     creditSum: Math.round(creditSum * 100) / 100,
     createCount,

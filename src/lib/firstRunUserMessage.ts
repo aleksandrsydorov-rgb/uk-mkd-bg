@@ -314,6 +314,9 @@ export function importReasonI18nKey(raw: string): string | null {
         obligation_type: 'importIssue_obligation_type_required',
         source_reference: 'importIssue_source_reference_required',
         transition_date: 'importIssue_transition_date_required',
+        assessed_amount: 'importIssue_assessed_amount_required',
+        historically_paid_amount: 'importIssue_historically_paid_required',
+        remaining_debt: 'importIssue_remaining_debt_required',
       };
       return soft[field] ? `admin.${soft[field]}` : null;
     }
@@ -370,6 +373,9 @@ export function importReasonI18nKey(raw: string): string | null {
         existing_opening_import_mismatch: 'importIssue_existing_opening_mismatch',
         existing_operational_charge: 'importIssue_existing_operational_charge',
         existing_opening_obligation: 'importIssue_existing_opening_obligation',
+        existing_obligation: 'importIssue_existing_opening_obligation',
+        existing_charge: 'importIssue_existing_operational_charge',
+        existing_opening_import: 'importIssue_existing_opening_mismatch',
       };
       return conf[field] ? `admin.${conf[field]}` : null;
     }
@@ -436,6 +442,7 @@ export function importReasonI18nKey(raw: string): string | null {
     inactive_with_active_paid_period: 'importIssue_inactive_with_active_paid_period',
     needs_initial_readings: 'importIssue_needs_initial_readings',
     needs_initial_internet_state: 'importIssue_needs_initial_internet_state',
+    can_enter_later: 'importIssue_can_enter_later',
     section_block_fields_swapped: 'importIssue_section_block_fields_swapped',
     section_code_looks_like_block_number: 'importIssue_section_code_looks_like_block_number',
   };

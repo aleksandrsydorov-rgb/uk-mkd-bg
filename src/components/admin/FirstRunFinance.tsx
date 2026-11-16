@@ -33,6 +33,7 @@ type OpeningDry = {
   rowCount: number;
   createCount: number;
   skippedExisting: number;
+  deferredCount?: number;
   debtSum: number;
   creditSum: number;
   /** Optional RPC dry-run row outcomes for preview. */
@@ -92,6 +93,9 @@ function OpeningStats({
       <Stat value={String(dry.rowCount)} label={t('admin.firstRunStatRows')} />
       <Stat value={String(dry.createCount)} label={t('admin.firstRunStatCreate')} />
       <Stat value={String(dry.skippedExisting)} label={t('admin.firstRunStatSkipped')} />
+      {(dry.deferredCount ?? 0) > 0 ? (
+        <Stat value={String(dry.deferredCount)} label={t('admin.firstRunSfStatDeferRows')} />
+      ) : null}
       {previewCounts ? (
         <>
           <Stat value={String(previewCounts.debtCount)} label={t('admin.firstRunSfStatDebtRows')} />
@@ -298,8 +302,12 @@ export function FirstRunSupportFee({
                             ) : null}
                           </td>
                           <td>{item.billingYear || '—'}</td>
-                          <td>{formatMeterMoney(item.assessed, locale)} €</td>
-                          <td>{formatMeterMoney(item.paid, locale)} €</td>
+                          <td>
+                            {item.assessed == null ? '—' : `${formatMeterMoney(item.assessed, locale)} €`}
+                          </td>
+                          <td>
+                            {item.paid == null ? '—' : `${formatMeterMoney(item.paid, locale)} €`}
+                          </td>
                           <td>{formatSfBalanceLabel(item, t, locale)}</td>
                           <td>{presentSfOutcome(item.outcome, t)}</td>
                         </tr>

@@ -173,6 +173,7 @@ type SfDryRun = {
   rowCount: number;
   createCount: number;
   skippedExisting: number;
+  deferredCount?: number;
   debtSum: number;
   creditSum: number;
   rpcRows?: unknown[];
@@ -1261,12 +1262,19 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         const o = asObj(r).outcome;
         return o === 'CREATE' || o === 'CREATED';
       }).length;
+      const deferredCount =
+        Number(res.deferred_count ?? 0) ||
+        rowsOut.filter((r) => {
+          const o = asObj(r).outcome;
+          return o === 'DEFER' || o === 'DEFERRED';
+        }).length;
       setSfDry({
         ok: res.ok === true && errors.length === 0,
         errors,
-        rowCount: parsed.rows.length,
+        rowCount: Number(res.row_count ?? parsed.rows.length) || parsed.rows.length,
         createCount,
         skippedExisting: Number(res.skipped_existing_count ?? 0) || 0,
+        deferredCount,
         debtSum: Number(reconcile.remaining_debt_sum ?? 0) || 0,
         creditSum: Number(reconcile.opening_overpayment_sum ?? 0) || 0,
         rpcRows: rowsOut,

@@ -231,6 +231,17 @@ export function AdminSupportFeeWorkplace({
   const [cardLedger, setCardLedger] = useState<SupportFeeEntry[]>([]);
   const [cardAlloc, setCardAlloc] = useState<Map<number, PaymentAllocationRow[]>>(new Map());
   const [cardLoading, setCardLoading] = useState(false);
+  const [openingPending, setOpeningPending] = useState(false);
+  const [openingFormOpen, setOpeningFormOpen] = useState(false);
+  const [openingConfirmBusy, setOpeningConfirmBusy] = useState(false);
+  const [openingYear, setOpeningYear] = useState('');
+  const [openingTransition, setOpeningTransition] = useState('');
+  const [openingSource, setOpeningSource] = useState('');
+  const [openingAssessed, setOpeningAssessed] = useState('');
+  const [openingPaid, setOpeningPaid] = useState('');
+  const [openingRemaining, setOpeningRemaining] = useState('');
+  const [openingOver, setOpeningOver] = useState('');
+  const openingIdemRef = useRef(crypto.randomUUID());
   const [payOpen, setPayOpen] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [payAmount, setPayAmount] = useState('');
@@ -385,19 +396,29 @@ export function AdminSupportFeeWorkplace({
   const loadCard = useCallback(async () => {
     if (propertyId === '') return;
     setCardLoading(true);
-    const { data, error: qErr } = await supabase
-      .from('support_fee_ledger')
-      .select('*')
-      .eq('property_id', Number(propertyId))
-      .order('created_at', { ascending: false })
-      .limit(300);
-    if (qErr) {
+    const pid = Number(propertyId);
+    const [ledgerRes, pendingRes] = await Promise.all([
+      supabase
+        .from('support_fee_ledger')
+        .select('*')
+        .eq('property_id', pid)
+        .order('created_at', { ascending: false })
+        .limit(300),
+      supabase
+        .from('support_fee_opening_pending' as never)
+        .select('id, billing_year, payload, status')
+        .eq('property_id', pid)
+        .eq('status', 'needs_initial')
+        .limit(1),
+    ]);
+    if (ledgerRes.error) {
       setCardLoading(false);
-      setError(toUserFacingMessage(qErr, t, { context: 'load', fallback: t('common.errLoad') }));
+      setError(toUserFacingMessage(ledgerRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
       setCardLedger([]);
+      setOpeningPending(false);
       return;
     }
-    const rows = (data as SupportFeeEntry[]) ?? [];
+    const rows = (ledgerRes.data as SupportFeeEntry[]) ?? [];
     setCardLedger(rows);
     setCardAlloc(
       await loadPaymentAllocations(
@@ -405,6 +426,25 @@ export function AdminSupportFeeWorkplace({
         rows.filter((r) => r.kind === 'payment').map((r) => r.id),
       ),
     );
+    const pendingRows = Array.isArray(pendingRes.data) ? pendingRes.data : [];
+    const hasPending = pendingRows.length > 0 && !pendingRes.error;
+    setOpeningPending(hasPending);
+    if (hasPending) {
+      const prow = pendingRows[0] as {
+        billing_year?: number | null;
+        payload?: Record<string, unknown> | null;
+      };
+      setOpeningYear((prev) => (prev ? prev : prow.billing_year != null ? String(prow.billing_year) : ''));
+      const payload = prow.payload ?? {};
+      setOpeningTransition((prev) =>
+        prev ? prev : payload.transition_date ? String(payload.transition_date).slice(0, 10) : '',
+      );
+      setOpeningSource((prev) =>
+        prev ? prev : payload.source_reference ? String(payload.source_reference) : '',
+      );
+    } else {
+      setOpeningFormOpen(false);
+    }
     setCardLoading(false);
   }, [propertyId, supabase, t]);
 
@@ -672,6 +712,81 @@ export function AdminSupportFeeWorkplace({
     } finally {
       setWaiveBusyId(null);
     }
+  }
+
+  async function handleConfirmSupportFeeOpening(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canPay || propertyId === '' || openingConfirmBusy || !openingPending) return;
+    const year = Number(openingYear);
+    const assessed = Number(String(openingAssessed).replace(',', '.'));
+    const paid = Number(String(openingPaid).replace(',', '.'));
+    const remaining = Number(String(openingRemaining).replace(',', '.'));
+    const overRaw = String(openingOver).trim();
+    const over = overRaw ? Number(overRaw.replace(',', '.')) : 0;
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      setError(t('admin.importIssue_billing_year_invalid'));
+      return;
+    }
+    if (!openingTransition.trim()) {
+      setError(t('admin.importIssue_transition_date_required'));
+      return;
+    }
+    if (!openingSource.trim()) {
+      setError(t('admin.importIssue_source_reference_required'));
+      return;
+    }
+    if (![assessed, paid, remaining, over].every((n) => Number.isFinite(n) && n >= 0)) {
+      setError(t('admin.importIssue_assessed_amount_invalid'));
+      return;
+    }
+    if (Math.round((assessed - paid - remaining) * 100) !== 0) {
+      setError(t('admin.importIssue_amounts_inconsistent'));
+      return;
+    }
+    if (remaining > 0 && over > 0) {
+      setError(t('admin.importIssue_debt_credit_xor'));
+      return;
+    }
+    setOpeningConfirmBusy(true);
+    setError(null);
+    setSuccess(null);
+    const { data, error: rpcErr } = await supabase.rpc('admin_confirm_support_fee_opening' as never, {
+      p_property_id: Number(propertyId),
+      p_billing_year: year,
+      p_assessed_amount: assessed,
+      p_historically_paid_amount: paid,
+      p_remaining_debt: remaining,
+      p_opening_overpayment: over,
+      p_transition_date: openingTransition.trim(),
+      p_source_reference: openingSource.trim(),
+      p_notes: null,
+      p_idempotency_key: openingIdemRef.current,
+    } as never);
+    setOpeningConfirmBusy(false);
+    if (rpcErr) {
+      const msg = String(rpcErr.message ?? '');
+      if (/conflict:existing_obligation|conflict:existing_charge|conflict:existing_opening/i.test(msg)) {
+        setError(t('admin.feeOpeningConflictYear', { year: String(year) }));
+      } else if (/already_confirmed|SKIPPED_EXISTING/i.test(msg)) {
+        setSuccess(t('admin.feeOpeningAlreadyConfirmed'));
+        setOpeningPending(false);
+        setOpeningFormOpen(false);
+      } else {
+        setError(toUserFacingMessage(rpcErr, t, { context: 'finance', fallback: t('common.errFinance') }));
+      }
+      openingIdemRef.current = crypto.randomUUID();
+      return;
+    }
+    const res = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    if (res.idempotent === true || res.outcome === 'SKIPPED_EXISTING') {
+      setSuccess(t('admin.feeOpeningAlreadyConfirmed'));
+    } else {
+      setSuccess(t('common.saved'));
+    }
+    setOpeningPending(false);
+    setOpeningFormOpen(false);
+    openingIdemRef.current = crypto.randomUUID();
+    await reloadAll();
   }
 
   async function handlePay(e: React.FormEvent) {
@@ -1596,6 +1711,140 @@ export function AdminSupportFeeWorkplace({
         </div>
 
         {alerts}
+
+        {openingPending ? (
+          <div className={cardClass} data-support-fee-opening-pending="1">
+            <AdminInlineAlert tone="warning">
+              {t('admin.openingStatus_needs_initial_support_fee')}
+            </AdminInlineAlert>
+            {!openingFormOpen ? (
+              <div className="mt-3">
+                <AdminPrimaryButton
+                  type="button"
+                  disabled={!canPay}
+                  onClick={() => setOpeningFormOpen(true)}
+                  data-testid="sf-enter-opening"
+                >
+                  {t('admin.feeEnterOpeningBalance')}
+                </AdminPrimaryButton>
+              </div>
+            ) : (
+              <form onSubmit={handleConfirmSupportFeeOpening} className="mt-4 space-y-3">
+                <p className="text-sm font-medium text-foreground">{t('admin.feeOpeningConfirmTitle')}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs text-secondary">
+                    {t('admin.firstRunSfColYear')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="number"
+                      min={2000}
+                      max={2100}
+                      value={openingYear}
+                      onChange={(e) => setOpeningYear(e.target.value)}
+                      required
+                      data-testid="sf-opening-year"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary">
+                    {t('admin.feeOpeningTransitionDate')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="date"
+                      value={openingTransition}
+                      onChange={(e) => setOpeningTransition(e.target.value)}
+                      required
+                      data-testid="sf-opening-transition"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary sm:col-span-2">
+                    {t('admin.feeOpeningSourceRef')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      value={openingSource}
+                      onChange={(e) => setOpeningSource(e.target.value)}
+                      required
+                      data-testid="sf-opening-source"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary">
+                    {t('admin.firstRunSfColAssessed')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={openingAssessed}
+                      onChange={(e) => setOpeningAssessed(e.target.value)}
+                      required
+                      data-testid="sf-opening-assessed"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary">
+                    {t('admin.firstRunSfColPaid')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={openingPaid}
+                      onChange={(e) => setOpeningPaid(e.target.value)}
+                      required
+                      data-testid="sf-opening-paid"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary">
+                    {t('admin.feeOpeningRemainingDebt')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={openingRemaining}
+                      onChange={(e) => setOpeningRemaining(e.target.value)}
+                      required
+                      data-testid="sf-opening-remaining"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary">
+                    {t('admin.feeOpeningOverpayment')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={openingOver}
+                      onChange={(e) => setOpeningOver(e.target.value)}
+                      data-testid="sf-opening-over"
+                    />
+                  </label>
+                </div>
+                {(() => {
+                  const rem = Number(String(openingRemaining).replace(',', '.'));
+                  const ov = Number(String(openingOver || '0').replace(',', '.'));
+                  if (!Number.isFinite(rem) || !Number.isFinite(ov)) return null;
+                  const preview =
+                    rem > 0
+                      ? t('admin.feeOpeningPreviewDebt', { amount: formatEurAmount(rem, locale).replace(/\s*€$/, '').trim() })
+                      : ov > 0
+                        ? t('admin.feeOpeningPreviewCredit', {
+                            amount: formatEurAmount(ov, locale).replace(/\s*€$/, '').trim(),
+                          })
+                        : t('admin.feeOpeningPreviewZero');
+                  return <p className="text-sm font-medium text-foreground">{preview}</p>;
+                })()}
+                <div className="flex flex-wrap gap-2">
+                  <AdminPrimaryButton
+                    type="submit"
+                    disabled={openingConfirmBusy || !canPay}
+                    data-testid="sf-opening-confirm"
+                  >
+                    {openingConfirmBusy ? t('common.saving') : t('admin.feeOpeningConfirmSubmit')}
+                  </AdminPrimaryButton>
+                  <AdminSecondaryButton type="button" onClick={() => setOpeningFormOpen(false)}>
+                    {t('common.cancel')}
+                  </AdminSecondaryButton>
+                </div>
+              </form>
+            )}
+          </div>
+        ) : null}
 
         {/* Outstanding breakdown */}
         <div className={cardClass} data-support-fee-breakdown="1">

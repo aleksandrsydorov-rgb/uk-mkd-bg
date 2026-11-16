@@ -107,23 +107,58 @@ export function scopeKey(propertyId: number, billingYear: number): string {
   return `${propertyId}|${billingYear}`;
 }
 
+/** True when assessed/paid/remaining/over are all blank (soft-defer candidate). */
+export function supportFeeOpeningAmountsBlank(row: Record<string, string>): boolean {
+  return (
+    !String(row.assessed_amount ?? '').trim() &&
+    !String(row.historically_paid_amount ?? '').trim() &&
+    !String(row.remaining_debt ?? '').trim() &&
+    !String(row.opening_overpayment ?? '').trim()
+  );
+}
+
 export function validateSupportFeeOpeningRow(row: Record<string, string>): string[] {
   const errors: string[] = [];
   if (!row.apartment_number?.trim()) errors.push('required:apartment_number');
-  const year = parseBillingYear(row.billing_year);
-  if (year == null) errors.push('invalid:billing_year');
-  const obl = String(row.obligation_type ?? '')
-    .trim()
-    .toLowerCase();
-  if (!obl) errors.push('required:obligation_type');
-  else if (obl !== SUPPORT_FEE_OBLIGATION_TYPE) errors.push('unsupported:obligation_type');
 
+  const oblRaw = String(row.obligation_type ?? '').trim();
+  const obl = oblRaw.toLowerCase();
+  if (oblRaw && obl !== SUPPORT_FEE_OBLIGATION_TYPE) errors.push('unsupported:obligation_type');
+
+  const amountsBlank = supportFeeOpeningAmountsBlank(row);
+  const yearRaw = String(row.billing_year ?? '').trim();
+  const year = parseBillingYear(row.billing_year);
+
+  if (amountsBlank) {
+    // Soft-defer: apartment only required; year optional but must be valid if present.
+    if (yearRaw && year == null) errors.push('invalid:billing_year');
+    const tdRaw = String(row.transition_date ?? '').trim();
+    if (tdRaw) {
+      const td = parseTransitionDate(row.transition_date);
+      if (!td.ok) errors.push(td.error);
+    }
+    if (Object.prototype.hasOwnProperty.call(row, 'property_id') && String(row.property_id ?? '').trim()) {
+      errors.push('untrusted_property_id');
+    }
+    return errors;
+  }
+
+  if (year == null) errors.push('invalid:billing_year');
+  if (!obl) errors.push('required:obligation_type');
+
+  const assessedRaw = String(row.assessed_amount ?? '').trim();
+  const paidRaw = String(row.historically_paid_amount ?? '').trim();
+  const remainingRaw = String(row.remaining_debt ?? '').trim();
   const assessed = parseNonNegMoney(row.assessed_amount);
   const paid = parseNonNegMoney(row.historically_paid_amount);
   const remaining = parseNonNegMoney(row.remaining_debt);
-  if (assessed == null) errors.push('invalid:assessed_amount');
-  if (paid == null) errors.push('invalid:historically_paid_amount');
-  if (remaining == null) errors.push('invalid:remaining_debt');
+
+  if (!assessedRaw) errors.push('required:assessed_amount');
+  else if (assessed == null) errors.push('invalid:assessed_amount');
+  if (!paidRaw) errors.push('required:historically_paid_amount');
+  else if (paid == null) errors.push('invalid:historically_paid_amount');
+  if (!remainingRaw) errors.push('required:remaining_debt');
+  else if (remaining == null) errors.push('invalid:remaining_debt');
   if (assessed != null && paid != null && remaining != null) {
     if (roundMoney(assessed) !== roundMoney(paid + remaining)) {
       errors.push('inconsistent:assessed_ne_paid_plus_remaining');
@@ -217,8 +252,23 @@ export function classifySupportFeeOpeningRows(
 
     let operation: ImportRowOperation = 'error';
     let previewClass = 'ERROR';
+    const amountsBlank = supportFeeOpeningAmountsBlank(raw);
 
-    if (errors.length === 0 && propertyId != null && year != null && assessed != null && paid != null && remaining != null) {
+    if (errors.length === 0 && propertyId != null && amountsBlank) {
+      // Soft-defer when apartment resolved and amounts omitted.
+      const priorForYear =
+        year != null ? ctx.openingImportsByScope.get(scopeKey(propertyId, year)) : undefined;
+      const priorAny =
+        priorForYear ??
+        [...ctx.openingImportsByScope.entries()].find(([k]) => k.startsWith(`${propertyId}|`))?.[1];
+      if (priorAny) {
+        operation = 'skip';
+        previewClass = 'SKIP';
+      } else {
+        operation = 'create';
+        previewClass = 'DEFER';
+      }
+    } else if (errors.length === 0 && propertyId != null && year != null && assessed != null && paid != null && remaining != null) {
       const sk = scopeKey(propertyId, year);
       const existing = ctx.existingByScope.get(sk);
       const priorOpening = ctx.openingImportsByScope.get(sk);

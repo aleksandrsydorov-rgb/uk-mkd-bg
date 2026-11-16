@@ -4505,7 +4505,7 @@ function AdminPortal() {
                   {elNeedsInitial ? (
                     <div className="mt-3">
                       <AdminInlineAlert tone="warning">
-                        {t('openingStatus_needs_initial_readings')}
+                        {t('admin.openingStatus_needs_initial_readings')}
                       </AdminInlineAlert>
                     </div>
                   ) : null}
@@ -4514,7 +4514,7 @@ function AdminPortal() {
                       <AdminEmptyState
                         title={
                           elNeedsInitial
-                            ? t('openingStatus_needs_initial_readings')
+                            ? t('admin.openingStatus_needs_initial_readings')
                             : t('admin.noElectricityMeter')
                         }
                       />

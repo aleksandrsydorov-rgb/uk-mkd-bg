@@ -584,7 +584,7 @@ export function AdminInternet({
                   return needsInitial ? (
                     <>
                       <AdminInlineAlert tone="warning">
-                        {t('openingStatus_needs_initial_internet')}
+                        {t('admin.openingStatus_needs_initial_internet')}
                       </AdminInlineAlert>
                       <form onSubmit={handleConfirmInternetOpening} className="mt-2 grid gap-3 sm:grid-cols-2">
                         <label className="grid gap-1">

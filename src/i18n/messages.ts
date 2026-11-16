@@ -3944,6 +3944,57 @@ export const ru = {
       'В колонке «Секция» указан номер, похожий на блок. Секция — буква входа (например Б), номер блока — в колонке «Блок».',
     openingStatus_needs_initial_readings: 'Нужно внести начальные показания',
     openingStatus_needs_initial_internet: 'Нужно указать начальное состояние интернета',
+    firstRunMetersNeedsInitialTitle: 'Импорт можно продолжить',
+    firstRunMetersNeedsInitialDetail_one:
+      'Для {n} квартиры нужно дополнить начальные данные. Их можно внести позже в карточке квартиры.',
+    firstRunMetersNeedsInitialDetail_few:
+      'Для {n} квартир нужно дополнить начальные данные. Их можно внести позже в карточке квартиры.',
+    firstRunMetersNeedsInitialDetail_many:
+      'Для {n} квартир нужно дополнить начальные данные. Их можно внести позже в карточке квартиры.',
+    firstRunMetersReadyTitle: 'Файл готов к импорту',
+    firstRunMetersReadySummary:
+      'Файл готов к импорту. У {completeLabel} начальные данные заполнены. По {deferredLabel} нужно дополнить данные. Это можно сделать после импорта в карточках квартир.',
+    firstRunMetersReadyAllComplete:
+      'Файл готов к импорту. У {completeLabel} начальные данные заполнены.',
+    firstRunMetersReadyMetersNote:
+      'Счётчики: заполнено {completeMeters}, нужно дополнить {deferredMeters}.',
+    firstRunMetersAptCountU_one: '{n} квартиры',
+    firstRunMetersAptCountU_few: '{n} квартир',
+    firstRunMetersAptCountU_many: '{n} квартир',
+    firstRunMetersAptCountPo_one: '{n} квартире',
+    firstRunMetersAptCountPo_few: '{n} квартирам',
+    firstRunMetersAptCountPo_many: '{n} квартирам',
+    firstRunMetersClarifyTitle: 'Можно дополнить после импорта',
+    firstRunMetersClarifyHint:
+      'Эти строки будут импортированы. Недостающие данные можно внести позже в карточке квартиры и подтвердить.',
+    firstRunMetersClarifyAptHeading: 'Квартира №{apt}',
+    firstRunMetersClarifyMissingMeter: 'Не указан номер счётчика.',
+    firstRunMetersClarifyMissingReading: 'Не указано начальное показание.',
+    firstRunMetersClarifyMissingMeterAndReading:
+      'Не указаны номер счётчика и начальное показание.',
+    firstRunMetersClarifyKeepReadingAddMeter:
+      'Начальное показание {reading} м³ будет сохранено. Номер счётчика можно добавить позже.',
+    firstRunMetersClarifyMissingDay: 'Не указано дневное начальное показание.',
+    firstRunMetersClarifyMissingNight: 'Не указано ночное начальное показание.',
+    firstRunMetersClarifyMissingDayAndNight:
+      'Не указаны дневное и ночное начальные показания.',
+    firstRunMetersClarifyMissingMeterAndZones:
+      'Не указаны номер счётчика и начальные показания (день/ночь).',
+    firstRunMetersClarifyKeepZonesAddMeter:
+      'Показания день {day} / ночь {night} будут сохранены. Номер счётчика можно добавить позже.',
+    firstRunMetersStatApartments: 'Квартиры',
+    firstRunMetersStatComplete: 'Заполнено',
+    firstRunMetersStatClarify: 'Дополнить',
+    firstRunMetersStatMeters: 'Счётчики',
+    firstRunMetersBlockingTitle: 'Импорт сейчас недоступен',
+    firstRunMetersBlockingDetail:
+      'Исправьте ошибки в файле и загрузите его снова. Уточнения без блокировки не мешают импорту.',
+    firstRunMetersImportOkDeferredDetail:
+      'Данные сохранены. По {deferredLabel} начальные данные ещё нужно дополнить и подтвердить в карточках квартир.',
+    firstRunInternetClarifyTitle: 'Можно дополнить после импорта',
+    firstRunInternetReadySummary:
+      'Файл готов к импорту. У {completeLabel} начальное состояние указано. По {deferredLabel} нужно указать начальное состояние интернета. Это можно сделать после импорта в карточках квартир.',
+    firstRunMetersErrorWhere: '(кв. {apt}, вход {section}, строка {row}, колонка «{field}»)',
     propertyIdentity_format_hint:
       'Апартамент — номер, например 2. Секция — буква входа, например Б. Блок — номер блока, например 3. Ключ сопоставления — все три поля.',
     bookImport_overwrite_required: 'Данные отличаются от уже сохранённых — подтвердите перезапись',
@@ -9334,6 +9385,55 @@ export const en: Messages = {
       'The Section column looks like a block number. Section is the entrance letter (e.g. B); block number goes in Block.',
     openingStatus_needs_initial_readings: 'Needs initial readings',
     openingStatus_needs_initial_internet: 'Needs initial internet state',
+    firstRunMetersNeedsInitialTitle: 'Import can continue',
+    firstRunMetersNeedsInitialDetail_one:
+      'For {n} apartment initial data needs to be completed. It can be entered later in the apartment card.',
+    firstRunMetersNeedsInitialDetail_few:
+      'For {n} apartments initial data needs to be completed. It can be entered later in the apartment card.',
+    firstRunMetersNeedsInitialDetail_many:
+      'For {n} apartments initial data needs to be completed. It can be entered later in the apartment card.',
+    firstRunMetersReadyTitle: 'File is ready to import',
+    firstRunMetersReadySummary:
+      'File is ready to import. {completeLabel} have initial data filled in. {deferredLabel} still need data completed. This can be done after import in the apartment cards.',
+    firstRunMetersReadyAllComplete:
+      'File is ready to import. {completeLabel} have initial data filled in.',
+    firstRunMetersReadyMetersNote:
+      'Meters: complete {completeMeters}, need completion {deferredMeters}.',
+    firstRunMetersAptCountU_one: '{n} apartment',
+    firstRunMetersAptCountU_few: '{n} apartments',
+    firstRunMetersAptCountU_many: '{n} apartments',
+    firstRunMetersAptCountPo_one: '{n} apartment',
+    firstRunMetersAptCountPo_few: '{n} apartments',
+    firstRunMetersAptCountPo_many: '{n} apartments',
+    firstRunMetersClarifyTitle: 'Can be completed after import',
+    firstRunMetersClarifyHint:
+      'These rows will still import. Missing data can be entered later in the apartment card and confirmed.',
+    firstRunMetersClarifyAptHeading: 'Apartment №{apt}',
+    firstRunMetersClarifyMissingMeter: 'Meter number is missing.',
+    firstRunMetersClarifyMissingReading: 'Opening reading is missing.',
+    firstRunMetersClarifyMissingMeterAndReading: 'Meter number and opening reading are missing.',
+    firstRunMetersClarifyKeepReadingAddMeter:
+      'Opening reading {reading} m³ will be kept. The meter number can be added later.',
+    firstRunMetersClarifyMissingDay: 'Day opening reading is missing.',
+    firstRunMetersClarifyMissingNight: 'Night opening reading is missing.',
+    firstRunMetersClarifyMissingDayAndNight: 'Day and night opening readings are missing.',
+    firstRunMetersClarifyMissingMeterAndZones:
+      'Meter number and day/night opening readings are missing.',
+    firstRunMetersClarifyKeepZonesAddMeter:
+      'Day {day} / night {night} readings will be kept. The meter number can be added later.',
+    firstRunMetersStatApartments: 'Apartments',
+    firstRunMetersStatComplete: 'Complete',
+    firstRunMetersStatClarify: 'To complete',
+    firstRunMetersStatMeters: 'Meters',
+    firstRunMetersBlockingTitle: 'Import is unavailable right now',
+    firstRunMetersBlockingDetail:
+      'Fix the errors in the file and upload it again. Non-blocking clarifications do not disable Import.',
+    firstRunMetersImportOkDeferredDetail:
+      'Data saved. {deferredLabel} still need initial data completed and confirmed in apartment cards.',
+    firstRunInternetClarifyTitle: 'Can be completed after import',
+    firstRunInternetReadySummary:
+      'File is ready to import. {completeLabel} have an initial state. {deferredLabel} still need an initial internet state. This can be done after import in the apartment cards.',
+    firstRunMetersErrorWhere: '(apt. {apt}, entrance {section}, row {row}, column “{field}”)',
     propertyIdentity_format_hint:
       'Apartment — number, e.g. 2. Section — entrance letter, e.g. B. Block — block number, e.g. 3. Match key is all three fields.',
     bookImport_overwrite_required: 'Data differs from what is already saved — confirm overwrite',
@@ -14733,6 +14833,57 @@ export const bg: Messages = {
       'В колоната «Секция» е посочен номер, приличащ на блок. Секцията е буква на входа (напр. Б), номер на блок — в колоната «Блок».',
     openingStatus_needs_initial_readings: 'Трябва да се въведат начални показания',
     openingStatus_needs_initial_internet: 'Трябва да се посочи начално състояние на интернета',
+    firstRunMetersNeedsInitialTitle: 'Внасянето може да продължи',
+    firstRunMetersNeedsInitialDetail_one:
+      'За {n} апартамент е необходимо да се допълнят началните данни. Те могат да бъдат въведени по-късно в картата на апартамента.',
+    firstRunMetersNeedsInitialDetail_few:
+      'За {n} апартамента е необходимо да се допълнят началните данни. Те могат да бъдат въведени по-късно в картата на апартамента.',
+    firstRunMetersNeedsInitialDetail_many:
+      'За {n} апартамента е необходимо да се допълнят началните данни. Те могат да бъдат въведени по-късно в картата на апартамента.',
+    firstRunMetersReadyTitle: 'Файлът е готов за импорт',
+    firstRunMetersReadySummary:
+      'Файлът е готов за импорт. При {completeLabel} началните данни са попълнени. За {deferredLabel} трябва да се допълнят данни. Това може да стане след импорта в картите на апартаментите.',
+    firstRunMetersReadyAllComplete:
+      'Файлът е готов за импорт. При {completeLabel} началните данни са попълнени.',
+    firstRunMetersReadyMetersNote:
+      'Уреди: попълнени {completeMeters}, за допълване {deferredMeters}.',
+    firstRunMetersAptCountU_one: '{n} апартамент',
+    firstRunMetersAptCountU_few: '{n} апартамента',
+    firstRunMetersAptCountU_many: '{n} апартамента',
+    firstRunMetersAptCountPo_one: '{n} апартамент',
+    firstRunMetersAptCountPo_few: '{n} апартамента',
+    firstRunMetersAptCountPo_many: '{n} апартамента',
+    firstRunMetersClarifyTitle: 'Може да се допълни след импорта',
+    firstRunMetersClarifyHint:
+      'Тези редове ще бъдат импортирани. Липсващите данни могат да се въведат по-късно в картата на апартамента и да се потвърдят.',
+    firstRunMetersClarifyAptHeading: 'Апартамент №{apt}',
+    firstRunMetersClarifyMissingMeter: 'Не е посочен номер на уреда.',
+    firstRunMetersClarifyMissingReading: 'Не е посочено начално показание.',
+    firstRunMetersClarifyMissingMeterAndReading:
+      'Не са посочени номер на уреда и начално показание.',
+    firstRunMetersClarifyKeepReadingAddMeter:
+      'Началното показание {reading} м³ ще бъде запазено. Номерът на уреда може да се добави по-късно.',
+    firstRunMetersClarifyMissingDay: 'Не е посочено дневно начално показание.',
+    firstRunMetersClarifyMissingNight: 'Не е посочено нощно начално показание.',
+    firstRunMetersClarifyMissingDayAndNight:
+      'Не са посочени дневно и нощно начални показания.',
+    firstRunMetersClarifyMissingMeterAndZones:
+      'Не са посочени номер на уреда и начални показания (ден/нощ).',
+    firstRunMetersClarifyKeepZonesAddMeter:
+      'Показания ден {day} / нощ {night} ще бъдат запазени. Номерът на уреда може да се добави по-късно.',
+    firstRunMetersStatApartments: 'Апартаменти',
+    firstRunMetersStatComplete: 'Попълнени',
+    firstRunMetersStatClarify: 'За допълване',
+    firstRunMetersStatMeters: 'Уреди',
+    firstRunMetersBlockingTitle: 'Импортът в момента е недостъпен',
+    firstRunMetersBlockingDetail:
+      'Поправете грешките във файла и го качете отново. Неблокиращите уточнения не изключват бутона «Импортирай».',
+    firstRunMetersImportOkDeferredDetail:
+      'Данните са записани. За {deferredLabel} началните данни още трябва да се допълнят и потвърдят в картите на апартаментите.',
+    firstRunInternetClarifyTitle: 'Може да се допълни след импорта',
+    firstRunInternetReadySummary:
+      'Файлът е готов за импорт. При {completeLabel} началното състояние е посочено. За {deferredLabel} трябва да се посочи начално състояние на интернета. Това може да стане след импорта в картите на апартаментите.',
+    firstRunMetersErrorWhere: '(ап. {apt}, вход {section}, ред {row}, колона «{field}»)',
     propertyIdentity_format_hint:
       'Апартамент — номер, напр. 2. Секция — буква на входа, напр. Б. Блок — номер на блок, напр. 3. Ключ за съпоставяне — и трите полета.',
     bookImport_overwrite_required: 'Данните се различават от вече записаните — потвърдете презапис',

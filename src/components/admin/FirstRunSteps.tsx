@@ -45,6 +45,14 @@ import {
   summarizeMeterOpeningBalances,
 } from '@/lib/firstRunMetersPreview';
 import {
+  buildMetersOpeningClarify,
+  formatAptCountAfterPo,
+  formatMeterClarifyHeading,
+  formatMeterEntranceGroupTitle,
+  presentMeterClarifyMessage,
+  presentMetersReadySummary,
+} from '@/lib/firstRunMetersImportPreview';
+import {
   apartmentsWithOwnersCount,
   buildBookPreviewIssues,
   buildBookSectionBreakdown,
@@ -1011,6 +1019,9 @@ export function FirstRunMetersImport({
     isFirstRunTariffPrepared(tariffKey, tariffPrep ?? {}),
   );
   const showImportForm = openingUnlocked || committed;
+  const clarify = rows && rows.length > 0 ? buildMetersOpeningClarify(utility, rows) : null;
+  const deferredApartments = clarify?.deferredApartments ?? dry?.deferredCount ?? 0;
+  const readyDetail = clarify ? presentMetersReadySummary(clarify, t, locale) : null;
   return (
     <FirstRunScreen icon={Icon} iconClass={iconClass} title={title} lead={t('admin.firstRunMetersLead')} busy={busy}>
       <FirstRunStatusStack>
@@ -1021,33 +1032,32 @@ export function FirstRunMetersImport({
           <FirstRunStatusBanner
             tone="success"
             title={t('admin.firstRunMetersImportOkTitle')}
-            detail={t('admin.firstRunMetersImportOkDetail')}
+            detail={
+              deferredApartments > 0
+                ? t('admin.firstRunMetersImportOkDeferredDetail', {
+                    deferredLabel: formatAptCountAfterPo(deferredApartments, t, locale),
+                  })
+                : t('admin.firstRunMetersImportOkDetail')
+            }
           />
         ) : null}
         {!committed && dry?.ok ? (
           <FirstRunStatusBanner
             tone="success"
-            title={t('admin.firstRunMetersCheckOkTitle')}
-            detail={t('admin.firstRunMetersDryRunOk')
-              .replace('{rows}', String(dry.rowCount))
-              .replace('{skipped}', String(dry.skippedExisting))}
-          />
-        ) : null}
-        {!committed && dry?.ok && (dry.deferredCount ?? 0) > 0 ? (
-          <FirstRunStatusBanner
-            tone="warning"
-            title={t('openingStatus_needs_initial_readings')}
-            detail={t('importIssue_needs_initial_readings').replace(
-              '{n}',
-              String(dry.deferredCount),
-            )}
+            title={t('admin.firstRunMetersReadyTitle')}
+            detail={
+              readyDetail ??
+              t('admin.firstRunMetersDryRunOk')
+                .replace('{rows}', String(dry.rowCount))
+                .replace('{skipped}', String(dry.skippedExisting))
+            }
           />
         ) : null}
         {!committed && dry && !dry.ok ? (
           <FirstRunStatusBanner
             tone="error"
-            title={t('admin.firstRunMetersCheckFailTitle')}
-            detail={t('admin.firstRunMetersDryRunErrors').replace('{n}', String(errorRows.length))}
+            title={t('admin.firstRunMetersBlockingTitle')}
+            detail={t('admin.firstRunMetersBlockingDetail')}
           />
         ) : null}
         {committed && !openingUnlocked ? (
@@ -1102,7 +1112,19 @@ export function FirstRunMetersImport({
           {dry && !committed ? (
             <>
               <div className={styles.stats}>
-                <Stat value={String(dry.rowCount)} label={t('admin.firstRunMetersStatRows')} />
+                <Stat
+                  value={String(clarify?.apartmentCount ?? dry.rowCount)}
+                  label={t('admin.firstRunMetersStatApartments')}
+                />
+                <Stat
+                  value={String(clarify?.completeApartments ?? Math.max(0, dry.rowCount - (dry.deferredCount ?? 0)))}
+                  label={t('admin.firstRunMetersStatComplete')}
+                />
+                <Stat
+                  value={String(clarify?.deferredApartments ?? dry.deferredCount ?? 0)}
+                  label={t('admin.firstRunMetersStatClarify')}
+                />
+                <Stat value={String(dry.rowCount)} label={t('admin.firstRunMetersStatMeters')} />
                 <Stat value={String(dry.skippedExisting)} label={t('admin.firstRunMetersStatSkipped')} />
                 {openingTotals ? (
                   <>
@@ -1124,10 +1146,52 @@ export function FirstRunMetersImport({
           ) : (
             <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
           )}
+          {dry?.ok && clarify && clarify.groups.length > 0 && !committed ? (
+            <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+              <p className={styles.importLabel}>{t('admin.firstRunMetersClarifyTitle')}</p>
+              <p className={styles.hint}>{t('admin.firstRunMetersClarifyHint')}</p>
+              <div style={{ marginTop: 8 }}>
+                {clarify.groups.map((group) => (
+                  <div key={`meter-g-${group.key}`} style={{ marginBottom: 12 }}>
+                    <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
+                      {formatMeterEntranceGroupTitle(group, t)}
+                    </p>
+                    <ul className={styles.hint} style={{ margin: 0, paddingLeft: 18 }}>
+                      {group.items.map((item, idx) => (
+                        <li
+                          key={`meter-c-${item.key}-${item.kind}-${idx}`}
+                          style={{
+                            marginBottom: 8,
+                            padding: '8px 10px',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: 8,
+                            background: '#fff',
+                            listStyle: 'none',
+                            marginLeft: -18,
+                          }}
+                        >
+                          <p style={{ margin: '0 0 4px', fontWeight: 600 }}>
+                            {formatMeterClarifyHeading(item, t)}
+                            {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                          </p>
+                          <div>{presentMeterClarifyMessage(item, t)}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {rows && rows.length > 0 && !committed ? (
             <FirstRunMetersPreviewTable utility={utility} rows={rows} t={t} locale={locale} />
           ) : null}
           <div style={{ marginTop: 8 }}>
+            {!dry?.ok && errorRows.length > 0 ? (
+              <p className={styles.hint} style={{ marginBottom: 8 }}>
+                {t('admin.firstRunMetersBlockingDetail')}
+              </p>
+            ) : null}
             <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
           </div>
         </div>

@@ -26,6 +26,13 @@ import {
   presentInternetImportOutcome,
   presentInternetImportWarning,
 } from '@/lib/firstRunUserMessage';
+import {
+  buildInternetOpeningClarify,
+  formatMeterClarifyHeading,
+  formatMeterEntranceGroupTitle,
+  presentInternetReadySummary,
+  presentMeterClarifyMessage,
+} from '@/lib/firstRunMetersImportPreview';
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
   downloadInternetIs5Template,
@@ -131,6 +138,7 @@ export function AdminFirstRunInternetOpening({
   onNavHandle?: (handle: FirstRunInternetNavHandle | null) => void;
 }) {
   const { locale } = useI18n();
+  // locale used for ready-summary plural forms
   const savedNone = useMemo(() => {
     const raw = String(draft.internet_opening_none ?? '')
       .trim()
@@ -424,9 +432,27 @@ export function AdminFirstRunInternetOpening({
             detail={t('admin.firstRunImportSavedContinue')}
           />
         ) : null}
-        {!committed && noteKey ? <FirstRunStatusBanner tone="success" title={t(noteKey)} /> : null}
+        {!committed && noteKey && !dryOk ? (
+          <FirstRunStatusBanner tone="success" title={t(noteKey)} />
+        ) : null}
         {!committed && dryOk ? (
-          <FirstRunStatusBanner tone="success" title={t('admin.firstRunOpeningCheckOkTitle')} />
+          <FirstRunStatusBanner
+            tone="success"
+            title={t('admin.firstRunMetersReadyTitle')}
+            detail={
+              previewPayload
+                ? presentInternetReadySummary(
+                    buildInternetOpeningClarify(
+                      Array.isArray(previewPayload.rows)
+                        ? (previewPayload.rows as Record<string, unknown>[])
+                        : [],
+                    ),
+                    t,
+                    locale,
+                  )
+                : undefined
+            }
+          />
         ) : null}
         {!committed && rows && !dryOk ? (
           <FirstRunStatusBanner
@@ -434,7 +460,10 @@ export function AdminFirstRunInternetOpening({
             title={
               needsCorrectionConfirm
                 ? t('admin.firstRunInternetCorrectionPendingTitle')
-                : t('admin.firstRunOpeningCheckFailTitle')
+                : t('admin.firstRunMetersBlockingTitle')
+            }
+            detail={
+              needsCorrectionConfirm ? undefined : t('admin.firstRunMetersBlockingDetail')
             }
           />
         ) : null}
@@ -536,6 +565,53 @@ export function AdminFirstRunInternetOpening({
                   ) : !committed ? (
                     <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
                   ) : null}
+                  {dryOk && previewPayload && !committed
+                    ? (() => {
+                        const clarify = buildInternetOpeningClarify(
+                          Array.isArray(previewPayload.rows)
+                            ? (previewPayload.rows as Record<string, unknown>[])
+                            : [],
+                        );
+                        if (clarify.groups.length === 0) return null;
+                        return (
+                          <div className={styles.tableWrap} style={{ marginTop: 12 }}>
+                            <p className={styles.importLabel}>{t('admin.firstRunInternetClarifyTitle')}</p>
+                            <p className={styles.hint}>{t('admin.firstRunMetersClarifyHint')}</p>
+                            <div style={{ marginTop: 8 }}>
+                              {clarify.groups.map((group) => (
+                                <div key={`inet-g-${group.key}`} style={{ marginBottom: 12 }}>
+                                  <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
+                                    {formatMeterEntranceGroupTitle(group, t)}
+                                  </p>
+                                  <ul className={styles.hint} style={{ margin: 0, paddingLeft: 18 }}>
+                                    {group.items.map((item, idx) => (
+                                      <li
+                                        key={`inet-c-${item.key}-${idx}`}
+                                        style={{
+                                          marginBottom: 8,
+                                          padding: '8px 10px',
+                                          border: '1px solid #e5e7eb',
+                                          borderRadius: 8,
+                                          background: '#fff',
+                                          listStyle: 'none',
+                                          marginLeft: -18,
+                                        }}
+                                      >
+                                        <p style={{ margin: '0 0 4px', fontWeight: 600 }}>
+                                          {formatMeterClarifyHeading(item, t)}
+                                          {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                                        </p>
+                                        <div>{presentMeterClarifyMessage(item, t)}</div>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    : null}
                   {previewRows.length > 0 ? (
                     <div className={styles.tableWrap}>
                       <p className={styles.hint}>{t('admin.internetImportPreviewGeneralNote')}</p>

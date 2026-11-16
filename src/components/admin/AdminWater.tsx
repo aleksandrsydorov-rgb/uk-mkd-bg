@@ -741,7 +741,7 @@ export function AdminWater({
         <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterStatus')}</p>
         {needsInitialOpening ? (
           <AdminInlineAlert tone="warning">
-            {t('openingStatus_needs_initial_readings')}
+            {t('admin.openingStatus_needs_initial_readings')}
           </AdminInlineAlert>
         ) : null}
         {meterLoading ? (
@@ -751,7 +751,7 @@ export function AdminWater({
             <AdminEmptyState
               title={
                 needsInitialOpening
-                  ? t('openingStatus_needs_initial_readings')
+                  ? t('admin.openingStatus_needs_initial_readings')
                   : t('admin.noWaterMeter')
               }
             />

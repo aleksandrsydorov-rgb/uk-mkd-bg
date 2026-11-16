@@ -567,6 +567,15 @@ export function presentImportField(raw: string, t: T): string {
   if (field === 'opening_balance_eur') return t('admin.is3ColOpeningBalanceEur');
   // Owners-template column (import preview), not the Book UI “ownership type” label.
   if (field === 'ownership_type') return t('admin.bookImportFieldOwnerCount');
+  if (field === 'meter_number') return t('admin.is3ColMeterNumber');
+  if (field === 'initial_reading') return t('admin.is3ColInitialReading');
+  if (field === 'initial_day_reading') return t('admin.is3ColInitialDay');
+  if (field === 'initial_night_reading') return t('admin.is3ColInitialNight');
+  if (field === 'installed_at') return t('admin.is3ColInstalledAt');
+  if (field === 'apartment_number') return t('admin.is3ColApartment');
+  if (field === 'section_code') return t('admin.is3ColSection');
+  if (field === 'block_code') return t('admin.is3ColBlock');
+  if (field === 'connection_state' || field === 'status') return t('admin.is5ColConnectionState');
   return propertyBookFieldLabel(field, t);
 }
 
@@ -598,6 +607,9 @@ export function presentImportSheet(sheet: string, field: string, t?: T): string 
   if (t) {
     if (kind === 'objects') return t('admin.bookImportSheetObjects');
     if (kind === 'owners') return t('admin.bookImportSheetOwners');
+    if (s === 'meters' || s === 'счётчики' || s === 'счетчики' || s === 'уреди') {
+      return t('admin.firstRunMetersStatMeters');
+    }
   }
   if (kind === 'objects') return 'objects';
   if (kind === 'owners') return 'owners';
@@ -1185,13 +1197,24 @@ export function presentFirstRunErrorRow(
       });
   if (
     issue.reason === 'section_block_fields_swapped' ||
-    issue.reason === 'section_code_looks_like_block_number'
+    issue.reason === 'section_code_looks_like_block_number' ||
+    issue.reason === 'unknown_apartment' ||
+    issue.reason === 'section_code_required_for_disambiguation' ||
+    issue.reason === 'apartment_number_required' ||
+    issue.reason === 'required:apartment_number'
   ) {
     const base = presentImportReason(issue.reason, t, { severity });
     const apt = row.apartment || '—';
+    const section = row.meta?.sectionCode ? String(row.meta.sectionCode) : '';
     const excelRow = formatExcelRowRanges(issue.rows) || row.row || '—';
-    const field = presentImportField(row.field || 'section_code', t);
-    reasonText = `${base} [кв. ${apt}, строка ${excelRow}, ${field}]`;
+    const field = presentImportField(row.field || 'apartment_number', t);
+    const where = t('admin.firstRunMetersErrorWhere', {
+      apt,
+      section: section || '—',
+      row: excelRow,
+      field,
+    });
+    reasonText = `${base} ${where}`;
   }
   return {
     row: formatExcelRowRanges(issue.rows) || row.row || '—',

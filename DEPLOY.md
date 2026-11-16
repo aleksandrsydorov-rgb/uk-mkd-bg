@@ -1,20 +1,15 @@
-# Выкат портала «Амадеус XI» — first-run row previews (поверх 234)
+# Выкат портала «Амадеус XI» — first-run previews + internet none (поверх 234)
 
-Актуальный пакет для оператора: `tmp/r1_rc8_first_run_previews_234/`
-(см. `DEPLOY.md`, `RELEASE.txt`, `SHA256SUMS` внутри каталога).
+Актуальный пакет: `tmp/r1_rc8_first_run_previews_234/`
 
-На VPS сейчас ожидается схема `234 / 20261130340200`.
-Этот пакет **только образ** (интернет / бюджет УК / начальные расходы + уже проверенный КР-предпросмотр `0040f1b`).
-
-Кратко:
+На VPS ожидается схема `234 / 20261130340200`. Пакет **только образ**.
 
 | | Значение |
 |---|---|
-| Build SHA | `a47be6a63641f367cd305c380e97c4aeaf2fd480` |
+| Build SHA | `bbfe6a77723c747258cbb8bdcf5c3dca0b614e2a` |
 | Image | `amadeus11-app:1.0.0-rc8-first-run-previews-234` |
-| Image ID | `sha256:462053beded286ca9610dabec61407332f5c16c067645b1351fc63d5e0da0930` |
-| TAR SHA256 | `25e3c8e47159994556d8420acffd005063c3e0cba77bee5b0bf85d9729f9abfb` |
+| Image ID | `sha256:5e9459085e5028696babd7749a7d0a22e7daae912f6274d334bd13cefc3da681` |
+| TAR SHA256 | `0c5377ffc73d21f306b110b287684997cbf2a00fcec8562615b4549ec518218c` |
 | Схема | `234 / 20261130340200` (без PostgreSQL) |
 
-Полная инструкция выката и health —
-в `tmp/r1_rc8_first_run_previews_234/DEPLOY.md`.
+Полная инструкция: `tmp/r1_rc8_first_run_previews_234/DEPLOY.md`.

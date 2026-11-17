@@ -78,7 +78,14 @@ describe('capitalRepairSimpleOpening', () => {
       meta,
     );
     expect(defer.deferred).toBe(true);
-    expect(defer.rpcRow).toBeNull();
+    expect(defer.rpcRow).not.toBeNull();
+    expect(defer.rpcRow?.assessed_amount).toBe('');
+    expect(defer.rpcRow?.historically_paid_amount).toBe('');
+    expect(defer.rpcRow?.remaining_debt).toBe('');
+    expect(defer.rpcRow?.opening_overpayment).toBe('');
+    expect(defer.rpcRow?.transition_date).toBe('');
+    expect(defer.rpcRow?.source_reference).toBe('');
+    expect(defer.previewRow?._deferred).toBe('1');
 
     const hyphen = mapSimpleCrOpeningRow(
       {

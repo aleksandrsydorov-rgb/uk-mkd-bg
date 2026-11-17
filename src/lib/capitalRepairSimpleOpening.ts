@@ -1,7 +1,8 @@
 /**
  * Simple capital-repair opening XLSX → RPC row shape for admin_import_capital_repair_opening.
- * Sign of amount encodes kind: +debt / −overpayment / 0 zero / blank → defer (client-only).
- * No PostgreSQL soft-defer migration: blank amounts are omitted from RPC so saved balances stay.
+ * Sign of amount encodes kind: +debt / −overpayment / 0 zero / blank → soft defer.
+ * Blank-amount rows are sent to the RPC; SQL returns DEFER, records a pending slot
+ * (needs_initial) and preserves any already-confirmed opening.
  */
 
 import type { FirstRunErrorRow } from '@/lib/firstRun';
@@ -20,7 +21,7 @@ export type CrOpeningParseResult =
   | {
       ok: true;
       mode: 'simple' | 'detailed';
-      /** Valid rows for RPC dry-run / commit (defer rows excluded). */
+      /** Valid rows for RPC dry-run / commit (defer rows included with blank amounts). */
       rows: Record<string, string>[];
       /** All non-blank rows for the unified preview table. */
       previewRows: Record<string, string>[];
@@ -209,9 +210,27 @@ export function mapSimpleCrOpeningRow(
   }
 
   if (defer) {
+    // Send blank amounts to RPC so SQL soft-defer creates needs_initial pending
+    // (does not wipe a saved opening). Preview still shows «можно внести позже».
+    const deferRpc: Record<string, string> = {
+      apartment_number: apartment,
+      section_code: section,
+      block_code: block,
+      obligation_type: 'capital_repair',
+      billing_year: year,
+      assessment_title: '',
+      assessed_amount: '',
+      historically_paid_amount: '',
+      remaining_debt: '',
+      opening_overpayment: '',
+      transition_date: '',
+      source_reference: '',
+      notes: '',
+      rowNumber: String(excelRow),
+    };
     return {
       previewRow: { ...basePreview, _simple_kind: '', _deferred: '1' },
-      rpcRow: null,
+      rpcRow: deferRpc,
       errors: [],
       deferred: true,
     };

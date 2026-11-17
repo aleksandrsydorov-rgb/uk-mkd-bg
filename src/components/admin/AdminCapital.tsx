@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -224,6 +224,14 @@ export function AdminCapital({
   const [ledger, setLedger] = useState<CapitalLedger[]>([]);
   const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
   const [cardLoading, setCardLoading] = useState(false);
+  const [openingPending, setOpeningPending] = useState(false);
+  const [openingFormOpen, setOpeningFormOpen] = useState(false);
+  const [openingConfirmBusy, setOpeningConfirmBusy] = useState(false);
+  const [openingYear, setOpeningYear] = useState('');
+  const [openingTransition, setOpeningTransition] = useState('');
+  const [openingSource, setOpeningSource] = useState('');
+  const [openingSignedAmount, setOpeningSignedAmount] = useState('');
+  const openingIdemRef = useRef(crypto.randomUUID());
   const [aptCharges, setAptCharges] = useState<number | null>(null);
   const [aptReceipts, setAptReceipts] = useState<number | null>(null);
   const [cardYearRows, setCardYearRows] = useState<CapitalAssessmentYearRow[]>([]);
@@ -372,7 +380,7 @@ export function AdminCapital({
     type LedgerWithAssessment = CapitalLedger & {
       assessment?: { title?: string | null; decision_date?: string | null } | null;
     };
-    const [ledgerRes, balanceRes, opsRes] = await Promise.all([
+    const [ledgerRes, balanceRes, opsRes, pendingRes] = await Promise.all([
       supabase
         .from('capital_repair_ledger')
         .select('*, assessment:capital_repair_assessments(title, decision_date)')
@@ -386,8 +394,33 @@ export function AdminCapital({
         .eq('property_id', pid)
         .in('kind', ['charge', 'payment', 'opening_obligation', 'opening_credit', 'opening_historical_settlement'])
         .limit(5000),
+      supabase
+        .from('capital_repair_opening_pending' as never)
+        .select('id, billing_year, payload, status')
+        .eq('property_id', pid)
+        .eq('status', 'needs_initial')
+        .limit(1),
     ]);
     setCardLoading(false);
+    const pendingRows = Array.isArray(pendingRes.data) ? pendingRes.data : [];
+    const hasPending = pendingRows.length > 0 && !pendingRes.error;
+    setOpeningPending(hasPending);
+    if (hasPending) {
+      const prow = pendingRows[0] as {
+        billing_year?: number | null;
+        payload?: Record<string, unknown> | null;
+      };
+      setOpeningYear((prev) => (prev ? prev : prow.billing_year != null ? String(prow.billing_year) : ''));
+      const payload = prow.payload ?? {};
+      setOpeningTransition((prev) =>
+        prev ? prev : payload.transition_date ? String(payload.transition_date).slice(0, 10) : '',
+      );
+      setOpeningSource((prev) =>
+        prev ? prev : payload.source_reference ? String(payload.source_reference) : '',
+      );
+    } else {
+      setOpeningFormOpen(false);
+    }
     if (ledgerRes.error && !isMissingRelation(ledgerRes.error, 'capital_repair_ledger')) {
       setError(toUserFacingMessage(ledgerRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
       setLedger([]);
@@ -689,6 +722,79 @@ export function AdminCapital({
     tab,
     view,
   ]);
+
+  async function handleConfirmCapitalRepairOpening(e: FormEvent) {
+    e.preventDefault();
+    if (!canSee || propertyId === '' || openingConfirmBusy || !openingPending) return;
+    const year = Number(openingYear);
+    const signed = Number(String(openingSignedAmount).replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      setError(t('admin.importIssue_billing_year_invalid'));
+      return;
+    }
+    if (!openingTransition.trim()) {
+      setError(t('admin.importIssue_transition_date_required'));
+      return;
+    }
+    if (!openingSource.trim()) {
+      setError(t('admin.importIssue_source_reference_required'));
+      return;
+    }
+    if (!Number.isFinite(signed)) {
+      setError(t('admin.importIssue_opening_balance_eur_invalid'));
+      return;
+    }
+    let assessed = 0;
+    let paid = 0;
+    let remaining = 0;
+    let over = 0;
+    if (signed > 0.0001) {
+      assessed = Math.round(signed * 100) / 100;
+      remaining = assessed;
+    } else if (signed < -0.0001) {
+      over = Math.round(Math.abs(signed) * 100) / 100;
+    }
+    setOpeningConfirmBusy(true);
+    setError(null);
+    setSuccess(null);
+    const { data, error: rpcErr } = await supabase.rpc('admin_confirm_capital_repair_opening' as never, {
+      p_property_id: Number(propertyId),
+      p_billing_year: year,
+      p_assessed_amount: assessed,
+      p_historically_paid_amount: paid,
+      p_remaining_debt: remaining,
+      p_opening_overpayment: over,
+      p_transition_date: openingTransition.trim(),
+      p_source_reference: openingSource.trim(),
+      p_notes: null,
+      p_idempotency_key: openingIdemRef.current,
+    } as never);
+    setOpeningConfirmBusy(false);
+    if (rpcErr) {
+      const msg = String(rpcErr.message ?? '');
+      if (/conflict:existing_(opening|operational)/i.test(msg)) {
+        setError(t('admin.feeOpeningConflictYear', { year: String(year) }));
+      } else if (/already_confirmed|SKIPPED_EXISTING/i.test(msg)) {
+        setSuccess(t('admin.feeOpeningAlreadyConfirmed'));
+        setOpeningPending(false);
+        setOpeningFormOpen(false);
+      } else {
+        setError(toUserFacingMessage(rpcErr, t, { context: 'finance', fallback: t('common.errFinance') }));
+      }
+      openingIdemRef.current = crypto.randomUUID();
+      return;
+    }
+    const res = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    if (res.idempotent === true || res.outcome === 'SKIPPED_EXISTING') {
+      setSuccess(t('admin.feeOpeningAlreadyConfirmed'));
+    } else {
+      setSuccess(t('common.saved'));
+    }
+    setOpeningPending(false);
+    setOpeningFormOpen(false);
+    openingIdemRef.current = crypto.randomUUID();
+    await reloadAll();
+  }
 
   // ---------- navigation ----------
   function resetCardForm() {
@@ -1513,6 +1619,91 @@ export function AdminCapital({
         </div>
 
         {alerts}
+
+        {openingPending ? (
+          <div className={cardClass} data-capital-repair-opening-pending="1">
+            <AdminInlineAlert tone="warning">
+              {t('admin.openingStatus_needs_initial_capital_repair')}
+            </AdminInlineAlert>
+            {!openingFormOpen ? (
+              <div className="mt-3">
+                <AdminPrimaryButton
+                  type="button"
+                  disabled={!canSee}
+                  onClick={() => setOpeningFormOpen(true)}
+                  data-testid="cr-enter-opening"
+                >
+                  {t('admin.capitalEnterOpeningBalance')}
+                </AdminPrimaryButton>
+              </div>
+            ) : (
+              <form
+                className="mt-4 space-y-3"
+                onSubmit={(e) => {
+                  void handleConfirmCapitalRepairOpening(e);
+                }}
+              >
+                <p className="text-sm font-medium text-foreground">{t('admin.feeOpeningConfirmTitle')}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs text-secondary">
+                    {t('admin.firstRunSfColYear')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="number"
+                      min={2000}
+                      max={2100}
+                      value={openingYear}
+                      onChange={(ev) => setOpeningYear(ev.target.value)}
+                      required
+                      data-testid="cr-opening-year"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary">
+                    {t('admin.feeOpeningTransitionDate')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="date"
+                      value={openingTransition}
+                      onChange={(ev) => setOpeningTransition(ev.target.value)}
+                      required
+                      data-testid="cr-opening-transition"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary sm:col-span-2">
+                    {t('admin.feeOpeningSourceRef')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      value={openingSource}
+                      onChange={(ev) => setOpeningSource(ev.target.value)}
+                      required
+                      data-testid="cr-opening-source"
+                    />
+                  </label>
+                  <label className="block text-xs text-secondary sm:col-span-2">
+                    {t('admin.firstRunSfColAmount')}
+                    <input
+                      className={`mt-1 ${fieldClass}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={openingSignedAmount}
+                      onChange={(ev) => setOpeningSignedAmount(ev.target.value)}
+                      placeholder="70,70 / -50,00 / 0"
+                      required
+                      data-testid="cr-opening-amount"
+                    />
+                    <span className="mt-1 block text-[11px] text-muted">
+                      {t('admin.firstRunCrImportColumnsHint')}
+                    </span>
+                  </label>
+                </div>
+                <AdminPrimaryButton type="submit" disabled={openingConfirmBusy || !canSee}>
+                  {openingConfirmBusy ? t('common.saving') : t('admin.feeOpeningConfirmSubmit')}
+                </AdminPrimaryButton>
+              </form>
+            )}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <AdminMetricCard

@@ -1445,6 +1445,13 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         const o = asObj(r).outcome;
         return o === 'CREATE' || o === 'CREATED';
       }).length;
+      const deferredCount =
+        Number(res.deferred_count ?? 0) ||
+        rowsOut.filter((r) => {
+          const o = asObj(r).outcome;
+          return o === 'DEFER' || o === 'DEFERRED';
+        }).length ||
+        parsed.deferredCount;
       const rpcOk = res.ok === true && rpcErrors.length === 0;
       setCrDry({
         ok: rpcOk && clientErrors.length === 0,
@@ -1452,7 +1459,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         rowCount: Number(res.row_count ?? parsed.rows.length) || parsed.rows.length,
         createCount,
         skippedExisting: Number(res.skipped_existing_count ?? 0) || 0,
-        deferredCount: parsed.deferredCount,
+        deferredCount,
         debtSum: Number(reconcile.remaining_debt_sum ?? 0) || 0,
         creditSum: Number(reconcile.opening_overpayment_sum ?? 0) || 0,
         rpcRows: rowsOut,

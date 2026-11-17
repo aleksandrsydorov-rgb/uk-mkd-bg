@@ -319,6 +319,7 @@ export function importReasonI18nKey(raw: string): string | null {
         meter_number: 'importIssue_meter_number_required',
         installed_at: 'importIssue_installed_at_required',
         opening_balance_eur: 'importIssue_opening_balance_eur_required',
+        opening_balance_kind: 'importIssue_opening_balance_kind_required',
         obligation_type: 'importIssue_obligation_type_required',
         source_reference: 'importIssue_source_reference_required',
         transition_date: 'importIssue_transition_date_required',
@@ -338,6 +339,7 @@ export function importReasonI18nKey(raw: string): string | null {
         ownership_share_percent: 'bookImport_invalid_share',
         opening_balance_kind: 'importIssue_opening_balance_kind_invalid',
         opening_balance_eur: 'importIssue_opening_balance_eur_invalid',
+        opening_balance_eur_nonzero_for_zero: 'importIssue_opening_balance_eur_nonzero_for_zero',
         initial_reading: 'importIssue_initial_reading_invalid',
         initial_day_reading: 'importIssue_initial_day_reading_invalid',
         initial_night_reading: 'importIssue_initial_night_reading_invalid',
@@ -584,8 +586,8 @@ export function presentImportField(raw: string, t: T): string {
   if (!field || field === '—' || field === '-') return '—';
   if (field === 'owners' || field === 'validation') return t('admin.bookImportFieldOwners');
   if (field === 'objects') return t('admin.bookImportFieldObjects');
-  if (field === 'opening_balance_kind') return t('admin.is3ColOpeningBalanceKind');
-  if (field === 'opening_balance_eur') return t('admin.is3ColOpeningBalanceEur');
+  if (field === 'opening_balance_kind') return t('admin.firstRunSfColKind');
+  if (field === 'opening_balance_eur') return t('admin.firstRunSfColAmount');
   // Owners-template column (import preview), not the Book UI “ownership type” label.
   if (field === 'ownership_type') return t('admin.bookImportFieldOwnerCount');
   if (field === 'meter_number') return t('admin.is3ColMeterNumber');
@@ -602,6 +604,13 @@ export function presentImportField(raw: string, t: T): string {
   if (field === 'paid_period_start') return t('admin.is5ColPaidPeriodStart');
   if (field === 'support_fee_opening') return t('admin.firstRunStageSupportFee');
   if (field === 'billing_year') return t('admin.firstRunSfColYear');
+  if (field === 'obligation_type') return t('admin.is4ColObligationType');
+  if (field === 'assessed_amount') return t('admin.is4ColAssessed');
+  if (field === 'historically_paid_amount') return t('admin.is4ColHistoricallyPaid');
+  if (field === 'remaining_debt') return t('admin.is4ColRemainingDebt');
+  if (field === 'opening_overpayment') return t('admin.is4ColOpeningOverpayment');
+  if (field === 'transition_date') return t('admin.is4ColTransitionDate');
+  if (field === 'source_reference') return t('admin.is4ColSourceRef');
   return propertyBookFieldLabel(field, t);
 }
 
@@ -631,6 +640,14 @@ export function presentImportSheet(sheet: string, field: string, t?: T): string 
   else if (s === 'validation' || !s) kind = 'objects';
 
   if (t) {
+    if (
+      s === 'opening_balances' ||
+      s === 'начальные остатки' ||
+      s === 'начални салда' ||
+      s.includes('opening')
+    ) {
+      return t('admin.firstRunSfDataSheet');
+    }
     if (kind === 'objects') return t('admin.bookImportSheetObjects');
     if (kind === 'owners') return t('admin.bookImportSheetOwners');
     if (s === 'meters' || s === 'счётчики' || s === 'счетчики' || s === 'уреди') {

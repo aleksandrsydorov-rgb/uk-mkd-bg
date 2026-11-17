@@ -5,7 +5,7 @@
 
 import { formatMeterMoney } from '@/lib/firstRunMetersPreview';
 import type { FirstRunErrorRow } from '@/lib/firstRun';
-import { presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
+import { presentFirstRunErrorRow, presentImportField } from '@/lib/firstRunUserMessage';
 
 export type SfPreviewOutcome = 'create' | 'skip' | 'defer' | 'error' | 'unknown';
 
@@ -44,6 +44,9 @@ export type SfPreviewSummary = {
   createCount: number;
   skipCount: number;
   errorCount: number;
+  /** Ready = create + skip (non-error, non-defer). */
+  readyCount: number;
+  fileLevelErrors: string[];
   groups: SfPreviewEntranceGroup[];
   items: SfPreviewItem[];
 };
@@ -60,6 +63,16 @@ function moneyOrNull(raw: unknown): number | null {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+function balanceKindFromSimple(raw: string): SfPreviewBalanceKind | null {
+  const v = trim(raw).toLowerCase();
+  if (!v) return 'empty';
+  if (v === 'debt') return 'debt';
+  if (v === 'overpayment' || v === 'credit') return 'credit';
+  if (v === 'zero') return 'zero';
+  if (v === 'invalid') return 'empty';
+  return null;
 }
 
 function balanceKind(
@@ -86,6 +99,24 @@ function mapOutcome(raw: unknown): SfPreviewOutcome {
 
 function identityKey(apartment: string, section: string, block: string, year: string): string {
   return [apartment.toLowerCase(), section.toLowerCase(), block.toLowerCase(), year].join('\u0001');
+}
+
+function formatInlineError(e: FirstRunErrorRow, t: T): string {
+  const presented = presentFirstRunErrorRow(e, t, { nothingSaved: true });
+  const sheet = trim(e.sheet);
+  const sheetLabel = sheet
+    ? t('admin.firstRunSfErrorSheet', { sheet: presented.sheet || sheet })
+    : '';
+  const rowPart =
+    e.row && e.row !== '—' && e.row !== '0'
+      ? t('admin.firstRunSfErrorRow', { row: e.row })
+      : '';
+  const fieldPart =
+    e.field && e.field !== '—'
+      ? t('admin.firstRunSfErrorColumn', { column: presentImportField(e.field, t) })
+      : '';
+  const where = [sheetLabel, rowPart, fieldPart].filter(Boolean).join(', ');
+  return where ? `${presented.reason} (${where})` : presented.reason;
 }
 
 export function formatSfBalanceLabel(
@@ -158,6 +189,9 @@ function groupByEntrance(items: SfPreviewItem[]): SfPreviewEntranceGroup[] {
   });
   for (const group of groups) {
     group.items.sort((a, b) => {
+      const rowA = a.excelRow ?? 0;
+      const rowB = b.excelRow ?? 0;
+      if (rowA !== rowB && rowA > 0 && rowB > 0) return rowA - rowB;
       const apt = a.apartment.localeCompare(b.apartment, undefined, {
         numeric: true,
         sensitivity: 'base',
@@ -169,6 +203,11 @@ function groupByEntrance(items: SfPreviewItem[]): SfPreviewEntranceGroup[] {
     });
   }
   return groups;
+}
+
+function resolveExcelRow(row: Record<string, string>, fallback: number): number {
+  const n = Number(row.rowNumber ?? row.row ?? fallback);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /**
@@ -200,18 +239,26 @@ export function buildSupportFeeOpeningPreview(
 
   const errorsByRow = new Map<number, FirstRunErrorRow[]>();
   const errorsByApt = new Map<string, FirstRunErrorRow[]>();
+  const fileLevelErrors: string[] = [];
+  const consumedErrorKeys = new Set<string>();
+
   for (const err of opts?.errorRows ?? []) {
     const n = Number(err.row);
-    if (Number.isFinite(n) && n > 0) {
-      const list = errorsByRow.get(n) ?? [];
-      list.push(err);
-      errorsByRow.set(n, list);
+    const isFileLevel = !Number.isFinite(n) || n <= 0;
+    if (isFileLevel) {
+      if (t) fileLevelErrors.push(formatInlineError(err, t));
+      else fileLevelErrors.push(err.reason);
+      consumedErrorKeys.add(`${err.row}|${err.reason}|${err.field}|${err.apartment}`);
+      continue;
     }
+    const list = errorsByRow.get(n) ?? [];
+    list.push(err);
+    errorsByRow.set(n, list);
     const apt = trim(err.apartment);
     if (apt) {
-      const list = errorsByApt.get(apt.toLowerCase()) ?? [];
-      list.push(err);
-      errorsByApt.set(apt.toLowerCase(), list);
+      const aptList = errorsByApt.get(apt.toLowerCase()) ?? [];
+      aptList.push(err);
+      errorsByApt.set(apt.toLowerCase(), aptList);
     }
   }
 
@@ -225,9 +272,11 @@ export function buildSupportFeeOpeningPreview(
   let createCount = 0;
   let skipCount = 0;
   let errorCount = 0;
+  const seenExcelRows = new Set<number>();
 
   rows.forEach((row, idx) => {
-    const excelRow = offset + idx;
+    const excelRow = resolveExcelRow(row, offset + idx);
+    seenExcelRows.add(excelRow);
     const apartment = trim(row.apartment_number);
     const sectionCode = trim(row.section_code);
     const blockCode = trim(row.block_code);
@@ -247,11 +296,19 @@ export function buildSupportFeeOpeningPreview(
       amountsBlank &&
       !trim(row.transition_date) &&
       !trim(row.source_reference) &&
-      !trim(row.notes)
+      !trim(row.notes) &&
+      !trim(row._simple_kind) &&
+      !trim(row.opening_balance_kind) &&
+      !trim(row.opening_balance_eur)
     ) {
       return;
     }
-    const kind = balanceKind(remainingDebt, overpayment, amountsBlank);
+
+    const simpleKind = balanceKindFromSimple(row._simple_kind);
+    const kind =
+      simpleKind != null
+        ? simpleKind
+        : balanceKind(remainingDebt, overpayment, amountsBlank);
 
     const rpc =
       rpcByRow.get(excelRow) ??
@@ -266,42 +323,41 @@ export function buildSupportFeeOpeningPreview(
         (e) => !Number(e.row) || Number(e.row) === excelRow,
       ),
     ];
-    // Dedupe by reason+row
     const seen = new Set<string>();
     const uniqueErrs = rowErrs.filter((e) => {
       const k = `${e.row}|${e.reason}|${e.field}`;
       if (seen.has(k)) return false;
       seen.add(k);
+      consumedErrorKeys.add(`${e.row}|${e.reason}|${e.field}|${e.apartment}`);
       return true;
     });
 
     let errorText: string | null = null;
-    if (uniqueErrs.length > 0) {
+    if (uniqueErrs.length > 0 || trim(row._client_invalid) === '1') {
       outcome = 'error';
-      if (t) {
-        errorText = uniqueErrs
-          .map((e) => {
-            const presented = presentFirstRunErrorRow(e, t, { nothingSaved: true });
-            const where =
-              e.row && e.row !== '—'
-                ? t('admin.firstRunSfErrorRow', { row: e.row })
-                : '';
-            return where ? `${presented.reason} ${where}` : presented.reason;
-          })
-          .join(' · ');
-      } else {
+      if (t && uniqueErrs.length > 0) {
+        errorText = uniqueErrs.map((e) => formatInlineError(e, t)).join(' · ');
+      } else if (uniqueErrs.length > 0) {
         errorText = uniqueErrs.map((e) => e.reason).join(' · ');
+      } else {
+        errorText = t ? t('admin.firstRunImportRowCheckFailed') : 'error';
       }
     } else if (outcome === 'unknown' && !rpc) {
-      outcome = amountsBlank && apartment ? 'defer' : 'create';
+      outcome = amountsBlank && apartment && kind === 'empty' ? 'defer' : 'create';
     }
+
+    // For simple debt/credit, display amount from mapped remaining/over.
+    const displayRemaining =
+      kind === 'debt' ? remainingDebt ?? (simpleKind === 'debt' ? remainingDebt : null) : remainingDebt;
+    const displayOver =
+      kind === 'credit' ? overpayment ?? null : overpayment;
 
     if (kind === 'debt') {
       debtCount += 1;
-      debtSum += remainingDebt ?? 0;
+      debtSum += displayRemaining ?? 0;
     } else if (kind === 'credit') {
       creditCount += 1;
-      creditSum += overpayment ?? 0;
+      creditSum += displayOver ?? 0;
     } else if (kind === 'zero') {
       zeroCount += 1;
     }
@@ -319,13 +375,40 @@ export function buildSupportFeeOpeningPreview(
       billingYear,
       assessed,
       paid,
-      remainingDebt,
-      overpayment,
+      remainingDebt: displayRemaining,
+      overpayment: displayOver,
       balanceKind: kind,
       outcome,
       errorText,
     });
   });
+
+  // Orphan errors (e.g. unmapped apartment) — still show once by Excel row.
+  for (const err of opts?.errorRows ?? []) {
+    const k = `${err.row}|${err.reason}|${err.field}|${err.apartment}`;
+    if (consumedErrorKeys.has(k)) continue;
+    const n = Number(err.row);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    if (seenExcelRows.has(n)) continue;
+    errorCount += 1;
+    items.push({
+      key: `orphan\u0001${n}\u0001${err.field}\u0001${err.reason}`,
+      excelRow: n,
+      apartment: trim(err.apartment) || '—',
+      sectionCode: err.meta?.sectionCode ?? '',
+      blockCode: err.meta?.blockCode ?? '',
+      billingYear: '',
+      assessed: null,
+      paid: null,
+      remainingDebt: null,
+      overpayment: null,
+      balanceKind: 'empty',
+      outcome: 'error',
+      errorText: t ? formatInlineError(err, t) : err.reason,
+    });
+  }
+
+  const readyCount = createCount + skipCount;
 
   return {
     rowCount: items.length,
@@ -338,6 +421,8 @@ export function buildSupportFeeOpeningPreview(
     createCount,
     skipCount,
     errorCount,
+    readyCount,
+    fileLevelErrors,
     items,
     groups: groupByEntrance(items),
   };

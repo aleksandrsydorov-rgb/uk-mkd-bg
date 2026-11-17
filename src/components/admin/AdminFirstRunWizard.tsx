@@ -68,7 +68,11 @@ import {
   buildSupportFeeIs4TemplateBuffer,
   SUPPORT_FEE_MODULE_KEY,
 } from '@/lib/moduleCore/adapters/supportFeeOpening';
-import { supportFeeOpeningAdapter } from '@/lib/moduleCore/adapters/supportFeeOpeningAdapter';
+import { parseSupportFeeOpeningWorkbook } from '@/lib/supportFeeSimpleOpening';
+import {
+  SUPPORT_FEE_SIMPLE_IMPORT_SPEC,
+  buildSupportFeeSimpleTemplateBuffer,
+} from '@/lib/importTemplates/specs/supportFeeSimple';
 import {
   buildCapitalRepairIs8TemplateBuffer,
   CAPITAL_REPAIR_MODULE_KEY,
@@ -377,8 +381,12 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   const [meterCommitted, setMeterCommitted] = useState(false);
 
   const [sfRows, setSfRows] = useState<Record<string, string>[] | null>(null);
+  const [sfPreviewRows, setSfPreviewRows] = useState<Record<string, string>[] | null>(null);
   const [sfDry, setSfDry] = useState<SfDryRun | null>(null);
   const [sfCommitted, setSfCommitted] = useState(false);
+  const [sfBillingYear, setSfBillingYear] = useState('');
+  const [sfTransitionDate, setSfTransitionDate] = useState('');
+  const [sfSourceReference, setSfSourceReference] = useState('');
 
   const [crRows, setCrRows] = useState<Record<string, string>[] | null>(null);
   const [crDry, setCrDry] = useState<CrDryRun | null>(null);
@@ -569,6 +577,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     setMeterRows(null);
     setMeterDry(null);
     setSfRows(null);
+    setSfPreviewRows(null);
     setSfDry(null);
     setCrRows(null);
     setCrDry(null);
@@ -1241,22 +1250,58 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       setSfDry(null);
       setSfCommitted(false);
       setErrorRows([]);
+      setSfPreviewRows(null);
+      setSfRows(null);
       const buf = await file.arrayBuffer();
-      const schema = supportFeeOpeningAdapter.registration.setup?.xlsx;
-      if (!schema) throw new Error(t('admin.errGeneric'));
-      const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
+      const parsed = parseSupportFeeOpeningWorkbook(buf, locale, {
+        billingYear: sfBillingYear,
+        transitionDate: sfTransitionDate,
+        sourceReference: sfSourceReference,
+      });
       if (!parsed.ok) {
         setError(parsed.error);
         return;
       }
-      if (parsed.rows.length === 0) {
+      const clientErrors = parsed.clientErrors;
+      setSfPreviewRows(parsed.previewRows);
+      setSfRows(parsed.rows);
+
+      if (parsed.previewRows.length === 0 && clientErrors.length === 0) {
         setError(t('admin.firstRunSfDryRunErrors').replace('{n}', '0'));
         return;
       }
+
+      // Client-blocking errors: still show unified preview; skip RPC until fixed
+      // (except soft-defer / valid rows can dry-run in parallel).
+      if (parsed.rows.length === 0) {
+        setErrorRows(clientErrors);
+        setSfDry({
+          ok: false,
+          errors: clientErrors,
+          rowCount: parsed.previewRows.length,
+          createCount: 0,
+          skippedExisting: 0,
+          deferredCount: 0,
+          debtSum: 0,
+          creditSum: 0,
+          rpcRows: [],
+        });
+        return;
+      }
+
       const { data, error: rpcErr } = await importSupportFeeOpening(supabase, parsed.rows, true);
       if (rpcErr) throw new Error(rpcErr.message);
       const res = asObj(data);
-      const errors = Array.isArray(res.errors) ? res.errors : [];
+      const rpcErrors = Array.isArray(res.errors) ? res.errors : [];
+      const mergedErrors = [...clientErrors, ...normalizeFirstRunErrors(rpcErrors)];
+      // Dedupe by row|field|reason
+      const seen = new Set<string>();
+      const errors = mergedErrors.filter((e) => {
+        const k = `${e.row}|${e.field}|${e.reason}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
       const reconcile = asObj(res.reconcile);
       const rowsOut = Array.isArray(res.rows) ? res.rows : [];
       const createCount = rowsOut.filter((r) => {
@@ -1269,8 +1314,9 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           const o = asObj(r).outcome;
           return o === 'DEFER' || o === 'DEFERRED';
         }).length;
+      const rpcOk = res.ok === true && rpcErrors.length === 0;
       setSfDry({
-        ok: res.ok === true && errors.length === 0,
+        ok: rpcOk && clientErrors.length === 0,
         errors,
         rowCount: Number(res.row_count ?? parsed.rows.length) || parsed.rows.length,
         createCount,
@@ -1280,8 +1326,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         creditSum: Number(reconcile.opening_overpayment_sum ?? 0) || 0,
         rpcRows: rowsOut,
       });
-      setErrorRows(normalizeFirstRunErrors(errors));
-      setSfRows(parsed.rows);
+      setErrorRows(errors);
     });
   }
 
@@ -1795,10 +1840,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           t={t}
           busy={busy}
           dry={sfDry}
-          rows={sfRows}
+          rows={sfPreviewRows ?? sfRows}
           errorRows={errorRows}
           committed={sfCommitted}
-          canCommit={Boolean(sfDry?.ok && sfRows)}
+          canCommit={Boolean(sfDry?.ok && sfRows && sfRows.length > 0)}
           note={note}
           error={error}
           supabase={supabase}
@@ -1806,7 +1851,19 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           tariffNavRef={tariffNavRef}
           onSaveTariffPrep={(next) => saveTariffPrep('support_fee_opening', next)}
           onTariffBusy={setBusy}
+          billingYear={sfBillingYear}
+          transitionDate={sfTransitionDate}
+          sourceReference={sfSourceReference}
+          onBillingYear={setSfBillingYear}
+          onTransitionDate={setSfTransitionDate}
+          onSourceReference={setSfSourceReference}
           onDownload={() =>
+            downloadXlsx(
+              buildSupportFeeSimpleTemplateBuffer(locale),
+              localizedTemplateFileName(SUPPORT_FEE_SIMPLE_IMPORT_SPEC, locale),
+            )
+          }
+          onDownloadDetailed={() =>
             downloadXlsx(
               buildSupportFeeIs4TemplateBuffer(locale),
               localizedTemplateFileName(SUPPORT_FEE_IMPORT_SPEC, locale),

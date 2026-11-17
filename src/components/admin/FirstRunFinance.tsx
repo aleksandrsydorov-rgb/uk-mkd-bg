@@ -10,7 +10,6 @@ import { formatMeterMoney } from '@/lib/firstRunMetersPreview';
 import {
   buildSupportFeeOpeningPreview,
   formatSfAptHeading,
-  formatSfBalanceLabel,
   formatSfEntranceTitle,
   presentSfOutcome,
 } from '@/lib/firstRunSupportFeePreview';
@@ -81,6 +80,7 @@ function OpeningStats({
   t,
   locale,
   previewCounts,
+  compactSf,
 }: {
   dry: OpeningDry;
   t: T;
@@ -91,10 +91,29 @@ function OpeningStats({
     zeroCount: number;
     debtSum: number;
     creditSum: number;
+    readyCount?: number;
+    deferCount?: number;
+    errorCount?: number;
   } | null;
+  /** Unified SF summary: ready / deferred / errors + debt/credit sums. */
+  compactSf?: boolean;
 }) {
   const debtSum = previewCounts?.debtSum ?? dry.debtSum;
   const creditSum = previewCounts?.creditSum ?? dry.creditSum;
+  if (compactSf) {
+    const ready = previewCounts?.readyCount ?? dry.createCount + dry.skippedExisting;
+    const deferred = previewCounts?.deferCount ?? dry.deferredCount ?? 0;
+    const errors = previewCounts?.errorCount ?? (dry.ok ? 0 : dry.errors.length);
+    return (
+      <div className={styles.stats}>
+        <Stat value={String(ready)} label={t('admin.firstRunSfStatReady')} />
+        <Stat value={String(deferred)} label={t('admin.firstRunSfStatDeferRows')} />
+        <Stat value={String(errors)} label={t('admin.firstRunSfStatErrorRows')} />
+        <Stat value={formatMeterMoney(debtSum, locale)} label={t('admin.firstRunStatDebt')} />
+        <Stat value={formatMeterMoney(creditSum, locale)} label={t('admin.firstRunStatCredit')} />
+      </div>
+    );
+  }
   return (
     <div className={styles.stats}>
       <Stat value={String(dry.rowCount)} label={t('admin.firstRunStatRows')} />
@@ -131,7 +150,14 @@ export function FirstRunSupportFee({
   onSaveTariffPrep,
   onTariffBusy,
   tariffNavRef,
+  billingYear,
+  transitionDate,
+  sourceReference,
+  onBillingYear,
+  onTransitionDate,
+  onSourceReference,
   onDownload,
+  onDownloadDetailed,
   onFile,
   onCommit,
   onContinue,
@@ -150,7 +176,14 @@ export function FirstRunSupportFee({
   onSaveTariffPrep?: (next: FirstRunTariffPrepMap) => Promise<void>;
   onTariffBusy?: (v: boolean) => void;
   tariffNavRef?: Ref<FirstRunTariffPrepHandle>;
+  billingYear?: string;
+  transitionDate?: string;
+  sourceReference?: string;
+  onBillingYear?: (v: string) => void;
+  onTransitionDate?: (v: string) => void;
+  onSourceReference?: (v: string) => void;
   onDownload: () => void;
+  onDownloadDetailed?: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
   onContinue: () => void;
@@ -159,15 +192,31 @@ export function FirstRunSupportFee({
   const [openingUnlocked, setOpeningUnlocked] = useState(() =>
     isFirstRunTariffPrepared('support_fee', tariffPrep ?? {}),
   );
+  const [errorsOnly, setErrorsOnly] = useState(false);
   const showImportForm = openingUnlocked || committed;
   const preview = useMemo(() => {
-    if (!rows || rows.length === 0 || committed) return null;
+    if (!rows || rows.length === 0 || committed) {
+      if (committed) return null;
+      if (errorRows.length === 0) return null;
+      return buildSupportFeeOpeningPreview([], { errorRows, t });
+    }
     return buildSupportFeeOpeningPreview(rows, {
       rpcRows: dry?.rpcRows,
       errorRows,
       t,
     });
   }, [rows, dry?.rpcRows, errorRows, committed, t]);
+
+  const filteredGroups = useMemo(() => {
+    if (!preview) return [];
+    if (!errorsOnly) return preview.groups;
+    return preview.groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => i.outcome === 'error') }))
+      .filter((g) => g.items.length > 0);
+  }, [preview, errorsOnly]);
+
+  const hasCheck = Boolean(preview || dry) && !committed;
+
   return (
     <FirstRunScreen
       icon={CircleDollarSign}
@@ -198,7 +247,7 @@ export function FirstRunSupportFee({
               .replace('{credit}', formatMeterMoney(preview?.creditSum ?? dry.creditSum, locale))}
           />
         ) : null}
-        {!committed && dry && !dry.ok ? (
+        {!committed && ((dry && !dry.ok) || (preview && preview.errorCount > 0 && !dry?.ok)) ? (
           <FirstRunStatusBanner
             tone="error"
             title={t('admin.firstRunOpeningCheckFailTitle')}
@@ -234,10 +283,62 @@ export function FirstRunSupportFee({
       <div className={styles.importGrid}>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportDownload')}</p>
-          <button type="button" className={styles.secondary} disabled={busy || !openingUnlocked} onClick={onDownload}>
-            {t('admin.firstRunSfDownload')}
-          </button>
+          <div className={styles.actions} style={{ flexWrap: 'wrap', gap: 8 }}>
+            <button
+              type="button"
+              className={styles.secondary}
+              disabled={busy || !openingUnlocked}
+              onClick={onDownload}
+            >
+              {t('admin.firstRunSfDownload')}
+            </button>
+            {onDownloadDetailed ? (
+              <button
+                type="button"
+                className={styles.secondary}
+                disabled={busy || !openingUnlocked}
+                onClick={onDownloadDetailed}
+              >
+                {t('admin.firstRunSfDownloadDetailed')}
+              </button>
+            ) : null}
+          </div>
           <p className={styles.hint}>{t('admin.firstRunSfImportColumnsHint')}</p>
+        </div>
+        <div className={styles.stepBlock}>
+          <p className={styles.importLabel}>{t('admin.firstRunSfFileMetaTitle')}</p>
+          <p className={styles.hint}>{t('admin.firstRunSfFileMetaHint')}</p>
+          <label className={styles.field}>
+            <span>{t('admin.firstRunSfColYear')}</span>
+            <input
+              className={styles.input}
+              inputMode="numeric"
+              maxLength={4}
+              disabled={busy || committed || !openingUnlocked}
+              value={billingYear ?? ''}
+              onChange={(e) => onBillingYear?.(e.target.value)}
+              placeholder="2026"
+            />
+          </label>
+          <label className={styles.field}>
+            <span>{t('admin.feeOpeningTransitionDate')}</span>
+            <input
+              className={styles.input}
+              type="date"
+              disabled={busy || committed || !openingUnlocked}
+              value={transitionDate ?? ''}
+              onChange={(e) => onTransitionDate?.(e.target.value)}
+            />
+          </label>
+          <label className={styles.field}>
+            <span>{t('admin.feeOpeningSourceRef')}</span>
+            <input
+              className={styles.input}
+              disabled={busy || committed || !openingUnlocked}
+              value={sourceReference ?? ''}
+              onChange={(e) => onSourceReference?.(e.target.value)}
+            />
+          </label>
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
@@ -255,11 +356,23 @@ export function FirstRunSupportFee({
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-          {dry && !committed ? (
+          {hasCheck ? (
             <OpeningStats
-              dry={dry}
+              dry={
+                dry ?? {
+                  ok: (preview?.errorCount ?? 0) === 0,
+                  errors: errorRows,
+                  rowCount: preview?.rowCount ?? 0,
+                  createCount: preview?.createCount ?? 0,
+                  skippedExisting: preview?.skipCount ?? 0,
+                  deferredCount: preview?.deferCount ?? 0,
+                  debtSum: preview?.debtSum ?? 0,
+                  creditSum: preview?.creditSum ?? 0,
+                }
+              }
               t={t}
               locale={locale}
+              compactSf
               previewCounts={
                 preview
                   ? {
@@ -268,71 +381,104 @@ export function FirstRunSupportFee({
                       zeroCount: preview.zeroCount,
                       debtSum: preview.debtSum,
                       creditSum: preview.creditSum,
+                      readyCount: preview.readyCount,
+                      deferCount: preview.deferCount,
+                      errorCount: preview.errorCount,
                     }
                   : null
               }
             />
           ) : null}
-          {!dry && !committed ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
-          {preview && preview.groups.length > 0 && !committed ? (
+          {!hasCheck ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
+          {preview && !committed ? (
             <div className={styles.tableWrap} style={{ marginTop: 12 }}>
               <p className={styles.importLabel}>{t('admin.firstRunSfPreviewTitle')}</p>
               <p className={styles.hint}>{t('admin.firstRunSfPreviewHint')}</p>
-              {preview.groups.map((group) => (
-                <div key={`sf-g-${group.key}`} style={{ marginTop: 12 }}>
-                  <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                    {formatSfEntranceTitle(group, t)}
-                  </p>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>{t('admin.firstRunSfColApt')}</th>
-                        <th>{t('admin.firstRunSfColYear')}</th>
-                        <th>{t('admin.firstRunSfColAssessed')}</th>
-                        <th>{t('admin.firstRunSfColPaid')}</th>
-                        <th>{t('admin.firstRunSfColBalance')}</th>
-                        <th>{t('admin.firstRunSfColAction')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.items.map((item) => (
-                        <tr key={item.key}>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>
-                              {formatSfAptHeading(item, t)}
-                              {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                            </div>
-                            {item.errorText ? (
-                              <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
-                                {item.errorText}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td>{item.billingYear || '—'}</td>
-                          <td>
-                            {item.assessed == null ? '—' : `${formatMeterMoney(item.assessed, locale)} €`}
-                          </td>
-                          <td>
-                            {item.paid == null ? '—' : `${formatMeterMoney(item.paid, locale)} €`}
-                          </td>
-                          <td>{formatSfBalanceLabel(item, t, locale)}</td>
-                          <td>{presentSfOutcome(item.outcome, t)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {preview.fileLevelErrors.length > 0 ? (
+                <div style={{ marginBottom: 8 }}>
+                  {preview.fileLevelErrors.map((msg, i) => (
+                    <p key={`sf-file-err-${i}`} className={styles.hint} style={{ color: '#b91c1c' }}>
+                      {msg}
+                    </p>
+                  ))}
                 </div>
-              ))}
+              ) : null}
+              <label className={styles.field} style={{ marginBottom: 8 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={errorsOnly}
+                    onChange={(e) => setErrorsOnly(e.target.checked)}
+                  />
+                  {t('admin.firstRunSfFilterErrorsOnly')}
+                </span>
+              </label>
+              {filteredGroups.length === 0 ? (
+                <p className={styles.hint}>
+                  {errorsOnly ? t('admin.firstRunSfFilterErrorsEmpty') : t('admin.firstRunImportCheckPending')}
+                </p>
+              ) : (
+                filteredGroups.map((group) => (
+                  <div key={`sf-g-${group.key}`} style={{ marginTop: 12 }}>
+                    <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
+                      {formatSfEntranceTitle(group, t)}
+                    </p>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>{t('admin.firstRunSfColApt')}</th>
+                          <th>{t('admin.firstRunSfColKind')}</th>
+                          <th>{t('admin.firstRunSfColAmount')}</th>
+                          <th>{t('admin.firstRunSfColAction')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.items.map((item) => (
+                          <tr key={item.key}>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>
+                                {formatSfAptHeading(item, t)}
+                                {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                                {item.excelRow ? (
+                                  <span className={styles.hint} style={{ marginLeft: 6 }}>
+                                    {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
+                                  </span>
+                                ) : null}
+                              </div>
+                              {item.errorText ? (
+                                <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
+                                  {item.errorText}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>
+                              {item.balanceKind === 'debt'
+                                ? t('admin.firstRunSfKindDebt')
+                                : item.balanceKind === 'credit'
+                                  ? t('admin.firstRunSfKindCredit')
+                                  : item.balanceKind === 'zero'
+                                    ? t('admin.firstRunSfKindZero')
+                                    : '—'}
+                            </td>
+                            <td>
+                              {item.balanceKind === 'debt'
+                                ? `${formatMeterMoney(item.remainingDebt ?? 0, locale)} €`
+                                : item.balanceKind === 'credit'
+                                  ? `${formatMeterMoney(item.overpayment ?? 0, locale)} €`
+                                  : item.balanceKind === 'zero'
+                                    ? `${formatMeterMoney(0, locale)} €`
+                                    : '—'}
+                            </td>
+                            <td>{presentSfOutcome(item.outcome, t)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
             </div>
           ) : null}
-          <div className={styles.tableWrap} style={{ marginTop: 8 }}>
-            {!dry?.ok && errorRows.length > 0 ? (
-              <p className={styles.hint} style={{ marginBottom: 8 }}>
-                {t('admin.firstRunSfBlockingDetail')}
-              </p>
-            ) : null}
-            <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
-          </div>
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>

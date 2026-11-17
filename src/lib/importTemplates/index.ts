@@ -30,6 +30,10 @@ export {
 export { WATER_METERS_IMPORT_SPEC } from '@/lib/importTemplates/specs/waterMeters';
 export { ELECTRICITY_METERS_IMPORT_SPEC } from '@/lib/importTemplates/specs/electricityMeters';
 export { SUPPORT_FEE_IMPORT_SPEC } from '@/lib/importTemplates/specs/supportFee';
+export {
+  SUPPORT_FEE_SIMPLE_IMPORT_SPEC,
+  buildSupportFeeSimpleTemplateBuffer,
+} from '@/lib/importTemplates/specs/supportFeeSimple';
 export { CAPITAL_REPAIR_IMPORT_SPEC } from '@/lib/importTemplates/specs/capitalRepair';
 export { INTERNET_IMPORT_SPEC } from '@/lib/importTemplates/specs/internet';
 export { UK_EXPENSES_IMPORT_SPEC } from '@/lib/importTemplates/specs/ukExpenses';

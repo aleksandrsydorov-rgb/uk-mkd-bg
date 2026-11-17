@@ -79,10 +79,7 @@ import {
   CAPITAL_REPAIR_SIMPLE_IMPORT_SPEC,
   buildCapitalRepairSimpleTemplateBuffer,
 } from '@/lib/importTemplates/specs/capitalRepairSimple';
-import {
-  buildCapitalRepairIs8TemplateBuffer,
-  CAPITAL_REPAIR_MODULE_KEY,
-} from '@/lib/moduleCore/adapters/capitalRepairOpening';
+import { CAPITAL_REPAIR_MODULE_KEY } from '@/lib/moduleCore/adapters/capitalRepairOpening';
 import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
@@ -396,8 +393,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   const [crPreviewRows, setCrPreviewRows] = useState<Record<string, string>[] | null>(null);
   const [crDry, setCrDry] = useState<CrDryRun | null>(null);
   const [crCommitted, setCrCommitted] = useState(false);
-  const [crTransitionDate, setCrTransitionDate] = useState('');
-  const [crSourceReference, setCrSourceReference] = useState('');
+  const [crBillingYear, setCrBillingYear] = useState('');
   const [crFundBalance, setCrFundBalance] = useState('');
   const [crFundDate, setCrFundDate] = useState('');
   const [crFundSource, setCrFundSource] = useState('');
@@ -556,6 +552,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         /* keep empty; download/upload will retry */
       });
   }, [loading, stage, sfBillingYear, supabase]);
+
+  useEffect(() => {
+    if (loading || stage !== 'capital_repair_opening' || crBillingYear) return;
+    void resolveSupportFeeOpeningBillingYear(supabase)
+      .then((y) => setCrBillingYear(String(y)))
+      .catch(() => {
+        /* keep empty; download/upload will retry */
+      });
+  }, [loading, stage, crBillingYear, supabase]);
 
   useEffect(() => {
     if (legacyChoiceApplied.current || !state || moduleCatalog.length === 0) return;
@@ -1432,6 +1437,14 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   // capital_repair_opening
   // ---------------------------------------------------------------------------
 
+  async function ensureCrBillingYear(): Promise<string> {
+    if (/^\d{4}$/.test(crBillingYear)) return crBillingYear;
+    const year = await resolveSupportFeeOpeningBillingYear(supabase);
+    const y = String(year);
+    setCrBillingYear(y);
+    return y;
+  }
+
   async function onCrFile(file: File | null) {
     if (!file) return;
     await run(async () => {
@@ -1441,9 +1454,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       setCrPreviewRows(null);
       setCrRows(null);
       const buf = await file.arrayBuffer();
+      const year = await ensureCrBillingYear();
       const parsed = parseCapitalRepairOpeningWorkbook(buf, locale, {
-        transitionDate: crTransitionDate,
-        sourceReference: crSourceReference,
+        billingYear: year,
+        transitionDate: supportFeeOpeningTransitionDate(),
+        sourceReference: '',
       });
       if (!parsed.ok) {
         setError(parsed.error);
@@ -2021,22 +2036,27 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           tariffNavRef={tariffNavRef}
           onSaveTariffPrep={(next) => saveTariffPrep('capital_repair_opening', next)}
           onTariffBusy={setBusy}
-          transitionDate={crTransitionDate}
-          sourceReference={crSourceReference}
-          onTransitionDate={setCrTransitionDate}
-          onSourceReference={setCrSourceReference}
-          onDownload={() =>
-            downloadXlsx(
-              buildCapitalRepairSimpleTemplateBuffer(locale),
-              localizedTemplateFileName(CAPITAL_REPAIR_SIMPLE_IMPORT_SPEC, locale),
-            )
-          }
-          onDownloadDetailed={() =>
-            downloadXlsx(
-              buildCapitalRepairIs8TemplateBuffer(locale),
-              localizedTemplateFileName(CAPITAL_REPAIR_IMPORT_SPEC, locale),
-            )
-          }
+          billingYear={crBillingYear}
+          onDownload={() => {
+            void run(async () => {
+              await ensureCrBillingYear();
+              const stubs = await loadExistingBookObjectStubs();
+              if (stubs.length === 0) {
+                throw new Error(t('admin.firstRunMetersDownloadEmpty'));
+              }
+              downloadXlsx(
+                buildCapitalRepairSimpleTemplateBuffer(
+                  locale,
+                  stubs.map((r) => ({
+                    apartment_number: r.apartment_number,
+                    section_code: r.section_code,
+                    block_code: r.block_code,
+                  })),
+                ),
+                localizedTemplateFileName(CAPITAL_REPAIR_SIMPLE_IMPORT_SPEC, locale),
+              );
+            });
+          }}
           onFile={(file) => void onCrFile(file)}
           onCommit={() => void onCrCommit()}
           onBalance={setCrFundBalance}

@@ -17,7 +17,6 @@ import { formatEur } from '@/lib/utilities';
 import {
   buildCapitalRepairOpeningPreview,
   formatCrAptHeading,
-  formatCrBalanceLabel,
   formatCrEntranceTitle,
   presentCrOutcome,
 } from '@/lib/firstRunCapitalRepairPreview';
@@ -511,12 +510,8 @@ export function FirstRunCapitalRepair({
   onSaveTariffPrep,
   onTariffBusy,
   tariffNavRef,
-  transitionDate,
-  sourceReference,
-  onTransitionDate,
-  onSourceReference,
+  billingYear,
   onDownload,
-  onDownloadDetailed,
   onFile,
   onCommit,
   onBalance,
@@ -545,12 +540,8 @@ export function FirstRunCapitalRepair({
   onSaveTariffPrep?: (next: FirstRunTariffPrepMap) => Promise<void>;
   onTariffBusy?: (v: boolean) => void;
   tariffNavRef?: Ref<FirstRunTariffPrepHandle>;
-  transitionDate?: string;
-  sourceReference?: string;
-  onTransitionDate?: (v: string) => void;
-  onSourceReference?: (v: string) => void;
+  billingYear?: string;
   onDownload: () => void;
-  onDownloadDetailed?: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
   onBalance: (value: string) => void;
@@ -656,41 +647,15 @@ export function FirstRunCapitalRepair({
               >
                 {t('admin.firstRunCrDownload')}
               </button>
-              {onDownloadDetailed ? (
-                <button
-                  type="button"
-                  className={styles.secondary}
-                  disabled={busy || !openingUnlocked}
-                  onClick={onDownloadDetailed}
-                >
-                  {t('admin.firstRunCrDownloadDetailed')}
-                </button>
-              ) : null}
             </div>
             <p className={styles.hint}>{t('admin.firstRunCrImportColumnsHint')}</p>
           </div>
           <div className={styles.stepBlock}>
-            <p className={styles.importLabel}>{t('admin.firstRunCrFileMetaTitle')}</p>
-            <p className={styles.hint}>{t('admin.firstRunCrFileMetaHint')}</p>
-            <label className={styles.field}>
-              <span>{t('admin.feeOpeningTransitionDate')}</span>
-              <input
-                className={styles.input}
-                type="date"
-                disabled={busy || committed || !openingUnlocked}
-                value={transitionDate ?? ''}
-                onChange={(e) => onTransitionDate?.(e.target.value)}
-              />
-            </label>
-            <label className={styles.field}>
-              <span>{t('admin.feeOpeningSourceRef')}</span>
-              <input
-                className={styles.input}
-                disabled={busy || committed || !openingUnlocked}
-                value={sourceReference ?? ''}
-                onChange={(e) => onSourceReference?.(e.target.value)}
-              />
-            </label>
+            <p className={styles.importLabel}>{t('admin.firstRunCrAutoYearLabel')}</p>
+            <p className={styles.hint} style={{ marginTop: 4 }}>
+              <strong>{billingYear?.trim() || '—'}</strong>
+            </p>
+            <p className={styles.hint}>{t('admin.firstRunCrAutoYearHint')}</p>
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
@@ -760,48 +725,83 @@ export function FirstRunCapitalRepair({
                     {errorsOnly ? t('admin.firstRunSfFilterErrorsEmpty') : t('admin.firstRunImportCheckPending')}
                   </p>
                 ) : (
-                  filteredGroups.map((group) => (
-                    <div key={`cr-g-${group.key}`} style={{ marginTop: 12 }}>
-                      <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                        {formatCrEntranceTitle(group, t)}
-                      </p>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            <th>{t('admin.firstRunSfColApt')}</th>
-                            <th>{t('admin.firstRunSfColYear')}</th>
-                            <th>{t('admin.firstRunSfColBalance')}</th>
-                            <th>{t('admin.firstRunSfColAction')}</th>
+                  <table className={styles.previewTableFixed}>
+                    <colgroup>
+                      <col className={styles.previewColApt} />
+                      <col className={styles.previewColKind} />
+                      <col className={styles.previewColAmount} />
+                      <col className={styles.previewColAction} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th scope="col">{t('admin.firstRunSfColApt')}</th>
+                        <th scope="col">{t('admin.firstRunSfColKind')}</th>
+                        <th scope="col" className={styles.previewAmount}>
+                          {t('admin.firstRunSfColAmount')}
+                        </th>
+                        <th scope="col">{t('admin.firstRunSfColAction')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredGroups.map((group) => (
+                        <Fragment key={`cr-g-${group.key}`}>
+                          <tr className={styles.previewEntranceSep}>
+                            <td colSpan={4}>{formatCrEntranceTitle(group, t)}</td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {group.items.map((item) => (
-                            <tr key={item.key}>
-                              <td>
-                                <div style={{ fontWeight: 600 }}>
-                                  {formatCrAptHeading(item, t)}
-                                  {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                                  {item.excelRow ? (
-                                    <span className={styles.hint} style={{ marginLeft: 6 }}>
-                                      {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {item.errorText ? (
-                                  <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
-                                    {item.errorText}
+                          {group.items.map((item) => {
+                            const amount =
+                              item.balanceKind === 'debt'
+                                ? formatEur(item.remainingDebt ?? 0, locale)
+                                : item.balanceKind === 'credit'
+                                  ? formatEur(item.overpayment ?? 0, locale)
+                                  : item.balanceKind === 'zero'
+                                    ? formatEur(0, locale)
+                                    : '—';
+                            const kindLabel =
+                              item.balanceKind === 'debt'
+                                ? t('admin.firstRunSfKindDebt')
+                                : item.balanceKind === 'credit'
+                                  ? t('admin.firstRunSfKindCredit')
+                                  : item.balanceKind === 'zero'
+                                    ? t('admin.firstRunSfKindZero')
+                                    : '—';
+                            return (
+                              <tr
+                                key={item.key}
+                                className={
+                                  item.outcome === 'error'
+                                    ? styles.tableRowError
+                                    : item.outcome === 'defer'
+                                      ? styles.tableRowWarn
+                                      : undefined
+                                }
+                              >
+                                <td>
+                                  <div className={styles.previewAptName}>
+                                    {formatCrAptHeading(item, t)}
+                                    {item.sectionCode ? ` · ${item.sectionCode}` : ''}
                                   </div>
-                                ) : null}
-                              </td>
-                              <td>{item.billingYear || '—'}</td>
-                              <td>{formatCrBalanceLabel(item, t, locale)}</td>
-                              <td>{presentCrOutcome(item.outcome, t)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))
+                                  {item.excelRow ? (
+                                    <div className={styles.previewAptMeta}>
+                                      {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
+                                    </div>
+                                  ) : null}
+                                  {item.errorText ? (
+                                    <div className={`${styles.previewMsg} ${styles.previewMsgError}`}>
+                                      {item.errorText}
+                                    </div>
+                                  ) : null}
+                                </td>
+                                <td>{kindLabel}</td>
+                                <td className={styles.previewAmount}>{amount}</td>
+                                <td className={styles.previewAction}>{presentCrOutcome(item.outcome, t)}</td>
+                              </tr>
+                            );
+                          })}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             ) : null}

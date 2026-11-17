@@ -228,8 +228,6 @@ export function AdminCapital({
   const [openingFormOpen, setOpeningFormOpen] = useState(false);
   const [openingConfirmBusy, setOpeningConfirmBusy] = useState(false);
   const [openingYear, setOpeningYear] = useState('');
-  const [openingTransition, setOpeningTransition] = useState('');
-  const [openingSource, setOpeningSource] = useState('');
   const [openingSignedAmount, setOpeningSignedAmount] = useState('');
   const openingIdemRef = useRef(crypto.randomUUID());
   const [aptCharges, setAptCharges] = useState<number | null>(null);
@@ -411,13 +409,6 @@ export function AdminCapital({
         payload?: Record<string, unknown> | null;
       };
       setOpeningYear((prev) => (prev ? prev : prow.billing_year != null ? String(prow.billing_year) : ''));
-      const payload = prow.payload ?? {};
-      setOpeningTransition((prev) =>
-        prev ? prev : payload.transition_date ? String(payload.transition_date).slice(0, 10) : '',
-      );
-      setOpeningSource((prev) =>
-        prev ? prev : payload.source_reference ? String(payload.source_reference) : '',
-      );
     } else {
       setOpeningFormOpen(false);
     }
@@ -726,18 +717,10 @@ export function AdminCapital({
   async function handleConfirmCapitalRepairOpening(e: FormEvent) {
     e.preventDefault();
     if (!canSee || propertyId === '' || openingConfirmBusy || !openingPending) return;
-    const year = Number(openingYear);
+    const year = Number(openingYear) || (launchYear != null ? Number(launchYear) : NaN);
     const signed = Number(String(openingSignedAmount).replace(/\s/g, '').replace(',', '.'));
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
       setError(t('admin.importIssue_billing_year_invalid'));
-      return;
-    }
-    if (!openingTransition.trim()) {
-      setError(t('admin.importIssue_transition_date_required'));
-      return;
-    }
-    if (!openingSource.trim()) {
-      setError(t('admin.importIssue_source_reference_required'));
       return;
     }
     if (!Number.isFinite(signed)) {
@@ -764,8 +747,8 @@ export function AdminCapital({
       p_historically_paid_amount: paid,
       p_remaining_debt: remaining,
       p_opening_overpayment: over,
-      p_transition_date: openingTransition.trim(),
-      p_source_reference: openingSource.trim(),
+      p_transition_date: null,
+      p_source_reference: null,
       p_notes: null,
       p_idempotency_key: openingIdemRef.current,
     } as never);
@@ -1645,41 +1628,15 @@ export function AdminCapital({
               >
                 <p className="text-sm font-medium text-foreground">{t('admin.feeOpeningConfirmTitle')}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block text-xs text-secondary">
-                    {t('admin.firstRunSfColYear')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="number"
-                      min={2000}
-                      max={2100}
-                      value={openingYear}
-                      onChange={(ev) => setOpeningYear(ev.target.value)}
-                      required
-                      data-testid="cr-opening-year"
-                    />
-                  </label>
-                  <label className="block text-xs text-secondary">
-                    {t('admin.feeOpeningTransitionDate')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="date"
-                      value={openingTransition}
-                      onChange={(ev) => setOpeningTransition(ev.target.value)}
-                      required
-                      data-testid="cr-opening-transition"
-                    />
-                  </label>
-                  <label className="block text-xs text-secondary sm:col-span-2">
-                    {t('admin.feeOpeningSourceRef')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="text"
-                      value={openingSource}
-                      onChange={(ev) => setOpeningSource(ev.target.value)}
-                      required
-                      data-testid="cr-opening-source"
-                    />
-                  </label>
+                  <div className="block text-xs text-secondary">
+                    {t('admin.firstRunCrAutoYearLabel')}
+                    <p className="mt-1 text-sm font-medium text-foreground" data-testid="cr-opening-year">
+                      {openingYear || (launchYear != null ? String(launchYear) : '—')}
+                    </p>
+                    <span className="mt-1 block text-[11px] text-muted">
+                      {t('admin.firstRunCrAutoYearHint')}
+                    </span>
+                  </div>
                   <label className="block text-xs text-secondary sm:col-span-2">
                     {t('admin.firstRunSfColAmount')}
                     <input

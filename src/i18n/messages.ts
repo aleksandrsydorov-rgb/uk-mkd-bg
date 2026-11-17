@@ -2152,12 +2152,15 @@ export const ru = {
     firstRunCrLead:
       '1) Подтвердите тариф капремонта — он пойдёт в будущие начисления после активации. 2) Скачайте шаблон начальных остатков и по каждой квартире укажите сумму со знаком: долг, переплату или явный ноль. 3) После проверки файла подтвердите импорт: платежи и новые начисления не создаются, импортированный период нельзя начислить повторно.',
     firstRunCrImportColumnsHint:
-      'Простой шаблон: Апартамент | Секция | Блок | Год начисления | Сумма, EUR. Знак суммы: 70,70 — долг; −50,00 — переплата; 0 — ноль. Пустая сумма — можно внести позже. Дату перехода и основание задайте один раз ниже перед загрузкой.',
-    firstRunCrDownload: 'Скачать шаблон начальных остатков',
+      'Шаблон: Апартамент | Секция | Блок | Сумма начального остатка, EUR. Первые три колонки из Книги. Год начисления — автоматически по активации комплекса. Пустую сумму можно внести позже в карточке.',
+    firstRunCrDownload: 'Скачать шаблон',
     firstRunCrDownloadDetailed: 'Скачать подробный шаблон',
-    firstRunCrFileMetaTitle: 'Реквизиты учёта для файла',
+    firstRunCrFileMetaTitle: 'Год начисления',
     firstRunCrFileMetaHint:
-      'Укажите один раз для всего файла: дату перехода и документ-основание. Год начисления берётся из строк шаблона.',
+      'Год начисления определяется автоматически по году активации комплекса.',
+    firstRunCrAutoYearLabel: 'Год начисления (автоматически)',
+    firstRunCrAutoYearHint:
+      'По году активации комплекса. Не меняется при переходе через Новый год, если остатки уже сохранены.',
     firstRunCrUpload: 'Загрузить заполненный файл',
     firstRunCrColTitle: 'Название начисления',
     firstRunCrBlockingDetail:
@@ -7732,12 +7735,14 @@ export const en: Messages = {
     firstRunCrLead:
       '1) Confirm the capital-repair tariff. 2) Download the opening-balances template and enter a signed amount per apartment: debt, overpayment, or explicit zero. 3) After the file check, confirm import: no payments or operational charges are created; an imported period cannot be charged again.',
     firstRunCrImportColumnsHint:
-      'Simple template: Apartment | Section | Block | Billing year | Amount, EUR. Amount sign: 70.70 — debt; −50.00 — overpayment; 0 — zero. Empty amount — can enter later. Set transition date and source once below before upload.',
-    firstRunCrDownload: 'Download opening balances template',
+      'Template: Apartment | Section | Block | Opening balance amount, EUR. First three columns from the Book. Billing year is automatic from complex activation. A blank amount can be entered later on the card.',
+    firstRunCrDownload: 'Download template',
     firstRunCrDownloadDetailed: 'Download detailed template',
-    firstRunCrFileMetaTitle: 'Accounting details for the file',
-    firstRunCrFileMetaHint:
-      'Set once for the whole file: transition date and supporting document. Billing year comes from each template row.',
+    firstRunCrFileMetaTitle: 'Billing year',
+    firstRunCrFileMetaHint: 'Billing year is taken automatically from the complex activation year.',
+    firstRunCrAutoYearLabel: 'Billing year (automatic)',
+    firstRunCrAutoYearHint:
+      'From the complex activation year. Does not change across New Year once balances are saved.',
     firstRunCrUpload: 'Upload file',
     firstRunCrColTitle: 'Assessment title',
     firstRunCrBlockingDetail:
@@ -13304,12 +13309,15 @@ export const bg: Messages = {
     firstRunCrLead:
       '1) Потвърдете тарифата за капитален ремонт. 2) Изтеглете шаблона за начални остатъци и за всеки апартамент посочете сума със знак: дълг, преплата или явен нула. 3) След проверката на файла потвърдете импорта: плащания и операционни начисления не се създават; импортираният период не може да се начисли повторно.',
     firstRunCrImportColumnsHint:
-      'Прост шаблон: Апартамент | Секция | Блок | Година на начисляване | Сума, EUR. Знак на сумата: 70,70 — дълг; −50,00 — преплата; 0 — нула. Празна сума — може по-късно. Датата на преминаване и основанието се задават веднъж по-долу преди качването.',
-    firstRunCrDownload: 'Изтегляне на шаблон за начални остатъци',
+      'Шаблон: Апартамент | Секция | Блок | Сума начален остатък, EUR. Първите три колони от Книгата. Годината е автоматична по активирането. Празна сума може да се въведе по-късно в картата.',
+    firstRunCrDownload: 'Изтегляне на шаблон',
     firstRunCrDownloadDetailed: 'Изтегляне на подробен шаблон',
-    firstRunCrFileMetaTitle: 'Реквизити за файла',
+    firstRunCrFileMetaTitle: 'Година на начисляване',
     firstRunCrFileMetaHint:
-      'Посочете веднъж за целия файл: дата на преминаване и документ-основание. Годината на начисляване е в редовете на шаблона.',
+      'Годината на начисляване се определя автоматично по годината на активиране на комплекса.',
+    firstRunCrAutoYearLabel: 'Година на начисляване (автоматично)',
+    firstRunCrAutoYearHint:
+      'По годината на активиране на комплекса. Не се променя при Нова година, ако остатъците вече са записани.',
     firstRunCrUpload: 'Качване на файл',
     firstRunCrColTitle: 'Наименование на начислението',
     firstRunCrBlockingDetail:

@@ -1,6 +1,7 @@
 /**
  * Simple capital-repair opening XLSX → RPC row shape for admin_import_capital_repair_opening.
  * Sign of amount encodes kind: +debt / −overpayment / 0 zero / blank → soft defer.
+ * Billing year comes from complex activation (launch) year — not from the file.
  * Blank-amount rows are sent to the RPC; SQL returns DEFER, records a pending slot
  * (needs_initial) and preserves any already-confirmed opening.
  */
@@ -12,9 +13,13 @@ import { parseLocalizedImportBuffer } from '@/lib/importTemplates';
 
 export type CrOpeningBalanceKind = 'debt' | 'overpayment' | 'zero';
 
+/** Meta injected by the wizard (year from activation model; technical transition optional). */
 export type CrSimpleFileMeta = {
-  transitionDate: string;
-  sourceReference: string;
+  billingYear: string;
+  /** Technical date from activation model when inventarising; may be empty for soft-defer. */
+  transitionDate?: string;
+  /** Optional legacy source; new simple templates omit it. */
+  sourceReference?: string;
 };
 
 export type CrOpeningParseResult =
@@ -95,6 +100,7 @@ function stripInternalKeys(row: Record<string, string>): Record<string, string> 
  * Map one simple row to RPC payload keys.
  * Inventarisation only: debt → assessed=remaining=|amount|, paid=0;
  * overpayment → over=|amount|; zero → all zeros. No operational charges/payments.
+ * Year comes from activation meta; legacy file year column still accepted when present.
  */
 export function mapSimpleCrOpeningRow(
   row: Record<string, string>,
@@ -109,11 +115,12 @@ export function mapSimpleCrOpeningRow(
   const apartment = trim(row.apartment_number);
   const section = trim(row.section_code);
   const block = trim(row.block_code);
-  const year = trim(row.billing_year);
+  // Prefer file year (legacy templates); otherwise wizard activation year.
+  const year = trim(row.billing_year) || trim(meta.billingYear);
   const amountRaw = rawAmountCell(row.opening_balance_eur);
   const amountParsed = parseCrOpeningAmount(row.opening_balance_eur);
 
-  if (!apartment && !section && !block && !year && !amountRaw) {
+  if (!apartment && !section && !block && !amountRaw && !trim(row.billing_year)) {
     return { previewRow: null, rpcRow: null, errors: [], deferred: false };
   }
 
@@ -139,7 +146,7 @@ export function mapSimpleCrOpeningRow(
     }
     kind = 'invalid';
   } else if (amountParsed.value == null) {
-    // Apartment known, amount blank → soft defer (do not wipe / do not RPC).
+    // Apartment known, amount blank → soft defer (do not wipe / do not invent zero).
     defer = true;
     kind = '';
   } else {
@@ -149,14 +156,9 @@ export function mapSimpleCrOpeningRow(
 
   const transition = trim(meta.transitionDate);
   const source = trim(meta.sourceReference);
-  // Meta required only when the row will write a balance (not pure defer).
-  if (!defer && kind && kind !== 'invalid') {
-    if (!transition) {
-      errors.push(err(excelRow, apartment, 'transition_date', 'required:transition_date'));
-    }
-    if (!source) {
-      errors.push(err(excelRow, apartment, 'source_reference', 'required:source_reference'));
-    }
+  // Transition / source optional for simple inventarisation (server fills technical date).
+  if (transition && !/^\d{4}-\d{2}-\d{2}$/.test(transition)) {
+    errors.push(err(excelRow, apartment, 'transition_date', 'invalid:transition_date'));
   }
 
   let assessed = '';
@@ -247,6 +249,7 @@ export function mapSimpleCrOpeningRow(
 /**
  * Parse uploaded workbook as simple (signed amount) or detailed CR opening.
  * Prefer detailed when its required headers resolve; otherwise simple.
+ * Legacy simple files with billing_year column remain parseable.
  */
 export function parseCapitalRepairOpeningWorkbook(
   buf: ArrayBuffer,

@@ -13,15 +13,18 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import {
+  DEFAULT_WATER_SUPPLIER,
   firstRunTariffStepReady,
   formatFirstRunTariffPrepSummary,
   isFirstRunTariffPrepared,
+  readInstallationWaterSupplier,
   type FirstRunAnnualTariffPrep,
   type FirstRunElectricityTariffPrep,
   type FirstRunInternetTariffPrep,
   type FirstRunTariffKey,
   type FirstRunTariffPrepMap,
   type FirstRunWaterTariffPrep,
+  type InstallationWaterSupplier,
 } from '@/lib/firstRun';
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import { normalizeTariffListRow, sofiaTodayIsoDate, type TariffListRow } from '@/lib/tariffs';
@@ -59,6 +62,7 @@ type UtilityForm = {
   day: string;
   night: string;
   package_30: string;
+  basis_mode: 'supplier_notice' | 'invoice' | 'other';
   basis_reference: string;
   basis_date: string;
   basis_note: string;
@@ -92,14 +96,16 @@ function emptyAnnual(today: string, tariffKey?: FirstRunTariffKey): AnnualForm {
   };
 }
 
-function emptyUtility(today: string): UtilityForm {
+function emptyUtility(today: string, tariffKey?: FirstRunTariffKey): UtilityForm {
+  const water = tariffKey === 'water';
   return {
     rate: '',
     day: '',
     night: '',
     package_30: '',
+    basis_mode: 'supplier_notice',
     basis_reference: '',
-    basis_date: today,
+    basis_date: water ? '' : today,
     basis_note: '',
   };
 }
@@ -118,7 +124,7 @@ function hasAnyInput(key: FirstRunTariffKey, annual: AnnualForm, utility: Utilit
     );
   }
   if (key === 'water') {
-    return Boolean(utility.rate.trim() || utility.basis_reference.trim() || utility.basis_note.trim());
+    return Boolean(utility.rate.trim());
   }
   if (key === 'electricity') {
     return Boolean(
@@ -179,14 +185,13 @@ function buildPrepItem(
   if (key === 'water') {
     const rate = Number(utility.rate);
     if (!(rate >= 0) || Number.isNaN(rate)) throw new Error(t('admin.tcErrRate'));
-    if (!utility.basis_reference.trim()) throw new Error(t('admin.tcErrSupplierRef'));
-    if (!utility.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
+    // Document number / date / note are not collected on the water step.
     return {
       rate,
-      basis_type: 'supplier_notice',
-      basis_reference: utility.basis_reference.trim(),
-      basis_date: utility.basis_date || null,
-      basis_note: utility.basis_note.trim(),
+      basis_type: utility.basis_mode,
+      basis_reference: null,
+      basis_date: null,
+      basis_note: '',
     };
   }
   if (key === 'internet') {
@@ -232,7 +237,7 @@ function applyPrepToForms(
 ) {
   if (!item) {
     setAnnual(emptyAnnual(today, tariffKey));
-    setUtility(emptyUtility(today));
+    setUtility(emptyUtility(today, tariffKey));
     return;
   }
   if (tariffKey === 'support_fee' || tariffKey === 'capital_repair') {
@@ -250,11 +255,12 @@ function applyPrepToForms(
   }
   if (tariffKey === 'water' && 'rate' in item) {
     setUtility({
-      ...emptyUtility(today),
+      ...emptyUtility(today, 'water'),
       rate: String(item.rate),
-      basis_reference: item.basis_reference,
-      basis_date: item.basis_date ?? today,
-      basis_note: item.basis_note,
+      basis_mode: item.basis_type,
+      basis_reference: item.basis_reference ?? '',
+      basis_date: item.basis_date ?? '',
+      basis_note: item.basis_note ?? '',
     });
     return;
   }
@@ -263,6 +269,7 @@ function applyPrepToForms(
       ...emptyUtility(today),
       day: String(item.day),
       night: String(item.night),
+      basis_mode: item.basis_type,
       basis_reference: item.basis_reference,
       basis_date: item.basis_date ?? today,
       basis_note: item.basis_note,
@@ -274,6 +281,7 @@ function applyPrepToForms(
       ...emptyUtility(today),
       package_30: String(item.package_30),
       day: String(item.day),
+      basis_mode: item.basis_type,
       basis_reference: item.basis_reference,
       basis_date: item.basis_date ?? today,
       basis_note: item.basis_note,
@@ -308,7 +316,8 @@ export const FirstRunTariffPrepBlock = forwardRef<
   const [row, setRow] = useState<TariffListRow | null>(null);
   const [decisions, setDecisions] = useState<DecisionOption[]>([]);
   const [annual, setAnnual] = useState<AnnualForm>(() => emptyAnnual(today, tariffKey));
-  const [utility, setUtility] = useState<UtilityForm>(() => emptyUtility(today));
+  const [utility, setUtility] = useState<UtilityForm>(() => emptyUtility(today, tariffKey));
+  const [waterSupplier, setWaterSupplier] = useState<InstallationWaterSupplier>(DEFAULT_WATER_SUPPLIER);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState(() => !prepared);
   const dirtyRef = useRef(false);
@@ -323,6 +332,17 @@ export const FirstRunTariffPrepBlock = forwardRef<
       ? (data as Record<string, unknown>[]).map((r) => normalizeTariffListRow(r))
       : [];
     setRow(list.find((r) => r.tariff_key === tariffKey) ?? null);
+    if (tariffKey === 'water') {
+      try {
+        const { data: state } = await untyped(supabase).rpc('admin_get_first_run_state');
+        const supplier = readInstallationWaterSupplier(
+          state && typeof state === 'object' ? (state as Record<string, unknown>).water_supplier : null,
+        );
+        setWaterSupplier(supplier);
+      } catch {
+        setWaterSupplier(DEFAULT_WATER_SUPPLIER);
+      }
+    }
     try {
       const { data: dec } = await supabase
         .from('general_meeting_decisions')
@@ -666,23 +686,54 @@ export const FirstRunTariffPrepBlock = forwardRef<
           ) : null}
 
           {tariffKey === 'water' ? (
-            <label className={styles.field}>
-              {t('admin.firstRunTariffWaterRate')}
-              <input
-                className={styles.input}
-                type="number"
-                step="0.0001"
-                min="0"
-                value={utility.rate}
-                disabled={busy}
-                onChange={(e) => {
-                  markDirty();
-                  setUtility({ ...utility, rate: e.target.value });
-                }}
-                required
-              />
-              <span className={styles.hint}>{t('admin.firstRunTariffWaterSingle')}</span>
-            </label>
+            <>
+              <div className={`${styles.field} ${styles.span2}`}>
+                <span className={styles.importLabel}>{t('admin.waterSupplier')}</span>
+                <p className={styles.hint} style={{ marginTop: 4 }}>
+                  <strong>{waterSupplier.short}</strong>
+                  <br />
+                  {waterSupplier.legal_name}
+                </p>
+                <span className={styles.hint}>{t('admin.waterSupplierFixedHint')}</span>
+              </div>
+              <label className={styles.field}>
+                {t('admin.firstRunTariffWaterRate')}
+                <input
+                  className={styles.input}
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={utility.rate}
+                  disabled={busy}
+                  onChange={(e) => {
+                    markDirty();
+                    setUtility({ ...utility, rate: e.target.value });
+                  }}
+                  required
+                />
+                <span className={styles.hint}>{t('admin.firstRunTariffWaterSingle')}</span>
+              </label>
+              <label className={`${styles.field} ${styles.span2}`}>
+                {t('admin.tcBasis')}
+                <select
+                  className={styles.input}
+                  value={utility.basis_mode}
+                  disabled={busy}
+                  onChange={(e) => {
+                    markDirty();
+                    setUtility({
+                      ...utility,
+                      basis_mode: e.target.value as UtilityForm['basis_mode'],
+                    });
+                  }}
+                >
+                  <option value="supplier_notice">{t('admin.tcBasisSupplier')}</option>
+                  <option value="invoice">{t('admin.tcBasisInvoice')}</option>
+                  <option value="other">{t('admin.tcBasisOther')}</option>
+                </select>
+                <span className={styles.hint}>{t('admin.tcBasisModeHintWater')}</span>
+              </label>
+            </>
           ) : null}
 
           {tariffKey === 'electricity' ? (
@@ -763,7 +814,7 @@ export const FirstRunTariffPrepBlock = forwardRef<
             </>
           ) : null}
 
-          {tariffKey === 'water' || tariffKey === 'electricity' || tariffKey === 'internet' ? (
+          {tariffKey === 'electricity' || tariffKey === 'internet' ? (
             <>
               <label className={styles.field}>
                 {t('admin.tcSupplierRef')}

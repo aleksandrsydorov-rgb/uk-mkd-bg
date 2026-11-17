@@ -267,6 +267,8 @@ export function tariffBasisLabel(basis: string | null | undefined, t: T): string
   if (basis === 'general_meeting') return t('admin.tcBasisGm');
   if (basis === 'external_decision') return t('admin.tcBasisExternal');
   if (basis === 'supplier_notice') return t('admin.tcBasisSupplier');
+  if (basis === 'invoice') return t('admin.tcBasisInvoice');
+  if (basis === 'other') return t('admin.tcBasisOther');
   if (basis === 'legacy_import') return t('admin.tcBasisLegacy');
   return null;
 }

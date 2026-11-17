@@ -1102,12 +1102,19 @@ export const ru = {
     tcBasis: 'Основание тарифа',
     tcBasisGm: 'Действующий тариф на основании решения собрания собственников',
     tcBasisExternal: 'Внешний документ',
-    tcBasisSupplier: 'Уведомление поставщика',
+    tcBasisSupplier: 'Действующий тариф поставщика',
+    tcBasisInvoice: 'Счёт / фактура поставщика',
+    tcBasisOther: 'Иное основание',
     tcBasisLegacy: 'Импорт',
     tcBasisModeHint:
       'Выберите, чем подтверждена ставка: внешним документом (протокол, приказ) или решением общего собрания из системы.',
     tcBasisModeHintSupport:
       'По умолчанию — действующий тариф на основании решения собрания собственников. Достаточно указать ставку; номер документа, дату и пояснение указывать не нужно.',
+    tcBasisModeHintWater:
+      'По умолчанию — действующий тариф поставщика. Достаточно указать ставку воды; номер документа, дату и пояснение указывать не нужно.',
+    waterSupplier: 'Поставщик воды',
+    waterSupplierFixedHint:
+      'Поставщик зафиксирован в настройках этой установки и здесь не редактируется.',
     tcBasisDate: 'Дата документа',
     tcBasisDateHint:
       'Обязательно. Дата документа, которым установлена ставка. Формат: ДД.ММ.ГГГГ. Пример: 15.03.2025.',
@@ -6650,12 +6657,19 @@ export const en: Messages = {
     tcBasis: 'Tariff basis',
     tcBasisGm: 'Current tariff based on the owners’ general meeting decision',
     tcBasisExternal: 'External document',
-    tcBasisSupplier: 'Supplier notice',
+    tcBasisSupplier: 'Current supplier tariff',
+    tcBasisInvoice: 'Supplier invoice',
+    tcBasisOther: 'Other basis',
     tcBasisLegacy: 'Import',
     tcBasisModeHint:
       'Choose what confirms the rate: an external document (minutes, order) or a general meeting decision already in the system.',
     tcBasisModeHintSupport:
       'Default is the current tariff based on the owners’ general meeting decision. Enter the rate only; document number, date, and note are not required.',
+    tcBasisModeHintWater:
+      'Default is the current supplier tariff. Enter the water rate only; document number, date, and note are not required.',
+    waterSupplier: 'Water supplier',
+    waterSupplierFixedHint:
+      'The supplier is fixed in this installation’s settings and cannot be edited here.',
     tcBasisDate: 'Document date',
     tcBasisDateHint:
       'Required. Date of the document that sets the rate. Format: DD.MM.YYYY. Example: 15.03.2025.',
@@ -12186,12 +12200,19 @@ export const bg: Messages = {
     tcBasis: 'Основание на тарифа',
     tcBasisGm: 'Действаща тарифа въз основа на решение на общото събрание на собствениците',
     tcBasisExternal: 'Външен документ',
-    tcBasisSupplier: 'Уведомление от доставчик',
+    tcBasisSupplier: 'Действаща тарифа на доставчика',
+    tcBasisInvoice: 'Фактура / сметка на доставчика',
+    tcBasisOther: 'Друго основание',
     tcBasisLegacy: 'Импорт',
     tcBasisModeHint:
       'Изберете с какво е потвърдена ставката: външен документ (протокол, заповед) или решение на общо събрание от системата.',
     tcBasisModeHintSupport:
       'По подразбиране — действаща тарифа въз основа на решение на общото събрание на собствениците. Достатъчно е да посочите ставката; номер на документ, дата и пояснение не са нужни.',
+    tcBasisModeHintWater:
+      'По подразбиране — действаща тарифа на доставчика. Достатъчно е да посочите ставката за вода; номер на документ, дата и пояснение не са нужни.',
+    waterSupplier: 'Доставчик на вода',
+    waterSupplierFixedHint:
+      'Доставчикът е фиксиран в настройките на тази инсталация и тук не се редактира.',
     tcBasisDate: 'Дата на документа',
     tcBasisDateHint:
       'Задължително. Дата на документа, с който е определена ставката. Формат: ДД.ММ.ГГГГ. Пример: 15.03.2025.',

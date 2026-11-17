@@ -781,9 +781,21 @@ export type FirstRunAnnualTariffPrep = {
 export type FirstRunWaterTariffPrep = {
   rate: number;
   basis_type: 'supplier_notice' | 'invoice' | 'other';
-  basis_reference: string;
+  /** Optional for water first-run (document number no longer collected). */
+  basis_reference: string | null;
   basis_date: string | null;
+  /** May be empty for water first-run prep. */
   basis_note: string;
+};
+
+export type InstallationWaterSupplier = {
+  short: string;
+  legal_name: string;
+};
+
+export const DEFAULT_WATER_SUPPLIER: InstallationWaterSupplier = {
+  short: 'ВиК Бургас',
+  legal_name: '«Водоснабдяване и канализация» ЕАД — Бургас',
 };
 
 export type FirstRunElectricityTariffPrep = {
@@ -873,16 +885,33 @@ function normalizeAnnualPrep(row: Record<string, unknown>): FirstRunAnnualTariff
   };
 }
 
+/** Water first-run: rate + basis type only (no supplier document number/date/note). */
 export function isWaterTariffPrep(value: unknown): value is FirstRunWaterTariffPrep {
   const row = asRecord(value);
   if (!row) return false;
   const basis = text(row.basis_type);
   return (
     nonNegative(row.rate) != null &&
-    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other') &&
-    text(row.basis_reference).length > 0 &&
-    text(row.basis_note).length > 0
+    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other')
   );
+}
+
+function normalizeWaterPrep(row: Record<string, unknown>): FirstRunWaterTariffPrep {
+  return {
+    rate: nonNegative(row.rate)!,
+    basis_type: text(row.basis_type) as FirstRunWaterTariffPrep['basis_type'],
+    basis_reference: text(row.basis_reference) || null,
+    basis_date: text(row.basis_date) || null,
+    basis_note: text(row.basis_note),
+  };
+}
+
+export function readInstallationWaterSupplier(value: unknown): InstallationWaterSupplier {
+  const row = asRecord(value);
+  if (!row) return { ...DEFAULT_WATER_SUPPLIER };
+  const short = text(row.short) || DEFAULT_WATER_SUPPLIER.short;
+  const legal = text(row.legal_name) || DEFAULT_WATER_SUPPLIER.legal_name;
+  return { short, legal_name: legal };
 }
 
 export function isElectricityTariffPrep(value: unknown): value is FirstRunElectricityTariffPrep {
@@ -921,7 +950,7 @@ export function readTariffPrep(draft: Record<string, unknown> | null | undefined
   if (isCapitalRepairTariffPrep(raw.capital_repair)) {
     prep.capital_repair = normalizeAnnualPrep(asRecord(raw.capital_repair)!);
   }
-  if (isWaterTariffPrep(raw.water)) prep.water = raw.water;
+  if (isWaterTariffPrep(raw.water)) prep.water = normalizeWaterPrep(asRecord(raw.water)!);
   if (isElectricityTariffPrep(raw.electricity)) prep.electricity = raw.electricity;
   if (isInternetTariffPrep(raw.internet)) prep.internet = raw.internet;
   return prep;
@@ -987,7 +1016,15 @@ export function formatFirstRunTariffPrepSummary(
   if (!isFirstRunTariffPrepared(key, prep)) return null;
   const amt = (v: string | number) => formatFirstRunTariffAmount(v, locale);
   if (key === 'water' && prep.water) {
-    return `${amt(prep.water.rate)} €/${t('admin.tcUnitM3')}`;
+    const basis =
+      prep.water.basis_type === 'supplier_notice'
+        ? t('admin.tcBasisSupplier')
+        : prep.water.basis_type === 'invoice'
+          ? t('admin.tcBasisInvoice')
+          : prep.water.basis_type === 'other'
+            ? t('admin.tcBasisOther')
+            : prep.water.basis_type;
+    return `${amt(prep.water.rate)} €/${t('admin.tcUnitM3')}\n${t('admin.tcBasis')}: ${basis}`;
   }
   if (key === 'electricity' && prep.electricity) {
     return `${t('admin.tcCompDay')}: ${amt(prep.electricity.day)} €/${t('admin.tcUnitKwh')}\n${t('admin.tcCompNight')}: ${amt(prep.electricity.night)} €/${t('admin.tcUnitKwh')}`;

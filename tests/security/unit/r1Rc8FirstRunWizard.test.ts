@@ -284,6 +284,24 @@ describe('R1-RC8 first-run · required published tariffs', () => {
       basis_date: null,
       basis_note: 'Вода',
     })).toBe(true);
+    expect(
+      isWaterTariffPrep({
+        rate: 2.5,
+        basis_type: 'supplier_notice',
+        basis_reference: null,
+        basis_date: null,
+        basis_note: '',
+      }),
+    ).toBe(true);
+    expect(
+      isWaterTariffPrep({
+        rate: -1,
+        basis_type: 'supplier_notice',
+        basis_reference: null,
+        basis_date: null,
+        basis_note: '',
+      }),
+    ).toBe(false);
     expect(isElectricityTariffPrep({
       day: 0.2,
       night: 0.1,

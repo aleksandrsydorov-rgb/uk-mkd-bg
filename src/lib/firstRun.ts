@@ -173,6 +173,9 @@ export type FirstRunErrorRow = {
     actual?: number | string;
     objectsValue?: string;
     ownersValue?: string;
+    billingYear?: string;
+    savedNet?: string;
+    newNet?: string;
   };
 };
 
@@ -1400,14 +1403,30 @@ export function normalizeFirstRunErrors(errors: unknown): FirstRunErrorRow[] {
     const sectionCode = str(r.section_code || r.sectionCode);
     const blockCode = str(r.block_code || r.blockCode);
     const value = str(r.value);
+    const billingYear = str(r.billing_year ?? r.billingYear);
+    const savedNet =
+      r.saved_net != null && r.saved_net !== ''
+        ? str(r.saved_net)
+        : r.savedNet != null && r.savedNet !== ''
+          ? str(r.savedNet)
+          : '';
+    const newNet =
+      r.new_net != null && r.new_net !== ''
+        ? str(r.new_net)
+        : r.newNet != null && r.newNet !== ''
+          ? str(r.newNet)
+          : '';
     const meta =
-      candidateSections || sourceRows || sectionCode || blockCode || value
+      candidateSections || sourceRows || sectionCode || blockCode || value || billingYear || savedNet || newNet
         ? {
             ...(candidateSections ? { candidateSections } : {}),
             ...(sourceRows ? { sourceRows } : {}),
             ...(sectionCode ? { sectionCode } : {}),
             ...(blockCode ? { blockCode } : {}),
             ...(value ? { value } : {}),
+            ...(billingYear ? { billingYear } : {}),
+            ...(savedNet ? { savedNet } : {}),
+            ...(newNet ? { newNet } : {}),
           }
         : undefined;
     return {

@@ -1196,6 +1196,16 @@ export type PresentedImportErrorRow = {
   severityLabel: string;
 };
 
+function formatOpeningNetBalanceLabel(netRaw: string | undefined, t: T): string {
+  const net = Number(String(netRaw ?? '').replace(',', '.'));
+  if (!Number.isFinite(net)) return String(netRaw ?? '—');
+  const abs = Math.abs(net);
+  const pretty = Number.isInteger(abs) ? String(abs) : abs.toFixed(2);
+  if (net > 0) return t('admin.firstRunSfBalanceDebt', { amount: pretty });
+  if (net < 0) return t('admin.firstRunSfBalanceCredit', { amount: pretty });
+  return t('admin.firstRunSfBalanceZero', { amount: '0' });
+}
+
 export function presentFirstRunErrorRow(
   row: {
     sheet: string;
@@ -1210,6 +1220,9 @@ export function presentFirstRunErrorRow(
       sectionCode?: string;
       blockCode?: string;
       value?: string;
+      billingYear?: string;
+      savedNet?: string;
+      newNet?: string;
     };
   },
   t: T,
@@ -1267,6 +1280,21 @@ export function presentFirstRunErrorRow(
       field,
     });
     reasonText = `${base} ${where}`;
+  }
+  if (
+    /conflict:existing_opening_import_mismatch/i.test(row.reason) &&
+    (row.meta?.savedNet != null || row.meta?.newNet != null)
+  ) {
+    const section = row.meta?.sectionCode ? String(row.meta.sectionCode).trim() : '';
+    reasonText = t('admin.importIssue_existing_opening_mismatch_detail', {
+      apt: row.apartment || '—',
+      sectionPart: section
+        ? t('admin.importIssue_existing_opening_section_part', { section })
+        : '',
+      year: row.meta?.billingYear || '—',
+      saved: formatOpeningNetBalanceLabel(row.meta?.savedNet, t),
+      new: formatOpeningNetBalanceLabel(row.meta?.newNet, t),
+    });
   }
   return {
     row: formatExcelRowRanges(issue.rows) || row.row || '—',

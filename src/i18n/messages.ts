@@ -1854,7 +1854,10 @@ export const ru = {
     is5ColPaidPeriodStart: 'Начало оплаченного периода',
     is5ColPaidPeriodEnd: 'Окончание оплаченного периода / Оплачено по',
     is5ColComment: 'Комментарий',
-    firstRunInternetOpeningNeedConfirm: 'Подтвердите отсутствие подключений или сохраните хотя бы одну строку импорта.',
+    firstRunInternetOpeningNeedConfirm:
+      'Подтвердите импорт начальных остатков кнопкой «Импортировать» или отметьте, что данных нет.',
+    firstRunErrInternetOpeningMissing:
+      'Начальное состояние интернета ещё не сохранено. Загрузите файл, нажмите «Импортировать», или отметьте «данных нет». Подключение можно подтвердить позже в карточке квартиры.',
     firstRunInternetOpeningNeedRow: 'Укажите апартамент и дату перехода.',
     firstRunInternetOpeningDebtCreditXor: 'Долг и переплату нельзя указывать одновременно.',
     firstRunInternetOpeningImportTitle: 'Импорт подключений',
@@ -7448,7 +7451,10 @@ export const en: Messages = {
     is5ColPaidPeriodStart: 'Paid period start',
     is5ColPaidPeriodEnd: 'Paid period end / Paid through',
     is5ColComment: 'Comment',
-    firstRunInternetOpeningNeedConfirm: 'Confirm there are no connections, or save at least one import row.',
+    firstRunInternetOpeningNeedConfirm:
+      'Confirm the opening-balance import with Import, or mark that there is no data.',
+    firstRunErrInternetOpeningMissing:
+      'Internet opening state is not saved yet. Upload the file and click Import, or mark “no data”. Connection can be confirmed later on the apartment card.',
     firstRunInternetOpeningNeedRow: 'Choose an apartment and transition date.',
     firstRunInternetOpeningDebtCreditXor: 'Debt and overpayment cannot both be set.',
     firstRunInternetOpeningImportTitle: 'Import connections',
@@ -13030,7 +13036,10 @@ export const bg: Messages = {
     is5ColPaidPeriodStart: 'Начало на платен период',
     is5ColPaidPeriodEnd: 'Край на платен период / Платено до',
     is5ColComment: 'Коментар',
-    firstRunInternetOpeningNeedConfirm: 'Потвърдете, че няма връзки, или запазете поне един ред за импорт.',
+    firstRunInternetOpeningNeedConfirm:
+      'Потвърдете импорта на началните остатъци с „Импортирай“ или отбележете, че няма данни.',
+    firstRunErrInternetOpeningMissing:
+      'Началното състояние на интернета още не е записано. Качете файла и натиснете „Импортирай“, или отбележете „няма данни“. Връзката може да се потвърди по-късно в картата на апартамента.',
     firstRunInternetOpeningNeedRow: 'Изберете апартамент и дата на преход.',
     firstRunInternetOpeningDebtCreditXor: 'Дълг и надплащане не могат да са едновременно.',
     firstRunInternetOpeningImportTitle: 'Импорт на връзки',

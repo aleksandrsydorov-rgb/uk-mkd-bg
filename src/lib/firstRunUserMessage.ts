@@ -158,6 +158,9 @@ function knownMessage(text: string, t: T): string | null {
   if (/^first_run: support_fee opening inventarisation missing$/i.test(text)) {
     return t('admin.firstRunErrOpeningMissing').replace('{name}', t('admin.firstRunStageSupportFee'));
   }
+  if (/^first_run: internet opening missing$/i.test(text)) {
+    return t('admin.firstRunErrInternetOpeningMissing');
+  }
   if (/^first_run: capital_repair fund cash opening required$/i.test(text)) {
     return t('admin.firstRunErrFundRequired');
   }

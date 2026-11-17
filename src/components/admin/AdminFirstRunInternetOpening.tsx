@@ -156,7 +156,10 @@ export function AdminFirstRunInternetOpening({
     setNone(savedNone);
   }, [noneBlocked, savedNone]);
 
-  const canContinue = (none || importCount > 0 || pendingCount > 0 || committed) && openingUnlocked;
+  // Match server first_run_assert_internet_opening_ready: none OR imports OR soft pending
+  // (or this-session commit that just wrote them). Preview/download alone are not enough.
+  const hasSavedOpening = importCount > 0 || pendingCount > 0 || committed;
+  const canContinue = (none || hasSavedOpening) && openingUnlocked;
 
   const preview = useMemo(() => {
     // Keep preview available after a successful apply so re-check / SKIP rows stay visible.

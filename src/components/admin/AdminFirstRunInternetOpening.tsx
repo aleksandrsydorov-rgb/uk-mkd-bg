@@ -135,7 +135,8 @@ export function AdminFirstRunInternetOpening({
     setImportCount(imports);
     setSubscriptionCount(subs);
     setPendingCount(pending);
-    if (imports > 0 || pending > 0) setCommitted(true);
+    // Existing imports/pending unlock Continue and block the "none" checkbox,
+    // but must NOT lock the file picker — re-upload is needed for SKIP/conflict preview.
   }, [supabase]);
 
   useEffect(() => {
@@ -158,8 +159,8 @@ export function AdminFirstRunInternetOpening({
   const canContinue = (none || importCount > 0 || pendingCount > 0 || committed) && openingUnlocked;
 
   const preview = useMemo(() => {
-    if (!rows || rows.length === 0 || committed) {
-      if (committed) return null;
+    // Keep preview available after a successful apply so re-check / SKIP rows stay visible.
+    if (!rows || rows.length === 0) {
       if (errorRows.length === 0) return null;
       return buildInternetOpeningPreview([], { errorRows, t });
     }
@@ -169,7 +170,7 @@ export function AdminFirstRunInternetOpening({
       errorRows,
       t,
     });
-  }, [rows, previewPayload, errorRows, committed, t]);
+  }, [rows, previewPayload, errorRows, t]);
 
   const filteredGroups = useMemo(() => {
     if (!preview) return [];
@@ -337,7 +338,15 @@ export function AdminFirstRunInternetOpening({
     }
   }
 
-  const hasCheck = Boolean(preview || previewPayload) && !committed;
+  const filePickerDisabled = busy || none || !openingUnlocked;
+  const filePickerDisabledReason = !openingUnlocked
+    ? t('admin.firstRunOpeningLockedUntilTariff')
+    : none
+      ? t('admin.firstRunInternetOpeningNoneHint')
+      : busy
+        ? t('admin.firstRunBusy')
+        : null;
+  const hasCheck = Boolean(preview || previewPayload);
 
   return (
     <FirstRunScreen
@@ -462,12 +471,16 @@ export function AdminFirstRunInternetOpening({
                   <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
                   <AppFilePicker
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    disabled={busy || committed || !openingUnlocked}
+                    disabled={filePickerDisabled}
                     resetInputAfterChange
                     hint={
-                      committed
-                        ? undefined
-                        : `${t('common.fileHintFormats').replace('{formats}', '.xlsx')} · ${t('admin.firstRunFileReselectHint')}`
+                      filePickerDisabledReason
+                        ? filePickerDisabledReason
+                        : `${t('common.fileHintFormats').replace('{formats}', '.xlsx')} · ${t('admin.firstRunFileReselectHint')}${
+                            hasExistingOpeningData
+                              ? ` · ${t('admin.firstRunInternetOpeningReuploadHint')}`
+                              : ''
+                          }`
                     }
                     onChange={(picked) => void onFile(picked[0] ?? null)}
                   />
@@ -486,10 +499,10 @@ export function AdminFirstRunInternetOpening({
                         {preview.connectionClarifyCount}
                       </p>
                     </div>
-                  ) : !committed ? (
+                  ) : (
                     <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
-                  ) : null}
-                  {preview && !committed ? (
+                  )}
+                  {preview ? (
                     <div className={styles.tableWrap} style={{ marginTop: 12 }}>
                       <p className={styles.importLabel}>{t('admin.firstRunSfPreviewTitle')}</p>
                       <p className={styles.hint}>{t('admin.firstRunInternetPreviewHint')}</p>

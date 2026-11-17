@@ -1786,6 +1786,8 @@ export const ru = {
     firstRunInternetOpeningNone: 'На момент настройки подключений и начальных остатков нет',
     firstRunInternetOpeningNoneBlocked:
       'Уже есть подключения или начальные остатки интернета. Отметить «данных нет» нельзя — существующие данные сохраняются. Загрузите файл для сверки или продолжите, если импорт уже выполнен.',
+    firstRunInternetOpeningReuploadHint:
+      'Можно загрузить файл снова для сверки: совпадение — «Уже сохранено», пустые суммы не стирают данные, другое значение — конфликт без перезаписи.',
     firstRunInternetOpeningNoneHint:
       'Файл не нужен. Нажмите «Продолжить», чтобы зафиксировать отсутствие подключений и остатков. Пока вы не нажмёте «Продолжить», в базу ничего не записывается.',
     firstRunInternetDownload: 'Скачать шаблон',
@@ -7379,6 +7381,8 @@ export const en: Messages = {
     firstRunInternetOpeningNone: 'No connections or opening balances at setup time',
     firstRunInternetOpeningNoneBlocked:
       'Internet connections or opening balances already exist. You cannot mark “no data” — existing data is kept. Upload a file to review or continue if import is already done.',
+    firstRunInternetOpeningReuploadHint:
+      'You can upload the file again to verify: match — “Already saved”, blank amounts do not wipe data, a different value — conflict without overwrite.',
     firstRunInternetOpeningNoneHint:
       'No file needed. Click Continue to record that there are no connections or balances. Nothing is written to the database until you click Continue.',
     firstRunInternetDownload: 'Download template',
@@ -12959,6 +12963,8 @@ export const bg: Messages = {
     firstRunInternetOpeningNone: 'Към момента на настройката няма връзки и начални остатъци',
     firstRunInternetOpeningNoneBlocked:
       'Вече има интернет връзки или начални остатъци. Не може да отбележите „няма данни“ — наличните данни се запазват. Качете файл за сверка или продължете, ако импортът вече е направен.',
+    firstRunInternetOpeningReuploadHint:
+      'Можете да качите файла отново за сверка: съвпадение — „Вече е запазено“, празните суми не изтриват данни, друга стойност — конфликт без презапис.',
     firstRunInternetOpeningNoneHint:
       'Файл не е нужен. Натиснете „Напред“, за да фиксирате липсата на връзки и остатъци. До „Напред“ в базата нищо не се записва.',
     firstRunInternetDownload: 'Изтегли шаблон',

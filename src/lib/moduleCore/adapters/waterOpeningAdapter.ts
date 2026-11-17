@@ -100,6 +100,7 @@ export const waterOpeningAdapter: ModuleSetupAdapter = {
             labelKey: 'is3ColInstalledAt',
           },
           {
+            // Legacy column — still accepted on import; new templates omit it.
             key: 'opening_balance_kind',
             required: false,
             example: 'zero',
@@ -108,7 +109,7 @@ export const waterOpeningAdapter: ModuleSetupAdapter = {
           {
             key: 'opening_balance_eur',
             required: false,
-            example: '25.00',
+            example: '50.00',
             labelKey: 'is3ColOpeningBalanceEur',
           },
         ],

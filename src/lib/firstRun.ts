@@ -9,8 +9,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { isValidIban } from '@/lib/iban';
 import {
-  normalizeOpeningBalanceKind,
   normalizeInternetOpeningRow,
+  resolveMeterOpeningBalance,
 } from '@/lib/moduleCore';
 
 /** Section id reserved for the forced wizard (not part of the normal admin nav). */
@@ -358,14 +358,21 @@ export async function importMetersOpening(
 ): Promise<{ data: unknown; error: { message: string; details?: string } | null }> {
   const fn =
     utility === 'water' ? 'admin_import_water_meters_opening' : 'admin_import_electricity_meters_opening';
-  // Templates accept RU/BG/EN balance kinds; RPC expects canonical zero|debt|overpayment.
+  // Resolve signed amounts / localized kinds to canonical zero|debt|overpayment for RPC.
   const normalized = rows.map((row) => {
-    const kind = normalizeOpeningBalanceKind(row.opening_balance_kind);
     const next = { ...row };
-    if (row.opening_balance_kind != null) {
-      next.opening_balance_kind =
-        kind === 'zero' && !String(row.opening_balance_kind).trim() ? '' : kind;
+    const resolved = resolveMeterOpeningBalance(row);
+    if (resolved.errors.length) {
+      // Leave raw values; SQL / client preview already surface the same codes.
+      return next;
     }
+    if (resolved.kind == null) {
+      next.opening_balance_kind = '';
+      next.opening_balance_eur = '';
+      return next;
+    }
+    next.opening_balance_kind = resolved.kind;
+    next.opening_balance_eur = resolved.kind === 'zero' ? '0' : String(resolved.amountAbs);
     return next;
   });
   return untypedRpc(supabase).rpc(fn, { p_rows: normalized, p_dry_run: dryRun });

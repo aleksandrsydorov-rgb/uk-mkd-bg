@@ -1876,12 +1876,25 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           tariffNavRef={tariffNavRef}
           onSaveTariffPrep={(next) => saveTariffPrep('meters_water', next)}
           onTariffBusy={setBusy}
-          onDownload={() =>
-            downloadXlsx(
-              buildWaterMeterIs3TemplateBuffer(locale),
-              localizedTemplateFileName(WATER_METERS_IMPORT_SPEC, locale),
-            )
-          }
+          onDownload={() => {
+            void run(async () => {
+              const stubs = await loadExistingBookObjectStubs();
+              if (stubs.length === 0) {
+                throw new Error(t('admin.firstRunMetersDownloadEmpty'));
+              }
+              downloadXlsx(
+                buildWaterMeterIs3TemplateBuffer(
+                  locale,
+                  stubs.map((r) => ({
+                    apartment_number: r.apartment_number,
+                    section_code: r.section_code,
+                    block_code: r.block_code,
+                  })),
+                ),
+                localizedTemplateFileName(WATER_METERS_IMPORT_SPEC, locale),
+              );
+            });
+          }}
           onFile={(file) => void onMetersFile('water', file)}
           onCommit={() => void onMetersCommit('water')}
           onContinue={() => onMetersContinue('water')}

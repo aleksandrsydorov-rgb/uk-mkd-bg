@@ -1987,8 +1987,9 @@ export const ru = {
     firstRunBookStatChanges: 'Изменения',
     firstRunMetersStatRows: 'Строки',
     firstRunMetersStatSkipped: 'Уже есть',
-    firstRunMetersColApartment: 'Квартира',
+    firstRunMetersColApartment: 'Апартамент',
     firstRunMetersColNumber: 'Номер',
+    firstRunMetersColSection: 'Секция',
     firstRunMetersColMeterNumber: 'Номер счётчика',
     firstRunMetersColReading: 'Показание',
     firstRunMetersColDay: 'День, кВт·ч',
@@ -1996,13 +1997,20 @@ export const ru = {
     firstRunMetersColInstalled: 'Дата установки',
     firstRunMetersColKind: 'Сальдо',
     firstRunMetersColAmount: 'Сумма, €',
+    firstRunMetersColBalance: 'Начальный остаток',
     firstRunMetersColDebt: 'Долг, €',
     firstRunMetersColOverpayment: 'Переплата, €',
+    firstRunMetersBalanceDebt: 'Долг {amount} €',
+    firstRunMetersBalanceCredit: 'Переплата {amount} €',
+    firstRunMetersBalanceZero: 'Остаток 0,00 €',
+    firstRunMetersBalanceUnspecified: 'Начальный остаток не указан',
     firstRunMetersStatDebt: 'Начальный долг',
     firstRunMetersStatOverpayment: 'Переплата',
     firstRunMetersPreviewHint:
-      'Начальные показания и остатки. Новые начисления при импорте не создаются.',
+      'По входам: данные каждого счётчика, что сохранится и что нужно уточнить. Новые начисления при импорте не создаются.',
     firstRunMetersAmountError: 'Ошибка суммы',
+    firstRunMetersDownloadEmpty:
+      'В Книге пока нет сохранённых апартаментов. Сначала завершите импорт апартаментов, затем скачайте шаблон снова.',
     firstRunBookTitle: 'Книга собственности',
     firstRunBookLead:
       'Скачайте шаблон, заполните листы «Объекты» и «Собственники» и загрузите файл. Количество квартир в файле должно быть: {n}.',
@@ -2030,7 +2038,7 @@ export const ru = {
     firstRunMetersSelectElectricity: 'Электросчётчики',
     firstRunMetersSelectRequired: 'Выберите хотя бы один вид счётчиков.',
     firstRunMetersLead:
-      'Скачайте шаблон и заполните начальные показания и остатки по квартирам. Несколько счётчиков на квартиру — отдельные строки. В файле укажите вид остатка (ноль, долг или переплата) и сумму в евро при долге или переплате.',
+      'Скачайте шаблон: для водомеров первые три колонки уже заполнены из Книги. Укажите номер счётчика, показание и сумму начального остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму остатка укажите один раз. Данные можно дополнить позже в карточке.',
     firstRunMetersDownload: 'Скачать шаблон XLSX',
     firstRunMetersUpload: 'Загрузить файл',
     firstRunMetersDryRunOk: 'Проверка пройдена: строк {rows}, уже существует {skipped}.',
@@ -2508,7 +2516,7 @@ export const ru = {
     is3ColOpeningBalanceKind: 'Тип начального остатка',
     is3ColOpeningBalanceEur: 'Сумма начального остатка (EUR)',
     importIssue_opening_balance_conflict_same_apartment:
-      'Начальный остаток задаётся один раз на квартиру. На дополнительных счётчиках той же квартиры оставьте тип пустым или zero — либо укажите тот же тип и сумму. Разные значения по одной квартире запрещены.',
+      'Начальный остаток указывается один раз на квартиру. В дополнительных строках счётчиков той же квартиры оставьте сумму пустой.',
     importIssue_overlapping_paid_periods: 'Оплаченные периоды одной квартиры пересекаются. Исправьте даты.',
     importIssue_inconsistent_connection_state: 'У одной квартиры в файле указаны разные состояния подключения.',
     importIssue_opening_correction_requires_confirm:
@@ -4010,7 +4018,7 @@ export const ru = {
     importIssue_opening_balance_kind_invalid: 'Некорректный вид начального остатка',
     importIssue_opening_balance_eur_invalid: 'Некорректная сумма начального остатка',
     importIssue_opening_balance_eur_hyphen:
-      'Введите число, например −50,00 для переплаты',
+      'Введите сумму, например -50 для переплаты',
     importIssue_opening_balance_kind_required: 'Укажите вид начального остатка (Долг / Переплата / Ноль)',
     importIssue_opening_balance_eur_nonzero_for_zero:
       'Для вида «Ноль» сумма должна быть 0 или пустой',
@@ -7543,6 +7551,7 @@ export const en: Messages = {
     firstRunMetersStatSkipped: 'Already present',
     firstRunMetersColApartment: 'Apartment',
     firstRunMetersColNumber: 'Number',
+    firstRunMetersColSection: 'Section',
     firstRunMetersColMeterNumber: 'Meter number',
     firstRunMetersColReading: 'Reading',
     firstRunMetersColDay: 'Day, kWh',
@@ -7550,12 +7559,20 @@ export const en: Messages = {
     firstRunMetersColInstalled: 'Installed on',
     firstRunMetersColKind: 'Balance',
     firstRunMetersColAmount: 'Amount, €',
+    firstRunMetersColBalance: 'Opening balance',
     firstRunMetersColDebt: 'Debt, €',
     firstRunMetersColOverpayment: 'Overpayment, €',
+    firstRunMetersBalanceDebt: 'Debt {amount} €',
+    firstRunMetersBalanceCredit: 'Overpayment {amount} €',
+    firstRunMetersBalanceZero: 'Balance 0.00 €',
+    firstRunMetersBalanceUnspecified: 'Opening balance not specified',
     firstRunMetersStatDebt: 'Opening debt',
     firstRunMetersStatOverpayment: 'Overpayment',
-    firstRunMetersPreviewHint: 'Opening readings and balances. No new charges are created on import.',
+    firstRunMetersPreviewHint:
+      'By entrance: each meter’s data, what will be saved, and what still needs clarifying. No new charges are created on import.',
     firstRunMetersAmountError: 'Amount error',
+    firstRunMetersDownloadEmpty:
+      'The Property Book has no saved apartments yet. Finish the apartments import first, then download the template again.',
     firstRunBookTitle: 'Property Book',
     firstRunBookLead:
       'Download the template, fill in the Objects and Owners sheets and upload the file. The file must contain {n} apartments.',
@@ -7583,7 +7600,7 @@ export const en: Messages = {
     firstRunMetersSelectElectricity: 'Electricity meters',
     firstRunMetersSelectRequired: 'Select at least one meter type.',
     firstRunMetersLead:
-      'Download the template and fill in opening readings and balances per apartment. Several meters per apartment — one row each. In the file choose the balance kind (zero, debt, or overpayment) and the amount in euro for debt or overpayment.',
+      'Download the template: for water meters the first three columns are prefilled from the Book. Enter meter number, reading, and opening balance by sign (+ debt, − overpayment, 0 — zero, blank — later). Several meters for one apartment — separate rows with the same identifiers; enter the balance amount once. You can complete data later on the apartment card.',
     firstRunMetersDownload: 'Download XLSX template',
     firstRunMetersUpload: 'Upload file',
     firstRunMetersDryRunOk: 'Check passed: {rows} rows, {skipped} already exist.',
@@ -8054,7 +8071,7 @@ export const en: Messages = {
     is3ColOpeningBalanceKind: 'Opening balance type',
     is3ColOpeningBalanceEur: 'Opening balance amount (EUR)',
     importIssue_opening_balance_conflict_same_apartment:
-      'Opening balance is set once per apartment. On additional meters for the same apartment leave the type empty or zero — or repeat the same type and amount. Different values for one apartment are not allowed.',
+      'Opening balance is entered once per apartment. On extra meter rows for the same apartment leave the amount blank.',
     importIssue_overlapping_paid_periods: 'Paid periods for the same apartment overlap. Fix the dates.',
     importIssue_inconsistent_connection_state: 'The same apartment has different connection states in the file.',
     importIssue_opening_correction_requires_confirm:
@@ -9555,7 +9572,7 @@ export const en: Messages = {
     importIssue_opening_balance_kind_invalid: 'Invalid opening balance kind',
     importIssue_opening_balance_eur_invalid: 'Invalid opening balance amount',
     importIssue_opening_balance_eur_hyphen:
-      'Enter a number, for example −50.00 for an overpayment',
+      'Enter an amount, for example -50 for an overpayment',
     importIssue_opening_balance_kind_required: 'Enter the opening balance kind (Debt / Overpayment / Zero)',
     importIssue_opening_balance_eur_nonzero_for_zero:
       'For kind “Zero” the amount must be 0 or empty',
@@ -13086,6 +13103,7 @@ export const bg: Messages = {
     firstRunMetersStatSkipped: 'Вече има',
     firstRunMetersColApartment: 'Апартамент',
     firstRunMetersColNumber: 'Номер',
+    firstRunMetersColSection: 'Секция',
     firstRunMetersColMeterNumber: 'Номер на уреда',
     firstRunMetersColReading: 'Показание',
     firstRunMetersColDay: 'Ден, kWh',
@@ -13093,13 +13111,20 @@ export const bg: Messages = {
     firstRunMetersColInstalled: 'Дата на монтаж',
     firstRunMetersColKind: 'Салдо',
     firstRunMetersColAmount: 'Сума, €',
+    firstRunMetersColBalance: 'Начален остатък',
     firstRunMetersColDebt: 'Дълг, €',
-    firstRunMetersColOverpayment: 'Надплащане, €',
+    firstRunMetersColOverpayment: 'Преплата, €',
+    firstRunMetersBalanceDebt: 'Дълг {amount} €',
+    firstRunMetersBalanceCredit: 'Преплата {amount} €',
+    firstRunMetersBalanceZero: 'Остатък 0,00 €',
+    firstRunMetersBalanceUnspecified: 'Начален остатък не е посочен',
     firstRunMetersStatDebt: 'Начален дълг',
-    firstRunMetersStatOverpayment: 'Надплащане',
+    firstRunMetersStatOverpayment: 'Преплата',
     firstRunMetersPreviewHint:
-      'Начални показания и остатъци. При импорт не се създават нови начисления.',
+      'По входове: данните за всеки водомер, какво ще се запише и какво трябва да се уточни. При импорт не се създават нови начисления.',
     firstRunMetersAmountError: 'Грешка в сумата',
+    firstRunMetersDownloadEmpty:
+      'В Книгата все още няма записани апартаменти. Първо завършете импорта на апартаменти, след това изтеглете шаблона отново.',
     firstRunBookTitle: 'Книга за собственост',
     firstRunBookLead:
       'Изтеглете шаблона, попълнете листовете «Обекти» и «Собственици» и качете файла. Броят апартаменти във файла трябва да е {n}.',
@@ -13127,7 +13152,7 @@ export const bg: Messages = {
     firstRunMetersSelectElectricity: 'Електромери',
     firstRunMetersSelectRequired: 'Изберете поне един вид уреди.',
     firstRunMetersLead:
-      'Изтеглете шаблона и попълнете началните показания и остатъци по апартаменти. Няколко уреда на апартамент — отделни редове. Във файла посочете вида на остатъка (нула, дълг или преплата) и сумата в евро при дълг или преплата.',
+      'Изтеглете шаблона: за водомери първите три колони са попълнени от Книгата. Посочете номер на водомер, показание и начален остатък със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). Няколко водомера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят по-късно в картата.',
     firstRunMetersDownload: 'Изтегляне на XLSX шаблон',
     firstRunMetersUpload: 'Качване на файл',
     firstRunMetersDryRunOk: 'Проверката е успешна: редове {rows}, вече съществуват {skipped}.',
@@ -13605,7 +13630,7 @@ export const bg: Messages = {
     is3ColOpeningBalanceKind: 'Тип на началния остатък',
     is3ColOpeningBalanceEur: 'Сума на началния остатък (EUR)',
     importIssue_opening_balance_conflict_same_apartment:
-      'Началният остатък се задава веднъж на апартамент. При допълнителни водомери на същия апартамент оставете типа празен или zero — или повторете същия тип и сума. Различни стойности за един апартамент не са разрешени.',
+      'Началният остатък се посочва веднъж на апартамент. В допълнителните редове за водомери на същия апартамент оставете сумата празна.',
     importIssue_overlapping_paid_periods: 'Платените периоди на един апартамент се застъпват. Поправете датите.',
     importIssue_inconsistent_connection_state: 'За един апартамент във файла са посочени различни състояния на връзката.',
     importIssue_opening_correction_requires_confirm:
@@ -15109,7 +15134,7 @@ export const bg: Messages = {
     importIssue_opening_balance_kind_invalid: 'Невалиден вид на началния остатък',
     importIssue_opening_balance_eur_invalid: 'Невалидна сума на началния остатък',
     importIssue_opening_balance_eur_hyphen:
-      'Въведете число, например −50,00 за преплата',
+      'Въведете сума, например -50 за преплата',
     importIssue_opening_balance_kind_required: 'Посочете вида на началния остатък (Дълг / Преплата / Нула)',
     importIssue_opening_balance_eur_nonzero_for_zero:
       'За вид «Нула» сумата трябва да е 0 или празна',

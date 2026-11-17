@@ -17,6 +17,10 @@ import {
   type ImportTemplateLocale,
 } from '@/lib/importTemplates';
 import {
+  buildWaterMeterIs3TemplateBuffer as buildWaterMeterTemplateFromSpec,
+  type WaterMeterIdentitySeed,
+} from '@/lib/importTemplates/specs/waterMeters';
+import {
   apartmentScopeKeyFromRow,
   buildApartmentIdentityLookup,
   resolveApartmentPropertyId,
@@ -24,6 +28,7 @@ import {
   type ApartmentLookupBundle,
   type ApartmentLookupRow,
 } from '@/lib/propertyBookIdentity';
+import { sortPropertyBookOwnerIdentitySeeds } from '@/lib/propertyBookAdmin';
 
 export const WATER_MODULE_KEY = 'water';
 export const ELECTRICITY_MODULE_KEY = 'electricity';
@@ -156,57 +161,121 @@ export function normalizeOpeningBalanceKind(raw: string | undefined | null): str
   return kind;
 }
 
-/** Empty kind ⇒ zero (RC8 first-run). debt/overpayment require amount > 0. */
+/** Raw money cell text (keeps lone "-"). */
+export function rawMeterOpeningAmountCell(raw: unknown): string {
+  if (raw == null) return '';
+  if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
+  return String(raw).trim();
+}
+
+/**
+ * Parse signed opening amount (Excel number or text with comma/dot).
+ * Blank → null (unknown). Lone hyphen → hyphen error. Invalid → invalid.
+ */
+export function parseMeterOpeningAmount(
+  raw: unknown,
+): { ok: true; value: number | null } | { ok: false; reason: 'hyphen' | 'invalid' } {
+  const text = rawMeterOpeningAmountCell(raw);
+  if (!text) return { ok: true, value: null };
+  if (text === '-' || text === '−' || text === '–') return { ok: false, reason: 'hyphen' };
+  const normalized = text.replace(/\s/g, '').replace(',', '.');
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return { ok: false, reason: 'invalid' };
+  return { ok: true, value: Math.round(n * 100) / 100 };
+}
+
+export function meterKindFromSignedAmount(amount: number): OpeningBalanceKind {
+  if (amount < -0.0001) return 'overpayment';
+  if (amount > 0.0001) return 'debt';
+  return 'zero';
+}
+
+/**
+ * Resolve opening balance from legacy kind column and/or signed amount.
+ * Empty kind + empty amount → no claim (null). Explicit 0 → zero claim.
+ */
+export function resolveMeterOpeningBalance(row: Record<string, string>): {
+  kind: OpeningBalanceKind | null;
+  amountAbs: number;
+  errors: string[];
+} {
+  const kindRaw = String(row.opening_balance_kind ?? '').trim();
+  const amountParsed = parseMeterOpeningAmount(row.opening_balance_eur);
+  if (!amountParsed.ok) {
+    return {
+      kind: null,
+      amountAbs: 0,
+      errors: [
+        amountParsed.reason === 'hyphen'
+          ? 'invalid:opening_balance_eur_hyphen'
+          : 'invalid:opening_balance_eur',
+      ],
+    };
+  }
+
+  if (kindRaw) {
+    const kind = normalizeOpeningBalanceKind(kindRaw);
+    if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(kind)) {
+      return { kind: null, amountAbs: 0, errors: ['invalid:opening_balance_kind'] };
+    }
+    if (kind === 'zero') {
+      if (amountParsed.value != null && amountParsed.value < 0) {
+        return { kind: null, amountAbs: 0, errors: ['invalid:opening_balance_eur'] };
+      }
+      return { kind: 'zero', amountAbs: 0, errors: [] };
+    }
+    const amount = amountParsed.value;
+    if (amount == null || amount <= 0) {
+      return { kind: null, amountAbs: 0, errors: ['required:opening_balance_eur'] };
+    }
+    return { kind: kind as OpeningBalanceKind, amountAbs: amount, errors: [] };
+  }
+
+  // Signed-amount mode (no kind column).
+  if (amountParsed.value == null) {
+    return { kind: null, amountAbs: 0, errors: [] };
+  }
+  const kind = meterKindFromSignedAmount(amountParsed.value);
+  return { kind, amountAbs: Math.abs(amountParsed.value), errors: [] };
+}
+
+/** Validate and normalize opening balance fields in-place for preview/RPC. */
 export function validateOpeningBalanceFields(row: Record<string, string>): string[] {
-  const effectiveKind = normalizeOpeningBalanceKind(row.opening_balance_kind);
-  if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(effectiveKind)) {
-    return ['invalid:opening_balance_kind'];
-  }
-  // Normalize in-place so downstream payloads see canonical tokens.
-  if (row.opening_balance_kind != null) {
-    row.opening_balance_kind = effectiveKind === 'zero' && !String(row.opening_balance_kind).trim()
-      ? ''
-      : effectiveKind;
-  }
-  const rawAmount = String(row.opening_balance_eur ?? '').trim();
-  if (effectiveKind === 'zero') {
-    if (rawAmount && parseNonNegNumber(rawAmount) == null) return ['invalid:opening_balance_eur'];
+  const resolved = resolveMeterOpeningBalance(row);
+  if (resolved.errors.length) return resolved.errors;
+  if (resolved.kind == null) {
+    row.opening_balance_kind = '';
+    row.opening_balance_eur = '';
     return [];
   }
-  const amount = parseNonNegNumber(rawAmount);
-  if (amount == null || amount <= 0) return ['required:opening_balance_eur'];
+  row.opening_balance_kind = resolved.kind;
+  row.opening_balance_eur =
+    resolved.kind === 'zero' ? '0' : String(resolved.amountAbs);
   return [];
 }
 
 /**
- * Opening balance is once per apartment. A meter row with kind zero/empty is a
- * no-claim (additional meters OK). Conflicting debt/overpayment values for the
- * same apartment are rejected — never summed or silently overwritten.
+ * Opening balance is once per apartment. Empty amount = no claim (extra meters OK).
+ * Any second non-empty claim (including zero) is rejected before write.
  */
 export function collectApartmentOpeningBalanceConflicts(
   rows: Record<string, string>[],
 ): Map<number, string> {
-  const claims = new Map<string, { kind: string; amount: number; rowIndex: number }>();
+  const claims = new Map<string, number>();
   const conflicts = new Map<number, string>();
 
   rows.forEach((row, idx) => {
     const scope = apartmentScopeKeyFromRow(row);
     if (!scope) return;
-    const kind = normalizeOpeningBalanceKind(row.opening_balance_kind);
-    if (!(OPENING_BALANCE_KINDS as readonly string[]).includes(kind)) return;
-    if (kind === 'zero') return;
-
-    const amount = parseNonNegNumber(String(row.opening_balance_eur ?? '').trim());
-    if (amount == null || amount <= 0) return;
+    const resolved = resolveMeterOpeningBalance(row);
+    if (resolved.errors.length || resolved.kind == null) return;
 
     const prev = claims.get(scope);
-    if (!prev) {
-      claims.set(scope, { kind, amount, rowIndex: idx });
+    if (prev == null) {
+      claims.set(scope, idx);
       return;
     }
-    if (prev.kind !== kind || prev.amount !== amount) {
-      conflicts.set(idx, 'opening_balance_conflict_same_apartment');
-    }
+    conflicts.set(idx, 'opening_balance_conflict_same_apartment');
   });
 
   return conflicts;
@@ -547,9 +616,16 @@ export function electricityAssignPayloadsFromPreview(
 
 export function buildWaterMeterIs3TemplateBuffer(
   locale: ImportTemplateLocale | string = 'ru',
+  identityRows?: WaterMeterIdentitySeed[],
 ): ArrayBuffer {
-  return buildLocalizedImportWorkbook(WATER_METERS_IMPORT_SPEC, toImportTemplateLocale(locale));
+  if (identityRows?.length) {
+    const sorted = sortPropertyBookOwnerIdentitySeeds(identityRows);
+    return buildWaterMeterTemplateFromSpec(locale, sorted);
+  }
+  return buildWaterMeterTemplateFromSpec(locale);
 }
+
+export type { WaterMeterIdentitySeed };
 
 export function buildElectricityMeterIs3TemplateBuffer(
   locale: ImportTemplateLocale | string = 'ru',

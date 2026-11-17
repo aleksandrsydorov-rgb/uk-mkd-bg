@@ -45,37 +45,35 @@ describe('property book living area', () => {
     });
   });
 
-  it('downloads the wizard apartments template without ownership type; ideal parts stay', () => {
+  it('downloads the wizard apartments template without purpose/ownership type; seven columns', () => {
     expect(objectHeaders('ru')).toEqual([
       'Апартамент',
-      'Секция',
-      'Блок',
+      'Секция (буква, например Б)',
+      'Блок (номер, например 3)',
       'Этаж',
-      'Назначение',
       'Общая площадь, м²',
       'Жилая площадь, м²',
       'Идеальные части, %',
     ]);
     expect(objectHeaders('bg')).toEqual([
       'Апартамент',
-      'Секция',
-      'Блок',
+      'Секция (буква, например Б)',
+      'Блок (номер, например 3)',
       'Етаж',
-      'Предназначение',
       'Обща площ, м²',
       'Жилищна площ, м²',
       'Идеални части, %',
     ]);
     expect(objectHeaders('en')).toEqual([
       'Apartment',
-      'Section',
-      'Block',
+      'Section (letter, e.g. B)',
+      'Block (number, e.g. 3)',
       'Floor',
-      'Purpose',
       'Total area, m²',
       'Living area, m²',
       'Ideal parts, %',
     ]);
+    expect(objectHeaders('ru')).not.toContain('Назначение');
     expect(propertyBookObjectsTemplateFileName('ru')).toBe(
       'шаблон-книга-собственности-апартаменты.xlsx',
     );
@@ -84,8 +82,8 @@ describe('property book living area', () => {
   it('downloads owners template with owner-count / who-owns after block and scenario examples', () => {
     expect(ownersHeaders('ru').slice(0, 6)).toEqual([
       'Апартамент',
-      'Секция',
-      'Блок',
+      'Секция (буква, например Б)',
+      'Блок (номер, например 3)',
       'Количество владельцев',
       'Кто владелец',
       'Доля владения, %',

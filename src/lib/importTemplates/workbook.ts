@@ -185,7 +185,23 @@ function buildInstructionSheet(spec: ImportTemplateSpec, locale: ImportTemplateL
     }
   }
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
-  sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 56 }, { wch: 22 }];
+  sheet['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 64 }, { wch: 22 }];
+  // Prefer readable instruction rows (wrap + taller first guide rows).
+  const rowCount = aoa.length;
+  const rows: Array<{ hpt?: number }> = [];
+  for (let r = 0; r < rowCount; r += 1) {
+    rows.push({ hpt: r <= 2 ? 22 : 36 });
+    for (let c = 0; c < 4; c += 1) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = sheet[addr] as XLSX.CellObject | undefined;
+      if (!cell) continue;
+      cell.s = {
+        ...(typeof cell.s === 'object' && cell.s ? cell.s : {}),
+        alignment: { wrapText: true, vertical: 'top' },
+      };
+    }
+  }
+  (sheet as XLSX.WorkSheet & { '!rows'?: Array<{ hpt?: number }> })['!rows'] = rows;
   return sheet;
 }
 

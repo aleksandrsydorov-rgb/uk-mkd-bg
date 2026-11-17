@@ -203,7 +203,7 @@ describe('IS-2 · XLSX template BG/RU/EN', () => {
     const buf = buildPropertyBookIs2TemplateBuffer('bg');
     expect(buf.byteLength).toBeGreaterThan(500);
     const wb = XLSX.read(buf, { type: 'array' });
-    expect(wb.SheetNames).toEqual(['Обекти', 'Собственици', 'Инструкция']);
+    expect(wb.SheetNames).toEqual(['Апартаменти', 'Собственици', 'Инструкция']);
     const parsed = parsePropertyBookWorkbookBuffer(buf);
     expect(parsed.objects).toEqual([]);
     expect(parsed.owners).toEqual([]);

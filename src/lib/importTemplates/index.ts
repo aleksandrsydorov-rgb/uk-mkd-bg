@@ -35,6 +35,10 @@ export {
   buildSupportFeeSimpleTemplateBuffer,
 } from '@/lib/importTemplates/specs/supportFeeSimple';
 export { CAPITAL_REPAIR_IMPORT_SPEC } from '@/lib/importTemplates/specs/capitalRepair';
+export {
+  CAPITAL_REPAIR_SIMPLE_IMPORT_SPEC,
+  buildCapitalRepairSimpleTemplateBuffer,
+} from '@/lib/importTemplates/specs/capitalRepairSimple';
 export { INTERNET_IMPORT_SPEC } from '@/lib/importTemplates/specs/internet';
 export { UK_EXPENSES_IMPORT_SPEC } from '@/lib/importTemplates/specs/ukExpenses';
 export { BUDGET_PLAN_IMPORT_SPEC } from '@/lib/importTemplates/specs/budgetPlan';

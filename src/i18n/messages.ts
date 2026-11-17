@@ -2116,10 +2116,14 @@ export const ru = {
       'Импорт остатков сейчас недоступен. Исправьте ошибки в файле и загрузите его снова.',
     firstRunCrTitle: 'Капитальный ремонт — начальное состояние',
     firstRunCrLead:
-      '1) Подтвердите тариф капремонта — он пойдёт в будущие начисления после активации. 2) Скачайте шаблон XLSX и по каждой квартире укажите долг, переплату или явный ноль на дату перехода. 3) После проверки файла подтвердите импорт: платежи и новые начисления не создаются, импортированный период нельзя начислить повторно.',
+      '1) Подтвердите тариф капремонта — он пойдёт в будущие начисления после активации. 2) Скачайте шаблон начальных остатков и по каждой квартире укажите сумму со знаком: долг, переплату или явный ноль. 3) После проверки файла подтвердите импорт: платежи и новые начисления не создаются, импортированный период нельзя начислить повторно.',
     firstRunCrImportColumnsHint:
-      'В шаблоне заполните обязательные колонки: номер квартиры, расчётный год, дата перехода, вид остатка (ноль / долг / переплата) и сумма в евро при долге или переплате. Несколько строк на одну квартиру допустимы только если так задумано в шаблоне.',
-    firstRunCrDownload: 'Скачать шаблон XLSX',
+      'Простой шаблон: Апартамент | Секция | Блок | Год начисления | Сумма, EUR. Знак суммы: 70,70 — долг; −50,00 — переплата; 0 — ноль. Пустая сумма — можно внести позже. Дату перехода и основание задайте один раз ниже перед загрузкой.',
+    firstRunCrDownload: 'Скачать шаблон начальных остатков',
+    firstRunCrDownloadDetailed: 'Скачать подробный шаблон',
+    firstRunCrFileMetaTitle: 'Реквизиты учёта для файла',
+    firstRunCrFileMetaHint:
+      'Укажите один раз для всего файла: дату перехода и документ-основание. Год начисления берётся из строк шаблона.',
     firstRunCrUpload: 'Загрузить заполненный файл',
     firstRunCrColTitle: 'Название начисления',
     firstRunCrBlockingDetail:
@@ -3990,6 +3994,8 @@ export const ru = {
     importIssue_transition_date_required: 'Не указана дата перехода',
     importIssue_opening_balance_kind_invalid: 'Некорректный вид начального остатка',
     importIssue_opening_balance_eur_invalid: 'Некорректная сумма начального остатка',
+    importIssue_opening_balance_eur_hyphen:
+      'Введите число, например −50,00 для переплаты',
     importIssue_opening_balance_kind_required: 'Укажите вид начального остатка (Долг / Переплата / Ноль)',
     importIssue_opening_balance_eur_nonzero_for_zero:
       'Для вида «Ноль» сумма должна быть 0 или пустой',
@@ -7648,10 +7654,14 @@ export const en: Messages = {
       'Balance import is unavailable right now. Fix the errors in the file and upload it again.',
     firstRunCrTitle: 'Capital repair — opening state',
     firstRunCrLead:
-      'Confirm the current tariff first. Then for each apartment on the transition date enter debt, overpayment, or an explicit zero. Billing year, transition date, and supporting document are required. No payments or operational charges are created; an imported period cannot be charged again.',
+      '1) Confirm the capital-repair tariff. 2) Download the opening-balances template and enter a signed amount per apartment: debt, overpayment, or explicit zero. 3) After the file check, confirm import: no payments or operational charges are created; an imported period cannot be charged again.',
     firstRunCrImportColumnsHint:
-      'In the template fill required columns: apartment number, billing year, transition date, balance kind (zero / debt / overpayment), and the euro amount for debt or overpayment.',
-    firstRunCrDownload: 'Download XLSX template',
+      'Simple template: Apartment | Section | Block | Billing year | Amount, EUR. Amount sign: 70.70 — debt; −50.00 — overpayment; 0 — zero. Empty amount — can enter later. Set transition date and source once below before upload.',
+    firstRunCrDownload: 'Download opening balances template',
+    firstRunCrDownloadDetailed: 'Download detailed template',
+    firstRunCrFileMetaTitle: 'Accounting details for the file',
+    firstRunCrFileMetaHint:
+      'Set once for the whole file: transition date and supporting document. Billing year comes from each template row.',
     firstRunCrUpload: 'Upload file',
     firstRunCrColTitle: 'Assessment title',
     firstRunCrBlockingDetail:
@@ -9514,6 +9524,8 @@ export const en: Messages = {
     importIssue_transition_date_required: 'Transition date is required',
     importIssue_opening_balance_kind_invalid: 'Invalid opening balance kind',
     importIssue_opening_balance_eur_invalid: 'Invalid opening balance amount',
+    importIssue_opening_balance_eur_hyphen:
+      'Enter a number, for example −50.00 for an overpayment',
     importIssue_opening_balance_kind_required: 'Enter the opening balance kind (Debt / Overpayment / Zero)',
     importIssue_opening_balance_eur_nonzero_for_zero:
       'For kind “Zero” the amount must be 0 or empty',
@@ -13173,10 +13185,14 @@ export const bg: Messages = {
       'Импортът на салда в момента е недостъпен. Поправете грешките във файла и го качете отново.',
     firstRunCrTitle: 'Основен ремонт — начално състояние',
     firstRunCrLead:
-      'Първо потвърдете действащата тарифа. След това за всеки апартамент на датата на преход посочете дълг, преплата или явен нула. Нужни са разчетна година, дата и документ-основание. Плащания и операционни начисления не се създават; импортираният период не може да се начисли повторно.',
+      '1) Потвърдете тарифата за капитален ремонт. 2) Изтеглете шаблона за начални остатъци и за всеки апартамент посочете сума със знак: дълг, преплата или явен нула. 3) След проверката на файла потвърдете импорта: плащания и операционни начисления не се създават; импортираният период не може да се начисли повторно.',
     firstRunCrImportColumnsHint:
-      'В шаблона попълнете задължителните колони: номер на апартамент, отчетна година, дата на преход, вид остатък (нула / дълг / преплата) и сума в евро при дълг или преплата.',
-    firstRunCrDownload: 'Изтегляне на XLSX шаблон',
+      'Прост шаблон: Апартамент | Секция | Блок | Година на начисляване | Сума, EUR. Знак на сумата: 70,70 — дълг; −50,00 — преплата; 0 — нула. Празна сума — може по-късно. Датата на преминаване и основанието се задават веднъж по-долу преди качването.',
+    firstRunCrDownload: 'Изтегляне на шаблон за начални остатъци',
+    firstRunCrDownloadDetailed: 'Изтегляне на подробен шаблон',
+    firstRunCrFileMetaTitle: 'Реквизити за файла',
+    firstRunCrFileMetaHint:
+      'Посочете веднъж за целия файл: дата на преминаване и документ-основание. Годината на начисляване е в редовете на шаблона.',
     firstRunCrUpload: 'Качване на файл',
     firstRunCrColTitle: 'Наименование на начислението',
     firstRunCrBlockingDetail:
@@ -15047,6 +15063,8 @@ export const bg: Messages = {
     importIssue_transition_date_required: 'Липсва дата на преход',
     importIssue_opening_balance_kind_invalid: 'Невалиден вид на началния остатък',
     importIssue_opening_balance_eur_invalid: 'Невалидна сума на началния остатък',
+    importIssue_opening_balance_eur_hyphen:
+      'Въведете число, например −50,00 за преплата',
     importIssue_opening_balance_kind_required: 'Посочете вида на началния остатък (Дълг / Преплата / Нула)',
     importIssue_opening_balance_eur_nonzero_for_zero:
       'За вид «Нула» сумата трябва да е 0 или празна',

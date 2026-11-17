@@ -339,6 +339,7 @@ export function importReasonI18nKey(raw: string): string | null {
         ownership_share_percent: 'bookImport_invalid_share',
         opening_balance_kind: 'importIssue_opening_balance_kind_invalid',
         opening_balance_eur: 'importIssue_opening_balance_eur_invalid',
+        opening_balance_eur_hyphen: 'importIssue_opening_balance_eur_hyphen',
         opening_balance_eur_nonzero_for_zero: 'importIssue_opening_balance_eur_nonzero_for_zero',
         initial_reading: 'importIssue_initial_reading_invalid',
         initial_day_reading: 'importIssue_initial_day_reading_invalid',
@@ -603,7 +604,9 @@ export function presentImportField(raw: string, t: T): string {
   if (field === 'paid_period_end' || field === 'paid_through') return t('admin.is5ColPaidThrough');
   if (field === 'paid_period_start') return t('admin.is5ColPaidPeriodStart');
   if (field === 'support_fee_opening') return t('admin.firstRunStageSupportFee');
+  if (field === 'capital_repair_opening') return t('admin.firstRunSfColAmount');
   if (field === 'billing_year') return t('admin.firstRunSfColYear');
+  if (field === 'assessment_title') return t('admin.firstRunCrColTitle');
   if (field === 'obligation_type') return t('admin.is4ColObligationType');
   if (field === 'assessed_amount') return t('admin.is4ColAssessed');
   if (field === 'historically_paid_amount') return t('admin.is4ColHistoricallyPaid');
@@ -644,7 +647,11 @@ export function presentImportSheet(sheet: string, field: string, t?: T): string 
       s === 'opening_balances' ||
       s === 'начальные остатки' ||
       s === 'начални салда' ||
-      s.includes('opening')
+      s === 'opening balances' ||
+      s.includes('opening') ||
+      f === 'capital_repair_opening' ||
+      f === 'support_fee_opening' ||
+      f === 'opening_balance_eur'
     ) {
       return t('admin.firstRunSfDataSheet');
     }

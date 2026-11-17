@@ -1,11 +1,11 @@
 /**
  * Client-side preview for capital-repair opening import (first-run).
- * Reuses support-fee grouping / balance / outcome helpers; adds assessment title.
+ * Reuses support-fee grouping / balance / outcome helpers.
  * Import/billing rules stay in SQL — this only shapes the operator table.
  */
 
 import type { FirstRunErrorRow } from '@/lib/firstRun';
-import { presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
+import { presentFirstRunErrorRow, presentImportSheet } from '@/lib/firstRunUserMessage';
 import {
   formatSfAptHeading,
   formatSfBalanceLabel,
@@ -48,6 +48,7 @@ export type CrPreviewSummary = {
   creditSum: number;
   createCount: number;
   skipCount: number;
+  deferCount: number;
   errorCount: number;
   groups: CrPreviewEntranceGroup[];
   items: CrPreviewItem[];
@@ -70,8 +71,12 @@ function balanceKind(
   remaining: number | null,
   over: number | null,
   amountsBlank: boolean,
+  simpleKind: string,
 ): SfPreviewBalanceKind {
-  if (amountsBlank) return 'empty';
+  if (simpleKind === 'debt') return 'debt';
+  if (simpleKind === 'overpayment' || simpleKind === 'credit') return 'credit';
+  if (simpleKind === 'zero') return 'zero';
+  if (amountsBlank || simpleKind === '') return 'empty';
   const rem = remaining ?? 0;
   const ov = over ?? 0;
   if (rem > 0.0001) return 'debt';
@@ -198,10 +203,11 @@ export function buildCapitalRepairOpeningPreview(
   let creditSum = 0;
   let createCount = 0;
   let skipCount = 0;
+  let deferCount = 0;
   let errorCount = 0;
 
   rows.forEach((row, idx) => {
-    const excelRow = offset + idx;
+    const excelRow = Number(row.rowNumber) || offset + idx;
     const apartment = trim(row.apartment_number);
     const sectionCode = trim(row.section_code);
     const blockCode = trim(row.block_code);
@@ -211,8 +217,14 @@ export function buildCapitalRepairOpeningPreview(
     const paid = moneyOrNull(row.historically_paid_amount);
     const remainingDebt = moneyOrNull(row.remaining_debt);
     const overpayment = moneyOrNull(row.opening_overpayment);
+    const simpleKind = trim(row._simple_kind);
+    const deferredFlag = trim(row._deferred) === '1';
     const amountsBlank =
-      assessed == null && paid == null && remainingDebt == null && overpayment == null;
+      assessed == null &&
+      paid == null &&
+      remainingDebt == null &&
+      overpayment == null &&
+      !simpleKind;
     if (
       !apartment &&
       !sectionCode &&
@@ -222,11 +234,12 @@ export function buildCapitalRepairOpeningPreview(
       amountsBlank &&
       !trim(row.transition_date) &&
       !trim(row.source_reference) &&
-      !trim(row.notes)
+      !trim(row.notes) &&
+      !deferredFlag
     ) {
       return;
     }
-    const kind = balanceKind(remainingDebt, overpayment, amountsBlank);
+    const kind = balanceKind(remainingDebt, overpayment, amountsBlank || deferredFlag, simpleKind);
 
     const rpc =
       rpcByRow.get(excelRow) ??
@@ -235,6 +248,8 @@ export function buildCapitalRepairOpeningPreview(
         : undefined);
 
     let outcome = mapOutcome(rpc?.outcome);
+    if (deferredFlag && outcome === 'unknown') outcome = 'defer';
+
     const rowErrs = [
       ...(errorsByRow.get(excelRow) ?? []),
       ...((apartment ? errorsByApt.get(apartment.toLowerCase()) : undefined) ?? []).filter(
@@ -257,12 +272,9 @@ export function buildCapitalRepairOpeningPreview(
           .map((e) => {
             const presented = presentFirstRunErrorRow(e, t, { nothingSaved: true });
             const parts: string[] = [];
-            if (apartment) {
-              parts.push(
-                sectionCode
-                  ? t('admin.firstRunCrErrorAptSection', { apt: apartment, section: sectionCode })
-                  : t('admin.firstRunSfAptHeading', { apt: apartment }),
-              );
+            const sheetLabel = presentImportSheet(e.sheet || 'Начальные остатки', e.field || '', t);
+            if (sheetLabel && sheetLabel !== '—') {
+              parts.push(t('admin.firstRunSfErrorSheet', { sheet: sheetLabel }));
             }
             if (e.row && e.row !== '—') {
               parts.push(t('admin.firstRunSfErrorRow', { row: e.row }));
@@ -278,8 +290,7 @@ export function buildCapitalRepairOpeningPreview(
         errorText = uniqueErrs.map((e) => e.reason).join(' · ');
       }
     } else if (outcome === 'unknown' && !rpc) {
-      // CR has no soft-defer path in preview; without RPC assume create when row looks filled.
-      outcome = 'create';
+      outcome = deferredFlag || kind === 'empty' ? 'defer' : 'create';
     }
 
     if (kind === 'debt') {
@@ -293,6 +304,7 @@ export function buildCapitalRepairOpeningPreview(
     }
     if (outcome === 'create') createCount += 1;
     else if (outcome === 'skip') skipCount += 1;
+    else if (outcome === 'defer') deferCount += 1;
     else if (outcome === 'error') errorCount += 1;
 
     items.push({
@@ -324,6 +336,7 @@ export function buildCapitalRepairOpeningPreview(
     creditSum: Math.round(creditSum * 100) / 100,
     createCount,
     skipCount,
+    deferCount,
     errorCount,
     items,
     groups: groupByEntrance(items),

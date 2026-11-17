@@ -21,7 +21,7 @@ import {
   presentCrOutcome,
 } from '@/lib/firstRunCapitalRepairPreview';
 import { FirstRunStageActions } from '@/components/admin/FirstRunFrame';
-import { FirstRunErrorTable, FirstRunScreen } from '@/components/admin/FirstRunSteps';
+import { FirstRunScreen } from '@/components/admin/FirstRunSteps';
 import {
   FirstRunTariffPrepBlock,
   type FirstRunTariffPrepHandle,
@@ -529,7 +529,12 @@ export function FirstRunCapitalRepair({
   onSaveTariffPrep,
   onTariffBusy,
   tariffNavRef,
+  transitionDate,
+  sourceReference,
+  onTransitionDate,
+  onSourceReference,
   onDownload,
+  onDownloadDetailed,
   onFile,
   onCommit,
   onBalance,
@@ -558,7 +563,12 @@ export function FirstRunCapitalRepair({
   onSaveTariffPrep?: (next: FirstRunTariffPrepMap) => Promise<void>;
   onTariffBusy?: (v: boolean) => void;
   tariffNavRef?: Ref<FirstRunTariffPrepHandle>;
+  transitionDate?: string;
+  sourceReference?: string;
+  onTransitionDate?: (v: string) => void;
+  onSourceReference?: (v: string) => void;
   onDownload: () => void;
+  onDownloadDetailed?: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
   onBalance: (value: string) => void;
@@ -573,15 +583,28 @@ export function FirstRunCapitalRepair({
   const [openingUnlocked, setOpeningUnlocked] = useState(() =>
     isFirstRunTariffPrepared('capital_repair', tariffPrep ?? {}),
   );
+  const [errorsOnly, setErrorsOnly] = useState(false);
   const showImportForm = openingUnlocked || committed;
   const preview = useMemo(() => {
-    if (!rows || rows.length === 0 || committed) return null;
+    if (!rows || rows.length === 0 || committed) {
+      if (committed) return null;
+      if (errorRows.length === 0) return null;
+      return buildCapitalRepairOpeningPreview([], { errorRows, t });
+    }
     return buildCapitalRepairOpeningPreview(rows, {
       rpcRows: dry?.rpcRows,
       errorRows,
       t,
     });
   }, [rows, dry?.rpcRows, errorRows, committed, t]);
+  const filteredGroups = useMemo(() => {
+    if (!preview) return [];
+    if (!errorsOnly) return preview.groups;
+    return preview.groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => i.outcome === 'error') }))
+      .filter((g) => g.items.length > 0);
+  }, [preview, errorsOnly]);
+  const hasCheck = Boolean(preview || dry) && !committed;
   return (
     <FirstRunScreen
       icon={Landmark}
@@ -605,7 +628,7 @@ export function FirstRunCapitalRepair({
               .replace('{credit}', formatMeterMoney(preview?.creditSum ?? dry.creditSum, locale))}
           />
         ) : null}
-        {!committed && dry && !dry.ok ? (
+        {!committed && ((dry && !dry.ok) || (preview && preview.errorCount > 0 && !dry?.ok)) ? (
           <FirstRunStatusBanner
             tone="error"
             title={t('admin.firstRunOpeningCheckFailTitle')}
@@ -642,10 +665,50 @@ export function FirstRunCapitalRepair({
         <div className={styles.importGrid}>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportDownload')}</p>
-            <button type="button" className={styles.secondary} disabled={busy || !openingUnlocked} onClick={onDownload}>
-              {t('admin.firstRunCrDownload')}
-            </button>
+            <div className={styles.actions} style={{ flexWrap: 'wrap', gap: 8 }}>
+              <button
+                type="button"
+                className={styles.secondary}
+                disabled={busy || !openingUnlocked}
+                onClick={onDownload}
+              >
+                {t('admin.firstRunCrDownload')}
+              </button>
+              {onDownloadDetailed ? (
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  disabled={busy || !openingUnlocked}
+                  onClick={onDownloadDetailed}
+                >
+                  {t('admin.firstRunCrDownloadDetailed')}
+                </button>
+              ) : null}
+            </div>
             <p className={styles.hint}>{t('admin.firstRunCrImportColumnsHint')}</p>
+          </div>
+          <div className={styles.stepBlock}>
+            <p className={styles.importLabel}>{t('admin.firstRunCrFileMetaTitle')}</p>
+            <p className={styles.hint}>{t('admin.firstRunCrFileMetaHint')}</p>
+            <label className={styles.field}>
+              <span>{t('admin.feeOpeningTransitionDate')}</span>
+              <input
+                className={styles.input}
+                type="date"
+                disabled={busy || committed || !openingUnlocked}
+                value={transitionDate ?? ''}
+                onChange={(e) => onTransitionDate?.(e.target.value)}
+              />
+            </label>
+            <label className={styles.field}>
+              <span>{t('admin.feeOpeningSourceRef')}</span>
+              <input
+                className={styles.input}
+                disabled={busy || committed || !openingUnlocked}
+                value={sourceReference ?? ''}
+                onChange={(e) => onSourceReference?.(e.target.value)}
+              />
+            </label>
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
@@ -663,11 +726,23 @@ export function FirstRunCapitalRepair({
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-            {dry && !committed ? (
+            {hasCheck ? (
               <OpeningStats
-                dry={dry}
+                dry={
+                  dry ?? {
+                    ok: (preview?.errorCount ?? 0) === 0,
+                    errors: errorRows,
+                    rowCount: preview?.rowCount ?? 0,
+                    createCount: preview?.createCount ?? 0,
+                    skippedExisting: preview?.skipCount ?? 0,
+                    deferredCount: preview?.deferCount ?? 0,
+                    debtSum: preview?.debtSum ?? 0,
+                    creditSum: preview?.creditSum ?? 0,
+                  }
+                }
                 t={t}
                 locale={locale}
+                compactSf
                 previewCounts={
                   preview
                     ? {
@@ -676,73 +751,78 @@ export function FirstRunCapitalRepair({
                         zeroCount: preview.zeroCount,
                         debtSum: preview.debtSum,
                         creditSum: preview.creditSum,
+                        deferCount: preview.deferCount,
+                        errorCount: preview.errorCount,
                       }
                     : null
                 }
               />
             ) : null}
-            {!dry && !committed ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
-            {preview && preview.groups.length > 0 && !committed ? (
+            {!hasCheck ? <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p> : null}
+            {preview && !committed ? (
               <div className={styles.tableWrap} style={{ marginTop: 12 }}>
                 <p className={styles.importLabel}>{t('admin.firstRunSfPreviewTitle')}</p>
                 <p className={styles.hint}>{t('admin.firstRunSfPreviewHint')}</p>
-                {preview.groups.map((group) => (
-                  <div key={`cr-g-${group.key}`} style={{ marginTop: 12 }}>
-                    <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                      {formatCrEntranceTitle(group, t)}
-                    </p>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>{t('admin.firstRunSfColApt')}</th>
-                          <th>{t('admin.firstRunSfColYear')}</th>
-                          <th>{t('admin.firstRunCrColTitle')}</th>
-                          <th>{t('admin.firstRunSfColAssessed')}</th>
-                          <th>{t('admin.firstRunSfColPaid')}</th>
-                          <th>{t('admin.firstRunSfColBalance')}</th>
-                          <th>{t('admin.firstRunSfColAction')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.items.map((item) => (
-                          <tr key={item.key}>
-                            <td>
-                              <div style={{ fontWeight: 600 }}>
-                                {formatCrAptHeading(item, t)}
-                                {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                              </div>
-                              {item.errorText ? (
-                                <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
-                                  {item.errorText}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td>{item.billingYear || '—'}</td>
-                            <td>{item.assessmentTitle || '—'}</td>
-                            <td>
-                              {item.assessed == null ? '—' : `${formatMeterMoney(item.assessed, locale)} €`}
-                            </td>
-                            <td>
-                              {item.paid == null ? '—' : `${formatMeterMoney(item.paid, locale)} €`}
-                            </td>
-                            <td>{formatCrBalanceLabel(item, t, locale)}</td>
-                            <td>{presentCrOutcome(item.outcome, t)}</td>
+                <label className={styles.field} style={{ marginBottom: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={errorsOnly}
+                      onChange={(e) => setErrorsOnly(e.target.checked)}
+                    />
+                    {t('admin.firstRunSfFilterErrorsOnly')}
+                  </span>
+                </label>
+                {filteredGroups.length === 0 ? (
+                  <p className={styles.hint}>
+                    {errorsOnly ? t('admin.firstRunSfFilterErrorsEmpty') : t('admin.firstRunImportCheckPending')}
+                  </p>
+                ) : (
+                  filteredGroups.map((group) => (
+                    <div key={`cr-g-${group.key}`} style={{ marginTop: 12 }}>
+                      <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
+                        {formatCrEntranceTitle(group, t)}
+                      </p>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>{t('admin.firstRunSfColApt')}</th>
+                            <th>{t('admin.firstRunSfColYear')}</th>
+                            <th>{t('admin.firstRunSfColBalance')}</th>
+                            <th>{t('admin.firstRunSfColAction')}</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
+                        </thead>
+                        <tbody>
+                          {group.items.map((item) => (
+                            <tr key={item.key}>
+                              <td>
+                                <div style={{ fontWeight: 600 }}>
+                                  {formatCrAptHeading(item, t)}
+                                  {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                                  {item.excelRow ? (
+                                    <span className={styles.hint} style={{ marginLeft: 6 }}>
+                                      {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {item.errorText ? (
+                                  <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
+                                    {item.errorText}
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td>{item.billingYear || '—'}</td>
+                              <td>{formatCrBalanceLabel(item, t, locale)}</td>
+                              <td>{presentCrOutcome(item.outcome, t)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))
+                )}
               </div>
             ) : null}
-            <div className={styles.tableWrap} style={{ marginTop: 8 }}>
-              {!dry?.ok && errorRows.length > 0 ? (
-                <p className={styles.hint} style={{ marginBottom: 8 }}>
-                  {t('admin.firstRunCrBlockingDetail')}
-                </p>
-              ) : null}
-              <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
-            </div>
           </div>
           <div className={styles.stepBlock}>
             <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>

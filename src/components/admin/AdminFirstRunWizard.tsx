@@ -69,15 +69,19 @@ import {
   SUPPORT_FEE_MODULE_KEY,
 } from '@/lib/moduleCore/adapters/supportFeeOpening';
 import { parseSupportFeeOpeningWorkbook } from '@/lib/supportFeeSimpleOpening';
+import { parseCapitalRepairOpeningWorkbook } from '@/lib/capitalRepairSimpleOpening';
 import {
   SUPPORT_FEE_SIMPLE_IMPORT_SPEC,
   buildSupportFeeSimpleTemplateBuffer,
 } from '@/lib/importTemplates/specs/supportFeeSimple';
 import {
+  CAPITAL_REPAIR_SIMPLE_IMPORT_SPEC,
+  buildCapitalRepairSimpleTemplateBuffer,
+} from '@/lib/importTemplates/specs/capitalRepairSimple';
+import {
   buildCapitalRepairIs8TemplateBuffer,
   CAPITAL_REPAIR_MODULE_KEY,
 } from '@/lib/moduleCore/adapters/capitalRepairOpening';
-import { capitalRepairOpeningAdapter } from '@/lib/moduleCore/adapters/capitalRepairOpeningAdapter';
 import { electricityOpeningAdapter } from '@/lib/moduleCore/adapters/electricityOpeningAdapter';
 import { waterOpeningAdapter } from '@/lib/moduleCore/adapters/waterOpeningAdapter';
 import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
@@ -189,6 +193,7 @@ type CrDryRun = {
   rowCount: number;
   createCount: number;
   skippedExisting: number;
+  deferredCount?: number;
   debtSum: number;
   creditSum: number;
   rpcRows?: unknown[];
@@ -389,8 +394,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   const [sfSourceReference, setSfSourceReference] = useState('');
 
   const [crRows, setCrRows] = useState<Record<string, string>[] | null>(null);
+  const [crPreviewRows, setCrPreviewRows] = useState<Record<string, string>[] | null>(null);
   const [crDry, setCrDry] = useState<CrDryRun | null>(null);
   const [crCommitted, setCrCommitted] = useState(false);
+  const [crTransitionDate, setCrTransitionDate] = useState('');
+  const [crSourceReference, setCrSourceReference] = useState('');
   const [crFundBalance, setCrFundBalance] = useState('');
   const [crFundDate, setCrFundDate] = useState('');
   const [crFundSource, setCrFundSource] = useState('');
@@ -1381,61 +1389,98 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       setCrDry(null);
       setCrCommitted(false);
       setErrorRows([]);
+      setCrPreviewRows(null);
+      setCrRows(null);
       const buf = await file.arrayBuffer();
-      const schema = capitalRepairOpeningAdapter.registration.setup?.xlsx;
-      if (!schema) throw new Error(t('admin.errGeneric'));
-      const parsed = parseModuleXlsxBuffer(buf, schema, moduleXlsxLabels(schema, t), moduleXlsxHeaderAliases(schema));
+      const parsed = parseCapitalRepairOpeningWorkbook(buf, locale, {
+        transitionDate: crTransitionDate,
+        sourceReference: crSourceReference,
+      });
       if (!parsed.ok) {
         setError(parsed.error);
         return;
       }
-      if (parsed.rows.length === 0) {
+      const clientErrors = parsed.clientErrors;
+      setCrPreviewRows(parsed.previewRows);
+      setCrRows(parsed.rows);
+
+      if (parsed.previewRows.length === 0 && clientErrors.length === 0) {
         setError(t('admin.firstRunCrDryRunErrors').replace('{n}', '0'));
         return;
       }
+
+      // Soft-defer only (blank amounts): no RPC write; still allow confirm when no errors.
+      if (parsed.rows.length === 0) {
+        const deferOnly = parsed.deferredCount > 0 && clientErrors.length === 0;
+        setErrorRows(clientErrors);
+        setCrDry({
+          ok: deferOnly,
+          errors: clientErrors,
+          rowCount: parsed.previewRows.length,
+          createCount: 0,
+          skippedExisting: 0,
+          deferredCount: parsed.deferredCount,
+          debtSum: 0,
+          creditSum: 0,
+          rpcRows: [],
+        });
+        return;
+      }
+
       const { data, error: rpcErr } = await importCapitalRepairOpening(supabase, parsed.rows, true);
       if (rpcErr) throw new Error(rpcErr.message);
       const res = asObj(data);
-      const errors = Array.isArray(res.errors) ? res.errors : [];
+      const rpcErrors = Array.isArray(res.errors) ? res.errors : [];
+      const mergedErrors = [...clientErrors, ...normalizeFirstRunErrors(rpcErrors)];
+      const seen = new Set<string>();
+      const errors = mergedErrors.filter((e) => {
+        const k = `${e.row}|${e.field}|${e.reason}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
       const reconcile = asObj(res.reconcile);
       const rowsOut = Array.isArray(res.rows) ? res.rows : [];
       const createCount = rowsOut.filter((r) => {
         const o = asObj(r).outcome;
         return o === 'CREATE' || o === 'CREATED';
       }).length;
+      const rpcOk = res.ok === true && rpcErrors.length === 0;
       setCrDry({
-        ok: res.ok === true && errors.length === 0,
+        ok: rpcOk && clientErrors.length === 0,
         errors,
-        rowCount: parsed.rows.length,
+        rowCount: Number(res.row_count ?? parsed.rows.length) || parsed.rows.length,
         createCount,
         skippedExisting: Number(res.skipped_existing_count ?? 0) || 0,
+        deferredCount: parsed.deferredCount,
         debtSum: Number(reconcile.remaining_debt_sum ?? 0) || 0,
         creditSum: Number(reconcile.opening_overpayment_sum ?? 0) || 0,
         rpcRows: rowsOut,
       });
-      setErrorRows(normalizeFirstRunErrors(errors));
-      setCrRows(parsed.rows);
+      setErrorRows(errors);
     });
   }
 
   async function onCrCommit() {
-    if (!crRows || !crDry || !crDry.ok) return;
+    if (!crDry || !crDry.ok) return;
     const prep = readTariffPrep(state?.draft);
     if (!isFirstRunTariffPrepared('capital_repair', prep)) {
       setError(t('admin.firstRunOpeningLockedUntilTariff'));
       return;
     }
     await run(async () => {
-      const { data, error: rpcErr } = await importCapitalRepairOpening(supabase, crRows, false);
-      if (rpcErr) {
-        const errs = errorsFromRpcDetails(rpcErr);
-        setErrorRows(normalizeFirstRunErrors(errs));
-        throw new Error(errs.length > 0 ? t('admin.firstRunCrImportFailed') : rpcErr.message);
-      }
-      const res = asObj(data);
-      if (res.ok !== true) {
-        setErrorRows(normalizeFirstRunErrors(Array.isArray(res.errors) ? res.errors : []));
-        throw new Error(t('admin.firstRunCrImportFailed'));
+      if (crRows && crRows.length > 0) {
+        const { data, error: rpcErr } = await importCapitalRepairOpening(supabase, crRows, false);
+        if (rpcErr) {
+          const errs = errorsFromRpcDetails(rpcErr);
+          setErrorRows(normalizeFirstRunErrors(errs));
+          throw new Error(errs.length > 0 ? t('admin.firstRunCrImportFailed') : rpcErr.message);
+        }
+        const res = asObj(data);
+        if (res.ok !== true) {
+          setErrorRows(normalizeFirstRunErrors(Array.isArray(res.errors) ? res.errors : []));
+          throw new Error(t('admin.firstRunCrImportFailed'));
+        }
       }
       setCrCommitted(true);
       applyState(
@@ -1880,10 +1925,10 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           t={t}
           busy={busy}
           dry={crDry}
-          rows={crRows}
+          rows={crPreviewRows}
           errorRows={errorRows}
           committed={crCommitted}
-          canCommit={Boolean(crDry?.ok && crRows)}
+          canCommit={Boolean(crDry?.ok)}
           fundOk={crFundOk}
           balance={crFundBalance}
           date={crFundDate}
@@ -1896,7 +1941,17 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           tariffNavRef={tariffNavRef}
           onSaveTariffPrep={(next) => saveTariffPrep('capital_repair_opening', next)}
           onTariffBusy={setBusy}
+          transitionDate={crTransitionDate}
+          sourceReference={crSourceReference}
+          onTransitionDate={setCrTransitionDate}
+          onSourceReference={setCrSourceReference}
           onDownload={() =>
+            downloadXlsx(
+              buildCapitalRepairSimpleTemplateBuffer(locale),
+              localizedTemplateFileName(CAPITAL_REPAIR_SIMPLE_IMPORT_SPEC, locale),
+            )
+          }
+          onDownloadDetailed={() =>
             downloadXlsx(
               buildCapitalRepairIs8TemplateBuffer(locale),
               localizedTemplateFileName(CAPITAL_REPAIR_IMPORT_SPEC, locale),

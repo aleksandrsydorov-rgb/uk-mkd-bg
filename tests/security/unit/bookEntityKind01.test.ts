@@ -49,10 +49,25 @@ function zipHasDataValidation(buf: ArrayBuffer): boolean {
   );
 }
 
+/** Legacy owners workbook still carrying count / who-owns / share for parse tests. */
 function ownersBook(rows: (string | number)[][]): ArrayBuffer {
-  const headers = PROPERTY_BOOK_OWNERS_SPEC.columns
-    .filter((c) => c.includeInTemplate !== false)
-    .map((c) => c.label.ru);
+  const headers = [
+    'Апартамент',
+    'Секция (буква, например Б)',
+    'Блок (номер, например 3)',
+    'Количество владельцев',
+    'Кто владелец',
+    'Доля владения, %',
+    'Идеальные части, %',
+    'Эл. почта',
+    'Основной телефон',
+    'Дополнительный телефон',
+    'Имя',
+    'Отчество',
+    'Фамилия',
+    'Название организации',
+    'ЕИК / Булстат',
+  ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Собственники');
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
@@ -114,26 +129,34 @@ describe('book entity_kind 0/1', () => {
     expect(byApt['16']).toBe('legal_entity');
   });
 
-  it('RU owners template filename, 1000-row dropdowns, freeze, instruction', () => {
+  it('RU owners template filename, freeze, no count/who/share columns, instruction', () => {
     expect(propertyBookOwnersTemplateFileName('ru')).toBe(
       'шаблон-книга-собственности-собственники.xlsx',
     );
-    expect(PROPERTY_BOOK_OWNERS_SPEC.templateInputRows).toBe(1000);
+    expect(PROPERTY_BOOK_OWNERS_SPEC.templateInputRows).toBe(200);
     const buf = buildPropertyBookOwnersTemplateBuffer('ru');
-    expect(zipHasDataValidation(buf)).toBe(true);
     const sheetXml = readSheet1Xml(buf);
-    expect(sheetXml).toMatch(/sqref="D2:D1001"/);
-    expect(sheetXml).toMatch(/sqref="E2:E1001"/);
     expect(sheetXml).toMatch(/state="frozen"/);
-    expect(sheetXml).toMatch(/errorStyle="warning"/);
-    // OOXML: dataValidations must precede ignoredErrors (Excel repairs otherwise).
-    const dvAt = sheetXml.search(/<dataValidations\b/i);
-    const ignoredAt = sheetXml.search(/<ignoredErrors\b/i);
-    expect(dvAt).toBeGreaterThan(0);
-    if (ignoredAt >= 0) expect(dvAt).toBeLessThan(ignoredAt);
+    // New template omits count / who-owns / share — no whole/list validations on those cols.
+    expect(sheetXml).not.toMatch(/Физическое лицо,Юридическое лицо/);
+    expect(sheetXml).not.toMatch(/type="whole"/i);
+    expect(zipHasDataValidation(buf)).toBe(false);
     const wb = XLSX.read(buf, { type: 'array' });
     const data = wb.Sheets['Собственники'];
-    expect(String(data['!ref'])).toMatch(/A1:N1001/i);
+    const header = XLSX.utils.sheet_to_json<string[]>(data, { header: 1, raw: false })[0] ?? [];
+    expect(header).toEqual([
+      'Апартамент',
+      'Секция (буква, например Б)',
+      'Блок (номер, например 3)',
+      'Эл. почта',
+      'Основной телефон',
+      'Дополнительный телефон',
+      'Имя',
+      'Отчество',
+      'Фамилия',
+      'Название организации',
+      'ЕИК / Булстат',
+    ]);
     const dataRows = XLSX.utils.sheet_to_json<string[]>(data, { header: 1, raw: false });
     const filled = dataRows.slice(1).filter((r) => (r ?? []).some((c) => String(c ?? '').trim()));
     expect(filled.length).toBe(0);
@@ -142,18 +165,11 @@ describe('book entity_kind 0/1', () => {
       .flat()
       .map(String)
       .join('\n');
-    expect(instr).toMatch(/Кто владелец/);
-    expect(instr).toMatch(/Количество владельцев/);
-    expect(instr).not.toMatch(/Один владелец|Несколько владельцев/);
+    expect(instr).not.toMatch(/Кто владелец|Количество владельцев|Доля владения/);
     expect(instr).not.toMatch(/sole_trader|natural_person|legal_entity|\bsole\b|\bshared\b/);
-    expect(instr).toMatch(/Физическое лицо/);
-    expect(instr).toMatch(/Юридическое лицо/);
-    expect(instr).toMatch(/ЕТ/);
-    expect(instr).toMatch(/60/);
-    expect(instr).toMatch(/40/);
-    expect(sheetXml).toMatch(/type="whole"/i);
-    expect(sheetXml).toMatch(/Физическое лицо,Юридическое лицо/);
-    expect(sheetXml).toMatch(/sqref="D2:D1001"/);
+    expect(instr).toMatch(/уже подставлены|Книги собственности/i);
+    expect(instr).toMatch(/Требует уточнения/);
+    expect(instr).toMatch(/Отчество/);
   });
 
   it('presents invalid entity_kind with sheet/row/column/allowed values', () => {

@@ -5,6 +5,7 @@ import {
   PROPERTY_BOOK_OBJECTS_SPEC,
   PROPERTY_BOOK_OWNERS_SPEC,
   buildLocalizedImportWorkbook,
+  buildLocalizedImportWorkbookWithRows,
   buildLocalizedMultiSheetImportWorkbook,
   columnHeaderCandidates,
   downloadImportTemplateBuffer,
@@ -517,11 +518,79 @@ export function buildPropertyBookObjectsTemplateBuffer(
   return buildLocalizedImportWorkbook(PROPERTY_BOOK_OBJECTS_SPEC, toImportTemplateLocale(locale));
 }
 
-/** Single-sheet Owners template for the owners wizard step. */
+export type PropertyBookOwnerIdentitySeed = {
+  apartment_number: string;
+  section_code?: string | null;
+  block_code?: string | null;
+};
+
+/**
+ * Canonical entrance order for template prefill: Latin A/B/C and Cyrillic А/Б/В
+ * share the same rank so A→Б→В (not code-point order).
+ */
+function propertyBookSectionSortKey(section: string): string {
+  const s = String(section ?? '').trim();
+  const map: Record<string, string> = {
+    A: '01',
+    a: '01',
+    А: '01',
+    а: '01',
+    B: '02',
+    b: '02',
+    Б: '02',
+    б: '02',
+    C: '03',
+    c: '03',
+    В: '03',
+    в: '03',
+    D: '04',
+    d: '04',
+    Г: '04',
+    г: '04',
+  };
+  return map[s] ?? `99:${s.toLocaleLowerCase()}`;
+}
+
+/**
+ * Sort apartments for the owners template: by entrance (section), then natural
+ * apartment number, then block. Preserves exact labels including empty blocks.
+ */
+export function sortPropertyBookOwnerIdentitySeeds(
+  rows: PropertyBookOwnerIdentitySeed[],
+): PropertyBookOwnerIdentitySeed[] {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  return [...rows].sort((a, b) => {
+    const secKey = propertyBookSectionSortKey(String(a.section_code ?? '')).localeCompare(
+      propertyBookSectionSortKey(String(b.section_code ?? '')),
+    );
+    if (secKey !== 0) return secKey;
+    const apt = collator.compare(
+      String(a.apartment_number ?? '').trim(),
+      String(b.apartment_number ?? '').trim(),
+    );
+    if (apt !== 0) return apt;
+    return collator.compare(String(a.block_code ?? '').trim(), String(b.block_code ?? '').trim());
+  });
+}
+
+/** Single-sheet Owners template for the owners wizard step (optionally prefilled). */
 export function buildPropertyBookOwnersTemplateBuffer(
   locale: ImportTemplateLocale | string = 'ru',
+  identityRows?: PropertyBookOwnerIdentitySeed[],
 ): ArrayBuffer {
-  return buildLocalizedImportWorkbook(PROPERTY_BOOK_OWNERS_SPEC, toImportTemplateLocale(locale));
+  const loc = toImportTemplateLocale(locale);
+  if (!identityRows?.length) {
+    return buildLocalizedImportWorkbook(PROPERTY_BOOK_OWNERS_SPEC, loc);
+  }
+  const sorted = sortPropertyBookOwnerIdentitySeeds(identityRows);
+  const rows = sorted.map((r) => ({
+    apartment_number: String(r.apartment_number ?? ''),
+    section_code: r.section_code != null ? String(r.section_code) : '',
+    block_code: r.block_code != null ? String(r.block_code) : '',
+  }));
+  return buildLocalizedImportWorkbookWithRows(PROPERTY_BOOK_OWNERS_SPEC, loc, rows, {
+    extraBlankRows: 40,
+  });
 }
 
 /** Localized multi-sheet template: Objects + Owners data sheets + one Instructions sheet. */

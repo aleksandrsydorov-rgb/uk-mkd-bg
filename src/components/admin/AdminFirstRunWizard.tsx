@@ -1004,6 +1004,38 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     }));
   }
 
+  /** Prefill owners XLSX from apartments saved on the previous sub-step. */
+  async function onBookOwnersTemplateDownload() {
+    setNote(null);
+    await run(async () => {
+      let stubs: Record<string, string>[];
+      try {
+        stubs = await loadExistingBookObjectStubs();
+      } catch (e: unknown) {
+        const detail = e instanceof Error && e.message ? e.message : '';
+        throw new Error(
+          detail
+            ? `${t('admin.firstRunBookOwnersDownloadFailed')} ${detail}`
+            : t('admin.firstRunBookOwnersDownloadFailed'),
+        );
+      }
+      if (stubs.length === 0) {
+        throw new Error(t('admin.firstRunBookOwnersDownloadEmpty'));
+      }
+      downloadXlsx(
+        buildPropertyBookOwnersTemplateBuffer(
+          locale,
+          stubs.map((r) => ({
+            apartment_number: r.apartment_number,
+            section_code: r.section_code,
+            block_code: r.block_code,
+          })),
+        ),
+        propertyBookOwnersTemplateFileName(locale),
+      );
+    });
+  }
+
   async function onBookOwnersFile(file: File | null) {
     if (bookOwnersCommitted) return;
     setBookPayload(null);
@@ -1805,12 +1837,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           needsComplexFix={false}
           previewObjects={bookPayload?.objects}
           previewOwners={bookPayload?.owners}
-          onDownload={() =>
-            downloadXlsx(
-              buildPropertyBookOwnersTemplateBuffer(locale),
-              propertyBookOwnersTemplateFileName(locale),
-            )
-          }
+          onDownload={() => void onBookOwnersTemplateDownload()}
           onFile={(file) => void onBookOwnersFile(file)}
           onCommit={() => void onBookOwnersCommit()}
           onContinue={() =>

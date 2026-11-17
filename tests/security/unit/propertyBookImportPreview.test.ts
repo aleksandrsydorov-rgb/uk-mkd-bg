@@ -92,13 +92,13 @@ describe('propertyBookImportPreview', () => {
     const en = presentBookPreviewIssue(blocking[0]!, tEn);
     const bg = presentBookPreviewIssue(blocking[0]!, tBg);
     expect(ru).toContain('Собственники');
-    expect(ru).toContain('строки 2–80');
+    expect(ru).toMatch(/строк[аи] 2–80/);
     expect(ru).toContain('№8');
     expect(ru).toContain('A, Б, В');
     expect(ru).toContain('Секция');
     expect(ru).not.toMatch(/section_code|section code/i);
     expect(en).toContain('Owners');
-    expect(en).toContain('rows 2–80');
+    expect(en).toMatch(/rows? 2–80/);
     expect(en).not.toMatch(/section_code/);
     expect(bg).toContain('Собственици');
     expect(bg).not.toMatch(/section_code/);
@@ -107,7 +107,7 @@ describe('propertyBookImportPreview', () => {
     expect(clarify.length).toBeGreaterThan(0);
     const ownMsg = presentBookPreviewIssue(clarify[0]!, tRu);
     expect(ownMsg).toContain('Подъезд A');
-    expect(ownMsg).toContain('Тип собственности');
+    expect(ownMsg).toMatch(/количество владельцев|Тип собственности/i);
     expect(ownMsg).toContain('Собственники');
   });
 
@@ -185,9 +185,11 @@ describe('propertyBookImportPreview', () => {
         { apartment_number: '3', section_code: 'A', ownership_type: 'shared', _row: '5' },
       ],
     });
-    expect(conflicts).toHaveLength(1);
-    expect(conflicts[0]!.reason).toBe('ownership_type_conflict');
-    expect(conflicts[0]!.meta?.sourceRows).toEqual([2, 5]);
+    const typeConflict = conflicts.find((c) => c.reason === 'ownership_type_conflict');
+    expect(typeConflict).toBeTruthy();
+    expect(typeConflict!.meta?.sourceRows).toEqual([2, 5]);
+    // sole declares count 1 while two rows exist → also owner_count_mismatch.
+    expect(conflicts.some((c) => c.reason === 'owner_count_mismatch')).toBe(true);
     expect(presentBookPreviewIssue(
       {
         severity: 'error',

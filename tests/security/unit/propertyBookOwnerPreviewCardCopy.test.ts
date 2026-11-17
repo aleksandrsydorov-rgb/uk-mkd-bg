@@ -38,7 +38,7 @@ describe('owners import apartment card copy', () => {
     expect(content.where).toBe('');
     expect(content.blocks).toHaveLength(1);
     expect(content.blocks[0]!.lines).toEqual([
-      'Сведений о владельце пока нет. После импорта квартира будет отмечена как требующая уточнения. Добавьте сведения в Книге собственности.',
+      'Сведений о владельце пока нет. Квартира будет сохранена с пометкой «Требует уточнения».',
     ]);
     expect(content.blocks[0]!.lines.join('\n')).not.toMatch(/строк/i);
     expect(content.blocks[0]!.lines.join('\n')).not.toMatch(/лист/i);

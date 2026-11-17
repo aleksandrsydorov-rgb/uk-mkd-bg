@@ -25,11 +25,21 @@ describe('property book owner vote weight', () => {
     expect(ownerDocumentedIdealDiverges(null, 1.2)).toBe(false);
   });
 
-  it('omits ideal_parts from owners download template but keeps legacy column for parse', () => {
+  it('omits count/kind/share/ideal from owners download but keeps legacy columns for parse', () => {
     const cols = templateColumns(PROPERTY_BOOK_OWNERS_SPEC);
     expect(cols.some((c) => c.key === 'ideal_parts_percent')).toBe(false);
-    expect(cols.some((c) => c.key === 'ownership_share_percent')).toBe(true);
-    const legacy = PROPERTY_BOOK_OWNERS_SPEC.columns.find((c) => c.key === 'ideal_parts_percent');
-    expect(legacy?.includeInTemplate).toBe(false);
+    expect(cols.some((c) => c.key === 'ownership_share_percent')).toBe(false);
+    expect(cols.some((c) => c.key === 'ownership_type')).toBe(false);
+    expect(cols.some((c) => c.key === 'entity_kind')).toBe(false);
+    for (const key of [
+      'ideal_parts_percent',
+      'ownership_share_percent',
+      'ownership_type',
+      'entity_kind',
+    ] as const) {
+      expect(PROPERTY_BOOK_OWNERS_SPEC.columns.find((c) => c.key === key)?.includeInTemplate).toBe(
+        false,
+      );
+    }
   });
 });

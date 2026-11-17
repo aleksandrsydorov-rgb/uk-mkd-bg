@@ -323,6 +323,7 @@ export function buildLocalizedImportWorkbookWithRows(
   spec: ImportTemplateSpec,
   locale: ImportTemplateLocale,
   rows: Array<Record<string, string>>,
+  options?: { extraBlankRows?: number },
 ): ArrayBuffer {
   const cols = templateColumns(spec);
   const headers = cols.map((c) => c.label[locale]);
@@ -330,7 +331,21 @@ export function buildLocalizedImportWorkbookWithRows(
     cols.map((c) => sanitizeSpreadsheetCell(String(row[c.key] ?? ''))),
   );
   const dataSheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
-  applyColumnFormats(dataSheet, cols, body.length + 1);
+  const extraBlank = Math.max(0, Math.floor(options?.extraBlankRows ?? 40));
+  const lastExcelRow = Math.max(body.length + 1, body.length + extraBlank + 1);
+  // Reserve typed blank rows so phones / names keep leading zeros when extended.
+  for (let r = body.length + 1; r <= lastExcelRow - 1; r += 1) {
+    cols.forEach((col, c) => {
+      if (col.format === 'text' || col.format === 'date' || !col.format) {
+        dataSheet[XLSX.utils.encode_cell({ r, c })] = { t: 's', v: '', z: '@' };
+      }
+    });
+  }
+  dataSheet['!ref'] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: lastExcelRow - 1, c: Math.max(0, cols.length - 1) },
+  });
+  applyColumnFormats(dataSheet, cols, lastExcelRow);
 
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, dataSheet, spec.dataSheetName[locale].slice(0, 31));
@@ -339,7 +354,9 @@ export function buildLocalizedImportWorkbookWithRows(
     buildInstructionSheet(spec, locale),
     IMPORT_INSTRUCTION_SHEET[locale].slice(0, 31),
   );
-  return XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  let buf = XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  buf = applyWorksheetPatches(buf, cols, lastExcelRow, locale);
+  return buf;
 }
 
 export function downloadImportTemplateBuffer(

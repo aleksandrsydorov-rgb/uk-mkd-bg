@@ -79,32 +79,41 @@ describe('property book living area', () => {
     );
   });
 
-  it('downloads owners template with owner-count / who-owns after block and scenario examples', () => {
+  it('downloads owners template without owner-count / who-owns / share; contact columns remain', () => {
     expect(ownersHeaders('ru').slice(0, 6)).toEqual([
       'Апартамент',
       'Секция (буква, например Б)',
       'Блок (номер, например 3)',
-      'Количество владельцев',
-      'Кто владелец',
-      'Доля владения, %',
+      'Эл. почта',
+      'Основной телефон',
+      'Дополнительный телефон',
     ]);
+    expect(ownersHeaders('ru')).not.toEqual(
+      expect.arrayContaining(['Количество владельцев', 'Кто владелец', 'Доля владения, %']),
+    );
     expect(ownersHeaders('ru')).toEqual(
-      expect.arrayContaining(['Основной телефон', 'Дополнительный телефон']),
+      expect.arrayContaining(['Имя', 'Отчество', 'Фамилия', 'Название организации', 'ЕИК / Булстат']),
     );
     expect(propertyBookOwnersTemplateFileName('en')).toBe('property-book-owners-template.xlsx');
 
-    const buf = buildPropertyBookOwnersTemplateBuffer('ru');
+    const buf = buildPropertyBookOwnersTemplateBuffer('ru', [
+      { apartment_number: '2', section_code: 'Б', block_code: '' },
+    ]);
     const wb = XLSX.read(buf, { type: 'array' });
+    const data = XLSX.utils.sheet_to_json<string[]>(
+      wb.Sheets[PROPERTY_BOOK_OWNERS_SPEC.dataSheetName.ru],
+      { header: 1, defval: '' },
+    );
+    expect(data[1]?.slice(0, 3)).toEqual(['2', 'Б', '']);
     const instr = XLSX.utils
       .sheet_to_json<string[]>(wb.Sheets[IMPORT_INSTRUCTION_SHEET.ru], { header: 1 })
       .map((row) => row.map((c) => String(c ?? '')).join(' | '))
       .join('\n');
-    expect(instr).toMatch(/Количество владельцев/);
-    expect(instr).not.toMatch(/Один владелец|Несколько владельцев|sole_trader|\bsole\b|\bshared\b/);
-    expect(instr).toMatch(/60/);
-    expect(instr).toMatch(/40/);
-    expect(instr).toMatch(/Кто владелец/);
-    expect(PROPERTY_BOOK_OWNERS_SPEC.instructionScenarios?.length).toBe(2);
+    expect(instr).toMatch(/уже подставлены|Книги собственности/i);
+    expect(instr).not.toMatch(/Количество владельцев|Кто владелец|Доля владения/);
+    expect(instr).not.toMatch(/sole_trader|\bsole\b|\bshared\b/);
+    expect(instr).toMatch(/Требует уточнения/);
+    expect(PROPERTY_BOOK_OWNERS_SPEC.instructionScenarios?.length).toBe(3);
 
     // Combined IS2 template still omits ownership type from Objects sheet.
     const combined = XLSX.read(buildPropertyBookIs2TemplateBuffer('ru'), { type: 'array' });

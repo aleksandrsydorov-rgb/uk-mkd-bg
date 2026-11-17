@@ -3897,7 +3897,11 @@ export const ru = {
       'Загрузите сведения об объектах. Ожидается {n} квартир. Собственников добавите на следующем подэтапе.',
     firstRunBookOwnersTitle: 'Собственники',
     firstRunBookOwnersLead:
-      'Привяжите собственников к уже сохранённым апартаментам. Если номер есть в нескольких секциях, заполните колонку «Секция».',
+      'Скачайте шаблон с уже подставленными квартирами из Книги. Заполните только известные сведения о владельцах — остальное можно добавить позже. Пустые строки с идентификаторами сохранятся с пометкой «Требует уточнения».',
+    firstRunBookOwnersDownloadFailed:
+      'Не удалось получить список квартир для шаблона. Проверьте соединение и нажмите «Скачать шаблон XLSX» ещё раз.',
+    firstRunBookOwnersDownloadEmpty:
+      'В Книге пока нет сохранённых апартаментов. Сначала завершите подэтап «Апартаменты», затем скачайте шаблон снова.',
     firstRunBookObjectsSavedTitle: 'Апартаменты сохранены',
     firstRunBookObjectsSavedDetail: 'Сохранено объектов: {n}. Можно перейти к собственникам.',
     firstRunBookOwnersSavedTitle: 'Собственники сохранены',
@@ -3962,7 +3966,7 @@ export const ru = {
     bookPreviewIssueInvalidEnumCard:
       'Недопустимое значение «{value}» в колонке «{field}». Допустимо: {allowed}. Исправьте файл.',
     bookPreviewIssueOwnersMissing:
-      'Сведений о владельце пока нет. После импорта квартира будет отмечена как требующая уточнения. Добавьте сведения в Книге собственности.',
+      'Сведений о владельце пока нет. Квартира будет сохранена с пометкой «Требует уточнения».',
     bookPreviewIssueGenericRows: 'Лист «{sheet}», строки {rows}, {aptRef}, колонка «{field}»: {reason}',
     bookPreviewIssueGeneric: 'Лист «{sheet}», {aptRef}, колонка «{field}»: {reason}',
     bookPreviewIssueGenericCard: 'Колонка «{field}»: {reason}',
@@ -9429,7 +9433,11 @@ export const en: Messages = {
       'Upload object details. Expected apartments: {n}. Owners are added on the next sub-step.',
     firstRunBookOwnersTitle: 'Owners',
     firstRunBookOwnersLead:
-      'Bind owners to apartments already saved. If a number exists in several sections, fill the Section column.',
+      'Download a template with apartments already filled from the Book. Enter only the owner details you know — the rest can be added later. Identifier-only rows are saved as “Needs clarification”.',
+    firstRunBookOwnersDownloadFailed:
+      'Could not load the apartment list for the template. Check the connection and click “Download XLSX template” again.',
+    firstRunBookOwnersDownloadEmpty:
+      'No apartments are saved in the Book yet. Finish the Apartments sub-step first, then download the template again.',
     firstRunBookObjectsSavedTitle: 'Apartments saved',
     firstRunBookObjectsSavedDetail: 'Objects saved: {n}. Continue to owners.',
     firstRunBookOwnersSavedTitle: 'Owners saved',
@@ -9495,7 +9503,7 @@ export const en: Messages = {
     bookPreviewIssueInvalidEnumCard:
       'Invalid value “{value}” in column “{field}”. Allowed: {allowed}. Fix the file.',
     bookPreviewIssueOwnersMissing:
-      'No owner details yet. After import the apartment will be marked as needing clarification. Add the details in the Property Book.',
+      'No owner details yet. The apartment will be saved as “Needs clarification”.',
     bookPreviewIssueGenericRows: 'Sheet “{sheet}”, rows {rows}, {aptRef}, column “{field}”: {reason}',
     bookPreviewIssueGeneric: 'Sheet “{sheet}”, {aptRef}, column “{field}”: {reason}',
     bookPreviewIssueGenericCard: 'Column “{field}”: {reason}',
@@ -14971,7 +14979,11 @@ export const bg: Messages = {
       'Качете данните за обектите. Очакват се {n} апартамента. Собствениците са на следващия под етап.',
     firstRunBookOwnersTitle: 'Собственици',
     firstRunBookOwnersLead:
-      'Свържете собственици със записаните апартаменти. Ако номерът е в няколко секции, попълнете «Секция».',
+      'Изтеглете шаблон с вече попълнени апартаменти от Книгата. Попълнете само известните данни за собствениците — останалото може по-късно. Редове само с идентификатори се записват с «Изисква уточнение».',
+    firstRunBookOwnersDownloadFailed:
+      'Неуспешно зареждане на списъка с апартаменти за шаблона. Проверете връзката и натиснете «Изтегляне на XLSX шаблон» отново.',
+    firstRunBookOwnersDownloadEmpty:
+      'В Книгата все още няма записани апартаменти. Първо завършете под етапа «Апартаменти», след това изтеглете шаблона отново.',
     firstRunBookObjectsSavedTitle: 'Апартаментите са записани',
     firstRunBookObjectsSavedDetail: 'Записани обекти: {n}. Може да продължите към собствениците.',
     firstRunBookOwnersSavedTitle: 'Собствениците са записани',
@@ -15036,7 +15048,7 @@ export const bg: Messages = {
     bookPreviewIssueInvalidEnumCard:
       'Недопустима стойност «{value}» в колона «{field}». Допустимо: {allowed}. Поправете файла.',
     bookPreviewIssueOwnersMissing:
-      'Все още няма данни за собственика. След импорта апартаментът ще бъде отбелязан като изискващ уточнение. Добавете данните в Книгата на собствеността.',
+      'Все още няма данни за собственика. Апартаментът ще се запише с отметка «Изисква уточнение».',
     bookPreviewIssueGenericRows: 'Лист «{sheet}», редове {rows}, {aptRef}, колона «{field}»: {reason}',
     bookPreviewIssueGeneric: 'Лист «{sheet}», {aptRef}, колона «{field}»: {reason}',
     bookPreviewIssueGenericCard: 'Колона «{field}»: {reason}',

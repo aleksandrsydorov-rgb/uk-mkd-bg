@@ -103,6 +103,10 @@ function identityKey(apartment: string, section: string, block: string, year: st
 
 function formatInlineError(e: FirstRunErrorRow, t: T): string {
   const presented = presentFirstRunErrorRow(e, t, { nothingSaved: true });
+  // Detailed mismatch copy already names apartment / year / balances — avoid a second locator suffix.
+  if (/conflict:existing_opening_import_mismatch/i.test(e.reason) && e.meta?.savedNet != null) {
+    return presented.reason;
+  }
   const sheet = trim(e.sheet);
   const sheetLabel = sheet
     ? t('admin.firstRunSfErrorSheet', { sheet: presented.sheet || sheet })

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type Ref } from 'react';
+import { Fragment, useMemo, useState, type Ref } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BadgeCheck, CircleDollarSign, Landmark } from 'lucide-react';
 import type { Database } from '@/lib/database.types';
@@ -13,6 +13,7 @@ import {
   formatSfEntranceTitle,
   presentSfOutcome,
 } from '@/lib/firstRunSupportFeePreview';
+import { formatEur } from '@/lib/utilities';
 import {
   buildCapitalRepairOpeningPreview,
   formatCrAptHeading,
@@ -380,64 +381,83 @@ export function FirstRunSupportFee({
                   {errorsOnly ? t('admin.firstRunSfFilterErrorsEmpty') : t('admin.firstRunImportCheckPending')}
                 </p>
               ) : (
-                filteredGroups.map((group) => (
-                  <div key={`sf-g-${group.key}`} style={{ marginTop: 12 }}>
-                    <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                      {formatSfEntranceTitle(group, t)}
-                    </p>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>{t('admin.firstRunSfColApt')}</th>
-                          <th>{t('admin.firstRunSfColKind')}</th>
-                          <th>{t('admin.firstRunSfColAmount')}</th>
-                          <th>{t('admin.firstRunSfColAction')}</th>
+                <table className={styles.previewTableFixed}>
+                  <colgroup>
+                    <col className={styles.previewColApt} />
+                    <col className={styles.previewColKind} />
+                    <col className={styles.previewColAmount} />
+                    <col className={styles.previewColAction} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('admin.firstRunSfColApt')}</th>
+                      <th scope="col">{t('admin.firstRunSfColKind')}</th>
+                      <th scope="col" className={styles.previewAmount}>
+                        {t('admin.firstRunSfColAmount')}
+                      </th>
+                      <th scope="col">{t('admin.firstRunSfColAction')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredGroups.map((group) => (
+                      <Fragment key={`sf-g-${group.key}`}>
+                        <tr className={styles.previewEntranceSep}>
+                          <td colSpan={4}>{formatSfEntranceTitle(group, t)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {group.items.map((item) => (
-                          <tr key={item.key}>
-                            <td>
-                              <div style={{ fontWeight: 600 }}>
-                                {formatSfAptHeading(item, t)}
-                                {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                                {item.excelRow ? (
-                                  <span className={styles.hint} style={{ marginLeft: 6 }}>
-                                    {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
-                                  </span>
-                                ) : null}
-                              </div>
-                              {item.errorText ? (
-                                <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
-                                  {item.errorText}
+                        {group.items.map((item) => {
+                          const amount =
+                            item.balanceKind === 'debt'
+                              ? formatEur(item.remainingDebt ?? 0, locale)
+                              : item.balanceKind === 'credit'
+                                ? formatEur(item.overpayment ?? 0, locale)
+                                : item.balanceKind === 'zero'
+                                  ? formatEur(0, locale)
+                                  : '—';
+                          const kindLabel =
+                            item.balanceKind === 'debt'
+                              ? t('admin.firstRunSfKindDebt')
+                              : item.balanceKind === 'credit'
+                                ? t('admin.firstRunSfKindCredit')
+                                : item.balanceKind === 'zero'
+                                  ? t('admin.firstRunSfKindZero')
+                                  : '—';
+                          return (
+                            <tr
+                              key={item.key}
+                              className={
+                                item.outcome === 'error'
+                                  ? styles.tableRowError
+                                  : item.outcome === 'defer'
+                                    ? styles.tableRowWarn
+                                    : undefined
+                              }
+                            >
+                              <td>
+                                <div className={styles.previewAptName}>
+                                  {formatSfAptHeading(item, t)}
+                                  {item.sectionCode ? ` · ${item.sectionCode}` : ''}
                                 </div>
-                              ) : null}
-                            </td>
-                            <td>
-                              {item.balanceKind === 'debt'
-                                ? t('admin.firstRunSfKindDebt')
-                                : item.balanceKind === 'credit'
-                                  ? t('admin.firstRunSfKindCredit')
-                                  : item.balanceKind === 'zero'
-                                    ? t('admin.firstRunSfKindZero')
-                                    : '—'}
-                            </td>
-                            <td>
-                              {item.balanceKind === 'debt'
-                                ? `${formatMeterMoney(item.remainingDebt ?? 0, locale)} €`
-                                : item.balanceKind === 'credit'
-                                  ? `${formatMeterMoney(item.overpayment ?? 0, locale)} €`
-                                  : item.balanceKind === 'zero'
-                                    ? `${formatMeterMoney(0, locale)} €`
-                                    : '—'}
-                            </td>
-                            <td>{presentSfOutcome(item.outcome, t)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))
+                                {item.excelRow ? (
+                                  <div className={styles.previewAptMeta}>
+                                    {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
+                                  </div>
+                                ) : null}
+                                {item.errorText ? (
+                                  <div className={`${styles.previewMsg} ${styles.previewMsgError}`}>
+                                    {item.errorText}
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td>{kindLabel}</td>
+                              <td className={styles.previewAmount}>{amount}</td>
+                              <td className={styles.previewAction}>{presentSfOutcome(item.outcome, t)}</td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           ) : null}

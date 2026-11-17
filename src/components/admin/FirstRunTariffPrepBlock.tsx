@@ -86,15 +86,15 @@ export type FirstRunTariffGate = {
 };
 
 function emptyAnnual(today: string, tariffKey?: FirstRunTariffKey): AnnualForm {
-  const supportFee = tariffKey === 'support_fee';
+  const fixedGmBasis = tariffKey === 'support_fee' || tariffKey === 'capital_repair';
   return {
     rate: '',
     rate_legal: '',
-    // Support fee: current tariff based on owners' meeting decision (no document fields).
-    basis_mode: supportFee ? 'general_meeting' : 'external_decision',
+    // Support fee / capital repair: fixed owners' meeting basis (no document fields).
+    basis_mode: fixedGmBasis ? 'general_meeting' : 'external_decision',
     decision_id: '',
     basis_reference: '',
-    basis_date: supportFee ? '' : today,
+    basis_date: fixedGmBasis ? '' : today,
     basis_note: '',
   };
 }
@@ -118,13 +118,7 @@ function hasAnyInput(key: FirstRunTariffKey, annual: AnnualForm, utility: Utilit
     return Boolean(annual.rate.trim() || annual.rate_legal.trim());
   }
   if (key === 'capital_repair') {
-    return Boolean(
-      annual.rate.trim() ||
-        annual.rate_legal.trim() ||
-        annual.basis_reference.trim() ||
-        annual.basis_note.trim() ||
-        annual.decision_id,
-    );
+    return Boolean(annual.rate.trim() || annual.rate_legal.trim());
   }
   if (key === 'water') {
     return Boolean(utility.rate.trim());
@@ -166,22 +160,16 @@ function buildPrepItem(
     const rate = Number(annual.rate);
     const rateLegal = Number(annual.rate_legal.trim() || annual.rate);
     if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
-    if (!annual.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
-    if (!annual.basis_date) throw new Error(t('admin.tcErrBasisDate'));
-    if (annual.basis_mode === 'external_decision' && !annual.basis_reference.trim()) {
-      throw new Error(t('admin.tcErrBasisReference'));
-    }
-    if (annual.basis_mode === 'general_meeting' && !annual.decision_id) {
-      throw new Error(t('admin.tcDecisionPick'));
-    }
+    // Fixed basis: owners' general meeting. No document / decision / date collected.
+    // Empty legal rate falls back to natural (same rule as before).
     return {
       rate_natural: rate,
       rate_legal: rateLegal,
-      basis_type: annual.basis_mode,
-      basis_reference: annual.basis_mode === 'external_decision' ? annual.basis_reference.trim() : null,
-      basis_date: annual.basis_date,
-      basis_note: annual.basis_note.trim(),
-      decision_id: annual.basis_mode === 'general_meeting' ? annual.decision_id : null,
+      basis_type: 'general_meeting',
+      basis_reference: null,
+      basis_date: null,
+      basis_note: '',
+      decision_id: null,
     };
   }
   if (key === 'water') {
@@ -250,10 +238,10 @@ function applyPrepToForms(
     setAnnual({
       rate: String(item.rate_natural),
       rate_legal: String(item.rate_legal),
-      basis_mode: tariffKey === 'support_fee' ? 'general_meeting' : item.basis_type,
+      basis_mode: 'general_meeting',
       decision_id: item.decision_id ?? '',
       basis_reference: item.basis_reference ?? '',
-      basis_date: item.basis_date ?? (tariffKey === 'support_fee' ? '' : today),
+      basis_date: item.basis_date ?? '',
       basis_note: item.basis_note ?? '',
     });
     return;
@@ -594,96 +582,13 @@ export const FirstRunTariffPrepBlock = forwardRef<
                 />
                 <span className={styles.hint}>{t('admin.tcRateLegalHint')}</span>
               </label>
-              <label className={`${styles.field} ${styles.span2}`}>
-                {t('admin.tcBasis')}
-                <select
-                  className={styles.input}
-                  value={annual.basis_mode}
-                  disabled={busy}
-                  onChange={(e) => {
-                    markDirty();
-                    setAnnual({
-                      ...annual,
-                      basis_mode: e.target.value as AnnualForm['basis_mode'],
-                    });
-                  }}
-                >
-                  <option value="external_decision">{t('admin.tcBasisExternal')}</option>
-                  {decisions.length > 0 ? <option value="general_meeting">{t('admin.tcBasisGm')}</option> : null}
-                </select>
-                <span className={styles.hint}>{t('admin.tcBasisModeHint')}</span>
-              </label>
-              {annual.basis_mode === 'general_meeting' && decisions.length > 0 ? (
-                <label className={`${styles.field} ${styles.span2}`}>
-                  {t('admin.tcDecision')}
-                  <select
-                    className={styles.input}
-                    value={annual.decision_id}
-                    disabled={busy}
-                    onChange={(e) => {
-                      markDirty();
-                      setAnnual({ ...annual, decision_id: e.target.value });
-                    }}
-                    required
-                  >
-                    <option value="">{t('admin.tcDecisionPick')}</option>
-                    {decisions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.decision_number} · {d.title}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={styles.hint}>{t('admin.tcDecisionHint')}</span>
-                </label>
-              ) : (
-                <label className={`${styles.field} ${styles.span2}`}>
-                  {t('admin.tcBasisReference')}
-                  <input
-                    className={styles.input}
-                    value={annual.basis_reference}
-                    disabled={busy}
-                    onChange={(e) => {
-                      markDirty();
-                      setAnnual({ ...annual, basis_reference: e.target.value });
-                    }}
-                    required
-                  />
-                  <span className={styles.hint}>
-                    {annual.basis_mode === 'general_meeting'
-                      ? t('admin.tcBasisReferenceHintGm')
-                      : t('admin.tcBasisReferenceHintExternal')}
-                  </span>
-                </label>
-              )}
-              <label className={styles.field}>
-                {t('admin.tcBasisDate')}
-                <input
-                  className={styles.input}
-                  type="date"
-                  value={annual.basis_date}
-                  disabled={busy}
-                  onChange={(e) => {
-                    markDirty();
-                    setAnnual({ ...annual, basis_date: e.target.value });
-                  }}
-                  required
-                />
-                <span className={styles.hint}>{t('admin.tcBasisDateHint')}</span>
-              </label>
-              <label className={`${styles.field} ${styles.span2}`}>
-                {t('admin.tcBasisNote')}
-                <input
-                  className={styles.input}
-                  value={annual.basis_note}
-                  disabled={busy}
-                  onChange={(e) => {
-                    markDirty();
-                    setAnnual({ ...annual, basis_note: e.target.value });
-                  }}
-                  required
-                />
-                <span className={styles.hint}>{t('admin.tcBasisNoteHintAnnual')}</span>
-              </label>
+              <div className={`${styles.field} ${styles.span2}`}>
+                <span className={styles.importLabel}>{t('admin.tcBasis')}</span>
+                <p className={styles.hint} style={{ marginTop: 4 }}>
+                  <strong>{t('admin.tcBasisGmOwnersMeeting')}</strong>
+                </p>
+                <span className={styles.hint}>{t('admin.tcBasisModeHintCapital')}</span>
+              </div>
             </>
           ) : null}
 

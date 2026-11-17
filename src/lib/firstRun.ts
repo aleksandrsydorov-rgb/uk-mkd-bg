@@ -781,9 +781,9 @@ export type FirstRunAnnualTariffPrep = {
   rate_legal: number;
   basis_type: 'external_decision' | 'general_meeting';
   basis_reference: string | null;
-  /** Optional for support_fee first-run prep; still required for capital_repair. */
+  /** Optional for support_fee / capital_repair first-run prep. */
   basis_date: string | null;
-  /** May be empty for support_fee first-run prep; required for capital_repair. */
+  /** May be empty for support_fee / capital_repair first-run prep. */
   basis_note: string;
   decision_id: string | null;
 };
@@ -871,21 +871,15 @@ export function isSupportFeeTariffPrep(value: unknown): value is FirstRunAnnualT
   return basis === 'external_decision' || basis === 'general_meeting';
 }
 
-/** Capital repair first-run: rates + document basis fields. */
+/** Capital repair first-run: rates + basis type only (no document number/date/note). */
 export function isCapitalRepairTariffPrep(value: unknown): value is FirstRunAnnualTariffPrep {
   const row = asRecord(value);
   if (!row) return false;
   const natural = positive(row.rate_natural);
   const legal = positive(row.rate_legal ?? row.rate_natural);
   const basis = text(row.basis_type);
-  const note = text(row.basis_note);
-  const date = text(row.basis_date);
-  const reference = text(row.basis_reference);
-  const decision = text(row.decision_id);
-  if (natural == null || legal == null || !note || !date) return false;
-  if (basis === 'external_decision') return reference.length > 0;
-  if (basis === 'general_meeting') return decision.length > 0;
-  return false;
+  if (natural == null || legal == null) return false;
+  return basis === 'external_decision' || basis === 'general_meeting';
 }
 
 /** @deprecated Prefer isSupportFeeTariffPrep / isCapitalRepairTariffPrep. Capital-repair rules. */

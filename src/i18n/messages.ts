@@ -1111,6 +1111,8 @@ export const ru = {
     tcBasisGmOwnersMeeting: 'Решение собрания собственников.',
     tcBasisModeHintSupport:
       'Основание фиксировано: решение собрания собственников. Достаточно указать ставку; номер документа, дату, пояснение и выбор протокола не требуются.',
+    tcBasisModeHintCapital:
+      'Основание фиксировано: решение собрания собственников. Достаточно указать ставку для физлиц; ставка для юрлиц необязательна. Номер документа, дату, пояснение и выбор протокола не требуются.',
     tcBasisModeHintWater:
       'По умолчанию — действующий тариф поставщика. Достаточно указать ставку воды; номер документа, дату и пояснение указывать не нужно.',
     tcBasisModeHintElectricity:
@@ -6690,6 +6692,8 @@ export const en: Messages = {
     tcBasisGmOwnersMeeting: 'Owners’ general meeting decision.',
     tcBasisModeHintSupport:
       'Basis is fixed: owners’ general meeting decision. Enter the rate only; document number, date, note, and protocol selection are not required.',
+    tcBasisModeHintCapital:
+      'Basis is fixed: owners’ general meeting decision. Enter the natural-person rate; the legal-entity rate is optional. Document number, date, note, and protocol selection are not required.',
     tcBasisModeHintWater:
       'Default is the current supplier tariff. Enter the water rate only; document number, date, and note are not required.',
     tcBasisModeHintElectricity:
@@ -12258,6 +12262,8 @@ export const bg: Messages = {
     tcBasisGmOwnersMeeting: 'Решение на общото събрание на собствениците.',
     tcBasisModeHintSupport:
       'Основанието е фиксирано: решение на общото събрание на собствениците. Достатъчно е да посочите ставката; номер на документ, дата, пояснение и избор на протокол не се изискват.',
+    tcBasisModeHintCapital:
+      'Основанието е фиксирано: решение на общото събрание на собствениците. Достатъчно е да посочите ставката за физически лица; ставката за юридически лица е незадължителна. Номер на документ, дата, пояснение и избор на протокол не се изискват.',
     tcBasisModeHintWater:
       'По подразбиране — действаща тарифа на доставчика. Достатъчно е да посочите ставката за вода; номер на документ, дата и пояснение не са нужни.',
     tcBasisModeHintElectricity:

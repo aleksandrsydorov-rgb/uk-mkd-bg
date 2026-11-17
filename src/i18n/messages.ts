@@ -1100,12 +1100,14 @@ export const ru = {
     tcApplicationYear: 'Год применения',
     tcValidFrom: 'С даты',
     tcBasis: 'Основание тарифа',
-    tcBasisGm: 'Решение общего собрания',
+    tcBasisGm: 'Действующий тариф на основании решения собрания собственников',
     tcBasisExternal: 'Внешний документ',
     tcBasisSupplier: 'Уведомление поставщика',
     tcBasisLegacy: 'Импорт',
     tcBasisModeHint:
       'Выберите, чем подтверждена ставка: внешним документом (протокол, приказ) или решением общего собрания из системы.',
+    tcBasisModeHintSupport:
+      'По умолчанию — действующий тариф на основании решения собрания собственников. Достаточно указать ставку; номер документа, дату и пояснение указывать не нужно.',
     tcBasisDate: 'Дата документа',
     tcBasisDateHint:
       'Обязательно. Дата документа, которым установлена ставка. Формат: ДД.ММ.ГГГГ. Пример: 15.03.2025.',
@@ -6646,12 +6648,14 @@ export const en: Messages = {
     tcApplicationYear: 'Application year',
     tcValidFrom: 'From date',
     tcBasis: 'Tariff basis',
-    tcBasisGm: 'General meeting decision',
+    tcBasisGm: 'Current tariff based on the owners’ general meeting decision',
     tcBasisExternal: 'External document',
     tcBasisSupplier: 'Supplier notice',
     tcBasisLegacy: 'Import',
     tcBasisModeHint:
       'Choose what confirms the rate: an external document (minutes, order) or a general meeting decision already in the system.',
+    tcBasisModeHintSupport:
+      'Default is the current tariff based on the owners’ general meeting decision. Enter the rate only; document number, date, and note are not required.',
     tcBasisDate: 'Document date',
     tcBasisDateHint:
       'Required. Date of the document that sets the rate. Format: DD.MM.YYYY. Example: 15.03.2025.',
@@ -12180,12 +12184,14 @@ export const bg: Messages = {
     tcApplicationYear: 'Година на прилагане',
     tcValidFrom: 'От дата',
     tcBasis: 'Основание на тарифа',
-    tcBasisGm: 'Решение на общо събрание',
+    tcBasisGm: 'Действаща тарифа въз основа на решение на общото събрание на собствениците',
     tcBasisExternal: 'Външен документ',
     tcBasisSupplier: 'Уведомление от доставчик',
     tcBasisLegacy: 'Импорт',
     tcBasisModeHint:
       'Изберете с какво е потвърдена ставката: външен документ (протокол, заповед) или решение на общо събрание от системата.',
+    tcBasisModeHintSupport:
+      'По подразбиране — действаща тарифа въз основа на решение на общото събрание на собствениците. Достатъчно е да посочите ставката; номер на документ, дата и пояснение не са нужни.',
     tcBasisDate: 'Дата на документа',
     tcBasisDateHint:
       'Задължително. Дата на документа, с който е определена ставката. Формат: ДД.ММ.ГГГГ. Пример: 15.03.2025.',

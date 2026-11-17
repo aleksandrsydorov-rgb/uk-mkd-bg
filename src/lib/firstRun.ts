@@ -771,7 +771,9 @@ export type FirstRunAnnualTariffPrep = {
   rate_legal: number;
   basis_type: 'external_decision' | 'general_meeting';
   basis_reference: string | null;
-  basis_date: string;
+  /** Optional for support_fee first-run prep; still required for capital_repair. */
+  basis_date: string | null;
+  /** May be empty for support_fee first-run prep; required for capital_repair. */
   basis_note: string;
   decision_id: string | null;
 };
@@ -824,7 +826,19 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export function isAnnualTariffPrep(value: unknown): value is FirstRunAnnualTariffPrep {
+/** Support fee first-run: rates + basis type only (no document number/date/note). */
+export function isSupportFeeTariffPrep(value: unknown): value is FirstRunAnnualTariffPrep {
+  const row = asRecord(value);
+  if (!row) return false;
+  const natural = positive(row.rate_natural);
+  const legal = positive(row.rate_legal ?? row.rate_natural);
+  const basis = text(row.basis_type);
+  if (natural == null || legal == null) return false;
+  return basis === 'external_decision' || basis === 'general_meeting';
+}
+
+/** Capital repair first-run: rates + document basis fields. */
+export function isCapitalRepairTariffPrep(value: unknown): value is FirstRunAnnualTariffPrep {
   const row = asRecord(value);
   if (!row) return false;
   const natural = positive(row.rate_natural);
@@ -838,6 +852,25 @@ export function isAnnualTariffPrep(value: unknown): value is FirstRunAnnualTarif
   if (basis === 'external_decision') return reference.length > 0;
   if (basis === 'general_meeting') return decision.length > 0;
   return false;
+}
+
+/** @deprecated Prefer isSupportFeeTariffPrep / isCapitalRepairTariffPrep. Capital-repair rules. */
+export function isAnnualTariffPrep(value: unknown): value is FirstRunAnnualTariffPrep {
+  return isCapitalRepairTariffPrep(value);
+}
+
+function normalizeAnnualPrep(row: Record<string, unknown>): FirstRunAnnualTariffPrep {
+  const natural = positive(row.rate_natural)!;
+  const legal = positive(row.rate_legal ?? row.rate_natural)!;
+  return {
+    rate_natural: natural,
+    rate_legal: legal,
+    basis_type: text(row.basis_type) as FirstRunAnnualTariffPrep['basis_type'],
+    basis_reference: text(row.basis_reference) || null,
+    basis_date: text(row.basis_date) || null,
+    basis_note: text(row.basis_note),
+    decision_id: text(row.decision_id) || null,
+  };
 }
 
 export function isWaterTariffPrep(value: unknown): value is FirstRunWaterTariffPrep {
@@ -882,8 +915,12 @@ export function readTariffPrep(draft: Record<string, unknown> | null | undefined
   const raw = asRecord(draft?.tariff_prep);
   if (!raw) return {};
   const prep: FirstRunTariffPrepMap = {};
-  if (isAnnualTariffPrep(raw.support_fee)) prep.support_fee = raw.support_fee;
-  if (isAnnualTariffPrep(raw.capital_repair)) prep.capital_repair = raw.capital_repair;
+  if (isSupportFeeTariffPrep(raw.support_fee)) {
+    prep.support_fee = normalizeAnnualPrep(asRecord(raw.support_fee)!);
+  }
+  if (isCapitalRepairTariffPrep(raw.capital_repair)) {
+    prep.capital_repair = normalizeAnnualPrep(asRecord(raw.capital_repair)!);
+  }
   if (isWaterTariffPrep(raw.water)) prep.water = raw.water;
   if (isElectricityTariffPrep(raw.electricity)) prep.electricity = raw.electricity;
   if (isInternetTariffPrep(raw.internet)) prep.internet = raw.internet;
@@ -891,7 +928,8 @@ export function readTariffPrep(draft: Record<string, unknown> | null | undefined
 }
 
 export function isFirstRunTariffPrepared(key: FirstRunTariffKey, prep: FirstRunTariffPrepMap): boolean {
-  if (key === 'support_fee' || key === 'capital_repair') return isAnnualTariffPrep(prep[key]);
+  if (key === 'support_fee') return isSupportFeeTariffPrep(prep.support_fee);
+  if (key === 'capital_repair') return isCapitalRepairTariffPrep(prep.capital_repair);
   if (key === 'water') return isWaterTariffPrep(prep.water);
   if (key === 'internet') return isInternetTariffPrep(prep.internet);
   return isElectricityTariffPrep(prep.electricity);
@@ -961,7 +999,13 @@ export function formatFirstRunTariffPrepSummary(
     const item = prep[key]!;
     // Catalog: support_fee and capital_repair = €/m²·year × properties.area_sqm.
     const unit = t('admin.perSqmYear');
-    return `${t('admin.tcSubjectNatural')}: ${amt(item.rate_natural)} ${unit}\n${t('admin.tcSubjectLegal')}: ${amt(item.rate_legal)} ${unit}`;
+    const basis =
+      item.basis_type === 'general_meeting'
+        ? t('admin.tcBasisGm')
+        : item.basis_type === 'external_decision'
+          ? t('admin.tcBasisExternal')
+          : item.basis_type;
+    return `${t('admin.tcSubjectNatural')}: ${amt(item.rate_natural)} ${unit}\n${t('admin.tcSubjectLegal')}: ${amt(item.rate_legal)} ${unit}\n${t('admin.tcBasis')}: ${basis}`;
   }
   return null;
 }

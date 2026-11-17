@@ -26,6 +26,7 @@ import {
   firstRunTariffStepReady,
   formatFirstRunTariffPrepSummary,
   isAnnualTariffPrep,
+  isSupportFeeTariffPrep,
   isElectricityTariffPrep,
   isFirstRunTariffPrepared,
   isFirstRunTariffPublished,
@@ -243,6 +244,39 @@ describe('R1-RC8 first-run · required published tariffs', () => {
     };
     expect(isAnnualTariffPrep(annual)).toBe(true);
     expect(isAnnualTariffPrep({ ...annual, basis_date: '' })).toBe(false);
+    expect(
+      isSupportFeeTariffPrep({
+        rate_natural: 1.2,
+        rate_legal: 1.4,
+        basis_type: 'general_meeting',
+        basis_reference: null,
+        basis_date: null,
+        basis_note: '',
+        decision_id: null,
+      }),
+    ).toBe(true);
+    expect(
+      isSupportFeeTariffPrep({
+        rate_natural: 1.2,
+        rate_legal: 1.4,
+        basis_type: 'external_decision',
+        basis_reference: null,
+        basis_date: null,
+        basis_note: '',
+        decision_id: null,
+      }),
+    ).toBe(true);
+    expect(
+      isSupportFeeTariffPrep({
+        rate_natural: 0,
+        rate_legal: 1.4,
+        basis_type: 'general_meeting',
+        basis_reference: null,
+        basis_date: null,
+        basis_note: '',
+        decision_id: null,
+      }),
+    ).toBe(false);
     expect(isWaterTariffPrep({
       rate: 0,
       basis_type: 'supplier_notice',

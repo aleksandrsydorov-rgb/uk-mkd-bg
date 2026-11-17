@@ -78,14 +78,16 @@ export type FirstRunTariffGate = {
   unlockOpening: boolean;
 };
 
-function emptyAnnual(today: string): AnnualForm {
+function emptyAnnual(today: string, tariffKey?: FirstRunTariffKey): AnnualForm {
+  const supportFee = tariffKey === 'support_fee';
   return {
     rate: '',
     rate_legal: '',
-    basis_mode: 'external_decision',
+    // Support fee: current tariff based on owners' meeting decision (no document fields).
+    basis_mode: supportFee ? 'general_meeting' : 'external_decision',
     decision_id: '',
     basis_reference: '',
-    basis_date: today,
+    basis_date: supportFee ? '' : today,
     basis_note: '',
   };
 }
@@ -103,7 +105,10 @@ function emptyUtility(today: string): UtilityForm {
 }
 
 function hasAnyInput(key: FirstRunTariffKey, annual: AnnualForm, utility: UtilityForm): boolean {
-  if (key === 'support_fee' || key === 'capital_repair') {
+  if (key === 'support_fee') {
+    return Boolean(annual.rate.trim() || annual.rate_legal.trim());
+  }
+  if (key === 'capital_repair') {
     return Boolean(
       annual.rate.trim() ||
         annual.rate_legal.trim() ||
@@ -134,7 +139,22 @@ function buildPrepItem(
   utility: UtilityForm,
   t: T,
 ): FirstRunAnnualTariffPrep | FirstRunWaterTariffPrep | FirstRunElectricityTariffPrep | FirstRunInternetTariffPrep {
-  if (key === 'support_fee' || key === 'capital_repair') {
+  if (key === 'support_fee') {
+    const rate = Number(annual.rate);
+    const rateLegal = Number(annual.rate_legal.trim() || annual.rate);
+    if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
+    // Document number / date / note are not collected on the support-fee step.
+    return {
+      rate_natural: rate,
+      rate_legal: rateLegal,
+      basis_type: annual.basis_mode,
+      basis_reference: null,
+      basis_date: null,
+      basis_note: '',
+      decision_id: null,
+    };
+  }
+  if (key === 'capital_repair') {
     const rate = Number(annual.rate);
     const rateLegal = Number(annual.rate_legal.trim() || annual.rate);
     if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
@@ -211,7 +231,7 @@ function applyPrepToForms(
   setUtility: (v: UtilityForm) => void,
 ) {
   if (!item) {
-    setAnnual(emptyAnnual(today));
+    setAnnual(emptyAnnual(today, tariffKey));
     setUtility(emptyUtility(today));
     return;
   }
@@ -223,8 +243,8 @@ function applyPrepToForms(
       basis_mode: item.basis_type,
       decision_id: item.decision_id ?? '',
       basis_reference: item.basis_reference ?? '',
-      basis_date: item.basis_date,
-      basis_note: item.basis_note,
+      basis_date: item.basis_date ?? (tariffKey === 'support_fee' ? '' : today),
+      basis_note: item.basis_note ?? '',
     });
     return;
   }
@@ -287,7 +307,7 @@ export const FirstRunTariffPrepBlock = forwardRef<
 
   const [row, setRow] = useState<TariffListRow | null>(null);
   const [decisions, setDecisions] = useState<DecisionOption[]>([]);
-  const [annual, setAnnual] = useState<AnnualForm>(() => emptyAnnual(today));
+  const [annual, setAnnual] = useState<AnnualForm>(() => emptyAnnual(today, tariffKey));
   const [utility, setUtility] = useState<UtilityForm>(() => emptyUtility(today));
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState(() => !prepared);
@@ -458,12 +478,10 @@ export const FirstRunTariffPrepBlock = forwardRef<
             void save();
           }}
         >
-          {tariffKey === 'support_fee' || tariffKey === 'capital_repair' ? (
+          {tariffKey === 'support_fee' ? (
             <>
               <label className={styles.field}>
-                {tariffKey === 'capital_repair'
-                  ? t('admin.tcCapitalRateNatural')
-                  : t('admin.tcSupportRateNatural')}
+                {t('admin.tcSupportRateNatural')}
                 <input
                   className={styles.input}
                   type="number"
@@ -477,16 +495,68 @@ export const FirstRunTariffPrepBlock = forwardRef<
                   }}
                   required
                 />
-                <span className={styles.hint}>
-                  {tariffKey === 'capital_repair'
-                    ? t('admin.tcCapitalRateUnitHint')
-                    : t('admin.tcSupportRateUnitHint')}
-                </span>
+                <span className={styles.hint}>{t('admin.tcSupportRateUnitHint')}</span>
               </label>
               <label className={styles.field}>
-                {tariffKey === 'capital_repair'
-                  ? t('admin.tcCapitalRateLegal')
-                  : t('admin.tcSupportRateLegal')}
+                {t('admin.tcSupportRateLegal')}
+                <input
+                  className={styles.input}
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={annual.rate_legal}
+                  disabled={busy}
+                  placeholder={annual.rate || undefined}
+                  onChange={(e) => {
+                    markDirty();
+                    setAnnual({ ...annual, rate_legal: e.target.value });
+                  }}
+                />
+                <span className={styles.hint}>{t('admin.tcRateLegalHint')}</span>
+              </label>
+              <label className={`${styles.field} ${styles.span2}`}>
+                {t('admin.tcBasis')}
+                <select
+                  className={styles.input}
+                  value={annual.basis_mode}
+                  disabled={busy}
+                  onChange={(e) => {
+                    markDirty();
+                    setAnnual({
+                      ...annual,
+                      basis_mode: e.target.value as AnnualForm['basis_mode'],
+                    });
+                  }}
+                >
+                  <option value="general_meeting">{t('admin.tcBasisGm')}</option>
+                  <option value="external_decision">{t('admin.tcBasisExternal')}</option>
+                </select>
+                <span className={styles.hint}>{t('admin.tcBasisModeHintSupport')}</span>
+              </label>
+            </>
+          ) : null}
+
+          {tariffKey === 'capital_repair' ? (
+            <>
+              <label className={styles.field}>
+                {t('admin.tcCapitalRateNatural')}
+                <input
+                  className={styles.input}
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={annual.rate}
+                  disabled={busy}
+                  onChange={(e) => {
+                    markDirty();
+                    setAnnual({ ...annual, rate: e.target.value });
+                  }}
+                  required
+                />
+                <span className={styles.hint}>{t('admin.tcCapitalRateUnitHint')}</span>
+              </label>
+              <label className={styles.field}>
+                {t('admin.tcCapitalRateLegal')}
                 <input
                   className={styles.input}
                   type="number"

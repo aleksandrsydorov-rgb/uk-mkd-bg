@@ -1108,8 +1108,9 @@ export const ru = {
     tcBasisLegacy: 'Импорт',
     tcBasisModeHint:
       'Выберите, чем подтверждена ставка: внешним документом (протокол, приказ) или решением общего собрания из системы.',
+    tcBasisGmOwnersMeeting: 'Решение собрания собственников.',
     tcBasisModeHintSupport:
-      'По умолчанию — действующий тариф на основании решения собрания собственников. Достаточно указать ставку; номер документа, дату и пояснение указывать не нужно.',
+      'Основание фиксировано: решение собрания собственников. Достаточно указать ставку; номер документа, дату, пояснение и выбор протокола не требуются.',
     tcBasisModeHintWater:
       'По умолчанию — действующий тариф поставщика. Достаточно указать ставку воды; номер документа, дату и пояснение указывать не нужно.',
     tcBasisModeHintElectricity:
@@ -2057,15 +2058,17 @@ export const ru = {
     firstRunMetersCommitted: 'Счётчики импортированы, модуль активирован.',
     firstRunSfTitle: 'Такса поддержки — начальное состояние',
     firstRunSfLead:
-      '1) Подтвердите тариф таксы — он пойдёт в будущие начисления после активации. 2) Скачайте шаблон начальных остатков и по каждой квартире укажите долг, переплату или ноль. 3) После проверки файла подтвердите импорт: платежи и начисления не создаются.',
+      '1) Подтвердите тариф таксы (основание — решение собрания собственников). 2) Скачайте шаблон: квартиры уже заполнены; укажите сумму остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). 3) После проверки подтвердите импорт — платежи и начисления не создаются. Год берётся из активации комплекса.',
     firstRunSfImportColumnsHint:
-      'Простой шаблон: Апартамент | Секция | Блок | Вид начального остатка (Долг / Переплата / Ноль) | Сумма, EUR. Год, дату перехода и основание задайте один раз ниже перед загрузкой.',
+      'Шаблон: Апартамент | Секция | Блок | Сумма начального остатка, EUR. Первые три колонки из Книги. Год начисления — автоматически по активации комплекса. Пустую сумму можно внести позже в карточке.',
     firstRunSfDownload: 'Скачать шаблон начальных остатков',
     firstRunSfDownloadDetailed: 'Скачать подробный шаблон',
     firstRunSfUpload: 'Загрузить заполненный файл',
-    firstRunSfFileMetaTitle: 'Реквизиты учёта для файла',
+    firstRunSfFileMetaTitle: 'Год начисления',
     firstRunSfFileMetaHint:
-      'Укажите один раз для всего файла: год начисления, дату перехода и документ-основание. Не выдумывайте значения — возьмите из ваших данных.',
+      'Год определяется автоматически по году активации комплекса и одинаков в предпросмотре, импорте и при активации.',
+    firstRunSfAutoYearLabel: 'Год начисления (автоматически)',
+    firstRunSfAutoYearHint: 'По году активации комплекса. Не меняется при переходе через Новый год, если остатки уже сохранены.',
     firstRunSfDryRunOk:
       'Предпросмотр: строк {rows}, будет создано {create}, уже есть {skipped}. Долг Σ {debt} €, переплата Σ {credit} €. Начисления и платежи не создаются — можно подтвердить импорт.',
     firstRunSfDryRunErrors: 'Ошибок: {n}. Исправьте файл и загрузите снова.',
@@ -2123,6 +2126,9 @@ export const ru = {
     feeOpeningSourceRef: 'Документ-основание',
     feeOpeningRemainingDebt: 'Остаток долга, €',
     feeOpeningOverpayment: 'Входящая переплата, €',
+    feeOpeningSignedAmount: 'Сумма начального остатка, EUR',
+    feeOpeningSignedAmountHint:
+      'Знак суммы: 50 или +50 — долг; −50 — переплата; 0 — подтверждённый ноль. Исторические начисления и оплаты не требуются.',
     feeOpeningConfirmTitle: 'Подтверждение начального остатка',
     feeOpeningPreviewDebt: 'Итог: долг {amount} €',
     feeOpeningPreviewCredit: 'Итог: переплата {amount} €',
@@ -6678,8 +6684,9 @@ export const en: Messages = {
     tcBasisLegacy: 'Import',
     tcBasisModeHint:
       'Choose what confirms the rate: an external document (minutes, order) or a general meeting decision already in the system.',
+    tcBasisGmOwnersMeeting: 'Owners’ general meeting decision.',
     tcBasisModeHintSupport:
-      'Default is the current tariff based on the owners’ general meeting decision. Enter the rate only; document number, date, and note are not required.',
+      'Basis is fixed: owners’ general meeting decision. Enter the rate only; document number, date, note, and protocol selection are not required.',
     tcBasisModeHintWater:
       'Default is the current supplier tariff. Enter the water rate only; document number, date, and note are not required.',
     tcBasisModeHintElectricity:
@@ -7626,15 +7633,17 @@ export const en: Messages = {
     firstRunMetersCommitted: 'Meters imported, module activated.',
     firstRunSfTitle: 'Support fee — opening state',
     firstRunSfLead:
-      '1) Confirm the support-fee tariff for future charges. 2) Download the opening-balances template and set debt, overpayment, or zero per apartment. 3) After the check, confirm import — no payments or charges are created.',
+      '1) Confirm the support-fee tariff (basis — owners’ general meeting decision). 2) Download the template: apartments are prefilled; enter the balance by sign (+ debt, − overpayment, 0 — zero, blank — later). 3) After the check, confirm import — no payments or charges are created. The year comes from complex activation.',
     firstRunSfImportColumnsHint:
-      'Simple template: Apartment | Section | Block | Opening balance kind (Debt / Overpayment / Zero) | Amount, EUR. Set billing year, transition date and source once below before upload.',
+      'Template: Apartment | Section | Block | Opening balance amount, EUR. First three columns from the Book. Billing year is automatic from complex activation. A blank amount can be entered later on the card.',
     firstRunSfDownload: 'Download opening balances template',
     firstRunSfDownloadDetailed: 'Download detailed template',
     firstRunSfUpload: 'Upload file',
-    firstRunSfFileMetaTitle: 'Accounting details for the file',
+    firstRunSfFileMetaTitle: 'Billing year',
     firstRunSfFileMetaHint:
-      'Set once for the whole file: billing year, transition date and source document. Do not invent values — use your records.',
+      'The year is taken automatically from the complex activation year and stays the same in preview, import, and activation.',
+    firstRunSfAutoYearLabel: 'Billing year (automatic)',
+    firstRunSfAutoYearHint: 'From the complex activation year. Does not change across New Year once balances are saved.',
     firstRunSfDryRunOk:
       'Check passed: {rows} rows, create {create}, already present {skipped}. Debt Σ {debt} €, overpayment Σ {credit} €.',
     firstRunSfDryRunErrors: 'Errors: {n}. Fix the file and upload again.',
@@ -7692,6 +7701,9 @@ export const en: Messages = {
     feeOpeningSourceRef: 'Source document',
     feeOpeningRemainingDebt: 'Remaining debt, €',
     feeOpeningOverpayment: 'Opening overpayment, €',
+    feeOpeningSignedAmount: 'Opening balance amount, EUR',
+    feeOpeningSignedAmountHint:
+      'Amount sign: 50 or +50 — debt; −50 — overpayment; 0 — confirmed zero. Historical charges and payments are not required.',
     feeOpeningConfirmTitle: 'Confirm initial balance',
     feeOpeningPreviewDebt: 'Result: debt {amount} €',
     feeOpeningPreviewCredit: 'Result: overpayment {amount} €',
@@ -12237,8 +12249,9 @@ export const bg: Messages = {
     tcBasisLegacy: 'Импорт',
     tcBasisModeHint:
       'Изберете с какво е потвърдена ставката: външен документ (протокол, заповед) или решение на общо събрание от системата.',
+    tcBasisGmOwnersMeeting: 'Решение на общото събрание на собствениците.',
     tcBasisModeHintSupport:
-      'По подразбиране — действаща тарифа въз основа на решение на общото събрание на собствениците. Достатъчно е да посочите ставката; номер на документ, дата и пояснение не са нужни.',
+      'Основанието е фиксирано: решение на общото събрание на собствениците. Достатъчно е да посочите ставката; номер на документ, дата, пояснение и избор на протокол не се изискват.',
     tcBasisModeHintWater:
       'По подразбиране — действаща тарифа на доставчика. Достатъчно е да посочите ставката за вода; номер на документ, дата и пояснение не са нужни.',
     tcBasisModeHintElectricity:
@@ -13185,15 +13198,17 @@ export const bg: Messages = {
     firstRunMetersCommitted: 'Уредите са импортирани, модулът е активиран.',
     firstRunSfTitle: 'Такса поддръжка — начално състояние',
     firstRunSfLead:
-      '1) Потвърдете тарифата за бъдещи начисления. 2) Изтеглете шаблона за начални остатъци и посочете дълг, преплата или нула. 3) След проверка потвърдете импорта — плащания и начисления не се създават.',
+      '1) Потвърдете тарифата (основание — решение на общото събрание). 2) Изтеглете шаблона: апартаментите са попълнени; посочете сумата със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). 3) След проверка потвърдете импорта — плащания и начисления не се създават. Годината идва от активирането на комплекса.',
     firstRunSfImportColumnsHint:
-      'Прост шаблон: Апартамент | Секция | Блок | Вид на началния остатък (Дълг / Преплата / Нула) | Сума, EUR. Година, дата на преход и основание се задават веднъж по-долу преди качване.',
+      'Шаблон: Апартамент | Секция | Блок | Сума начален остатък, EUR. Първите три колони от Книгата. Годината е автоматична по активирането. Празна сума може да се въведе по-късно в картата.',
     firstRunSfDownload: 'Изтегляне на шаблон за начални остатъци',
     firstRunSfDownloadDetailed: 'Изтегляне на подробен шаблон',
     firstRunSfUpload: 'Качване на файл',
-    firstRunSfFileMetaTitle: 'Реквизити за файла',
+    firstRunSfFileMetaTitle: 'Година на начисляване',
     firstRunSfFileMetaHint:
-      'Посочете веднъж за целия файл: година на начисляване, дата на преход и документ-основание. Не измисляйте стойности — вземете ги от вашите данни.',
+      'Годината се определя автоматично по годината на активиране на комплекса и е еднаква в прегледа, импорта и при активиране.',
+    firstRunSfAutoYearLabel: 'Година на начисляване (автоматично)',
+    firstRunSfAutoYearHint: 'По годината на активиране на комплекса. Не се променя при Нова година, ако остатъците вече са записани.',
     firstRunSfDryRunOk:
       'Проверката е успешна: редове {rows}, за създаване {create}, вече има {skipped}. Дълг Σ {debt} €, преплата Σ {credit} €.',
     firstRunSfDryRunErrors: 'Грешки: {n}. Поправете файла и го качете отново.',
@@ -13251,6 +13266,9 @@ export const bg: Messages = {
     feeOpeningSourceRef: 'Документ-основание',
     feeOpeningRemainingDebt: 'Остатък дълг, €',
     feeOpeningOverpayment: 'Начална преплата, €',
+    feeOpeningSignedAmount: 'Сума начален остатък, EUR',
+    feeOpeningSignedAmountHint:
+      'Знак на сумата: 50 или +50 — дълг; −50 — преплата; 0 — потвърдена нула. Исторически начисления и плащания не се изискват.',
     feeOpeningConfirmTitle: 'Потвърждение на начален остатък',
     feeOpeningPreviewDebt: 'Резултат: дълг {amount} €',
     feeOpeningPreviewCredit: 'Резултат: надплащане {amount} €',

@@ -151,11 +151,11 @@ function buildPrepItem(
     const rate = Number(annual.rate);
     const rateLegal = Number(annual.rate_legal.trim() || annual.rate);
     if (!(rate > 0) || !(rateLegal > 0)) throw new Error(t('admin.tcErrRate'));
-    // Document number / date / note are not collected on the support-fee step.
+    // Fixed basis: owners' general meeting. No document / decision / date collected.
     return {
       rate_natural: rate,
       rate_legal: rateLegal,
-      basis_type: annual.basis_mode,
+      basis_type: 'general_meeting',
       basis_reference: null,
       basis_date: null,
       basis_note: '',
@@ -250,7 +250,7 @@ function applyPrepToForms(
     setAnnual({
       rate: String(item.rate_natural),
       rate_legal: String(item.rate_legal),
-      basis_mode: item.basis_type,
+      basis_mode: tariffKey === 'support_fee' ? 'general_meeting' : item.basis_type,
       decision_id: item.decision_id ?? '',
       basis_reference: item.basis_reference ?? '',
       basis_date: item.basis_date ?? (tariffKey === 'support_fee' ? '' : today),
@@ -548,25 +548,13 @@ export const FirstRunTariffPrepBlock = forwardRef<
                 />
                 <span className={styles.hint}>{t('admin.tcRateLegalHint')}</span>
               </label>
-              <label className={`${styles.field} ${styles.span2}`}>
-                {t('admin.tcBasis')}
-                <select
-                  className={styles.input}
-                  value={annual.basis_mode}
-                  disabled={busy}
-                  onChange={(e) => {
-                    markDirty();
-                    setAnnual({
-                      ...annual,
-                      basis_mode: e.target.value as AnnualForm['basis_mode'],
-                    });
-                  }}
-                >
-                  <option value="general_meeting">{t('admin.tcBasisGm')}</option>
-                  <option value="external_decision">{t('admin.tcBasisExternal')}</option>
-                </select>
+              <div className={`${styles.field} ${styles.span2}`}>
+                <span className={styles.importLabel}>{t('admin.tcBasis')}</span>
+                <p className={styles.hint} style={{ marginTop: 4 }}>
+                  <strong>{t('admin.tcBasisGmOwnersMeeting')}</strong>
+                </p>
                 <span className={styles.hint}>{t('admin.tcBasisModeHintSupport')}</span>
-              </label>
+              </div>
             </>
           ) : null}
 

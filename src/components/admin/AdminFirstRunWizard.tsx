@@ -64,11 +64,12 @@ import {
   ELECTRICITY_MODULE_KEY,
   WATER_MODULE_KEY,
 } from '@/lib/moduleCore/adapters/metersOpening';
-import {
-  buildSupportFeeIs4TemplateBuffer,
-  SUPPORT_FEE_MODULE_KEY,
-} from '@/lib/moduleCore/adapters/supportFeeOpening';
+import { SUPPORT_FEE_MODULE_KEY } from '@/lib/moduleCore/adapters/supportFeeOpening';
 import { parseSupportFeeOpeningWorkbook } from '@/lib/supportFeeSimpleOpening';
+import {
+  resolveSupportFeeOpeningBillingYear,
+  supportFeeOpeningTransitionDate,
+} from '@/lib/supportFeeOpeningYear';
 import { parseCapitalRepairOpeningWorkbook } from '@/lib/capitalRepairSimpleOpening';
 import {
   SUPPORT_FEE_SIMPLE_IMPORT_SPEC,
@@ -390,8 +391,6 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   const [sfDry, setSfDry] = useState<SfDryRun | null>(null);
   const [sfCommitted, setSfCommitted] = useState(false);
   const [sfBillingYear, setSfBillingYear] = useState('');
-  const [sfTransitionDate, setSfTransitionDate] = useState('');
-  const [sfSourceReference, setSfSourceReference] = useState('');
 
   const [crRows, setCrRows] = useState<Record<string, string>[] | null>(null);
   const [crPreviewRows, setCrPreviewRows] = useState<Record<string, string>[] | null>(null);
@@ -549,6 +548,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   }, [loading, stage, supabase]);
 
   const legacyChoiceApplied = useRef(false);
+  useEffect(() => {
+    if (loading || stage !== 'support_fee_opening' || sfBillingYear) return;
+    void resolveSupportFeeOpeningBillingYear(supabase)
+      .then((y) => setSfBillingYear(String(y)))
+      .catch(() => {
+        /* keep empty; download/upload will retry */
+      });
+  }, [loading, stage, sfBillingYear, supabase]);
+
   useEffect(() => {
     if (legacyChoiceApplied.current || !state || moduleCatalog.length === 0) return;
     legacyChoiceApplied.current = true;
@@ -1284,6 +1292,14 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   // support_fee_opening
   // ---------------------------------------------------------------------------
 
+  async function ensureSfBillingYear(): Promise<string> {
+    if (/^\d{4}$/.test(sfBillingYear)) return sfBillingYear;
+    const year = await resolveSupportFeeOpeningBillingYear(supabase);
+    const y = String(year);
+    setSfBillingYear(y);
+    return y;
+  }
+
   async function onSfFile(file: File | null) {
     if (!file) return;
     await run(async () => {
@@ -1293,10 +1309,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       setSfPreviewRows(null);
       setSfRows(null);
       const buf = await file.arrayBuffer();
+      const year = await ensureSfBillingYear();
       const parsed = parseSupportFeeOpeningWorkbook(buf, locale, {
-        billingYear: sfBillingYear,
-        transitionDate: sfTransitionDate,
-        sourceReference: sfSourceReference,
+        billingYear: year,
+        transitionDate: supportFeeOpeningTransitionDate(),
+        sourceReference: '',
       });
       if (!parsed.ok) {
         setError(parsed.error);
@@ -1957,23 +1974,26 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           onSaveTariffPrep={(next) => saveTariffPrep('support_fee_opening', next)}
           onTariffBusy={setBusy}
           billingYear={sfBillingYear}
-          transitionDate={sfTransitionDate}
-          sourceReference={sfSourceReference}
-          onBillingYear={setSfBillingYear}
-          onTransitionDate={setSfTransitionDate}
-          onSourceReference={setSfSourceReference}
-          onDownload={() =>
-            downloadXlsx(
-              buildSupportFeeSimpleTemplateBuffer(locale),
-              localizedTemplateFileName(SUPPORT_FEE_SIMPLE_IMPORT_SPEC, locale),
-            )
-          }
-          onDownloadDetailed={() =>
-            downloadXlsx(
-              buildSupportFeeIs4TemplateBuffer(locale),
-              localizedTemplateFileName(SUPPORT_FEE_IMPORT_SPEC, locale),
-            )
-          }
+          onDownload={() => {
+            void run(async () => {
+              await ensureSfBillingYear();
+              const stubs = await loadExistingBookObjectStubs();
+              if (stubs.length === 0) {
+                throw new Error(t('admin.firstRunMetersDownloadEmpty'));
+              }
+              downloadXlsx(
+                buildSupportFeeSimpleTemplateBuffer(
+                  locale,
+                  stubs.map((r) => ({
+                    apartment_number: r.apartment_number,
+                    section_code: r.section_code,
+                    block_code: r.block_code,
+                  })),
+                ),
+                localizedTemplateFileName(SUPPORT_FEE_SIMPLE_IMPORT_SPEC, locale),
+              );
+            });
+          }}
           onFile={(file) => void onSfFile(file)}
           onCommit={() => void onSfCommit()}
           onContinue={() => goStage('capital_repair_opening')}

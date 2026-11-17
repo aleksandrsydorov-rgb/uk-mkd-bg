@@ -292,53 +292,15 @@ export function FirstRunSupportFee({
             >
               {t('admin.firstRunSfDownload')}
             </button>
-            {onDownloadDetailed ? (
-              <button
-                type="button"
-                className={styles.secondary}
-                disabled={busy || !openingUnlocked}
-                onClick={onDownloadDetailed}
-              >
-                {t('admin.firstRunSfDownloadDetailed')}
-              </button>
-            ) : null}
           </div>
           <p className={styles.hint}>{t('admin.firstRunSfImportColumnsHint')}</p>
         </div>
         <div className={styles.stepBlock}>
-          <p className={styles.importLabel}>{t('admin.firstRunSfFileMetaTitle')}</p>
-          <p className={styles.hint}>{t('admin.firstRunSfFileMetaHint')}</p>
-          <label className={styles.field}>
-            <span>{t('admin.firstRunSfColYear')}</span>
-            <input
-              className={styles.input}
-              inputMode="numeric"
-              maxLength={4}
-              disabled={busy || committed || !openingUnlocked}
-              value={billingYear ?? ''}
-              onChange={(e) => onBillingYear?.(e.target.value)}
-              placeholder="2026"
-            />
-          </label>
-          <label className={styles.field}>
-            <span>{t('admin.feeOpeningTransitionDate')}</span>
-            <input
-              className={styles.input}
-              type="date"
-              disabled={busy || committed || !openingUnlocked}
-              value={transitionDate ?? ''}
-              onChange={(e) => onTransitionDate?.(e.target.value)}
-            />
-          </label>
-          <label className={styles.field}>
-            <span>{t('admin.feeOpeningSourceRef')}</span>
-            <input
-              className={styles.input}
-              disabled={busy || committed || !openingUnlocked}
-              value={sourceReference ?? ''}
-              onChange={(e) => onSourceReference?.(e.target.value)}
-            />
-          </label>
+          <p className={styles.importLabel}>{t('admin.firstRunSfAutoYearLabel')}</p>
+          <p className={styles.hint} style={{ marginTop: 4 }}>
+            <strong>{billingYear?.trim() || '—'}</strong>
+          </p>
+          <p className={styles.hint}>{t('admin.firstRunSfAutoYearHint')}</p>
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>

@@ -5,10 +5,16 @@ import {
 } from '@/lib/importTemplates/identityColumns';
 import {
   buildLocalizedImportWorkbook,
+  buildLocalizedImportWorkbookWithRows,
   toImportTemplateLocale,
 } from '@/lib/importTemplates/workbook';
+import { sortPropertyBookOwnerIdentitySeeds } from '@/lib/propertyBookAdmin';
 
-/** Simple first-run support-fee opening template: balance kind + amount only. */
+/**
+ * Simple first-run support-fee opening template (4 columns).
+ * Balance kind is encoded in the sign of «Сумма начального остатка, EUR».
+ * Billing year / transition / source are not in the file — resolved by the wizard.
+ */
 export const SUPPORT_FEE_SIMPLE_IMPORT_SPEC: ImportTemplateSpec = {
   id: 'support_fee_opening_simple',
   fileBaseName: {
@@ -29,143 +35,89 @@ export const SUPPORT_FEE_SIMPLE_IMPORT_SPEC: ImportTemplateSpec = {
   },
   notes: {
     ru: [
-      'Заполняйте только лист «Начальные остатки». Примеры в инструкции не импортируются.',
+      'Заполняйте только лист «Начальные остатки». Примеры на листе инструкции не импортируются.',
       OPENING_IDENTITY_FORMAT_NOTE.ru,
-      'Одна строка — один апартамент. Укажите вид остатка (Долг / Переплата / Ноль) и сумму.',
-      'Если квартира известна, а вид и сумма пустые — остаток можно внести позже в карточке.',
-      'Дату перехода и основание задайте один раз в мастере перед импортом (не в этом файле).',
+      'Первые три колонки уже заполнены из Книги собственности. Сохраняйте их без изменений.',
+      'Сумма начального остатка задаёт вид знаком: 50 или +50 — долг; −50 — переплата; 0 — подтверждённый ноль; пусто — остаток пока неизвестен (можно внести позже в карточке). Одиночный дефис «-» — ошибка.',
+      'Год начисления определяется автоматически по году активации комплекса. Пустое значение не становится нулём. Повторный импорт с пустыми суммами не стирает уже сохранённые остатки.',
     ],
     bg: [
       'Попълвайте само листа «Начални салда». Примерите в инструкцията не се импортират.',
       OPENING_IDENTITY_FORMAT_NOTE.bg,
-      'Един ред — един апартамент. Посочете вида на остатъка (Дълг / Преплата / Нула) и сумата.',
-      'Ако апартаментът е известен, а видът и сумата са празни — остатъкът може да се въведе по-късно.',
-      'Датата на преминаване и основанието се задават веднъж в съветника преди импорта.',
+      'Първите три колони са попълнени от Книгата на собствеността. Не ги променяйте.',
+      'Сумата на началния остатък определя вида със знака: 50 или +50 — дълг; −50 — преплата; 0 — потвърдена нула; празно — остатъкът още не е известен (може по-късно в картата). Самостоятелен дефис «-» е грешка.',
+      'Годината на начисляване се определя автоматично по годината на активиране на комплекса. Празно не става нула. Повторен импорт с празни суми не изтрива вече записаните остатъци.',
     ],
     en: [
-      'Fill only the Opening balances sheet. Instruction examples are not imported.',
+      'Fill only the Opening balances sheet. Examples on the Instructions sheet are not imported.',
       OPENING_IDENTITY_FORMAT_NOTE.en,
-      'One row per apartment. Set balance kind (Debt / Overpayment / Zero) and the amount.',
-      'If the apartment is known but kind and amount are empty — enter the balance later on the card.',
-      'Set transition date and source once in the wizard before import (not in this file).',
+      'The first three columns are prefilled from the Property Book. Keep them unchanged.',
+      'The opening balance amount encodes the kind by sign: 50 or +50 — debt; −50 — overpayment; 0 — confirmed zero; blank — balance still unknown (enter later on the card). A lone hyphen “-” is an error.',
+      'The billing year is taken automatically from the complex activation year. Empty is not turned into zero. Re-import with blank amounts does not wipe saved balances.',
     ],
   },
   columns: [
     ...OPENING_IDENTITY_COLUMNS,
     {
-      key: 'opening_balance_kind',
-      required: false,
-      format: 'text',
-      width: 24,
-      label: {
-        ru: 'Вид начального остатка',
-        bg: 'Вид на началния остатък',
-        en: 'Opening balance kind',
-      },
-      aliases: [
-        'balance_kind',
-        'kind',
-        'вид остатка',
-        'тип остатка',
-        'opening balance kind',
-        'opening_balance_type',
-      ],
-      listValidation: ['debt', 'overpayment', 'zero'],
-      listValidationByLocale: {
-        ru: ['Долг', 'Переплата', 'Ноль'],
-        bg: ['Дълг', 'Преплата', 'Нула'],
-        en: ['Debt', 'Overpayment', 'Zero'],
-      },
-      instruction: {
-        ru: 'Долг / Переплата / Ноль. Пусто вместе с пустой суммой — «можно внести позже».',
-        bg: 'Дълг / Преплата / Нула. Празно заедно с празна сума — «може по-късно».',
-        en: 'Debt / Overpayment / Zero. Empty with empty amount — “can enter later”.',
-      },
-      example: 'debt',
-    },
-    {
       key: 'opening_balance_eur',
       required: false,
       format: 'money',
-      width: 18,
+      width: 28,
       label: {
-        ru: 'Сумма, EUR',
-        bg: 'Сума, EUR',
-        en: 'Amount, EUR',
+        ru: 'Сумма начального остатка, EUR',
+        bg: 'Сума начален остатък, EUR',
+        en: 'Opening balance amount, EUR',
       },
       aliases: [
-        'amount',
         'opening_balance',
+        'amount',
+        'сумма начального остатка (eur)',
+        'сума начален остатък (eur)',
         'сумма',
         'сума',
-        'сумма (eur)',
+        'сумма, eur',
         'amount eur',
+        'остаток',
+        'остатък',
       ],
       instruction: {
-        ru: 'Для долга и переплаты — сумма > 0. Для «Ноль» — 0 или пусто.',
-        bg: 'За дълг и преплата — сума > 0. За «Нула» — 0 или празно.',
-        en: 'For debt/overpayment — amount > 0. For Zero — 0 or empty.',
+        ru: 'Знак суммы: плюс или без знака — долг; минус — переплата; 0 — ноль; пусто — уточнить позже. Числа Excel и текст с точкой/запятой.',
+        bg: 'Знак на сумата: плюс или без знак — дълг; минус — преплата; 0 — нула; празно — по-късно. Числа от Excel и текст с точка/запетая.',
+        en: 'Amount sign: plus or unsigned — debt; minus — overpayment; 0 — zero; blank — enter later. Excel numbers and comma/dot text.',
       },
-      example: '707.00',
+      example: '50.00',
     },
   ],
   instructionScenarios: [
     {
       title: {
-        ru: 'Примеры (не импортируются)',
-        bg: 'Примери (не се импортират)',
-        en: 'Examples (not imported)',
+        ru: 'Примеры сумм (не импортируются)',
+        bg: 'Примери за суми (не се импортират)',
+        en: 'Amount examples (not imported)',
       },
       rows: [
         {
           apartment_number: '8',
           section_code: 'A',
           block_code: '',
-          opening_balance_kind: 'debt',
-          opening_balance_eur: '707.00',
+          opening_balance_eur: '50',
         },
         {
           apartment_number: '9',
           section_code: 'A',
           block_code: '',
-          opening_balance_kind: 'overpayment',
-          opening_balance_eur: '50.00',
+          opening_balance_eur: '-50',
         },
         {
           apartment_number: '10',
-          section_code: 'A',
+          section_code: 'Б',
           block_code: '',
-          opening_balance_kind: 'zero',
           opening_balance_eur: '0',
         },
         {
           apartment_number: '12',
-          section_code: 'B',
+          section_code: 'Б',
           block_code: '',
-          opening_balance_kind: '',
-          opening_balance_eur: '',
-        },
-      ],
-    },
-    {
-      title: {
-        ru: 'Когда указывать секцию и блок',
-        bg: 'Кога да посочите секция и блок',
-        en: 'When to fill section and block',
-      },
-      rows: [
-        {
-          apartment_number: '12',
-          section_code: 'A',
-          block_code: '1',
-          opening_balance_kind: 'debt',
-          opening_balance_eur: '120.50',
-        },
-        {
-          apartment_number: '12',
-          section_code: 'B',
-          block_code: '',
-          opening_balance_kind: 'zero',
           opening_balance_eur: '',
         },
       ],
@@ -174,11 +126,27 @@ export const SUPPORT_FEE_SIMPLE_IMPORT_SPEC: ImportTemplateSpec = {
   templateInputRows: 120,
 };
 
+export type SupportFeeIdentitySeed = {
+  apartment_number: string;
+  section_code?: string | null;
+  block_code?: string | null;
+};
+
 export function buildSupportFeeSimpleTemplateBuffer(
   locale: 'ru' | 'bg' | 'en' | string = 'ru',
+  identityRows?: SupportFeeIdentitySeed[],
 ): ArrayBuffer {
-  return buildLocalizedImportWorkbook(
-    SUPPORT_FEE_SIMPLE_IMPORT_SPEC,
-    toImportTemplateLocale(locale),
-  );
+  const loc = toImportTemplateLocale(locale);
+  if (!identityRows?.length) {
+    return buildLocalizedImportWorkbook(SUPPORT_FEE_SIMPLE_IMPORT_SPEC, loc);
+  }
+  const sorted = sortPropertyBookOwnerIdentitySeeds(identityRows);
+  const rows = sorted.map((r) => ({
+    apartment_number: String(r.apartment_number ?? ''),
+    section_code: r.section_code != null ? String(r.section_code) : '',
+    block_code: r.block_code != null ? String(r.block_code) : '',
+  }));
+  return buildLocalizedImportWorkbookWithRows(SUPPORT_FEE_SIMPLE_IMPORT_SPEC, loc, rows, {
+    extraBlankRows: 40,
+  });
 }

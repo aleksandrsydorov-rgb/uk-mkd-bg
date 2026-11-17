@@ -1,19 +1,28 @@
 /**
  * Simple support-fee opening XLSX → RPC row shape for admin_import_support_fee_opening.
- * Soft-defer (empty kind+amount) keeps amounts blank so SQL returns DEFER.
+ * Sign of amount encodes kind: +debt / −overpayment / 0 zero / blank → soft defer.
+ * Billing year comes from complex activation (launch) year — not from the file.
  */
 
 import type { FirstRunErrorRow } from '@/lib/firstRun';
 import { SUPPORT_FEE_SIMPLE_IMPORT_SPEC } from '@/lib/importTemplates/specs/supportFeeSimple';
 import { SUPPORT_FEE_IMPORT_SPEC } from '@/lib/importTemplates/specs/supportFee';
 import { parseLocalizedImportBuffer } from '@/lib/importTemplates';
+import {
+  parseMeterOpeningAmount,
+  meterKindFromSignedAmount,
+  type OpeningBalanceKind,
+} from '@/lib/moduleCore/adapters/metersOpening';
 
-export type SfOpeningBalanceKind = 'debt' | 'overpayment' | 'zero';
+export type SfOpeningBalanceKind = OpeningBalanceKind;
 
+/** Meta injected by the wizard (year from activation model; technical transition optional). */
 export type SfSimpleFileMeta = {
   billingYear: string;
-  transitionDate: string;
-  sourceReference: string;
+  /** Technical date from activation model when inventarising; may be empty for soft-defer. */
+  transitionDate?: string;
+  /** Optional legacy source; new simple templates omit it. */
+  sourceReference?: string;
 };
 
 export type SfOpeningParseResult =
@@ -32,14 +41,7 @@ function trim(v: unknown): string {
   return v == null ? '' : String(v).trim();
 }
 
-function moneyOrNull(raw: unknown): number | null {
-  const s = trim(raw).replace(/\s/g, '').replace(',', '.');
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-}
-
-/** Normalize localized / canonical balance-kind labels. */
+/** Normalize localized / canonical balance-kind labels (legacy kind column). */
 export function normalizeSfOpeningBalanceKind(
   raw: string | undefined | null,
 ): SfOpeningBalanceKind | null | 'invalid' {
@@ -85,9 +87,16 @@ function stripInternalKeys(row: Record<string, string>): Record<string, string> 
   return out;
 }
 
+function moneyOrNullLegacy(raw: unknown): number | null {
+  const s = trim(raw).replace(/\s/g, '').replace(',', '.');
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
 /**
  * Map one simple row to RPC payload keys.
- * Always returns a previewRow for non-blank Excel lines; rpcRow only when valid.
+ * Signed amount (preferred) or legacy kind+amount columns.
  */
 export function mapSimpleSfOpeningRow(
   row: Record<string, string>,
@@ -103,8 +112,6 @@ export function mapSimpleSfOpeningRow(
   const block = trim(row.block_code);
   const kindRaw = trim(row.opening_balance_kind);
   const amountRaw = trim(row.opening_balance_eur);
-  const kind = normalizeSfOpeningBalanceKind(kindRaw);
-  const amount = moneyOrNull(amountRaw);
 
   if (!apartment && !section && !block && !kindRaw && !amountRaw) {
     return { previewRow: null, rpcRow: null, errors: [] };
@@ -114,8 +121,74 @@ export function mapSimpleSfOpeningRow(
   if (!apartment) {
     errors.push(err(excelRow, '', 'apartment_number', 'required:apartment_number'));
   }
-  if (kind === 'invalid') {
-    errors.push(err(excelRow, apartment, 'opening_balance_kind', 'invalid:opening_balance_kind'));
+
+  let kind: SfOpeningBalanceKind | null | 'invalid' = null;
+  let amountAbs = 0;
+  let defer = false;
+
+  if (kindRaw) {
+    // Legacy kind column still accepted.
+    kind = normalizeSfOpeningBalanceKind(kindRaw);
+    if (kind === 'invalid') {
+      errors.push(err(excelRow, apartment, 'opening_balance_kind', 'invalid:opening_balance_kind'));
+    }
+    const amount = moneyOrNullLegacy(amountRaw);
+    if (kind === 'debt' || kind === 'overpayment') {
+      if (amount == null || amount <= 0) {
+        errors.push(err(excelRow, apartment, 'opening_balance_eur', 'required:opening_balance_eur'));
+      } else {
+        amountAbs = amount;
+      }
+    } else if (kind === 'zero') {
+      if (amount != null && Math.abs(amount) > 0.0001) {
+        errors.push(
+          err(excelRow, apartment, 'opening_balance_eur', 'invalid:opening_balance_eur_nonzero_for_zero'),
+        );
+      }
+      amountAbs = 0;
+    } else if (kind == null && amount == null) {
+      defer = true;
+    } else if (kind == null && amount != null) {
+      errors.push(err(excelRow, apartment, 'opening_balance_kind', 'required:opening_balance_kind'));
+    }
+  } else {
+    // Signed-amount mode (new 4-column template).
+    const parsed = parseMeterOpeningAmount(row.opening_balance_eur);
+    if (!parsed.ok) {
+      errors.push(
+        err(
+          excelRow,
+          apartment,
+          'opening_balance_eur',
+          parsed.reason === 'hyphen'
+            ? 'invalid:opening_balance_eur_hyphen'
+            : 'invalid:opening_balance_eur',
+        ),
+      );
+      kind = 'invalid';
+    } else if (parsed.value == null) {
+      defer = true;
+      kind = null;
+    } else {
+      kind = meterKindFromSignedAmount(parsed.value);
+      amountAbs = Math.abs(parsed.value);
+    }
+  }
+
+  const year = trim(meta.billingYear);
+  const transition = trim(meta.transitionDate);
+  const source = trim(meta.sourceReference);
+
+  if (!year || !/^\d{4}$/.test(year) || Number(year) < 2000 || Number(year) > 2100) {
+    errors.push(err(excelRow, apartment, 'billing_year', 'invalid:billing_year'));
+  }
+
+  // Transition / source are optional for simple inventarisation (server fills technical values).
+  // If provided (legacy meta / detailed), validate transition date format lightly.
+  if (transition) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(transition)) {
+      errors.push(err(excelRow, apartment, 'transition_date', 'invalid:transition_date'));
+    }
   }
 
   const basePreview: Record<string, string> = {
@@ -123,20 +196,19 @@ export function mapSimpleSfOpeningRow(
     section_code: section,
     block_code: block,
     obligation_type: 'support_fee',
-    billing_year: '',
+    billing_year: year,
     assessed_amount: '',
     historically_paid_amount: '',
     remaining_debt: '',
     opening_overpayment: '',
-    transition_date: '',
-    source_reference: '',
+    transition_date: transition,
+    source_reference: source,
     notes: '',
     rowNumber: String(excelRow),
     _simple_kind: kind && kind !== 'invalid' ? kind : kindRaw ? 'invalid' : '',
   };
 
-  // Empty kind + empty amount → soft defer (apartment may still be missing → error).
-  if (kind == null && amount == null) {
+  if (defer) {
     if (errors.length) {
       return { previewRow: { ...basePreview, _client_invalid: '1' }, rpcRow: null, errors };
     }
@@ -147,54 +219,24 @@ export function mapSimpleSfOpeningRow(
     };
   }
 
-  if (kind == null && amount != null) {
-    errors.push(err(excelRow, apartment, 'opening_balance_kind', 'required:opening_balance_kind'));
-  }
-  if (kind === 'debt' || kind === 'overpayment') {
-    if (amount == null || amount <= 0) {
-      errors.push(err(excelRow, apartment, 'opening_balance_eur', 'required:opening_balance_eur'));
-    }
-  }
-  if (kind === 'zero' && amount != null && Math.abs(amount) > 0.0001) {
-    errors.push(
-      err(excelRow, apartment, 'opening_balance_eur', 'invalid:opening_balance_eur_nonzero_for_zero'),
-    );
-  }
-
-  const year = trim(meta.billingYear);
-  const transition = trim(meta.transitionDate);
-  const source = trim(meta.sourceReference);
-  if (!year || !/^\d{4}$/.test(year) || Number(year) < 2000 || Number(year) > 2100) {
-    errors.push(err(excelRow, apartment, 'billing_year', 'invalid:billing_year'));
-  }
-  if (!transition) {
-    errors.push(err(excelRow, apartment, 'transition_date', 'required:transition_date'));
-  }
-  if (!source) {
-    errors.push(err(excelRow, apartment, 'source_reference', 'required:source_reference'));
-  }
-
   let assessed = '0';
   let paid = '0';
   let remaining = '0';
   let over = '';
-  if (kind === 'debt' && amount != null && amount > 0) {
-    const a = amount.toFixed(2);
+  if (kind === 'debt' && amountAbs > 0) {
+    const a = amountAbs.toFixed(2);
     assessed = a;
     remaining = a;
-  } else if (kind === 'overpayment' && amount != null && amount > 0) {
-    over = amount.toFixed(2);
+  } else if (kind === 'overpayment' && amountAbs > 0) {
+    over = amountAbs.toFixed(2);
   }
 
   const mapped: Record<string, string> = {
     ...basePreview,
-    billing_year: year,
     assessed_amount: assessed,
     historically_paid_amount: paid,
     remaining_debt: remaining,
     opening_overpayment: over,
-    transition_date: transition,
-    source_reference: source,
     _simple_kind: kind && kind !== 'invalid' ? kind : basePreview._simple_kind,
   };
 
@@ -212,6 +254,7 @@ export function mapSimpleSfOpeningRow(
 /**
  * Parse uploaded workbook as simple or detailed SF opening.
  * Prefer detailed when its required headers resolve; otherwise simple.
+ * New simple files have no kind column — detection via simple spec still works.
  */
 export function parseSupportFeeOpeningWorkbook(
   buf: ArrayBuffer,
@@ -221,6 +264,7 @@ export function parseSupportFeeOpeningWorkbook(
   const simpleParsed = parseLocalizedImportBuffer(buf, SUPPORT_FEE_SIMPLE_IMPORT_SPEC);
   const detailedParsed = parseLocalizedImportBuffer(buf, SUPPORT_FEE_IMPORT_SPEC);
 
+  // Prefer detailed when its required headers resolve (legacy full inventarisation file).
   if (detailedParsed.ok) {
     const previewRows = detailedParsed.rows.map((row, idx) => ({
       ...(row as Record<string, string>),

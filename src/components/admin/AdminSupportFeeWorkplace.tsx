@@ -36,6 +36,10 @@ import {
   type SupportFeeAssessment,
 } from '@/lib/supportFeeAnnual';
 import {
+  meterKindFromSignedAmount,
+  parseMeterOpeningAmount,
+} from '@/lib/moduleCore/adapters/metersOpening';
+import {
   assertSupportFeeRestoreTargetMatch,
   assertSupportFeeVoidTargetMatch,
   assessRestoreSupportAssessmentEligibility,
@@ -235,12 +239,7 @@ export function AdminSupportFeeWorkplace({
   const [openingFormOpen, setOpeningFormOpen] = useState(false);
   const [openingConfirmBusy, setOpeningConfirmBusy] = useState(false);
   const [openingYear, setOpeningYear] = useState('');
-  const [openingTransition, setOpeningTransition] = useState('');
-  const [openingSource, setOpeningSource] = useState('');
-  const [openingAssessed, setOpeningAssessed] = useState('');
-  const [openingPaid, setOpeningPaid] = useState('');
-  const [openingRemaining, setOpeningRemaining] = useState('');
-  const [openingOver, setOpeningOver] = useState('');
+  const [openingSignedAmount, setOpeningSignedAmount] = useState('');
   const openingIdemRef = useRef(crypto.randomUUID());
   const [payOpen, setPayOpen] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
@@ -434,14 +433,16 @@ export function AdminSupportFeeWorkplace({
         billing_year?: number | null;
         payload?: Record<string, unknown> | null;
       };
-      setOpeningYear((prev) => (prev ? prev : prow.billing_year != null ? String(prow.billing_year) : ''));
-      const payload = prow.payload ?? {};
-      setOpeningTransition((prev) =>
-        prev ? prev : payload.transition_date ? String(payload.transition_date).slice(0, 10) : '',
+      setOpeningYear((prev) =>
+        prev
+          ? prev
+          : prow.billing_year != null
+            ? String(prow.billing_year)
+            : launchYear != null
+              ? String(launchYear)
+              : '',
       );
-      setOpeningSource((prev) =>
-        prev ? prev : payload.source_reference ? String(payload.source_reference) : '',
-      );
+      setOpeningSignedAmount('');
     } else {
       setOpeningFormOpen(false);
     }
@@ -717,35 +718,39 @@ export function AdminSupportFeeWorkplace({
   async function handleConfirmSupportFeeOpening(e: React.FormEvent) {
     e.preventDefault();
     if (!canPay || propertyId === '' || openingConfirmBusy || !openingPending) return;
-    const year = Number(openingYear);
-    const assessed = Number(String(openingAssessed).replace(',', '.'));
-    const paid = Number(String(openingPaid).replace(',', '.'));
-    const remaining = Number(String(openingRemaining).replace(',', '.'));
-    const overRaw = String(openingOver).trim();
-    const over = overRaw ? Number(overRaw.replace(',', '.')) : 0;
+    const year =
+      Number(openingYear) ||
+      (launchYear != null ? Number(launchYear) : NaN);
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
       setError(t('admin.importIssue_billing_year_invalid'));
       return;
     }
-    if (!openingTransition.trim()) {
-      setError(t('admin.importIssue_transition_date_required'));
+    const parsed = parseMeterOpeningAmount(openingSignedAmount);
+    if (!parsed.ok) {
+      setError(
+        t(
+          parsed.reason === 'hyphen'
+            ? 'admin.importIssue_opening_balance_eur_hyphen'
+            : 'admin.importIssue_opening_balance_eur_invalid',
+        ),
+      );
       return;
     }
-    if (!openingSource.trim()) {
-      setError(t('admin.importIssue_source_reference_required'));
+    if (parsed.value == null) {
+      setError(t('admin.importIssue_opening_balance_eur_required'));
       return;
     }
-    if (![assessed, paid, remaining, over].every((n) => Number.isFinite(n) && n >= 0)) {
-      setError(t('admin.importIssue_assessed_amount_invalid'));
-      return;
-    }
-    if (Math.round((assessed - paid - remaining) * 100) !== 0) {
-      setError(t('admin.importIssue_amounts_inconsistent'));
-      return;
-    }
-    if (remaining > 0 && over > 0) {
-      setError(t('admin.importIssue_debt_credit_xor'));
-      return;
+    const kind = meterKindFromSignedAmount(parsed.value);
+    const abs = Math.abs(parsed.value);
+    let assessed = 0;
+    let paid = 0;
+    let remaining = 0;
+    let over = 0;
+    if (kind === 'debt') {
+      assessed = abs;
+      remaining = abs;
+    } else if (kind === 'overpayment') {
+      over = abs;
     }
     setOpeningConfirmBusy(true);
     setError(null);
@@ -757,8 +762,8 @@ export function AdminSupportFeeWorkplace({
       p_historically_paid_amount: paid,
       p_remaining_debt: remaining,
       p_opening_overpayment: over,
-      p_transition_date: openingTransition.trim(),
-      p_source_reference: openingSource.trim(),
+      p_transition_date: null,
+      p_source_reference: null,
       p_notes: null,
       p_idempotency_key: openingIdemRef.current,
     } as never);
@@ -1732,100 +1737,39 @@ export function AdminSupportFeeWorkplace({
               <form onSubmit={handleConfirmSupportFeeOpening} className="mt-4 space-y-3">
                 <p className="text-sm font-medium text-foreground">{t('admin.feeOpeningConfirmTitle')}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block text-xs text-secondary">
-                    {t('admin.firstRunSfColYear')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="number"
-                      min={2000}
-                      max={2100}
-                      value={openingYear}
-                      onChange={(e) => setOpeningYear(e.target.value)}
-                      required
-                      data-testid="sf-opening-year"
-                    />
-                  </label>
-                  <label className="block text-xs text-secondary">
-                    {t('admin.feeOpeningTransitionDate')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="date"
-                      value={openingTransition}
-                      onChange={(e) => setOpeningTransition(e.target.value)}
-                      required
-                      data-testid="sf-opening-transition"
-                    />
-                  </label>
+                  <div className="block text-xs text-secondary">
+                    {t('admin.firstRunSfAutoYearLabel')}
+                    <p className="mt-1 text-sm font-medium text-foreground" data-testid="sf-opening-year">
+                      {openingYear || (launchYear != null ? String(launchYear) : '—')}
+                    </p>
+                    <p className="mt-1 text-xs text-secondary">{t('admin.firstRunSfAutoYearHint')}</p>
+                  </div>
                   <label className="block text-xs text-secondary sm:col-span-2">
-                    {t('admin.feeOpeningSourceRef')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="text"
-                      value={openingSource}
-                      onChange={(e) => setOpeningSource(e.target.value)}
-                      required
-                      data-testid="sf-opening-source"
-                    />
-                  </label>
-                  <label className="block text-xs text-secondary">
-                    {t('admin.firstRunSfColAssessed')}
+                    {t('admin.feeOpeningSignedAmount')}
                     <input
                       className={`mt-1 ${fieldClass}`}
                       type="text"
                       inputMode="decimal"
-                      value={openingAssessed}
-                      onChange={(e) => setOpeningAssessed(e.target.value)}
+                      value={openingSignedAmount}
+                      onChange={(e) => setOpeningSignedAmount(e.target.value)}
                       required
-                      data-testid="sf-opening-assessed"
+                      placeholder="50 / +50 / -50 / 0"
+                      data-testid="sf-opening-signed"
                     />
-                  </label>
-                  <label className="block text-xs text-secondary">
-                    {t('admin.firstRunSfColPaid')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="text"
-                      inputMode="decimal"
-                      value={openingPaid}
-                      onChange={(e) => setOpeningPaid(e.target.value)}
-                      required
-                      data-testid="sf-opening-paid"
-                    />
-                  </label>
-                  <label className="block text-xs text-secondary">
-                    {t('admin.feeOpeningRemainingDebt')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="text"
-                      inputMode="decimal"
-                      value={openingRemaining}
-                      onChange={(e) => setOpeningRemaining(e.target.value)}
-                      required
-                      data-testid="sf-opening-remaining"
-                    />
-                  </label>
-                  <label className="block text-xs text-secondary">
-                    {t('admin.feeOpeningOverpayment')}
-                    <input
-                      className={`mt-1 ${fieldClass}`}
-                      type="text"
-                      inputMode="decimal"
-                      value={openingOver}
-                      onChange={(e) => setOpeningOver(e.target.value)}
-                      data-testid="sf-opening-over"
-                    />
+                    <span className="mt-1 block text-xs text-secondary">{t('admin.feeOpeningSignedAmountHint')}</span>
                   </label>
                 </div>
                 {(() => {
-                  const rem = Number(String(openingRemaining).replace(',', '.'));
-                  const ov = Number(String(openingOver || '0').replace(',', '.'));
-                  if (!Number.isFinite(rem) || !Number.isFinite(ov)) return null;
+                  const parsed = parseMeterOpeningAmount(openingSignedAmount);
+                  if (!parsed.ok || parsed.value == null) return null;
+                  const kind = meterKindFromSignedAmount(parsed.value);
+                  const abs = Math.abs(parsed.value);
+                  const amount = formatEurAmount(abs, locale).replace(/\s*€$/, '').trim();
                   const preview =
-                    rem > 0
-                      ? t('admin.feeOpeningPreviewDebt', { amount: formatEurAmount(rem, locale).replace(/\s*€$/, '').trim() })
-                      : ov > 0
-                        ? t('admin.feeOpeningPreviewCredit', {
-                            amount: formatEurAmount(ov, locale).replace(/\s*€$/, '').trim(),
-                          })
+                    kind === 'debt'
+                      ? t('admin.feeOpeningPreviewDebt', { amount })
+                      : kind === 'overpayment'
+                        ? t('admin.feeOpeningPreviewCredit', { amount })
                         : t('admin.feeOpeningPreviewZero');
                   return <p className="text-sm font-medium text-foreground">{preview}</p>;
                 })()}

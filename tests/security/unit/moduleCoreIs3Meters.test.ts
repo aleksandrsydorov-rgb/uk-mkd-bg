@@ -20,6 +20,7 @@ import {
   parseInstalledAtDate,
   resetModuleSetupAdaptersForTests,
   setupCompleteFromDraft,
+  electricityMeterRowWarnings,
   validateElectricityMeterRow,
   validateWaterMeterRow,
   waterAssignPayloadsFromPreview,
@@ -195,7 +196,12 @@ describe('IS-3 · electricity validation and classify', () => {
 
   it('valid electricity import CREATE and invalid night reading', () => {
     expect(validateElectricityMeterRow(valid)).toEqual([]);
-    expect(validateElectricityMeterRow({ ...valid, initial_night_reading: '' })).toContain(
+    // Soft opening: blank night is deferrable (warning), not a blocking invalid.
+    expect(validateElectricityMeterRow({ ...valid, initial_night_reading: '' })).toEqual([]);
+    expect(electricityMeterRowWarnings({ ...valid, initial_night_reading: '' })).toContain(
+      'needs_initial_readings',
+    );
+    expect(validateElectricityMeterRow({ ...valid, initial_night_reading: 'x' })).toContain(
       'invalid:initial_night_reading',
     );
     const preview = classifyElectricityMeterOpeningRows([valid], waterCtx());

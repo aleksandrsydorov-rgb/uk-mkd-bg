@@ -35,6 +35,7 @@ export {
   ELECTRICITY_METER_HEADERS,
   validateWaterMeterRow,
   validateElectricityMeterRow,
+  electricityMeterRowWarnings,
   validateOpeningReadingPreviewFields,
   parseInstalledAtDate,
   classifyWaterMeterOpeningRows,

@@ -1915,12 +1915,25 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           tariffNavRef={tariffNavRef}
           onSaveTariffPrep={(next) => saveTariffPrep('meters_electricity', next)}
           onTariffBusy={setBusy}
-          onDownload={() =>
-            downloadXlsx(
-              buildElectricityMeterIs3TemplateBuffer(locale),
-              localizedTemplateFileName(ELECTRICITY_METERS_IMPORT_SPEC, locale),
-            )
-          }
+          onDownload={() => {
+            void run(async () => {
+              const stubs = await loadExistingBookObjectStubs();
+              if (stubs.length === 0) {
+                throw new Error(t('admin.firstRunMetersDownloadEmpty'));
+              }
+              downloadXlsx(
+                buildElectricityMeterIs3TemplateBuffer(
+                  locale,
+                  stubs.map((r) => ({
+                    apartment_number: r.apartment_number,
+                    section_code: r.section_code,
+                    block_code: r.block_code,
+                  })),
+                ),
+                localizedTemplateFileName(ELECTRICITY_METERS_IMPORT_SPEC, locale),
+              );
+            });
+          }}
           onFile={(file) => void onMetersFile('electricity', file)}
           onCommit={() => void onMetersCommit('electricity')}
           onContinue={() => onMetersContinue('electricity')}

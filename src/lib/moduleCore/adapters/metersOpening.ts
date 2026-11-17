@@ -21,6 +21,10 @@ import {
   type WaterMeterIdentitySeed,
 } from '@/lib/importTemplates/specs/waterMeters';
 import {
+  buildElectricityMeterIs3TemplateBuffer as buildElectricityMeterTemplateFromSpec,
+  type ElectricityMeterIdentitySeed,
+} from '@/lib/importTemplates/specs/electricityMeters';
+import {
   apartmentScopeKeyFromRow,
   buildApartmentIdentityLookup,
   resolveApartmentPropertyId,
@@ -629,9 +633,16 @@ export type { WaterMeterIdentitySeed };
 
 export function buildElectricityMeterIs3TemplateBuffer(
   locale: ImportTemplateLocale | string = 'ru',
+  identityRows?: ElectricityMeterIdentitySeed[],
 ): ArrayBuffer {
-  return buildLocalizedImportWorkbook(ELECTRICITY_METERS_IMPORT_SPEC, toImportTemplateLocale(locale));
+  if (identityRows?.length) {
+    const sorted = sortPropertyBookOwnerIdentitySeeds(identityRows);
+    return buildElectricityMeterTemplateFromSpec(locale, sorted);
+  }
+  return buildElectricityMeterTemplateFromSpec(locale);
 }
+
+export type { ElectricityMeterIdentitySeed };
 
 function downloadBuf(buf: ArrayBuffer, fileName: string) {
   downloadImportTemplateBuffer(buf, fileName);

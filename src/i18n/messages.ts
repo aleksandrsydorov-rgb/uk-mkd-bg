@@ -2045,7 +2045,7 @@ export const ru = {
     firstRunMetersLead:
       'Скачайте шаблон: для водомеров первые три колонки уже заполнены из Книги. Укажите номер счётчика, показание и сумму начального остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму остатка укажите один раз. Данные можно дополнить позже в карточке.',
     firstRunMetersLeadElectricity:
-      'Скачайте шаблон и заполните начальные показания день/ночь и остатки по квартирам. Несколько счётчиков на квартиру — отдельные строки. Укажите вид остатка (ноль, долг или переплата) и сумму в евро при долге или переплате. Показания можно дополнить позже в карточке.',
+      'Скачайте шаблон: первые три колонки уже заполнены из Книги. Укажите номер счётчика, показания день/ночь и сумму начального остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму остатка укажите один раз. Данные можно дополнить и подтвердить позже в карточке.',
     firstRunMetersDownload: 'Скачать шаблон XLSX',
     firstRunMetersUpload: 'Загрузить файл',
     firstRunMetersDryRunOk: 'Проверка пройдена: строк {rows}, уже существует {skipped}.',
@@ -7614,7 +7614,7 @@ export const en: Messages = {
     firstRunMetersLead:
       'Download the template: for water meters the first three columns are prefilled from the Book. Enter meter number, reading, and opening balance by sign (+ debt, − overpayment, 0 — zero, blank — later). Several meters for one apartment — separate rows with the same identifiers; enter the balance amount once. You can complete data later on the apartment card.',
     firstRunMetersLeadElectricity:
-      'Download the template and fill in day/night opening readings and balances per apartment. Several meters per apartment — one row each. Choose the balance kind (zero, debt, or overpayment) and the amount in euro for debt or overpayment. You can complete readings later on the apartment card.',
+      'Download the template: the first three columns are prefilled from the Book. Enter meter number, day/night readings, and opening balance by sign (+ debt, − overpayment, 0 — zero, blank — later). Several meters for one apartment — separate rows with the same identifiers; enter the balance amount once. You can complete and confirm data later on the apartment card.',
     firstRunMetersDownload: 'Download XLSX template',
     firstRunMetersUpload: 'Upload file',
     firstRunMetersDryRunOk: 'Check passed: {rows} rows, {skipped} already exist.',
@@ -13173,7 +13173,7 @@ export const bg: Messages = {
     firstRunMetersLead:
       'Изтеглете шаблона: за водомери първите три колони са попълнени от Книгата. Посочете номер на водомер, показание и начален остатък със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). Няколко водомера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят по-късно в картата.',
     firstRunMetersLeadElectricity:
-      'Изтеглете шаблона и попълнете началните показания ден/нощ и остатъците по апартаменти. Няколко уреда на апартамент — отделни редове. Посочете вида на остатъка (нула, дълг или преплата) и сумата в евро при дълг или преплата. Показанията могат да се допълнят по-късно в картата.',
+      'Изтеглете шаблона: първите три колони са попълнени от Книгата. Посочете номер на електромер, показания ден/нощ и начален остатък със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). Няколко електромера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят и потвърдят по-късно в картата.',
     firstRunMetersDownload: 'Изтегляне на XLSX шаблон',
     firstRunMetersUpload: 'Качване на файл',
     firstRunMetersDryRunOk: 'Проверката е успешна: редове {rows}, вече съществуват {skipped}.',

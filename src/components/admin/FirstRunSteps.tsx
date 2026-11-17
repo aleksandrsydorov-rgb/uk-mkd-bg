@@ -42,7 +42,6 @@ import {
   formatMeterMoney,
   formatMeterReadingCell,
   groupMeterPreviewRowsByEntrance,
-  meterOpeningBalanceCells,
   meterOpeningBalanceStatus,
   presentMeterOpeningBalanceStatus,
   summarizeMeterOpeningBalances,
@@ -50,7 +49,6 @@ import {
 import {
   buildMetersOpeningClarify,
   formatAptCountAfterPo,
-  formatMeterClarifyHeading,
   formatMeterEntranceGroupTitle,
   presentMeterClarifyMessage,
   presentMetersReadySummary,
@@ -922,106 +920,78 @@ function FirstRunMetersPreviewTable({
 }) {
   const errorLabel = t('admin.firstRunMetersAmountError');
   const isElectricity = utility === 'electricity';
-  if (!isElectricity) {
-    const groups = groupMeterPreviewRowsByEntrance(rows);
-    return (
-      <div className={styles.tableWrap} style={{ marginTop: 8 }}>
-        {groups.map((group) => (
-          <div key={group.key} style={{ marginBottom: 16 }}>
-            <p className={styles.importLabel} style={{ marginBottom: 8 }}>
-              {formatMeterEntranceGroupTitle(
-                {
-                  key: group.key,
-                  sectionCode: group.sectionCode,
-                  items: group.rows.map((entry) => ({
-                    key: String(entry.index),
-                    apartment: String(entry.row.apartment_number ?? ''),
-                    sectionCode: group.sectionCode,
-                    blockCode: String(entry.row.block_code ?? ''),
-                    excelRow: entry.index + 2,
-                    kind: 'missing_meter_and_reading' as const,
-                  })),
-                },
-                t,
-              )}
-            </p>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>{t('admin.firstRunMetersColApartment')}</th>
-                  <th>{t('admin.firstRunMetersColMeterNumber')}</th>
-                  <th>{t('admin.firstRunMetersColReading')}</th>
-                  <th>{t('admin.firstRunMetersColInstalled')}</th>
-                  <th>{t('admin.firstRunMetersColBalance')}</th>
-                  <th>{t('admin.firstRunMetersStatClarify')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.rows.map(({ row, index }) => {
-                  const status = meterOpeningBalanceStatus(row, { locale, errorLabel });
-                  const clarify = clarifyByRow?.get(index);
-                  return (
-                    <tr key={`${row.meter_number ?? ''}-${row.apartment_number ?? ''}-${index}`}>
-                      <td>{row.apartment_number?.trim() || '—'}</td>
-                      <td>{row.meter_number?.trim() || '—'}</td>
-                      <td>{formatMeterReadingCell(row.initial_reading)}</td>
-                      <td>{row.installed_at?.trim() || '—'}</td>
-                      <td className={status.invalid ? styles.fieldError : undefined}>
-                        {presentMeterOpeningBalanceStatus(status, t)}
-                      </td>
-                      <td>
-                        {clarify
-                          ? presentMeterClarifyMessage(clarify, t)
-                          : t('admin.firstRunMetersStatComplete')}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const groups = groupMeterPreviewRowsByEntrance(rows);
   return (
     <div className={styles.tableWrap} style={{ marginTop: 8 }}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>{t('admin.firstRunMetersColApartment')}</th>
-            <th>{t('admin.firstRunMetersColSection')}</th>
-            <th>{t('admin.firstRunMetersColMeterNumber')}</th>
-            <th>{t('admin.firstRunMetersColDay')}</th>
-            <th>{t('admin.firstRunMetersColNight')}</th>
-            <th>{t('admin.firstRunMetersColInstalled')}</th>
-            <th>{t('admin.firstRunMetersColDebt')}</th>
-            <th>{t('admin.firstRunMetersColOverpayment')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const bal = meterOpeningBalanceCells(row, { locale, errorLabel });
-            return (
-              <tr key={`${row.meter_number ?? ''}-${row.apartment_number ?? ''}-${index}`}>
-                <td>{row.apartment_number?.trim() || '—'}</td>
-                <td>
-                  {[row.section_code?.trim(), row.block_code?.trim()].filter(Boolean).join(' · ') ||
-                    '—'}
-                </td>
-                <td>{row.meter_number?.trim() || '—'}</td>
-                <td>{formatMeterReadingCell(row.initial_day_reading)}</td>
-                <td>{formatMeterReadingCell(row.initial_night_reading)}</td>
-                <td>{row.installed_at?.trim() || '—'}</td>
-                <td className={bal.debtInvalid ? styles.fieldError : undefined}>{bal.debtText}</td>
-                <td className={bal.overpaymentInvalid ? styles.fieldError : undefined}>
-                  {bal.overpaymentText}
-                </td>
+      {groups.map((group) => (
+        <div key={group.key} style={{ marginBottom: 16 }}>
+          <p className={styles.importLabel} style={{ marginBottom: 8 }}>
+            {formatMeterEntranceGroupTitle(
+              {
+                key: group.key,
+                sectionCode: group.sectionCode,
+                items: group.rows.map((entry) => ({
+                  key: String(entry.index),
+                  apartment: String(entry.row.apartment_number ?? ''),
+                  sectionCode: group.sectionCode,
+                  blockCode: String(entry.row.block_code ?? ''),
+                  excelRow: entry.index + 2,
+                  kind: 'missing_meter_and_reading' as const,
+                })),
+              },
+              t,
+            )}
+          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>{t('admin.firstRunMetersColApartment')}</th>
+                <th>{t('admin.firstRunMetersColMeterNumber')}</th>
+                {isElectricity ? (
+                  <>
+                    <th>{t('admin.firstRunMetersColDay')}</th>
+                    <th>{t('admin.firstRunMetersColNight')}</th>
+                  </>
+                ) : (
+                  <th>{t('admin.firstRunMetersColReading')}</th>
+                )}
+                <th>{t('admin.firstRunMetersColInstalled')}</th>
+                <th>{t('admin.firstRunMetersColBalance')}</th>
+                <th>{t('admin.firstRunMetersStatClarify')}</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {group.rows.map(({ row, index }) => {
+                const status = meterOpeningBalanceStatus(row, { locale, errorLabel });
+                const clarify = clarifyByRow?.get(index);
+                return (
+                  <tr key={`${row.meter_number ?? ''}-${row.apartment_number ?? ''}-${index}`}>
+                    <td>{row.apartment_number?.trim() || '—'}</td>
+                    <td>{row.meter_number?.trim() || '—'}</td>
+                    {isElectricity ? (
+                      <>
+                        <td>{formatMeterReadingCell(row.initial_day_reading)}</td>
+                        <td>{formatMeterReadingCell(row.initial_night_reading)}</td>
+                      </>
+                    ) : (
+                      <td>{formatMeterReadingCell(row.initial_reading)}</td>
+                    )}
+                    <td>{row.installed_at?.trim() || '—'}</td>
+                    <td className={status.invalid ? styles.fieldError : undefined}>
+                      {presentMeterOpeningBalanceStatus(status, t)}
+                    </td>
+                    <td>
+                      {clarify
+                        ? presentMeterClarifyMessage(clarify, t)
+                        : t('admin.firstRunMetersStatComplete')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1217,43 +1187,6 @@ export function FirstRunMetersImport({
           ) : (
             <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
           )}
-          {utility === 'electricity' && dry?.ok && clarify && clarify.groups.length > 0 && !committed ? (
-            <div className={styles.tableWrap} style={{ marginTop: 12 }}>
-              <p className={styles.importLabel}>{t('admin.firstRunMetersClarifyTitle')}</p>
-              <p className={styles.hint}>{t('admin.firstRunMetersClarifyHint')}</p>
-              <div style={{ marginTop: 8 }}>
-                {clarify.groups.map((group) => (
-                  <div key={`meter-g-${group.key}`} style={{ marginBottom: 12 }}>
-                    <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                      {formatMeterEntranceGroupTitle(group, t)}
-                    </p>
-                    <ul className={styles.hint} style={{ margin: 0, paddingLeft: 18 }}>
-                      {group.items.map((item, idx) => (
-                        <li
-                          key={`meter-c-${item.key}-${item.kind}-${idx}`}
-                          style={{
-                            marginBottom: 8,
-                            padding: '8px 10px',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 8,
-                            background: '#fff',
-                            listStyle: 'none',
-                            marginLeft: -18,
-                          }}
-                        >
-                          <p style={{ margin: '0 0 4px', fontWeight: 600 }}>
-                            {formatMeterClarifyHeading(item, t)}
-                            {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                          </p>
-                          <div>{presentMeterClarifyMessage(item, t)}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
           {rows && rows.length > 0 && !committed ? (
             <FirstRunMetersPreviewTable
               utility={utility}

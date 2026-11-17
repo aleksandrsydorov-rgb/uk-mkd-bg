@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Wifi } from 'lucide-react';
 import type { Database } from '@/lib/database.types';
 import { FirstRunStageActions } from '@/components/admin/FirstRunFrame';
-import { FirstRunErrorTable, FirstRunScreen } from '@/components/admin/FirstRunSteps';
+import { FirstRunScreen } from '@/components/admin/FirstRunSteps';
 import {
   FirstRunTariffPrepBlock,
   type FirstRunTariffPrepHandle,
@@ -22,11 +22,6 @@ import {
   type FirstRunTariffPrepMap,
 } from '@/lib/firstRun';
 import {
-  presentInternetConnectionState,
-  presentInternetImportOutcome,
-  presentInternetImportWarning,
-} from '@/lib/firstRunUserMessage';
-import {
   buildInternetOpeningClarify,
   presentInternetReadySummary,
 } from '@/lib/firstRunMetersImportPreview';
@@ -35,83 +30,32 @@ import {
   formatInetAptHeading,
   formatInetEntranceTitle,
 } from '@/lib/firstRunInternetOpeningPreview';
+import { parseInternetOpeningWorkbook } from '@/lib/internetSimpleOpening';
+import {
+  INTERNET_SIMPLE_IMPORT_SPEC,
+  buildInternetSimpleTemplateBuffer,
+} from '@/lib/importTemplates/specs/internetSimple';
+import { localizedTemplateFileName } from '@/lib/importTemplates';
+import { formatEur } from '@/lib/utilities';
 import { toUserFacingMessage } from '@/lib/userFacingError';
-import {
-  downloadInternetIs5Template,
-  normalizeInternetOpeningRow,
-} from '@/lib/moduleCore/adapters/internetOpening';
-import { internetOpeningAdapter } from '@/lib/moduleCore/adapters/internetOpeningAdapter';
-import { parseModuleXlsxBuffer } from '@/lib/moduleCore/xlsxEngine';
-import { INTERNET_IMPORT_SPEC, aliasesFromSpec } from '@/lib/importTemplates';
 import { useI18n } from '@/i18n/I18nProvider';
-import {
-  formatInternetPaymentStatusLabel,
-  internetPaymentStatus,
-  type InternetPaidPeriod,
-} from '@/lib/moduleCore/adapters/internetOpeningPayment';
-
-
-function moduleXlsxLabels(
-  schema: { columns: { labelKey: string }[] },
-  t: (k: string) => string,
-): Record<string, string> {
-  const labels: Record<string, string> = {};
-  for (const col of schema.columns) {
-    labels[col.labelKey] = t(`admin.${col.labelKey}`);
-  }
-  return labels;
-}
-
-function moduleXlsxHeaderAliases(schema: { columns: { key: string }[] }): Record<string, string[]> {
-  const aliases: Record<string, string[]> = {};
-  for (const col of schema.columns) aliases[col.key] = [col.key];
-  for (const spec of [INTERNET_IMPORT_SPEC]) {
-    for (const [key, list] of Object.entries(aliasesFromSpec(spec))) {
-      if (!aliases[key]) continue;
-      aliases[key] = [...new Set([...aliases[key], ...list])];
-    }
-  }
-  return aliases;
-}
 
 type T = (key: string, params?: Record<string, string | number>) => string;
-
-type PreviewRow = {
-  apartment: string;
-  status: string;
-  connectionDate: string;
-  paidPeriod: string;
-  paymentStatus: string;
-  debt: string;
-  credit: string;
-  notes: string;
-  outcome: string;
-  wasWill: string;
-};
-
-type DrySummary = {
-  asOf: string;
-  total: number;
-  active: number;
-  inactive: number;
-  paidActive: number;
-  paidExpired: number;
-  paidUnknown: number;
-  debtSum: number;
-  creditSum: number;
-  createCount: number;
-  skipCount: number;
-  correctCount: number;
-};
 
 function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function money(n: unknown): string {
-  const x = Number(n ?? 0);
-  if (!Number.isFinite(x)) return '0';
-  return x.toFixed(2);
+function downloadXlsx(buf: ArrayBuffer, fileName: string) {
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export type FirstRunInternetNavHandle = {
@@ -140,7 +84,6 @@ export function AdminFirstRunInternetOpening({
   onNavHandle?: (handle: FirstRunInternetNavHandle | null) => void;
 }) {
   const { locale } = useI18n();
-  // locale used for ready-summary plural forms
   const savedNone = useMemo(() => {
     const raw = String(draft.internet_opening_none ?? '')
       .trim()
@@ -154,20 +97,20 @@ export function AdminFirstRunInternetOpening({
   const [none, setNone] = useState(savedNone);
   const [importCount, setImportCount] = useState(0);
   const [subscriptionCount, setSubscriptionCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [rows, setRows] = useState<Record<string, string>[] | null>(null);
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown> | null>(null);
-  const [previewCommitted, setPreviewCommitted] = useState(false);
-  const [summary, setSummary] = useState<DrySummary | null>(null);
-  const [dryOk, setDryOk] = useState(false);
-  const [needsCorrectionConfirm, setNeedsCorrectionConfirm] = useState(false);
-  const [confirmCorrections, setConfirmCorrections] = useState(false);
   const [errorRows, setErrorRows] = useState<FirstRunErrorRow[]>([]);
+  const [dryOk, setDryOk] = useState(false);
   const [committed, setCommitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noteKey, setNoteKey] = useState<string | null>(null);
-  const [openingUnlocked, setOpeningUnlocked] = useState(() => isFirstRunTariffPrepared('internet', prep));
+  const [openingUnlocked, setOpeningUnlocked] = useState(() =>
+    isFirstRunTariffPrepared('internet', prep),
+  );
+  const [errorsOnly, setErrorsOnly] = useState(false);
 
-  const showImportForm = openingUnlocked || importCount > 0 || savedNone || committed;
+  const showImportForm = openingUnlocked || importCount > 0 || pendingCount > 0 || savedNone || committed;
 
   useEffect(() => {
     onNavHandle?.({
@@ -177,15 +120,22 @@ export function AdminFirstRunInternetOpening({
   }, [onNavHandle]);
 
   const refreshImports = useCallback(async () => {
-    const [importsRes, subsRes] = await Promise.all([
+    const [importsRes, subsRes, pendingRes] = await Promise.all([
       supabase.from('internet_opening_imports').select('property_id', { count: 'exact', head: true }),
       supabase.from('internet_subscriptions').select('id', { count: 'exact', head: true }),
+      supabase
+        .from('utility_opening_pending')
+        .select('property_id', { count: 'exact', head: true })
+        .eq('utility', 'internet')
+        .eq('status', 'needs_initial'),
     ]);
     const imports = importsRes.count ?? 0;
     const subs = subsRes.count ?? 0;
+    const pending = pendingRes.count ?? 0;
     setImportCount(imports);
     setSubscriptionCount(subs);
-    if (imports > 0) setCommitted(true);
+    setPendingCount(pending);
+    if (imports > 0 || pending > 0) setCommitted(true);
   }, [supabase]);
 
   useEffect(() => {
@@ -194,8 +144,7 @@ export function AdminFirstRunInternetOpening({
     });
   }, [refreshImports]);
 
-  /** Connections or opening rows already inventarised — «none» is not allowed. */
-  const hasExistingOpeningData = importCount > 0 || subscriptionCount > 0;
+  const hasExistingOpeningData = importCount > 0 || subscriptionCount > 0 || pendingCount > 0;
   const noneBlocked = hasExistingOpeningData;
 
   useEffect(() => {
@@ -206,108 +155,14 @@ export function AdminFirstRunInternetOpening({
     setNone(savedNone);
   }, [noneBlocked, savedNone]);
 
-  const canContinue = (none || importCount > 0 || committed) && openingUnlocked;
+  const canContinue = (none || importCount > 0 || pendingCount > 0 || committed) && openingUnlocked;
 
-  const mapPreview = useCallback(
-    (data: Record<string, unknown>, sofiaToday: string, opts?: { committed?: boolean }): PreviewRow[] => {
-      const list = Array.isArray(data.rows) ? data.rows : [];
-      const rowCommitted = opts?.committed === true;
-      return list.map((raw) => {
-        const r = asObj(raw);
-        const status = String(r.status ?? r.connection_state ?? '');
-        const billingMode = String(r.billing_mode ?? '').replace(/^"|"$/g, '');
-        const paidStart = String(r.paid_period_start ?? '').trim() || null;
-        const paidEnd = String(r.paid_period_end ?? r.paid_through ?? '').trim() || null;
-        const periods: InternetPaidPeriod[] = [];
-        if (Array.isArray(r.periods) && r.periods.length > 0) {
-          for (const p of r.periods) {
-            const o = asObj(p);
-            const en = String(o.end ?? o.period_end ?? '').trim();
-            if (en) {
-              periods.push({
-                start: String(o.start ?? o.period_start ?? '').trim() || null,
-                end: en,
-              });
-            }
-          }
-        } else if (paidEnd) {
-          periods.push({ start: paidStart, end: paidEnd });
-        }
-        const pay = internetPaymentStatus(periods, sofiaToday);
-        const periodList = periods
-          .map((p) => (p.start ? `${p.start} → ${p.end}` : t('admin.internetPaidThroughOnly', { date: p.end })))
-          .filter(Boolean);
-        const paidLabel = periodList.length > 0 ? periodList.join('; ') : '—';
-        const warnCodes = Array.isArray(r.warnings)
-          ? r.warnings.map((w) => String(w))
-          : r.warnings
-            ? [String(r.warnings)]
-            : [];
-        // Status column already covers payment_unknown — keep only apartment-specific notes.
-        const warnLabels = warnCodes
-          .filter((code) => code !== 'payment_unknown')
-          .map((code) => presentInternetImportWarning(code, t, { billingMode }))
-          .filter((label): label is string => Boolean(label));
-        const payLabel = formatInternetPaymentStatusLabel(
-          pay,
-          t as (k: string, p?: Record<string, string>) => string,
-        );
-        const was = asObj(r.was);
-        const will = asObj(r.will);
-        let wasWill = '—';
-        if (Object.keys(was).length || Object.keys(will).length) {
-          const wasState = presentInternetConnectionState(String(was.status ?? ''), t);
-          const willState = presentInternetConnectionState(String(will.status ?? ''), t);
-          wasWill = `${wasState} → ${willState}`;
-        }
-        const comment = String(r.comment ?? r.notes ?? '').trim();
-        const applied = r.applied === true;
-        return {
-          apartment: String(r.apartment_number ?? '—'),
-          status: presentInternetConnectionState(status, t),
-          connectionDate: String(r.connection_date ?? '').trim() || '—',
-          paidPeriod: paidLabel,
-          paymentStatus: payLabel,
-          debt: money(r.opening_debt),
-          credit: money(r.opening_credit),
-          notes: [...(comment ? [comment] : []), ...warnLabels].join(' · ') || '—',
-          outcome: presentInternetImportOutcome(String(r.outcome ?? ''), t, {
-            committed: rowCommitted && applied,
-          }),
-          wasWill,
-        };
-      });
-    },
-    [t],
-  );
-
-  function mapSummary(data: Record<string, unknown>): DrySummary | null {
-    const s = asObj(data.summary);
-    if (!Object.keys(s).length) return null;
-    return {
-      asOf: String(s.as_of ?? s.asOf ?? ''),
-      total: Number(s.total ?? 0) || 0,
-      active: Number(s.active ?? 0) || 0,
-      inactive: Number(s.inactive ?? 0) || 0,
-      paidActive: Number(s.paid_active ?? s.paidActive ?? 0) || 0,
-      paidExpired: Number(s.paid_expired ?? s.paidExpired ?? 0) || 0,
-      paidUnknown: Number(s.paid_unknown ?? s.paidUnknown ?? 0) || 0,
-      debtSum: Number(s.debt_sum ?? s.debtSum ?? 0) || 0,
-      creditSum: Number(s.credit_sum ?? s.creditSum ?? 0) || 0,
-      createCount: Number(s.create_count ?? s.createCount ?? 0) || 0,
-      skipCount: Number(s.skip_count ?? s.skipCount ?? 0) || 0,
-      correctCount: Number(s.correct_count ?? s.correctCount ?? 0) || 0,
-    };
-  }
-
-  const previewRows = useMemo(() => {
-    if (!previewPayload) return [] as PreviewRow[];
-    const sofia = String(asObj(previewPayload.summary).as_of ?? new Date().toISOString().slice(0, 10));
-    return mapPreview(previewPayload, sofia, { committed: previewCommitted });
-  }, [previewPayload, previewCommitted, mapPreview]);
-
-  const groupedPreview = useMemo(() => {
-    if (!rows || rows.length === 0 || committed) return null;
+  const preview = useMemo(() => {
+    if (!rows || rows.length === 0 || committed) {
+      if (committed) return null;
+      if (errorRows.length === 0) return null;
+      return buildInternetOpeningPreview([], { errorRows, t });
+    }
     const rpcList = previewPayload && Array.isArray(previewPayload.rows) ? previewPayload.rows : [];
     return buildInternetOpeningPreview(rows, {
       rpcRows: rpcList,
@@ -315,6 +170,45 @@ export function AdminFirstRunInternetOpening({
       t,
     });
   }, [rows, previewPayload, errorRows, committed, t]);
+
+  const filteredGroups = useMemo(() => {
+    if (!preview) return [];
+    if (!errorsOnly) return preview.groups;
+    return preview.groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => i.outcome === 'error') }))
+      .filter((g) => g.items.length > 0);
+  }, [preview, errorsOnly]);
+
+  async function onDownload() {
+    if (!openingUnlocked) {
+      setError(t('admin.firstRunOpeningLockedUntilTariff'));
+      return;
+    }
+    onBusy(true);
+    setError(null);
+    try {
+      const { data: bookRows, error: listErr } = await supabase.rpc('admin_list_property_book', {
+        p_limit: 5000,
+      });
+      if (listErr) throw new Error(listErr.message);
+      const stubs = (bookRows || []).map((r: Record<string, unknown>) => ({
+        apartment_number: String(r.apartment_number ?? ''),
+        section_code: r.section_code != null ? String(r.section_code) : '',
+        block_code: r.block_code != null ? String(r.block_code) : '',
+      }));
+      if (stubs.length === 0) {
+        throw new Error(t('admin.firstRunMetersDownloadEmpty'));
+      }
+      downloadXlsx(
+        buildInternetSimpleTemplateBuffer(locale, stubs),
+        localizedTemplateFileName(INTERNET_SIMPLE_IMPORT_SPEC, locale),
+      );
+    } catch (err: unknown) {
+      setError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
+    } finally {
+      onBusy(false);
+    }
+  }
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -327,51 +221,48 @@ export function AdminFirstRunInternetOpening({
     setNoteKey(null);
     setDryOk(false);
     setPreviewPayload(null);
-    setPreviewCommitted(false);
-    setSummary(null);
     setErrorRows([]);
-    setNeedsCorrectionConfirm(false);
-    setConfirmCorrections(false);
     setCommitted(false);
     try {
-      const schema = internetOpeningAdapter.registration.setup?.xlsx;
-      if (!schema) throw new Error(t('admin.errGeneric'));
-      const parsed = parseModuleXlsxBuffer(
-        await file.arrayBuffer(),
-        schema,
-        moduleXlsxLabels(schema, t),
-        moduleXlsxHeaderAliases(schema),
-      );
+      const buf = await file.arrayBuffer();
+      const parsed = parseInternetOpeningWorkbook(buf, locale);
       if (!parsed.ok) {
         setError(parsed.error);
         return;
       }
-      if (parsed.rows.length === 0) {
+      if (parsed.previewRows.length === 0 && parsed.clientErrors.length === 0) {
         setError(t('admin.is5InternetEmptySheet'));
         return;
       }
-      const normalized = parsed.rows.map((r) => normalizeInternetOpeningRow(r));
-      const { data, error: rpcErr } = await importInternetOpening(supabase, normalized, true, {
+
+      setRows(parsed.previewRows);
+
+      if (parsed.rows.length === 0) {
+        setErrorRows(parsed.clientErrors);
+        setDryOk(false);
+        return;
+      }
+
+      const { data, error: rpcErr } = await importInternetOpening(supabase, parsed.rows, true, {
         confirmCorrections: false,
       });
       if (rpcErr) throw new Error(rpcErr.message);
       const res = asObj(data);
-      const errors = Array.isArray(res.errors) ? res.errors : [];
-      setRows(normalized);
+      const rpcErrors = Array.isArray(res.errors) ? res.errors : [];
+      const merged = [...parsed.clientErrors, ...normalizeFirstRunErrors(rpcErrors)];
+      const seen = new Set<string>();
+      const errors = merged.filter((e) => {
+        const k = `${e.row}|${e.field}|${e.reason}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
       setPreviewPayload(res);
-      setPreviewCommitted(false);
-      setSummary(mapSummary(res));
-      setErrorRows(normalizeFirstRunErrors(errors));
-      const correctCount = Number(asObj(res.summary).correct_count ?? 0) || 0;
-      const needsConfirm =
-        correctCount > 0 ||
-        errors.some((e) => String(asObj(e).reason ?? '').includes('opening_correction_requires_confirm'));
-      setNeedsCorrectionConfirm(needsConfirm);
-      setDryOk(res.ok === true && errors.length === 0);
+      setErrorRows(errors);
+      const ok = res.ok === true && errors.length === 0;
+      setDryOk(ok);
       setNone(false);
-      if (res.ok === true && errors.length === 0) {
-        setNoteKey('admin.firstRunInternetDryRunOk');
-      }
+      if (ok) setNoteKey('admin.firstRunInternetDryRunOk');
     } catch (err: unknown) {
       setError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
     } finally {
@@ -381,28 +272,32 @@ export function AdminFirstRunInternetOpening({
 
   async function onCommit() {
     if (!rows || !dryOk) return;
-    if (needsCorrectionConfirm && !confirmCorrections) {
-      setError(t('admin.firstRunInternetCorrectionConfirmRequired'));
-      return;
-    }
     onBusy(true);
     setError(null);
     try {
-      const { data, error: rpcErr } = await importInternetOpening(supabase, rows, false, {
-        confirmCorrections: confirmCorrections || !needsCorrectionConfirm,
+      const rpcRows = rows.map((r) => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(r)) {
+          if (!k.startsWith('_')) out[k] = v;
+        }
+        return out;
+      });
+      const { data, error: rpcErr } = await importInternetOpening(supabase, rpcRows, false, {
+        confirmCorrections: true,
       });
       if (rpcErr) {
-        const errs = normalizeFirstRunErrors(
-          (() => {
-            try {
-              const d = JSON.parse(String(rpcErr.details ?? '[]'));
-              return Array.isArray(d) ? d : [];
-            } catch {
-              return [];
-            }
-          })(),
+        setErrorRows(
+          normalizeFirstRunErrors(
+            (() => {
+              try {
+                const d = JSON.parse(String(rpcErr.details ?? '[]'));
+                return Array.isArray(d) ? d : [];
+              } catch {
+                return [];
+              }
+            })(),
+          ),
         );
-        setErrorRows(errs);
         throw new Error(rpcErr.message);
       }
       const res = asObj(data);
@@ -413,8 +308,6 @@ export function AdminFirstRunInternetOpening({
       setCommitted(true);
       setDryOk(false);
       setPreviewPayload(res);
-      setPreviewCommitted(true);
-      setSummary(mapSummary(res));
       await refreshImports();
       setNoteKey('admin.firstRunInternetOpeningCommitted');
     } catch (err: unknown) {
@@ -436,13 +329,15 @@ export function AdminFirstRunInternetOpening({
     onBusy(true);
     setError(null);
     try {
-      await onContinue(none && importCount === 0 && !committed);
+      await onContinue(none && importCount === 0 && pendingCount === 0 && !committed);
     } catch (err: unknown) {
       setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
     } finally {
       onBusy(false);
     }
   }
+
+  const hasCheck = Boolean(preview || previewPayload) && !committed;
 
   return (
     <FirstRunScreen
@@ -464,39 +359,40 @@ export function AdminFirstRunInternetOpening({
         {!committed && noteKey && !dryOk ? (
           <FirstRunStatusBanner tone="success" title={t(noteKey)} />
         ) : null}
-        {!committed && dryOk ? (
+        {!committed && dryOk && preview ? (
+          <FirstRunStatusBanner
+            tone="success"
+            title={t('admin.firstRunOpeningCheckOkTitle')}
+            detail={t('admin.firstRunInternetDryRunDetail')
+              .replace('{rows}', String(preview.rowCount))
+              .replace('{debt}', formatEur(preview.debtSum, locale))
+              .replace('{credit}', formatEur(preview.creditSum, locale))
+              .replace('{clarify}', String(preview.connectionClarifyCount))}
+          />
+        ) : null}
+        {!committed && dryOk && previewPayload && !preview ? (
           <FirstRunStatusBanner
             tone="success"
             title={t('admin.firstRunMetersReadyTitle')}
-            detail={
-              previewPayload
-                ? presentInternetReadySummary(
-                    buildInternetOpeningClarify(
-                      Array.isArray(previewPayload.rows)
-                        ? (previewPayload.rows as Record<string, unknown>[])
-                        : [],
-                    ),
-                    t,
-                    locale,
-                  )
-                : undefined
-            }
+            detail={presentInternetReadySummary(
+              buildInternetOpeningClarify(
+                Array.isArray(previewPayload.rows)
+                  ? (previewPayload.rows as Record<string, unknown>[])
+                  : [],
+              ),
+              t,
+              locale,
+            )}
           />
         ) : null}
         {!committed && rows && !dryOk ? (
           <FirstRunStatusBanner
-            tone={needsCorrectionConfirm ? 'warning' : 'error'}
-            title={
-              needsCorrectionConfirm
-                ? t('admin.firstRunInternetCorrectionPendingTitle')
-                : t('admin.firstRunMetersBlockingTitle')
-            }
-            detail={
-              needsCorrectionConfirm ? undefined : t('admin.firstRunMetersBlockingDetail')
-            }
+            tone="error"
+            title={t('admin.firstRunOpeningCheckFailTitle')}
+            detail={t('admin.firstRunMetersBlockingDetail')}
           />
         ) : null}
-        {(importCount > 0 || savedNone || committed) && !openingUnlocked ? (
+        {(importCount > 0 || pendingCount > 0 || savedNone || committed) && !openingUnlocked ? (
           <FirstRunStatusBanner
             tone="warning"
             title={t('admin.firstRunTariffNeededAfterImportTitle')}
@@ -506,7 +402,6 @@ export function AdminFirstRunInternetOpening({
       </FirstRunStatusStack>
 
       <p className={styles.hint}>{t('admin.firstRunInternetOpeningHint')}</p>
-      <p className={styles.hint}>{t('admin.internetTariffCalendarHint')}</p>
 
       {onSaveTariffPrep ? (
         <FirstRunTariffPrepBlock
@@ -534,7 +429,6 @@ export function AdminFirstRunInternetOpening({
                 checked={none}
                 disabled={busy || noneBlocked || !openingUnlocked}
                 onChange={(e) => {
-                  // Local UI only until «Продолжить» / Continue confirms the stage.
                   setNone(e.target.checked);
                   setError(null);
                 }}
@@ -558,7 +452,7 @@ export function AdminFirstRunInternetOpening({
                     type="button"
                     className={styles.secondary}
                     disabled={busy || !openingUnlocked}
-                    onClick={() => downloadInternetIs5Template(locale)}
+                    onClick={() => void onDownload()}
                   >
                     {t('admin.firstRunInternetDownload')}
                   </button>
@@ -580,132 +474,133 @@ export function AdminFirstRunInternetOpening({
                 </div>
                 <div className={styles.stepBlock}>
                   <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-                  {summary ? (
+                  {hasCheck && preview ? (
                     <div className={styles.hint}>
                       <p>
-                        {t('admin.firstRunInternetSummaryAsOf')}: {summary.asOf || '—'}
+                        {t('admin.firstRunSfKindDebt')}: {preview.debtCount} · Σ{' '}
+                        {formatEur(preview.debtSum, locale)} · {t('admin.firstRunSfKindCredit')}:{' '}
+                        {preview.creditCount} · Σ {formatEur(preview.creditSum, locale)}
                       </p>
                       <p>
-                        {t('admin.firstRunInternetSummaryTotal')}: {summary.total} ·{' '}
-                        {t('admin.internetConnectionStateActive')}: {summary.active} ·{' '}
-                        {t('admin.internetConnectionStateInactive')}: {summary.inactive}
-                      </p>
-                      <p>
-                        {t('admin.firstRunInternetSummaryPaidActive')}: {summary.paidActive} ·{' '}
-                        {t('admin.firstRunInternetSummaryPaidExpired')}: {summary.paidExpired} ·{' '}
-                        {t('admin.firstRunInternetSummaryPaidUnknown')}: {summary.paidUnknown}
-                      </p>
-                      <p>
-                        {t('admin.firstRunInternetOpeningDebt')}: {money(summary.debtSum)} ·{' '}
-                        {t('admin.firstRunInternetOpeningCredit')}: {money(summary.creditSum)}
+                        {t('admin.firstRunInternetConnectionClarifyCount')}:{' '}
+                        {preview.connectionClarifyCount}
                       </p>
                     </div>
                   ) : !committed ? (
                     <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
                   ) : null}
-                  {groupedPreview && groupedPreview.groups.length > 0 && !committed ? (
+                  {preview && !committed ? (
                     <div className={styles.tableWrap} style={{ marginTop: 12 }}>
                       <p className={styles.importLabel}>{t('admin.firstRunSfPreviewTitle')}</p>
-                      <p className={styles.hint}>{t('admin.firstRunSfPreviewHint')}</p>
-                      {groupedPreview.groups.map((group) => (
-                        <div key={`inet-g-${group.key}`} style={{ marginTop: 12 }}>
-                          <p className={styles.hint} style={{ marginBottom: 6, fontWeight: 600 }}>
-                            {formatInetEntranceTitle(group, t)}
-                          </p>
-                          <table className={styles.table}>
-                            <thead>
-                              <tr>
-                                <th>{t('admin.firstRunSfColApt')}</th>
-                                <th>{t('admin.is5ColConnectionState')}</th>
-                                <th>{t('admin.firstRunInternetPaidPeriodCol')}</th>
-                                <th>{t('admin.firstRunSfColAction')}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {group.items.map((item) => (
-                                <tr key={item.key}>
-                                  <td>
-                                    <div style={{ fontWeight: 600 }}>
-                                      {formatInetAptHeading(item, t)}
-                                      {item.sectionCode ? ` · ${item.sectionCode}` : ''}
-                                    </div>
-                                    {item.errorText ? (
-                                      <div className={styles.hint} style={{ color: '#b91c1c', marginTop: 4 }}>
-                                        {item.errorText}
-                                      </div>
-                                    ) : null}
-                                  </td>
-                                  <td>{item.connectionStateLabel}</td>
-                                  <td>{item.tariffOrPeriod}</td>
-                                  <td>{item.outcomeLabel}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ))}
-                    </div>
-                  ) : previewRows.length > 0 ? (
-                    <div className={styles.tableWrap}>
-                      <p className={styles.hint}>{t('admin.internetImportPreviewGeneralNote')}</p>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            <th>{t('admin.firstRunErrApartment')}</th>
-                            <th>{t('admin.is5ColConnectionState')}</th>
-                            <th>{t('admin.firstRunInternetOpeningConnectionDate')}</th>
-                            <th>{t('admin.firstRunInternetPaidPeriodCol')}</th>
-                            <th>{t('admin.firstRunInternetPaymentStatusCol')}</th>
-                            <th>{t('admin.firstRunInternetOpeningDebt')}</th>
-                            <th>{t('admin.firstRunInternetOpeningCredit')}</th>
-                            <th>{t('admin.is5ColComment')}</th>
-                            <th>{t('admin.is5Outcome')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {previewRows.slice(0, 200).map((row, i) => (
-                            <tr key={`${row.apartment}-${i}`}>
-                              <td>{row.apartment}</td>
-                              <td>{row.status}</td>
-                              <td>{row.connectionDate}</td>
-                              <td>{row.paidPeriod}</td>
-                              <td>{row.paymentStatus}</td>
-                              <td>{row.debt}</td>
-                              <td>{row.credit}</td>
-                              <td>{row.notes}</td>
-                              <td>
-                                {row.outcome}
-                                {row.wasWill !== '—' ? (
-                                  <>
-                                    <br />
-                                    <span className={styles.hint}>{row.wasWill}</span>
-                                  </>
-                                ) : null}
-                              </td>
+                      <p className={styles.hint}>{t('admin.firstRunInternetPreviewHint')}</p>
+                      <label className={styles.field} style={{ marginBottom: 8 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={errorsOnly}
+                            onChange={(e) => setErrorsOnly(e.target.checked)}
+                          />
+                          {t('admin.firstRunSfFilterErrorsOnly')}
+                        </span>
+                      </label>
+                      {filteredGroups.length === 0 ? (
+                        <p className={styles.hint}>
+                          {errorsOnly
+                            ? t('admin.firstRunSfFilterErrorsEmpty')
+                            : t('admin.firstRunImportCheckPending')}
+                        </p>
+                      ) : (
+                        <table className={styles.previewTableFixed}>
+                          <colgroup>
+                            <col className={styles.previewColApt} />
+                            <col className={styles.previewColKind} />
+                            <col className={styles.previewColAmount} />
+                            <col className={styles.previewColAction} />
+                          </colgroup>
+                          <thead>
+                            <tr>
+                              <th scope="col">{t('admin.firstRunSfColApt')}</th>
+                              <th scope="col">{t('admin.firstRunSfColKind')}</th>
+                              <th scope="col" className={styles.previewAmount}>
+                                {t('admin.firstRunSfColAmount')}
+                              </th>
+                              <th scope="col">{t('admin.firstRunSfColAction')}</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {filteredGroups.map((group) => (
+                              <Fragment key={`inet-g-${group.key}`}>
+                                <tr className={styles.previewEntranceSep}>
+                                  <td colSpan={4}>{formatInetEntranceTitle(group, t)}</td>
+                                </tr>
+                                {group.items.map((item) => {
+                                  const amount =
+                                    item.balanceKind === 'debt'
+                                      ? formatEur(item.remainingDebt ?? 0, locale)
+                                      : item.balanceKind === 'credit'
+                                        ? formatEur(item.overpayment ?? 0, locale)
+                                        : item.balanceKind === 'zero'
+                                          ? formatEur(0, locale)
+                                          : '—';
+                                  const kindLabel =
+                                    item.balanceKind === 'debt'
+                                      ? t('admin.firstRunSfKindDebt')
+                                      : item.balanceKind === 'credit'
+                                        ? t('admin.firstRunSfKindCredit')
+                                        : item.balanceKind === 'zero'
+                                          ? t('admin.firstRunSfKindZero')
+                                          : t('admin.firstRunSfOutcomeDefer');
+                                  return (
+                                    <tr
+                                      key={item.key}
+                                      className={
+                                        item.outcome === 'error'
+                                          ? styles.tableRowError
+                                          : item.outcome === 'defer'
+                                            ? styles.tableRowWarn
+                                            : undefined
+                                      }
+                                    >
+                                      <td>
+                                        <div className={styles.previewAptName}>
+                                          {formatInetAptHeading(item, t)}
+                                          {item.sectionCode ? ` · ${item.sectionCode}` : ''}
+                                        </div>
+                                        {item.excelRow ? (
+                                          <div className={styles.previewAptMeta}>
+                                            {t('admin.firstRunSfErrorRow', { row: item.excelRow })}
+                                          </div>
+                                        ) : null}
+                                        {item.connectionNeedsClarify ? (
+                                          <div className={styles.previewAptMeta}>
+                                            {t('admin.firstRunInternetConnectionNeedsClarify')}
+                                          </div>
+                                        ) : null}
+                                        {item.errorText ? (
+                                          <div
+                                            className={`${styles.previewMsg} ${styles.previewMsgError}`}
+                                          >
+                                            {item.errorText}
+                                          </div>
+                                        ) : null}
+                                      </td>
+                                      <td>{kindLabel}</td>
+                                      <td className={styles.previewAmount}>{amount}</td>
+                                      <td className={styles.previewAction}>{item.outcomeLabel}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   ) : null}
-                  <div className={styles.tableWrap}>
-                    <FirstRunErrorTable rows={errorRows} t={t} nothingSaved={!committed} />
-                  </div>
                 </div>
                 <div className={styles.stepBlock}>
                   <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>
                   <p className={styles.hint}>{t('admin.firstRunInternetConfirm')}</p>
-                  {needsCorrectionConfirm ? (
-                    <label className={styles.choice}>
-                      <input
-                        type="checkbox"
-                        checked={confirmCorrections}
-                        disabled={busy || committed}
-                        onChange={(e) => setConfirmCorrections(e.target.checked)}
-                      />
-                      <span>{t('admin.firstRunInternetCorrectionConfirm')}</span>
-                    </label>
-                  ) : null}
                   {!openingUnlocked && !committed ? (
                     <p className={styles.hint}>{t('admin.firstRunOpeningConfirmLockedWhileEditing')}</p>
                   ) : null}
@@ -713,12 +608,7 @@ export function AdminFirstRunInternetOpening({
                     <button
                       type="button"
                       className={styles.primary}
-                      disabled={
-                        busy ||
-                        !dryOk ||
-                        !openingUnlocked ||
-                        (needsCorrectionConfirm && !confirmCorrections)
-                      }
+                      disabled={busy || !dryOk || !openingUnlocked}
                       onClick={() => void onCommit()}
                     >
                       {busy ? t('admin.firstRunImporting') : t('admin.firstRunInternetCommit')}

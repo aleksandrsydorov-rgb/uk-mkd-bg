@@ -40,6 +40,10 @@ export {
   buildCapitalRepairSimpleTemplateBuffer,
 } from '@/lib/importTemplates/specs/capitalRepairSimple';
 export { INTERNET_IMPORT_SPEC } from '@/lib/importTemplates/specs/internet';
+export {
+  INTERNET_SIMPLE_IMPORT_SPEC,
+  buildInternetSimpleTemplateBuffer,
+} from '@/lib/importTemplates/specs/internetSimple';
 export { UK_EXPENSES_IMPORT_SPEC } from '@/lib/importTemplates/specs/ukExpenses';
 export { BUDGET_PLAN_IMPORT_SPEC } from '@/lib/importTemplates/specs/budgetPlan';
 export { OPENING_TOTALS_IMPORT_SPEC } from '@/lib/importTemplates/specs/openingTotals';

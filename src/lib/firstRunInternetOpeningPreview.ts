@@ -1,17 +1,13 @@
 /**
  * Client-side preview for internet opening import (first-run).
- * Reuses entrance grouping from meters/support-fee patterns.
- * Import rules stay in SQL — this only shapes the operator table.
+ * Money (signed balance) + connection clarify — SF-style entrance table.
  */
 
 import type { FirstRunErrorRow } from '@/lib/firstRun';
 import { presentFirstRunErrorRow } from '@/lib/firstRunUserMessage';
-import {
-  presentImportCommitOutcome,
-  presentInternetConnectionState,
-} from '@/lib/firstRunUserMessage';
 
 export type InetPreviewOutcome = 'create' | 'update' | 'skip' | 'defer' | 'error' | 'unknown';
+export type InetPreviewBalanceKind = 'debt' | 'credit' | 'zero' | 'empty';
 
 export type InetPreviewItem = {
   key: string;
@@ -19,11 +15,10 @@ export type InetPreviewItem = {
   apartment: string;
   sectionCode: string;
   blockCode: string;
-  connectionStateRaw: string;
-  connectionStateLabel: string;
-  connectionDate: string;
-  paidPeriod: string;
-  tariffOrPeriod: string;
+  balanceKind: InetPreviewBalanceKind;
+  remainingDebt: number | null;
+  overpayment: number | null;
+  connectionNeedsClarify: boolean;
   outcome: InetPreviewOutcome;
   outcomeLabel: string;
   errorText: string | null;
@@ -37,11 +32,17 @@ export type InetPreviewEntranceGroup = {
 
 export type InetPreviewSummary = {
   rowCount: number;
+  debtCount: number;
+  creditCount: number;
+  zeroCount: number;
+  debtSum: number;
+  creditSum: number;
   createCount: number;
   updateCount: number;
   skipCount: number;
   deferCount: number;
   errorCount: number;
+  connectionClarifyCount: number;
   groups: InetPreviewEntranceGroup[];
   items: InetPreviewItem[];
 };
@@ -50,6 +51,13 @@ type T = (key: string, params?: Record<string, string | number>) => string;
 
 function trim(v: unknown): string {
   return v == null ? '' : String(v).trim();
+}
+
+function moneyOrNull(raw: unknown): number | null {
+  const s = trim(raw).replace(',', '.');
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
 function mapOutcome(raw: unknown): InetPreviewOutcome {
@@ -62,37 +70,34 @@ function mapOutcome(raw: unknown): InetPreviewOutcome {
   return 'unknown';
 }
 
-function isExplicitInactive(raw: string): boolean {
-  const v = raw.trim().toLowerCase();
-  return (
-    v === 'inactive' ||
-    v === 'disconnected' ||
-    v === 'не подключён' ||
-    v === 'не подключен' ||
-    v === 'не е свързан' ||
-    v === 'not connected' ||
-    v === 'off'
-  );
-}
-
-/** Preview-facing connection label: empty → defer copy; inactive → «Не подключён». */
-export function presentInternetPreviewConnectionState(raw: string, t: T): string {
-  const v = trim(raw);
-  if (!v) return t('admin.firstRunInternetPreviewStateEmpty');
-  if (isExplicitInactive(v)) return t('admin.firstRunInternetPreviewStateInactive');
-  if (v.toLowerCase() === 'active' || v === 'подключён' || v === 'подключен' || v === 'connected') {
-    return presentInternetConnectionState('active', t);
+function balanceFromRow(
+  file: Record<string, string>,
+  rpc?: Record<string, unknown>,
+): { kind: InetPreviewBalanceKind; debt: number | null; credit: number | null } {
+  const simple = trim(file._simple_kind);
+  if (simple === 'debt') {
+    const d = moneyOrNull(file.opening_debt) ?? 0;
+    return { kind: 'debt', debt: d, credit: 0 };
   }
-  return presentInternetConnectionState(v, t);
-}
+  if (simple === 'overpayment' || simple === 'credit') {
+    const c = moneyOrNull(file.opening_credit) ?? 0;
+    return { kind: 'credit', debt: 0, credit: c };
+  }
+  if (simple === 'zero') return { kind: 'zero', debt: 0, credit: 0 };
+  if (file._amount_unknown === '1' || file._deferred === '1' && !trim(file.opening_debt) && !trim(file.opening_credit) && !simple) {
+    // fall through — may still have debt/credit from detailed
+  }
 
-export function presentInetPreviewOutcome(outcome: InetPreviewOutcome, t: T): string {
-  if (outcome === 'defer') return t('admin.firstRunInternetPreviewStateEmpty');
-  if (outcome === 'create') return t('admin.internetImportOutcomeWillCreate');
-  if (outcome === 'update') return t('admin.internetImportOutcomeWillUpdate');
-  if (outcome === 'skip') return t('admin.internetImportOutcomeWillSkip');
-  if (outcome === 'error') return t('admin.internetImportOutcomeError');
-  return t('admin.internetImportOutcomeUnknown');
+  const debt = moneyOrNull(rpc?.opening_debt ?? rpc?.debt ?? file.opening_debt);
+  const credit = moneyOrNull(rpc?.opening_credit ?? rpc?.credit ?? file.opening_credit);
+  if (debt == null && credit == null) return { kind: 'empty', debt: null, credit: null };
+  const d = debt ?? 0;
+  const c = credit ?? 0;
+  if (d > 0.0001 && c <= 0.0001) return { kind: 'debt', debt: d, credit: c };
+  if (c > 0.0001 && d <= 0.0001) return { kind: 'credit', debt: d, credit: c };
+  if (d <= 0.0001 && c <= 0.0001) return { kind: 'zero', debt: 0, credit: 0 };
+  // Both present (legacy): show debt as primary for count, keep both sums
+  return { kind: 'debt', debt: d, credit: c };
 }
 
 function groupByEntrance(items: InetPreviewItem[]): InetPreviewEntranceGroup[] {
@@ -120,19 +125,15 @@ function groupByEntrance(items: InetPreviewItem[]): InetPreviewEntranceGroup[] {
   return groups;
 }
 
-function paidPeriodLabel(rpc: Record<string, unknown> | undefined, file: Record<string, string>): string {
-  const start = trim(rpc?.paid_period_start ?? file.paid_period_start);
-  const end = trim(rpc?.paid_period_end ?? rpc?.paid_through ?? file.paid_period_end);
-  if (start && end) return `${start} → ${end}`;
-  if (end) return end;
-  if (start) return start;
-  return '—';
+export function presentInetPreviewOutcome(outcome: InetPreviewOutcome, t: T): string {
+  if (outcome === 'defer') return t('admin.firstRunInternetPreviewActionDefer');
+  if (outcome === 'create') return t('admin.internetImportOutcomeWillCreate');
+  if (outcome === 'update') return t('admin.internetImportOutcomeWillUpdate');
+  if (outcome === 'skip') return t('admin.firstRunSfOutcomeSkip');
+  if (outcome === 'error') return t('admin.internetImportOutcomeError');
+  return t('admin.internetImportOutcomeUnknown');
 }
 
-/**
- * Build internet opening preview from file rows + RPC dry-run rows.
- * Prefer RPC identity; fill section/block from file when RPC omits them.
- */
 export function buildInternetOpeningPreview(
   fileRows: Record<string, string>[],
   opts?: {
@@ -147,11 +148,17 @@ export function buildInternetOpeningPreview(
   if (!t) {
     return {
       rowCount: 0,
+      debtCount: 0,
+      creditCount: 0,
+      zeroCount: 0,
+      debtSum: 0,
+      creditSum: 0,
       createCount: 0,
       updateCount: 0,
       skipCount: 0,
       deferCount: 0,
       errorCount: 0,
+      connectionClarifyCount: 0,
       items: [],
       groups: [],
     };
@@ -179,16 +186,24 @@ export function buildInternetOpeningPreview(
   }
 
   const items: InetPreviewItem[] = [];
+  let debtCount = 0;
+  let creditCount = 0;
+  let zeroCount = 0;
+  let debtSum = 0;
+  let creditSum = 0;
   let createCount = 0;
   let updateCount = 0;
   let skipCount = 0;
   let deferCount = 0;
   let errorCount = 0;
+  let connectionClarifyCount = 0;
 
   fileRows.forEach((file, idx) => {
-    const excelRow = offset + idx;
+    const excelRow = Number(file.rowNumber) || offset + idx;
     const apartment = trim(file.apartment_number);
-    if (!apartment && !trim(file.section_code) && !trim(file.connection_state)) return;
+    if (!apartment && !trim(file.section_code) && !trim(file.opening_balance_eur) && !trim(file.opening_debt)) {
+      return;
+    }
 
     const rpc =
       rpcByRow.get(excelRow) ?? (apartment ? rpcByApt.get(apartment.toLowerCase()) : undefined);
@@ -196,9 +211,7 @@ export function buildInternetOpeningPreview(
     const sectionCode = trim(rpc?.section_code ?? file.section_code);
     const blockCode = trim(rpc?.block_code ?? file.block_code);
     const stateRaw = trim(rpc?.status ?? rpc?.connection_state ?? file.connection_state);
-    const connectionDate = trim(rpc?.connection_date ?? file.connection_date) || '—';
-    const paidPeriod = paidPeriodLabel(rpc, file);
-    const tariffOrPeriod = paidPeriod !== '—' ? paidPeriod : '—';
+    const bal = balanceFromRow(file, rpc);
 
     let outcome = mapOutcome(rpc?.outcome);
     if (outcome === 'unknown' && !rpc) {
@@ -231,16 +244,29 @@ export function buildInternetOpeningPreview(
         .join(' · ');
     }
 
+    const connectionNeedsClarify =
+      !stateRaw ||
+      outcome === 'defer' ||
+      (Array.isArray(rpc?.warnings) &&
+        rpc.warnings.some((w) => String(w).includes('needs_initial_internet_state')));
+
+    if (bal.kind === 'debt') {
+      debtCount += 1;
+      debtSum += bal.debt ?? 0;
+    } else if (bal.kind === 'credit') {
+      creditCount += 1;
+      creditSum += bal.credit ?? 0;
+    } else if (bal.kind === 'zero') {
+      zeroCount += 1;
+    }
+    if (bal.credit && bal.credit > 0 && bal.kind === 'debt') creditSum += bal.credit;
+
     if (outcome === 'create') createCount += 1;
     else if (outcome === 'update') updateCount += 1;
     else if (outcome === 'skip') skipCount += 1;
     else if (outcome === 'defer') deferCount += 1;
     else if (outcome === 'error') errorCount += 1;
-
-    const connectionStateLabel =
-      outcome === 'defer' || !stateRaw
-        ? t('admin.firstRunInternetPreviewStateEmpty')
-        : presentInternetPreviewConnectionState(stateRaw, t);
+    if (connectionNeedsClarify) connectionClarifyCount += 1;
 
     items.push({
       key: `${apartment}\u0001${sectionCode}\u0001${blockCode}\u0001${excelRow}`,
@@ -248,11 +274,10 @@ export function buildInternetOpeningPreview(
       apartment,
       sectionCode,
       blockCode,
-      connectionStateRaw: stateRaw,
-      connectionStateLabel,
-      connectionDate,
-      paidPeriod,
-      tariffOrPeriod,
+      balanceKind: bal.kind,
+      remainingDebt: bal.debt,
+      overpayment: bal.credit,
+      connectionNeedsClarify,
       outcome,
       outcomeLabel: presentInetPreviewOutcome(outcome, t),
       errorText,
@@ -261,11 +286,17 @@ export function buildInternetOpeningPreview(
 
   return {
     rowCount: items.length,
+    debtCount,
+    creditCount,
+    zeroCount,
+    debtSum,
+    creditSum,
     createCount,
     updateCount,
     skipCount,
     deferCount,
     errorCount,
+    connectionClarifyCount,
     items,
     groups: groupByEntrance(items),
   };
@@ -294,11 +325,4 @@ export function formatInetEntranceTitle(
   const section = (group.sectionCode || '').trim();
   if (!section) return t('admin.bookPreviewEntranceGroupPlain', { countLabel });
   return t('admin.bookPreviewEntranceGroup', { section, countLabel });
-}
-
-/** Fallback outcome label via shared dictionary (committed path). */
-export function presentInetRpcOutcome(raw: string, t: T, committed?: boolean): string {
-  const mapped = mapOutcome(raw);
-  if (mapped === 'defer') return t('admin.firstRunInternetPreviewStateEmpty');
-  return presentImportCommitOutcome(raw, t, { committed });
 }

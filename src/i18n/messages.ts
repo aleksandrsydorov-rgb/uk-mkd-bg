@@ -1779,21 +1779,28 @@ export const ru = {
     firstRunStageCapitalRepair: 'Капитальный ремонт',
     firstRunStageTariffs: 'Проверка тарифов',
     firstRunStageInternetOpening: 'Интернет — начальное состояние',
-    firstRunInternetOpeningLead: 'Импортируйте действующие подключения и остатки или подтвердите, что их нет.',
+    firstRunInternetOpeningLead:
+      'Импортируйте начальные денежные остатки интернета или подтвердите, что их нет. Состояние подключения подтверждается позже в карточке квартиры.',
     firstRunInternetOpeningHint:
-      'Долг и переплата вводятся отдельно. Импорт не создаёт повторное начисление за уже оплаченный период.',
+      'В шаблоне четыре колонки. Сумма со знаком задаёт только деньги: плюс — долг, минус — переплата, 0 — ноль, пусто — можно внести позже. Денежный остаток не определяет подключение и оплаченный период.',
     firstRunInternetOpeningNone: 'На момент настройки подключений и начальных остатков нет',
     firstRunInternetOpeningNoneBlocked:
       'Уже есть подключения или начальные остатки интернета. Отметить «данных нет» нельзя — существующие данные сохраняются. Загрузите файл для сверки или продолжите, если импорт уже выполнен.',
     firstRunInternetOpeningNoneHint:
       'Файл не нужен. Нажмите «Продолжить», чтобы зафиксировать отсутствие подключений и остатков. Пока вы не нажмёте «Продолжить», в базу ничего не записывается.',
-    firstRunInternetDownload: 'Скачать шаблон интернета',
+    firstRunInternetDownload: 'Скачать шаблон',
     firstRunInternetUpload: 'Загрузить XLSX',
     firstRunInternetTemplateHint:
-      'Оплаченный период и свободная переплата — разное: сумму периода не дублируйте как переплату.',
+      'Первые три колонки предзаполнены из Книги объектов (115 квартир). Заполните сумму или оставьте пустой. Подключение подтвердите позже в карточке → «Интернет».',
     firstRunInternetDryRunOk: 'Предпросмотр интернета проверен.',
+    firstRunInternetDryRunDetail:
+      'Строк: {rows}. Долг Σ {debt}, переплата Σ {credit}. Нужно уточнить подключение: {clarify}. Начисления и покупка пакета не создаются.',
+    firstRunInternetPreviewHint:
+      'Проверьте суммы по входам. Предпросмотр ничего не записывает. Если подключение ещё не указано — его можно подтвердить позже в карточке квартиры.',
+    firstRunInternetConnectionNeedsClarify: 'Состояние подключения нужно уточнить позже в карточке',
+    firstRunInternetConnectionClarifyCount: 'Нужно уточнить подключение',
     firstRunInternetConfirm:
-      'Импортировать подключения, сведения об оплаченных периодах и начальные остатки из файла? Новые начисления и кассовые оплаты не создаются.',
+      'Импортировать начальные денежные остатки из файла? Подключение не активируется автоматически. Начисления, платежи и покупка пакета не создаются.',
     firstRunInternetCommit: 'Импортировать',
     firstRunInternetImportFailed: 'Импорт интернета не выполнен.',
     firstRunInternetCorrectionConfirmRequired: 'Подтвердите явную корректировку уже импортированных данных.',
@@ -2167,7 +2174,8 @@ export const ru = {
       'Импорт остатков КР сейчас недоступен. Исправьте ошибки в файле и загрузите его снова.',
     firstRunCrErrorAptSection: 'Квартира №{apt} · вход {section}',
     firstRunCrErrorColumn: 'колонка «{column}»',
-    firstRunInternetPreviewStateEmpty: 'Можно дополнить позже',
+    firstRunInternetPreviewStateEmpty: 'Можно внести позже',
+    firstRunInternetPreviewActionDefer: 'Сохранить остаток · уточнить подключение позже',
     firstRunInternetPreviewStateInactive: 'Не подключён',
     firstRunBudgetImportColPrior: 'Было, €',
     firstRunBudgetPreviewYear: 'Год плана: {year}',
@@ -7364,21 +7372,28 @@ export const en: Messages = {
     firstRunStageCapitalRepair: 'Capital repair',
     firstRunStageTariffs: 'Tariff check',
     firstRunStageInternetOpening: 'Internet — opening state',
-    firstRunInternetOpeningLead: 'Import active connections and balances, or confirm that there are none.',
+    firstRunInternetOpeningLead:
+      'Import internet opening cash balances, or confirm there are none. Connection state is confirmed later on the apartment card.',
     firstRunInternetOpeningHint:
-      'Debt and overpayment are entered separately. Import does not re-charge an already paid period.',
+      'The template has four columns. The signed amount sets money only: plus — debt, minus — overpayment, 0 — zero, blank — enter later. Cash balance does not set connection or paid period.',
     firstRunInternetOpeningNone: 'No connections or opening balances at setup time',
     firstRunInternetOpeningNoneBlocked:
       'Internet connections or opening balances already exist. You cannot mark “no data” — existing data is kept. Upload a file to review or continue if import is already done.',
     firstRunInternetOpeningNoneHint:
       'No file needed. Click Continue to record that there are no connections or balances. Nothing is written to the database until you click Continue.',
-    firstRunInternetDownload: 'Download internet template',
+    firstRunInternetDownload: 'Download template',
     firstRunInternetUpload: 'Upload XLSX',
     firstRunInternetTemplateHint:
-      'A paid period and free overpayment are different: do not re-enter the period amount as overpayment.',
+      'The first three columns are prefilled from the Property Book (115 apartments). Fill the amount or leave it blank. Confirm connection later on the apartment card → Internet.',
     firstRunInternetDryRunOk: 'Internet preview checked.',
+    firstRunInternetDryRunDetail:
+      'Rows: {rows}. Debt Σ {debt}, overpayment Σ {credit}. Connection to clarify: {clarify}. No charges or package purchases are created.',
+    firstRunInternetPreviewHint:
+      'Review amounts by entrance. Preview writes nothing. If connection is still unknown, confirm it later on the apartment card.',
+    firstRunInternetConnectionNeedsClarify: 'Connection state still needs to be confirmed on the apartment card',
+    firstRunInternetConnectionClarifyCount: 'Connection still needs clarifying',
     firstRunInternetConfirm:
-      'Import connections, paid-period details and opening balances from the file? No new charges or cash payments are created.',
+      'Import opening cash balances from the file? Connection is not activated automatically. No charges, payments, or package purchases are created.',
     firstRunInternetCommit: 'Import',
     firstRunInternetImportFailed: 'Internet import was not completed.',
     firstRunInternetCorrectionConfirmRequired: 'Confirm the explicit correction of already imported data.',
@@ -7749,7 +7764,8 @@ export const en: Messages = {
       'Capital-repair balance import is unavailable right now. Fix the errors in the file and upload it again.',
     firstRunCrErrorAptSection: 'Apartment №{apt} · entrance {section}',
     firstRunCrErrorColumn: 'column “{column}”',
-    firstRunInternetPreviewStateEmpty: 'Can complete later',
+    firstRunInternetPreviewStateEmpty: 'Can enter later',
+    firstRunInternetPreviewActionDefer: 'Save balance · confirm connection later',
     firstRunInternetPreviewStateInactive: 'Not connected',
     firstRunBudgetImportColPrior: 'Was, €',
     firstRunBudgetPreviewYear: 'Plan year: {year}',
@@ -12936,21 +12952,28 @@ export const bg: Messages = {
     firstRunStageCapitalRepair: 'Основен ремонт',
     firstRunStageTariffs: 'Проверка на тарифите',
     firstRunStageInternetOpening: 'Интернет — начално състояние',
-    firstRunInternetOpeningLead: 'Импортирайте действащи връзки и остатъци или потвърдете, че ги няма.',
+    firstRunInternetOpeningLead:
+      'Импортирайте началните парични остатъци за интернет или потвърдете, че ги няма. Състоянието на връзката се потвърждава по-късно в картата на апартамента.',
     firstRunInternetOpeningHint:
-      'Дълг и надплащане се въвеждат отделно. Импортът не създава повторно начисление за вече платен период.',
+      'Шаблонът има четири колони. Сумата със знак задава само пари: плюс — дълг, минус — преплата, 0 — нула, празно — може по-късно. Паричният остатък не определя връзката и платения период.',
     firstRunInternetOpeningNone: 'Към момента на настройката няма връзки и начални остатъци',
     firstRunInternetOpeningNoneBlocked:
       'Вече има интернет връзки или начални остатъци. Не може да отбележите „няма данни“ — наличните данни се запазват. Качете файл за сверка или продължете, ако импортът вече е направен.',
     firstRunInternetOpeningNoneHint:
       'Файл не е нужен. Натиснете „Напред“, за да фиксирате липсата на връзки и остатъци. До „Напред“ в базата нищо не се записва.',
-    firstRunInternetDownload: 'Изтегли шаблон за интернет',
+    firstRunInternetDownload: 'Изтегли шаблон',
     firstRunInternetUpload: 'Качи XLSX',
     firstRunInternetTemplateHint:
-      'Платеният период и свободната преплата са различни: не повтаряйте сумата на периода като преплата.',
+      'Първите три колони са попълнени от Книгата на обектите (115 апартамента). Попълнете сумата или я оставете празна. Връзката се потвърждава по-късно в картата → „Интернет“.',
     firstRunInternetDryRunOk: 'Прегледът на интернет е проверен.',
+    firstRunInternetDryRunDetail:
+      'Редове: {rows}. Дълг Σ {debt}, преплата Σ {credit}. Нужно уточняване на връзката: {clarify}. Начисления и покупка на пакет не се създават.',
+    firstRunInternetPreviewHint:
+      'Проверете сумите по входове. Прегледът не записва нищо. Ако връзката още не е посочена, потвърдете я по-късно в картата на апартамента.',
+    firstRunInternetConnectionNeedsClarify: 'Състоянието на връзката трябва да се уточни по-късно в картата',
+    firstRunInternetConnectionClarifyCount: 'Нужно е уточняване на връзката',
     firstRunInternetConfirm:
-      'Да се импортират ли връзките, данните за платените периоди и началните остатъци от файла? Нови такси и касови плащания не се създават.',
+      'Да се импортират ли началните парични остатъци от файла? Връзката не се активира автоматично. Начисления, плащания и покупка на пакет не се създават.',
     firstRunInternetCommit: 'Импортирай',
     firstRunInternetImportFailed: 'Импортът на интернет не е извършен.',
     firstRunInternetCorrectionConfirmRequired: 'Потвърдете явната корекция на вече импортирани данни.',
@@ -13324,7 +13347,8 @@ export const bg: Messages = {
       'Импортът на салда КР в момента е недостъпен. Поправете грешките във файла и го качете отново.',
     firstRunCrErrorAptSection: 'Апартамент №{apt} · вход {section}',
     firstRunCrErrorColumn: 'колона „{column}“',
-    firstRunInternetPreviewStateEmpty: 'Може да се допълни по-късно',
+    firstRunInternetPreviewStateEmpty: 'Може да се въведе по-късно',
+    firstRunInternetPreviewActionDefer: 'Запази остатъка · уточни връзката по-късно',
     firstRunInternetPreviewStateInactive: 'Не е свързан',
     firstRunBudgetImportColPrior: 'Беше, €',
     firstRunBudgetPreviewYear: 'Година на плана: {year}',

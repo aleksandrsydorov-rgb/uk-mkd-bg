@@ -305,14 +305,15 @@ export function AdminInternet({
     setOpeningConfirmBusy(true);
     setError(null);
     setSuccess(null);
+    // Debt/credit come from deferred opening payload when null — never invent 0/0.
     const { error: rpcErr } = await supabase.rpc('admin_confirm_internet_opening' as never, {
       p_property_id: Number(propertyId),
       p_connection_state: openingState,
       p_connection_date: openingConnDate.trim() || null,
       p_transition_date: null,
       p_paid_through: null,
-      p_opening_debt: 0,
-      p_opening_credit: 0,
+      p_opening_debt: null,
+      p_opening_credit: null,
       p_source_reference: null,
       p_notes: null,
     } as never);

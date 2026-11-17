@@ -13,10 +13,12 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import {
+  DEFAULT_ELECTRICITY_SUPPLIER,
   DEFAULT_WATER_SUPPLIER,
   firstRunTariffStepReady,
   formatFirstRunTariffPrepSummary,
   isFirstRunTariffPrepared,
+  readInstallationElectricitySupplier,
   readInstallationWaterSupplier,
   type FirstRunAnnualTariffPrep,
   type FirstRunElectricityTariffPrep,
@@ -24,6 +26,7 @@ import {
   type FirstRunTariffKey,
   type FirstRunTariffPrepMap,
   type FirstRunWaterTariffPrep,
+  type InstallationElectricitySupplier,
   type InstallationWaterSupplier,
 } from '@/lib/firstRun';
 import { toUserFacingMessage } from '@/lib/userFacingError';
@@ -97,7 +100,7 @@ function emptyAnnual(today: string, tariffKey?: FirstRunTariffKey): AnnualForm {
 }
 
 function emptyUtility(today: string, tariffKey?: FirstRunTariffKey): UtilityForm {
-  const water = tariffKey === 'water';
+  const noDocFields = tariffKey === 'water' || tariffKey === 'electricity';
   return {
     rate: '',
     day: '',
@@ -105,7 +108,7 @@ function emptyUtility(today: string, tariffKey?: FirstRunTariffKey): UtilityForm
     package_30: '',
     basis_mode: 'supplier_notice',
     basis_reference: '',
-    basis_date: water ? '' : today,
+    basis_date: noDocFields ? '' : today,
     basis_note: '',
   };
 }
@@ -127,9 +130,7 @@ function hasAnyInput(key: FirstRunTariffKey, annual: AnnualForm, utility: Utilit
     return Boolean(utility.rate.trim());
   }
   if (key === 'electricity') {
-    return Boolean(
-      utility.day.trim() || utility.night.trim() || utility.basis_reference.trim() || utility.basis_note.trim(),
-    );
+    return Boolean(utility.day.trim() || utility.night.trim());
   }
   return Boolean(
     utility.package_30.trim() ||
@@ -144,6 +145,7 @@ function buildPrepItem(
   annual: AnnualForm,
   utility: UtilityForm,
   t: T,
+  previous?: FirstRunTariffPrepMap[FirstRunTariffKey],
 ): FirstRunAnnualTariffPrep | FirstRunWaterTariffPrep | FirstRunElectricityTariffPrep | FirstRunInternetTariffPrep {
   if (key === 'support_fee') {
     const rate = Number(annual.rate);
@@ -186,12 +188,13 @@ function buildPrepItem(
     const rate = Number(utility.rate);
     if (!(rate >= 0) || Number.isNaN(rate)) throw new Error(t('admin.tcErrRate'));
     // Document number / date / note are not collected on the water step.
+    const prev = previous && 'rate' in previous ? previous : undefined;
     return {
       rate,
       basis_type: utility.basis_mode,
-      basis_reference: null,
-      basis_date: null,
-      basis_note: '',
+      basis_reference: prev?.basis_reference ?? null,
+      basis_date: prev?.basis_date ?? null,
+      basis_note: prev?.basis_note ?? '',
     };
   }
   if (key === 'internet') {
@@ -211,20 +214,22 @@ function buildPrepItem(
       basis_note: utility.basis_note.trim(),
     };
   }
+  // electricity
   const day = Number(utility.day);
   const night = Number(utility.night);
   if (Number.isNaN(day) || Number.isNaN(night) || day < 0 || night < 0) {
     throw new Error(t('admin.tcErrRate'));
   }
-  if (!utility.basis_reference.trim()) throw new Error(t('admin.tcErrSupplierRef'));
-  if (!utility.basis_note.trim()) throw new Error(t('admin.tcErrBasisNote'));
+  // Document number / date / note are not collected on the electricity step.
+  // Preserve any previously saved values; never invent new document fields.
+  const prevEl = previous && 'day' in previous && 'night' in previous ? previous : undefined;
   return {
     day,
     night,
     basis_type: 'supplier_notice',
-    basis_reference: utility.basis_reference.trim(),
-    basis_date: utility.basis_date || null,
-    basis_note: utility.basis_note.trim(),
+    basis_reference: prevEl?.basis_reference ?? null,
+    basis_date: prevEl?.basis_date ?? null,
+    basis_note: prevEl?.basis_note ?? '',
   };
 }
 
@@ -266,13 +271,13 @@ function applyPrepToForms(
   }
   if (tariffKey === 'electricity' && 'day' in item && 'night' in item) {
     setUtility({
-      ...emptyUtility(today),
+      ...emptyUtility(today, 'electricity'),
       day: String(item.day),
       night: String(item.night),
       basis_mode: item.basis_type,
-      basis_reference: item.basis_reference,
-      basis_date: item.basis_date ?? today,
-      basis_note: item.basis_note,
+      basis_reference: item.basis_reference ?? '',
+      basis_date: item.basis_date ?? '',
+      basis_note: item.basis_note ?? '',
     });
     return;
   }
@@ -318,6 +323,9 @@ export const FirstRunTariffPrepBlock = forwardRef<
   const [annual, setAnnual] = useState<AnnualForm>(() => emptyAnnual(today, tariffKey));
   const [utility, setUtility] = useState<UtilityForm>(() => emptyUtility(today, tariffKey));
   const [waterSupplier, setWaterSupplier] = useState<InstallationWaterSupplier>(DEFAULT_WATER_SUPPLIER);
+  const [electricitySupplier, setElectricitySupplier] = useState<InstallationElectricitySupplier>(
+    DEFAULT_ELECTRICITY_SUPPLIER,
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState(() => !prepared);
   const dirtyRef = useRef(false);
@@ -332,15 +340,21 @@ export const FirstRunTariffPrepBlock = forwardRef<
       ? (data as Record<string, unknown>[]).map((r) => normalizeTariffListRow(r))
       : [];
     setRow(list.find((r) => r.tariff_key === tariffKey) ?? null);
-    if (tariffKey === 'water') {
+    if (tariffKey === 'water' || tariffKey === 'electricity') {
       try {
         const { data: state } = await untyped(supabase).rpc('admin_get_first_run_state');
-        const supplier = readInstallationWaterSupplier(
-          state && typeof state === 'object' ? (state as Record<string, unknown>).water_supplier : null,
-        );
-        setWaterSupplier(supplier);
+        const stateObj =
+          state && typeof state === 'object' ? (state as Record<string, unknown>) : null;
+        if (tariffKey === 'water') {
+          setWaterSupplier(readInstallationWaterSupplier(stateObj?.water_supplier ?? null));
+        } else {
+          setElectricitySupplier(
+            readInstallationElectricitySupplier(stateObj?.electricity_supplier ?? null),
+          );
+        }
       } catch {
-        setWaterSupplier(DEFAULT_WATER_SUPPLIER);
+        if (tariffKey === 'water') setWaterSupplier(DEFAULT_WATER_SUPPLIER);
+        else setElectricitySupplier(DEFAULT_ELECTRICITY_SUPPLIER);
       }
     }
     try {
@@ -401,7 +415,7 @@ export const FirstRunTariffPrepBlock = forwardRef<
           return false;
         }
         onBusy?.(true);
-        const item = buildPrepItem(tariffKey, annual, utility, t);
+        const item = buildPrepItem(tariffKey, annual, utility, t, prep[tariffKey]);
         const next: FirstRunTariffPrepMap = { ...prep, [tariffKey]: item };
         await onSavePrep(next);
         dirtyRef.current = false;
@@ -738,6 +752,15 @@ export const FirstRunTariffPrepBlock = forwardRef<
 
           {tariffKey === 'electricity' ? (
             <>
+              <div className={`${styles.field} ${styles.span2}`}>
+                <span className={styles.importLabel}>{t('admin.electricitySupplier')}</span>
+                <p className={styles.hint} style={{ marginTop: 4 }}>
+                  <strong>{electricitySupplier.short}</strong>
+                  {' — '}
+                  {electricitySupplier.legal_name}
+                </p>
+                <span className={styles.hint}>{t('admin.electricitySupplierFixedHint')}</span>
+              </div>
               <label className={styles.field}>
                 {t('admin.firstRunTariffElectricityDay')}
                 <input
@@ -772,6 +795,13 @@ export const FirstRunTariffPrepBlock = forwardRef<
                 />
                 <span className={styles.hint}>{t('admin.firstRunTariffElectricityNightHint')}</span>
               </label>
+              <div className={`${styles.field} ${styles.span2}`}>
+                <span className={styles.importLabel}>{t('admin.tcBasis')}</span>
+                <p className={styles.hint} style={{ marginTop: 4 }}>
+                  <strong>{t('admin.tcBasisSupplier')}</strong>
+                </p>
+                <span className={styles.hint}>{t('admin.tcBasisModeHintElectricity')}</span>
+              </div>
             </>
           ) : null}
 
@@ -814,7 +844,7 @@ export const FirstRunTariffPrepBlock = forwardRef<
             </>
           ) : null}
 
-          {tariffKey === 'electricity' || tariffKey === 'internet' ? (
+          {tariffKey === 'internet' ? (
             <>
               <label className={styles.field}>
                 {t('admin.tcSupplierRef')}

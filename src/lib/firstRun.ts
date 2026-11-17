@@ -809,9 +809,21 @@ export type FirstRunElectricityTariffPrep = {
   day: number;
   night: number;
   basis_type: 'supplier_notice' | 'invoice' | 'other';
-  basis_reference: string;
+  /** Optional for electricity first-run (document number no longer collected). */
+  basis_reference: string | null;
   basis_date: string | null;
+  /** May be empty for electricity first-run prep. */
   basis_note: string;
+};
+
+export type InstallationElectricitySupplier = {
+  short: string;
+  legal_name: string;
+};
+
+export const DEFAULT_ELECTRICITY_SUPPLIER: InstallationElectricitySupplier = {
+  short: 'EVN',
+  legal_name: '„ЕВН България Електроснабдяване“ ЕАД',
 };
 
 export type FirstRunInternetTariffPrep = {
@@ -921,6 +933,7 @@ export function readInstallationWaterSupplier(value: unknown): InstallationWater
   return { short, legal_name: legal };
 }
 
+/** Electricity first-run: day/night rates + basis type only (no supplier document number/date/note). */
 export function isElectricityTariffPrep(value: unknown): value is FirstRunElectricityTariffPrep {
   const row = asRecord(value);
   if (!row) return false;
@@ -928,10 +941,27 @@ export function isElectricityTariffPrep(value: unknown): value is FirstRunElectr
   return (
     nonNegative(row.day) != null &&
     nonNegative(row.night) != null &&
-    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other') &&
-    text(row.basis_reference).length > 0 &&
-    text(row.basis_note).length > 0
+    (basis === 'supplier_notice' || basis === 'invoice' || basis === 'other')
   );
+}
+
+function normalizeElectricityPrep(row: Record<string, unknown>): FirstRunElectricityTariffPrep {
+  return {
+    day: nonNegative(row.day)!,
+    night: nonNegative(row.night)!,
+    basis_type: text(row.basis_type) as FirstRunElectricityTariffPrep['basis_type'],
+    basis_reference: text(row.basis_reference) || null,
+    basis_date: text(row.basis_date) || null,
+    basis_note: text(row.basis_note),
+  };
+}
+
+export function readInstallationElectricitySupplier(value: unknown): InstallationElectricitySupplier {
+  const row = asRecord(value);
+  if (!row) return { ...DEFAULT_ELECTRICITY_SUPPLIER };
+  const short = text(row.short) || DEFAULT_ELECTRICITY_SUPPLIER.short;
+  const legal = text(row.legal_name) || DEFAULT_ELECTRICITY_SUPPLIER.legal_name;
+  return { short, legal_name: legal };
 }
 
 export function isInternetTariffPrep(value: unknown): value is FirstRunInternetTariffPrep {
@@ -958,7 +988,9 @@ export function readTariffPrep(draft: Record<string, unknown> | null | undefined
     prep.capital_repair = normalizeAnnualPrep(asRecord(raw.capital_repair)!);
   }
   if (isWaterTariffPrep(raw.water)) prep.water = normalizeWaterPrep(asRecord(raw.water)!);
-  if (isElectricityTariffPrep(raw.electricity)) prep.electricity = raw.electricity;
+  if (isElectricityTariffPrep(raw.electricity)) {
+    prep.electricity = normalizeElectricityPrep(asRecord(raw.electricity)!);
+  }
   if (isInternetTariffPrep(raw.internet)) prep.internet = raw.internet;
   return prep;
 }
@@ -1034,7 +1066,15 @@ export function formatFirstRunTariffPrepSummary(
     return `${amt(prep.water.rate)} €/${t('admin.tcUnitM3')}\n${t('admin.tcBasis')}: ${basis}`;
   }
   if (key === 'electricity' && prep.electricity) {
-    return `${t('admin.tcCompDay')}: ${amt(prep.electricity.day)} €/${t('admin.tcUnitKwh')}\n${t('admin.tcCompNight')}: ${amt(prep.electricity.night)} €/${t('admin.tcUnitKwh')}`;
+    const basis =
+      prep.electricity.basis_type === 'supplier_notice'
+        ? t('admin.tcBasisSupplier')
+        : prep.electricity.basis_type === 'invoice'
+          ? t('admin.tcBasisInvoice')
+          : prep.electricity.basis_type === 'other'
+            ? t('admin.tcBasisOther')
+            : prep.electricity.basis_type;
+    return `${t('admin.tcCompDay')}: ${amt(prep.electricity.day)} €/${t('admin.tcUnitKwh')}\n${t('admin.tcCompNight')}: ${amt(prep.electricity.night)} €/${t('admin.tcUnitKwh')}\n${t('admin.tcBasis')}: ${basis}`;
   }
   if (key === 'internet' && prep.internet) {
     return `${t('admin.internetTariffPackage30')}: ${amt(prep.internet.package_30)} €\n${t('admin.internetTariffDay24')}: ${amt(prep.internet.day)} €`;

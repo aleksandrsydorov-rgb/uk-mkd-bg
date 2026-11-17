@@ -310,6 +310,23 @@ describe('R1-RC8 first-run · required published tariffs', () => {
       basis_date: '2020-01-01',
       basis_note: 'Электро',
     })).toBe(true);
+    expect(
+      isElectricityTariffPrep({
+        day: 0.145,
+        night: 0.085,
+        basis_type: 'supplier_notice',
+        basis_reference: null,
+        basis_date: null,
+        basis_note: '',
+      }),
+    ).toBe(true);
+    expect(
+      isElectricityTariffPrep({
+        day: 0.145,
+        night: 0.085,
+        basis_type: 'supplier_notice',
+      }),
+    ).toBe(true);
     expect(firstRunTariffStepReady('support_fee', { current_version_id: null }, { support_fee: annual })).toBe(true);
     expect(firstRunTariffStepReady('support_fee', { current_version_id: null }, {})).toBe(false);
     expect(firstRunTariffStepReady('water', { current_version_id: 'w1' }, {})).toBe(true);

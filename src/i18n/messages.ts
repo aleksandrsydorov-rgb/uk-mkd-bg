@@ -1112,8 +1112,13 @@ export const ru = {
       'По умолчанию — действующий тариф на основании решения собрания собственников. Достаточно указать ставку; номер документа, дату и пояснение указывать не нужно.',
     tcBasisModeHintWater:
       'По умолчанию — действующий тариф поставщика. Достаточно указать ставку воды; номер документа, дату и пояснение указывать не нужно.',
+    tcBasisModeHintElectricity:
+      'Основание заполняется автоматически: действующий тариф поставщика. Достаточно указать дневную и ночную ставки; номер документа, дату и пояснение указывать не нужно.',
     waterSupplier: 'Поставщик воды',
     waterSupplierFixedHint:
+      'Поставщик зафиксирован в настройках этой установки и здесь не редактируется.',
+    electricitySupplier: 'Поставщик электроэнергии',
+    electricitySupplierFixedHint:
       'Поставщик зафиксирован в настройках этой установки и здесь не редактируется.',
     tcBasisDate: 'Дата документа',
     tcBasisDateHint:
@@ -2039,6 +2044,8 @@ export const ru = {
     firstRunMetersSelectRequired: 'Выберите хотя бы один вид счётчиков.',
     firstRunMetersLead:
       'Скачайте шаблон: для водомеров первые три колонки уже заполнены из Книги. Укажите номер счётчика, показание и сумму начального остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму остатка укажите один раз. Данные можно дополнить позже в карточке.',
+    firstRunMetersLeadElectricity:
+      'Скачайте шаблон и заполните начальные показания день/ночь и остатки по квартирам. Несколько счётчиков на квартиру — отдельные строки. Укажите вид остатка (ноль, долг или переплата) и сумму в евро при долге или переплате. Показания можно дополнить позже в карточке.',
     firstRunMetersDownload: 'Скачать шаблон XLSX',
     firstRunMetersUpload: 'Загрузить файл',
     firstRunMetersDryRunOk: 'Проверка пройдена: строк {rows}, уже существует {skipped}.',
@@ -6675,8 +6682,13 @@ export const en: Messages = {
       'Default is the current tariff based on the owners’ general meeting decision. Enter the rate only; document number, date, and note are not required.',
     tcBasisModeHintWater:
       'Default is the current supplier tariff. Enter the water rate only; document number, date, and note are not required.',
+    tcBasisModeHintElectricity:
+      'The basis is filled automatically: current supplier tariff. Enter day and night rates only; document number, date, and note are not required.',
     waterSupplier: 'Water supplier',
     waterSupplierFixedHint:
+      'The supplier is fixed in this installation’s settings and cannot be edited here.',
+    electricitySupplier: 'Electricity supplier',
+    electricitySupplierFixedHint:
       'The supplier is fixed in this installation’s settings and cannot be edited here.',
     tcBasisDate: 'Document date',
     tcBasisDateHint:
@@ -7601,6 +7613,8 @@ export const en: Messages = {
     firstRunMetersSelectRequired: 'Select at least one meter type.',
     firstRunMetersLead:
       'Download the template: for water meters the first three columns are prefilled from the Book. Enter meter number, reading, and opening balance by sign (+ debt, − overpayment, 0 — zero, blank — later). Several meters for one apartment — separate rows with the same identifiers; enter the balance amount once. You can complete data later on the apartment card.',
+    firstRunMetersLeadElectricity:
+      'Download the template and fill in day/night opening readings and balances per apartment. Several meters per apartment — one row each. Choose the balance kind (zero, debt, or overpayment) and the amount in euro for debt or overpayment. You can complete readings later on the apartment card.',
     firstRunMetersDownload: 'Download XLSX template',
     firstRunMetersUpload: 'Upload file',
     firstRunMetersDryRunOk: 'Check passed: {rows} rows, {skipped} already exist.',
@@ -12227,8 +12241,13 @@ export const bg: Messages = {
       'По подразбиране — действаща тарифа въз основа на решение на общото събрание на собствениците. Достатъчно е да посочите ставката; номер на документ, дата и пояснение не са нужни.',
     tcBasisModeHintWater:
       'По подразбиране — действаща тарифа на доставчика. Достатъчно е да посочите ставката за вода; номер на документ, дата и пояснение не са нужни.',
+    tcBasisModeHintElectricity:
+      'Основанието се попълва автоматично: действаща тарифа на доставчика. Достатъчно е да посочите дневна и нощна ставка; номер на документ, дата и пояснение не са нужни.',
     waterSupplier: 'Доставчик на вода',
     waterSupplierFixedHint:
+      'Доставчикът е фиксиран в настройките на тази инсталация и тук не се редактира.',
+    electricitySupplier: 'Доставчик на електроенергия',
+    electricitySupplierFixedHint:
       'Доставчикът е фиксиран в настройките на тази инсталация и тук не се редактира.',
     tcBasisDate: 'Дата на документа',
     tcBasisDateHint:
@@ -13153,6 +13172,8 @@ export const bg: Messages = {
     firstRunMetersSelectRequired: 'Изберете поне един вид уреди.',
     firstRunMetersLead:
       'Изтеглете шаблона: за водомери първите три колони са попълнени от Книгата. Посочете номер на водомер, показание и начален остатък със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). Няколко водомера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят по-късно в картата.',
+    firstRunMetersLeadElectricity:
+      'Изтеглете шаблона и попълнете началните показания ден/нощ и остатъците по апартаменти. Няколко уреда на апартамент — отделни редове. Посочете вида на остатъка (нула, дълг или преплата) и сумата в евро при дълг или преплата. Показанията могат да се допълнят по-късно в картата.',
     firstRunMetersDownload: 'Изтегляне на XLSX шаблон',
     firstRunMetersUpload: 'Качване на файл',
     firstRunMetersDryRunOk: 'Проверката е успешна: редове {rows}, вече съществуват {skipped}.',

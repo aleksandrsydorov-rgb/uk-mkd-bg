@@ -1084,7 +1084,17 @@ export function FirstRunMetersImport({
   const deferredApartments = clarify?.deferredApartments ?? dry?.deferredCount ?? 0;
   const readyDetail = clarify ? presentMetersReadySummary(clarify, t, locale) : null;
   return (
-    <FirstRunScreen icon={Icon} iconClass={iconClass} title={title} lead={t('admin.firstRunMetersLead')} busy={busy}>
+    <FirstRunScreen
+      icon={Icon}
+      iconClass={iconClass}
+      title={title}
+      lead={
+        utility === 'water'
+          ? t('admin.firstRunMetersLead')
+          : t('admin.firstRunMetersLeadElectricity')
+      }
+      busy={busy}
+    >
       <FirstRunStatusStack>
         {error ? (
           <FirstRunStatusBanner tone="error" title={t('admin.firstRunMetersOpFailedTitle')} detail={error} />

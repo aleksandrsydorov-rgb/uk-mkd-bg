@@ -2328,8 +2328,12 @@ export const ru = {
     firstRunBudgetBasisNotePh: 'Например: Протокол ОС № 2 от 10.01.2026',
     firstRunBudgetBasisNoteHint:
       'Необязательно. Номер или название документа, которым утверждён план. Не заменяет решение собрания в разделе документов.',
-    firstRunBudgetReviewContinue: 'К проверке перед публикацией',
-    firstRunBudgetReviewReady: 'План готов к проверке. Публикация — отдельным шагом.',
+    firstRunBudgetReviewContinue: 'Продолжить',
+    firstRunBudgetReviewReady: 'План сохранён. Можно продолжить.',
+    firstRunBudgetAlreadyImported:
+      'Бюджет уже импортирован. Чтобы изменить план, загрузите новый файл XLSX.',
+    firstRunBudgetReupload: 'Загрузить файл для изменения',
+    firstRunBudgetCancelPreview: 'Отменить предпросмотр',
     firstRunBudgetNeedImport: 'Сначала загрузите и подтвердите план из файла XLSX.',
     firstRunBudgetSavedTitle: 'Сохранённый план',
     firstRunBudgetAmountsSaved: 'Суммы плана сохранены. Можно перейти к проверке и публикации.',
@@ -7970,8 +7974,12 @@ export const en: Messages = {
     firstRunBudgetBasisNoteHint:
       'Optional. Number or title of the document that approved the plan. It does not replace a meeting decision in Documents.',
     firstRunBudgetBasisNotePh: 'Decision number/date or reference',
-    firstRunBudgetReviewContinue: 'Continue to review before publish',
-    firstRunBudgetReviewReady: 'Plan is ready for review. Publishing is a separate step.',
+    firstRunBudgetReviewContinue: 'Continue',
+    firstRunBudgetReviewReady: 'Plan saved. You can continue.',
+    firstRunBudgetAlreadyImported:
+      'The budget is already imported. To change the plan, upload a new XLSX file.',
+    firstRunBudgetReupload: 'Upload a file to change',
+    firstRunBudgetCancelPreview: 'Cancel preview',
     firstRunBudgetNeedImport: 'First upload and confirm the plan from an XLSX file.',
     firstRunBudgetSavedTitle: 'Saved plan',
     firstRunBudgetAmountsSaved: 'Amounts saved.',
@@ -13606,8 +13614,12 @@ export const bg: Messages = {
     firstRunBudgetBasisNoteHint:
       'Незадължително. Номер или име на документа, с който е одобрен планът. Не замества решение на събрание в Документи.',
     firstRunBudgetBasisNotePh: 'Номер/дата на решение или препратка',
-    firstRunBudgetReviewContinue: 'Към проверка преди публикация',
-    firstRunBudgetReviewReady: 'Планът е готов за проверка. Публикацията е отделна стъпка.',
+    firstRunBudgetReviewContinue: 'Напред',
+    firstRunBudgetReviewReady: 'Планът е записан. Можете да продължите.',
+    firstRunBudgetAlreadyImported:
+      'Бюджетът вече е импортиран. За да промените плана, качете нов XLSX файл.',
+    firstRunBudgetReupload: 'Качи файл за промяна',
+    firstRunBudgetCancelPreview: 'Отмени прегледа',
     firstRunBudgetNeedImport: 'Първо качете и потвърдете плана от XLSX файл.',
     firstRunBudgetSavedTitle: 'Записан план',
     firstRunBudgetAmountsSaved: 'Сумите са записани.',

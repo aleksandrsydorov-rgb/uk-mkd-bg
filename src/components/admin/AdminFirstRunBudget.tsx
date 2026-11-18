@@ -310,7 +310,9 @@ export function AdminFirstRunBudget({
   const initial = useMemo(() => parseFirstRunBudgetDraft(draft), [draft]);
   const defaultYear = new Date().getFullYear();
 
-  const [step, setStep] = useState<FirstRunBudgetDraft['step']>(initial.step);
+  const [step, setStep] = useState<FirstRunBudgetDraft['step']>(
+    initial.step === 'review' ? 'amounts' : initial.step,
+  );
   const [calendarYear, setCalendarYear] = useState(
     initial.calendarYear != null ? String(initial.calendarYear) : String(defaultYear),
   );
@@ -372,11 +374,12 @@ export function AdminFirstRunBudget({
     onNavHandle({
       handleBack: () => {
         if (locked || step === 'year' || step === 'done') return false;
-        if (step === 'review') {
-          setStep('amounts');
-          return true;
-        }
-        if (step === 'amounts') {
+        if (step === 'amounts' || step === 'review') {
+          if (importPreview) {
+            setImportPreview(null);
+            setImportIssues([]);
+            return true;
+          }
           setStep('year');
           return true;
         }
@@ -392,7 +395,7 @@ export function AdminFirstRunBudget({
       },
     });
     return () => onNavHandle(null);
-  }, [currentDraft, locked, onNavHandle, persistDraft, step]);
+  }, [currentDraft, importPreview, locked, onNavHandle, persistDraft, step]);
 
   const ensureModuleEnabled = useCallback(async () => {
     const { error } = await untyped(supabase).rpc('set_building_module_enabled', {
@@ -466,6 +469,9 @@ export function AdminFirstRunBudget({
             setStep('done');
           } else if (initial.step === 'year') {
             setStep('amounts');
+          } else if (initial.step === 'review' || initial.step === 'done') {
+            // Old review sub-step removed — stay on import/continue surface.
+            setStep('amounts');
           } else {
             setStep(initial.step);
           }
@@ -532,32 +538,6 @@ export function AdminFirstRunBudget({
       setFormError(presentFormError(err));
     } finally {
       onBusy(false);
-    }
-  }
-
-  /** Navigate to review only — never re-commit amounts from a removed form. */
-  async function onGoToReview() {
-    if (locked) return;
-    if (lines.length === 0) {
-      setFormError(t('admin.firstRunBudgetNeedImport'));
-      return;
-    }
-    setFormError(null);
-    const yearNum = Number(calendarYear);
-    const next: FirstRunBudgetDraft = {
-      calendarYear: yearNum,
-      yearId,
-      decisionNote,
-      zeroConfirmed: false,
-      step: 'review',
-    };
-    setZeroConfirmed(false);
-    setStep('review');
-    try {
-      await persistDraft(next);
-      setNote(t('admin.firstRunBudgetReviewReady'));
-    } catch (err: unknown) {
-      setFormError(presentFormError(err));
     }
   }
 
@@ -698,10 +678,10 @@ export function AdminFirstRunBudget({
         yearId: existing.id,
         decisionNote,
         zeroConfirmed: false,
-        step: 'review',
+        step: 'amounts',
       };
       setZeroConfirmed(false);
-      setStep('review');
+      setStep('amounts');
       await persistDraft(next);
     } catch (err: unknown) {
       console.error('admin_commit_budget_plan failed', err);
@@ -711,7 +691,8 @@ export function AdminFirstRunBudget({
     }
   }
 
-  async function onPublish() {
+  /** Publish imported plan (if needed) and continue the wizard — no separate review editor. */
+  async function onPublishAndContinue() {
     onBusy(true);
     setFormError(null);
     setNote(null);
@@ -719,7 +700,7 @@ export function AdminFirstRunBudget({
       if (lines.length === 0) {
         throw new Error(t('admin.firstRunBudgetNeedImport'));
       }
-      if (needsZeroConfirm && !zeroConfirmed) {
+      if (needsZeroConfirm && !zeroConfirmed && !locked) {
         throw new Error(t('admin.firstRunBudgetZeroRequired'));
       }
       const yearNum = Number(calendarYear);
@@ -735,15 +716,12 @@ export function AdminFirstRunBudget({
         calendarYear: yearNum,
         yearId: publishYearId,
         decisionNote,
-        zeroConfirmed: needsZeroConfirm ? zeroConfirmed : false,
-        step: 'review',
+        zeroConfirmed: needsZeroConfirm ? true : false,
+        step: 'done',
       };
-      // Persist confirmation before publish so assert can read it.
       await persistDraft(draftPayload);
 
       if (!locked) {
-        // Publish already-imported lines only. Do not rewrite amounts.
-        // Adoption (GM decision) is a separate admin action — never invent a basis note.
         const { error: pubErr } = await supabase.rpc('admin_set_budget_year_status', {
           p_year_id: publishYearId,
           p_status: 'published',
@@ -754,30 +732,15 @@ export function AdminFirstRunBudget({
         setYearStatus('published');
       }
 
-      const done: FirstRunBudgetDraft = {
-        ...draftPayload,
-        step: 'done',
-        zeroConfirmed: needsZeroConfirm ? true : false,
-      };
       setStep('done');
-      await persistDraft(done);
+      await persistDraft(draftPayload);
       setNote(t('admin.firstRunBudgetPublished'));
+      await onContinue(draftPayload);
     } catch (err: unknown) {
       setFormError(presentFormError(err));
     } finally {
       onBusy(false);
     }
-  }
-
-  async function onFinishStage() {
-    const yearNum = Number(calendarYear);
-    await onContinue({
-      calendarYear: yearNum,
-      yearId,
-      decisionNote,
-      zeroConfirmed: needsZeroConfirm ? zeroConfirmed || locked : false,
-      step: 'done',
-    });
   }
 
   return (
@@ -815,11 +778,14 @@ export function AdminFirstRunBudget({
         </form>
       ) : null}
 
-      {step === 'amounts' && !locked ? (
+      {(step === 'amounts' || step === 'review') && !locked ? (
         <div className={styles.group}>
           <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetAmountsTitle').replace('{year}', calendarYear)}
           </p>
+          {lines.length > 0 && !importPreview ? (
+            <p className={styles.okNote}>{t('admin.firstRunBudgetAlreadyImported')}</p>
+          ) : null}
           <div className={styles.importGrid}>
             <div className={styles.stepBlock}>
               <p className={styles.importLabel}>{t('admin.firstRunImportDownload')}</p>
@@ -829,7 +795,11 @@ export function AdminFirstRunBudget({
               <p className={styles.hint}>{t('admin.firstRunBudgetImportColumnsHint')}</p>
             </div>
             <div className={styles.stepBlock}>
-              <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
+              <p className={styles.importLabel}>
+                {lines.length > 0 && !importPreview
+                  ? t('admin.firstRunBudgetReupload')
+                  : t('admin.firstRunImportUpload')}
+              </p>
               <AppFilePicker
                 accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 disabled={busy}
@@ -841,12 +811,10 @@ export function AdminFirstRunBudget({
                 }}
               />
             </div>
-            <div className={styles.stepBlock}>
-              <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-              {!importPreview ? (
-                <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
-              ) : (
-                <>
+            {importPreview ? (
+              <>
+                <div className={styles.stepBlock}>
+                  <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
                   <FirstRunStatusStack>
                     {importIssues.length > 0 ? (
                       <FirstRunStatusBanner
@@ -863,7 +831,9 @@ export function AdminFirstRunBudget({
                         title={`${t('admin.firstRunBudgetImportStatWarnings')}: ${importPreview.skipped.length}`}
                         detail={importPreview.skipped
                           .slice(0, 8)
-                          .map((row) => t('admin.firstRunBudgetImportSkipped').replace('{row}', String(row.row)))
+                          .map((row) =>
+                            t('admin.firstRunBudgetImportSkipped').replace('{row}', String(row.row)),
+                          )
                           .join('\n')}
                       />
                     ) : null}
@@ -918,30 +888,46 @@ export function AdminFirstRunBudget({
                       </>
                     );
                   })()}
-                </>
-              )}
-            </div>
-            <div className={styles.stepBlock}>
-              <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>
-              <FirstRunStageActions>
-                <button
-                  type="button"
-                  className={styles.primary}
-                  disabled={
-                    busy ||
-                    !importPreview ||
-                    importIssues.length > 0 ||
-                    importPreview.articles.length === 0
-                  }
-                  onClick={() => void onConfirmImport()}
-                >
-                  {busy ? t('admin.firstRunImporting') : t('admin.firstRunBudgetImportConfirm')}
-                </button>
-              </FirstRunStageActions>
-            </div>
+                </div>
+                <div className={styles.stepBlock}>
+                  <p className={styles.importLabel}>{t('admin.firstRunImportConfirm')}</p>
+                  <FirstRunStageActions>
+                    <button
+                      type="button"
+                      className={styles.primary}
+                      disabled={
+                        busy ||
+                        importIssues.length > 0 ||
+                        importPreview.articles.length === 0
+                      }
+                      onClick={() => void onConfirmImport()}
+                    >
+                      {busy ? t('admin.firstRunImporting') : t('admin.firstRunBudgetImportConfirm')}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondary}
+                      disabled={busy}
+                      onClick={() => {
+                        setImportPreview(null);
+                        setImportIssues([]);
+                      }}
+                    >
+                      {t('admin.firstRunBudgetCancelPreview')}
+                    </button>
+                  </FirstRunStageActions>
+                </div>
+              </>
+            ) : (
+              <div className={styles.stepBlock}>
+                <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
+                <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
+              </div>
+            )}
           </div>
           {importNote ? <p className={styles.okNote}>{importNote}</p> : null}
-          {lines.length > 0 ? (
+          {/* Saved plan only when not previewing a newly picked file — never parallel tables. */}
+          {lines.length > 0 && !importPreview ? (
             <div className={styles.stepBlock} style={{ marginTop: 12 }}>
               <p className={styles.groupTitle}>{t('admin.firstRunBudgetSavedTitle')}</p>
               <BudgetHierarchyList
@@ -955,15 +941,27 @@ export function AdminFirstRunBudget({
               </p>
             </div>
           ) : null}
+          {lines.length > 0 && !importPreview && needsZeroConfirm ? (
+            <label className={styles.checkLine}>
+              <input
+                type="checkbox"
+                checked={zeroConfirmed}
+                onChange={(e) => setZeroConfirmed(e.target.checked)}
+              />
+              <span>{t('admin.firstRunBudgetZeroConfirm')}</span>
+            </label>
+          ) : null}
           <FirstRunStageActions>
-            <button
-              type="button"
-              className={styles.primary}
-              disabled={busy || lines.length === 0}
-              onClick={() => void onGoToReview()}
-            >
-              {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetReviewContinue')}
-            </button>
+            {lines.length > 0 && !importPreview ? (
+              <button
+                type="button"
+                className={styles.primary}
+                disabled={busy || (needsZeroConfirm && !zeroConfirmed)}
+                onClick={() => void onPublishAndContinue()}
+              >
+                {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetContinue')}
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.secondary}
@@ -973,10 +971,13 @@ export function AdminFirstRunBudget({
               {t('admin.firstRunBudgetBackYear')}
             </button>
           </FirstRunStageActions>
+          {lines.length > 0 && !importPreview ? (
+            <p className={`${styles.hint} ${styles.span2}`}>{t('admin.firstRunBudgetPublishHint')}</p>
+          ) : null}
         </div>
       ) : null}
 
-      {(step === 'review' || step === 'done' || locked) ? (
+      {(step === 'done' || locked) ? (
         <div className={styles.stepBlock}>
           <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetReviewTitle').replace('{year}', calendarYear)}
@@ -999,53 +1000,16 @@ export function AdminFirstRunBudget({
               {t('admin.firstRunBudgetStatus')}: {budgetYearStatusLabel(yearStatus, t)}
             </p>
           ) : null}
-
-          {needsZeroConfirm && !locked ? (
-            <label className={styles.checkLine}>
-              <input
-                type="checkbox"
-                checked={zeroConfirmed}
-                onChange={(e) => setZeroConfirmed(e.target.checked)}
-              />
-              <span>{t('admin.firstRunBudgetZeroConfirm')}</span>
-            </label>
-          ) : null}
-
           <FirstRunStageActions>
-            {!locked ? (
-              <>
-                <button
-                  type="button"
-                  className={styles.primary}
-                  disabled={busy || lines.length === 0 || (needsZeroConfirm && !zeroConfirmed)}
-                  onClick={() => void onPublish()}
-                >
-                  {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetPublish')}
-                </button>
-                <p className={`${styles.hint} ${styles.span2}`}>{t('admin.firstRunBudgetPublishHint')}</p>
-                <button
-                  type="button"
-                  className={styles.secondary}
-                  disabled={busy}
-                  onClick={() => setStep('amounts')}
-                >
-                  {t('admin.firstRunBudgetBackAmounts')}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className={styles.primary}
-                disabled={busy}
-                onClick={() => void onFinishStage()}
-              >
-                {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetContinue')}
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={busy || lines.length === 0}
+              onClick={() => void onPublishAndContinue()}
+            >
+              {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetContinue')}
+            </button>
           </FirstRunStageActions>
-          {locked && lines.length === 0 ? (
-            <p className={styles.hint}>{t('admin.firstRunBudgetExistingPublished')}</p>
-          ) : null}
         </div>
       ) : null}
 

@@ -1801,11 +1801,11 @@ export const ru = {
     firstRunStageSupportFee: 'Такса поддержки',
     firstRunStageCapitalRepair: 'Капитальный ремонт',
     firstRunStageTariffs: 'Проверка тарифов',
-    firstRunStageInternetOpening: 'Интернет — начальное состояние',
+    firstRunStageInternetOpening: 'Интернет',
     firstRunInternetOpeningLead:
       'Импортируйте начальные денежные остатки интернета или подтвердите, что их нет. Состояние подключения подтверждается позже в карточке квартиры.',
     firstRunInternetOpeningHint:
-      'В шаблоне четыре колонки. Сумма со знаком задаёт только деньги: плюс — долг, минус — переплата, 0 — ноль, пусто — можно внести позже. Денежный остаток не определяет подключение и оплаченный период.',
+      'В шаблоне четыре колонки. «Сумма к оплате, EUR»: плюс — долг, минус — переплата, 0 — нулевой остаток, пусто — данных нет, можно внести позже. Денежный остаток не определяет подключение и оплаченный период.',
     firstRunInternetOpeningNone: 'На момент настройки подключений и начальных остатков нет',
     firstRunInternetOpeningNoneBlocked:
       'Уже есть подключения или начальные остатки интернета. Отметить «данных нет» нельзя — существующие данные сохраняются. Загрузите файл для сверки или продолжите, если импорт уже выполнен.',
@@ -1816,7 +1816,7 @@ export const ru = {
     firstRunInternetDownload: 'Скачать шаблон',
     firstRunInternetUpload: 'Загрузить XLSX',
     firstRunInternetTemplateHint:
-      'Первые три колонки предзаполнены из Книги объектов (115 квартир). Заполните сумму или оставьте пустой. Подключение подтвердите позже в карточке → «Интернет».',
+      'Первые три колонки предзаполнены из Книги объектов (115 квартир). Заполните «Сумму к оплате, EUR» или оставьте пустой (данных нет — можно внести позже). Подключение подтвердите позже в карточке → «Интернет».',
     firstRunInternetDryRunOk: 'Предпросмотр интернета проверен.',
     firstRunInternetDryRunDetail:
       'Строк: {rows}. Долг Σ {debt}, переплата Σ {credit}. Нужно уточнить подключение: {clarify}. Начисления и покупка пакета не создаются.',
@@ -2040,7 +2040,7 @@ export const ru = {
     firstRunMetersColInstalled: 'Дата установки',
     firstRunMetersColKind: 'Сальдо',
     firstRunMetersColAmount: 'Сумма, €',
-    firstRunMetersColBalance: 'Начальный остаток',
+    firstRunMetersColBalance: 'Сумма к оплате, EUR',
     firstRunMetersColDebt: 'Долг, €',
     firstRunMetersColOverpayment: 'Переплата, €',
     firstRunMetersBalanceDebt: 'Долг {amount} €',
@@ -2081,9 +2081,9 @@ export const ru = {
     firstRunMetersSelectElectricity: 'Электросчётчики',
     firstRunMetersSelectRequired: 'Выберите хотя бы один вид счётчиков.',
     firstRunMetersLead:
-      'Скачайте шаблон: для водомеров первые три колонки уже заполнены из Книги. Укажите номер счётчика, показание и сумму начального остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму остатка укажите один раз. Данные можно дополнить позже в карточке.',
+      'Скачайте шаблон: для водомеров первые три колонки уже заполнены из Книги. Укажите номер счётчика, показание и «Сумму к оплате, EUR» (+ долг, − переплата, 0 — нулевой остаток, пусто — данных нет, можно внести позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму укажите один раз. Данные можно дополнить позже в карточке.',
     firstRunMetersLeadElectricity:
-      'Скачайте шаблон: первые три колонки уже заполнены из Книги. Укажите номер счётчика, показания день/ночь и сумму начального остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму остатка укажите один раз. Данные можно дополнить и подтвердить позже в карточке.',
+      'Скачайте шаблон: первые три колонки уже заполнены из Книги. Укажите номер счётчика, показания день/ночь и «Сумму к оплате, EUR» (+ долг, − переплата, 0 — нулевой остаток, пусто — данных нет, можно внести позже). Несколько счётчиков одной квартиры — отдельные строки с теми же идентификаторами; сумму укажите один раз. Данные можно дополнить и подтвердить позже в карточке.',
     firstRunMetersDownload: 'Скачать шаблон XLSX',
     firstRunMetersUpload: 'Загрузить файл',
     firstRunMetersDryRunOk: 'Проверка пройдена: строк {rows}, уже существует {skipped}.',
@@ -2095,9 +2095,9 @@ export const ru = {
     firstRunMetersCommitted: 'Счётчики импортированы, модуль активирован.',
     firstRunSfTitle: 'Такса поддержки — начальное состояние',
     firstRunSfLead:
-      '1) Подтвердите тариф таксы (основание — решение собрания собственников). 2) Скачайте шаблон: квартиры уже заполнены; укажите сумму остатка знаком (+ долг, − переплата, 0 — ноль, пусто — позже). 3) После проверки подтвердите импорт — платежи и начисления не создаются. Год берётся из активации комплекса.',
+      '1) Подтвердите тариф таксы (основание — решение собрания собственников). 2) Скачайте шаблон: квартиры уже заполнены; укажите «Сумму к оплате, EUR» (+ долг, − переплата, 0 — нулевой остаток, пусто — данных нет, можно внести позже). 3) После проверки подтвердите импорт — платежи и начисления не создаются. Год берётся из активации комплекса.',
     firstRunSfImportColumnsHint:
-      'Шаблон: Апартамент | Секция | Блок | Сумма начального остатка, EUR. Первые три колонки из Книги. Год начисления — автоматически по активации комплекса. Пустую сумму можно внести позже в карточке.',
+      'Шаблон: Апартамент | Секция | Блок | Сумма к оплате, EUR. Первые три колонки из Книги. Год начисления — автоматически по активации комплекса. Пустую сумму можно внести позже в карточке. Знак: плюс — долг; минус — переплата; 0 — нулевой остаток; пусто — данных нет.',
     firstRunSfDownload: 'Скачать шаблон начальных остатков',
     firstRunSfDownloadDetailed: 'Скачать подробный шаблон',
     firstRunSfUpload: 'Загрузить заполненный файл',
@@ -2163,9 +2163,9 @@ export const ru = {
     feeOpeningSourceRef: 'Документ-основание',
     feeOpeningRemainingDebt: 'Остаток долга, €',
     feeOpeningOverpayment: 'Входящая переплата, €',
-    feeOpeningSignedAmount: 'Сумма начального остатка, EUR',
+    feeOpeningSignedAmount: 'Сумма к оплате, EUR',
     feeOpeningSignedAmountHint:
-      'Знак суммы: 50 или +50 — долг; −50 — переплата; 0 — подтверждённый ноль. Исторические начисления и оплаты не требуются.',
+      'Положительная сумма — долг; отрицательная — переплата; 0 — нулевой остаток; пусто — данных нет, можно внести позже. Исторические начисления и оплаты не требуются.',
     feeOpeningConfirmTitle: 'Подтверждение начального остатка',
     feeOpeningPreviewDebt: 'Итог: долг {amount} €',
     feeOpeningPreviewCredit: 'Итог: переплата {amount} €',
@@ -2185,9 +2185,9 @@ export const ru = {
       'Импорт остатков сейчас недоступен. Исправьте ошибки в файле и загрузите его снова.',
     firstRunCrTitle: 'Капитальный ремонт — начальное состояние',
     firstRunCrLead:
-      '1) Подтвердите тариф капремонта — он пойдёт в будущие начисления после активации. 2) Скачайте шаблон начальных остатков и по каждой квартире укажите сумму со знаком: долг, переплату или явный ноль. 3) После проверки файла подтвердите импорт: платежи и новые начисления не создаются, импортированный период нельзя начислить повторно.',
+      '1) Подтвердите тариф капремонта — он пойдёт в будущие начисления после активации. 2) Скачайте шаблон и по каждой квартире укажите «Сумму к оплате, EUR»: плюс — долг, минус — переплата, 0 — нулевой остаток, пусто — данных нет, можно внести позже. 3) После проверки файла подтвердите импорт: платежи и новые начисления не создаются, импортированный период нельзя начислить повторно.',
     firstRunCrImportColumnsHint:
-      'Шаблон: Апартамент | Секция | Блок | Сумма начального остатка, EUR. Первые три колонки из Книги. Год начисления — автоматически по активации комплекса. Пустую сумму можно внести позже в карточке.',
+      'Шаблон: Апартамент | Секция | Блок | Сумма к оплате, EUR. Первые три колонки из Книги. Год начисления — автоматически по активации комплекса. Пустую сумму можно внести позже в карточке. Знак: плюс — долг; минус — переплата; 0 — нулевой остаток; пусто — данных нет.',
     firstRunCrDownload: 'Скачать шаблон',
     firstRunCrDownloadDetailed: 'Скачать подробный шаблон',
     firstRunCrFileMetaTitle: 'Год начисления',
@@ -2611,7 +2611,7 @@ export const ru = {
     is3ColInitialNight: 'Начальное (ночь)',
     is3ColInstalledAt: 'Дата установки',
     is3ColOpeningBalanceKind: 'Тип начального остатка',
-    is3ColOpeningBalanceEur: 'Сумма начального остатка (EUR)',
+    is3ColOpeningBalanceEur: 'Сумма к оплате, EUR',
     importIssue_opening_balance_conflict_same_apartment:
       'Начальный остаток указывается один раз на квартиру. В дополнительных строках счётчиков той же квартиры оставьте сумму пустой.',
     importIssue_overlapping_paid_periods: 'Оплаченные периоды одной квартиры пересекаются. Исправьте даты.',
@@ -2740,7 +2740,7 @@ export const ru = {
     is8CapitalRepairRetryMissing: 'Повторить неуспешные и необработанные строки',
     is8CapitalRepairRetryEmpty: 'Нет строк для повтора.',
     is8Outcome: 'Итог',
-    is5InternetName: 'Интернет (начальное состояние)',
+    is5InternetName: 'Интернет',
     is5InternetDesc:
       'Начальные абонементы интернета, загружаемые без заявок на подключение и без фиктивных платежей.',
     is5InternetStepVerify: 'Проверка начальных абонементов интернета',
@@ -7465,11 +7465,11 @@ export const en: Messages = {
     firstRunStageSupportFee: 'Support fee',
     firstRunStageCapitalRepair: 'Capital repair',
     firstRunStageTariffs: 'Tariff check',
-    firstRunStageInternetOpening: 'Internet — opening state',
+    firstRunStageInternetOpening: 'Internet',
     firstRunInternetOpeningLead:
       'Import internet opening cash balances, or confirm there are none. Connection state is confirmed later on the apartment card.',
     firstRunInternetOpeningHint:
-      'The template has four columns. The signed amount sets money only: plus — debt, minus — overpayment, 0 — zero, blank — enter later. Cash balance does not set connection or paid period.',
+      'The template has four columns. “Amount due, EUR”: plus — debt, minus — overpayment, 0 — zero balance, blank — no data yet, enter later. Cash balance does not set connection or paid period.',
     firstRunInternetOpeningNone: 'No connections or opening balances at setup time',
     firstRunInternetOpeningNoneBlocked:
       'Internet connections or opening balances already exist. You cannot mark “no data” — existing data is kept. Upload a file to review or continue if import is already done.',
@@ -7480,7 +7480,7 @@ export const en: Messages = {
     firstRunInternetDownload: 'Download template',
     firstRunInternetUpload: 'Upload XLSX',
     firstRunInternetTemplateHint:
-      'The first three columns are prefilled from the Property Book (115 apartments). Fill the amount or leave it blank. Confirm connection later on the apartment card → Internet.',
+      'The first three columns are prefilled from the Property Book (115 apartments). Fill “Amount due, EUR” or leave it blank (no data yet — enter later). Confirm connection later on the apartment card → Internet.',
     firstRunInternetDryRunOk: 'Internet preview checked.',
     firstRunInternetDryRunDetail:
       'Rows: {rows}. Debt Σ {debt}, overpayment Σ {credit}. Connection to clarify: {clarify}. No charges or package purchases are created.',
@@ -7702,13 +7702,13 @@ export const en: Messages = {
     firstRunMetersColInstalled: 'Installed on',
     firstRunMetersColKind: 'Balance',
     firstRunMetersColAmount: 'Amount, €',
-    firstRunMetersColBalance: 'Opening balance',
+    firstRunMetersColBalance: 'Amount due, EUR',
     firstRunMetersColDebt: 'Debt, €',
     firstRunMetersColOverpayment: 'Overpayment, €',
     firstRunMetersBalanceDebt: 'Debt {amount} €',
     firstRunMetersBalanceCredit: 'Overpayment {amount} €',
     firstRunMetersBalanceZero: 'Balance 0.00 €',
-    firstRunMetersBalanceUnspecified: 'Opening balance not specified',
+    firstRunMetersBalanceUnspecified: 'Amount due not specified',
     firstRunMetersStatDebt: 'Opening debt',
     firstRunMetersStatOverpayment: 'Overpayment',
     firstRunMetersPreviewHint:
@@ -7743,9 +7743,9 @@ export const en: Messages = {
     firstRunMetersSelectElectricity: 'Electricity meters',
     firstRunMetersSelectRequired: 'Select at least one meter type.',
     firstRunMetersLead:
-      'Download the template: for water meters the first three columns are prefilled from the Book. Enter meter number, reading, and opening balance by sign (+ debt, − overpayment, 0 — zero, blank — later). Several meters for one apartment — separate rows with the same identifiers; enter the balance amount once. You can complete data later on the apartment card.',
+      'Download the template: for water meters the first three columns are prefilled from the Book. Enter meter number, reading, and “Amount due, EUR” (+ debt, − overpayment, 0 — zero balance, blank — no data yet, enter later). Several meters for one apartment — separate rows with the same identifiers; enter the amount once. You can complete data later on the apartment card.',
     firstRunMetersLeadElectricity:
-      'Download the template: the first three columns are prefilled from the Book. Enter meter number, day/night readings, and opening balance by sign (+ debt, − overpayment, 0 — zero, blank — later). Several meters for one apartment — separate rows with the same identifiers; enter the balance amount once. You can complete and confirm data later on the apartment card.',
+      'Download the template: the first three columns are prefilled from the Book. Enter meter number, day/night readings, and “Amount due, EUR” (+ debt, − overpayment, 0 — zero balance, blank — no data yet, enter later). Several meters for one apartment — separate rows with the same identifiers; enter the amount once. You can complete and confirm data later on the apartment card.',
     firstRunMetersDownload: 'Download XLSX template',
     firstRunMetersUpload: 'Upload file',
     firstRunMetersDryRunOk: 'Check passed: {rows} rows, {skipped} already exist.',
@@ -7757,9 +7757,9 @@ export const en: Messages = {
     firstRunMetersCommitted: 'Meters imported, module activated.',
     firstRunSfTitle: 'Support fee — opening state',
     firstRunSfLead:
-      '1) Confirm the support-fee tariff (basis — owners’ general meeting decision). 2) Download the template: apartments are prefilled; enter the balance by sign (+ debt, − overpayment, 0 — zero, blank — later). 3) After the check, confirm import — no payments or charges are created. The year comes from complex activation.',
+      '1) Confirm the support-fee tariff (basis — owners’ general meeting decision). 2) Download the template: apartments are prefilled; enter “Amount due, EUR” (+ debt, − overpayment, 0 — zero balance, blank — no data yet, enter later). 3) After the check, confirm import — no payments or charges are created. The year comes from complex activation.',
     firstRunSfImportColumnsHint:
-      'Template: Apartment | Section | Block | Opening balance amount, EUR. First three columns from the Book. Billing year is automatic from complex activation. A blank amount can be entered later on the card.',
+      'Template: Apartment | Section | Block | Amount due, EUR. First three columns from the Book. Billing year is automatic from complex activation. A blank amount can be entered later on the card. Sign: plus — debt; minus — overpayment; 0 — zero balance; blank — no data.',
     firstRunSfDownload: 'Download opening balances template',
     firstRunSfDownloadDetailed: 'Download detailed template',
     firstRunSfUpload: 'Upload file',
@@ -7825,9 +7825,9 @@ export const en: Messages = {
     feeOpeningSourceRef: 'Source document',
     feeOpeningRemainingDebt: 'Remaining debt, €',
     feeOpeningOverpayment: 'Opening overpayment, €',
-    feeOpeningSignedAmount: 'Opening balance amount, EUR',
+    feeOpeningSignedAmount: 'Amount due, EUR',
     feeOpeningSignedAmountHint:
-      'Amount sign: 50 or +50 — debt; −50 — overpayment; 0 — confirmed zero. Historical charges and payments are not required.',
+      'Positive amount — debt; negative — overpayment; 0 — zero balance; blank — no data yet, enter later. Historical charges and payments are not required.',
     feeOpeningConfirmTitle: 'Confirm initial balance',
     feeOpeningPreviewDebt: 'Result: debt {amount} €',
     feeOpeningPreviewCredit: 'Result: overpayment {amount} €',
@@ -7847,9 +7847,9 @@ export const en: Messages = {
       'Balance import is unavailable right now. Fix the errors in the file and upload it again.',
     firstRunCrTitle: 'Capital repair — opening state',
     firstRunCrLead:
-      '1) Confirm the capital-repair tariff. 2) Download the opening-balances template and enter a signed amount per apartment: debt, overpayment, or explicit zero. 3) After the file check, confirm import: no payments or operational charges are created; an imported period cannot be charged again.',
+      '1) Confirm the capital-repair tariff. 2) Download the template and enter “Amount due, EUR” per apartment: plus — debt, minus — overpayment, 0 — zero balance, blank — no data yet, enter later. 3) After the file check, confirm import: no payments or operational charges are created; an imported period cannot be charged again.',
     firstRunCrImportColumnsHint:
-      'Template: Apartment | Section | Block | Opening balance amount, EUR. First three columns from the Book. Billing year is automatic from complex activation. A blank amount can be entered later on the card.',
+      'Template: Apartment | Section | Block | Amount due, EUR. First three columns from the Book. Billing year is automatic from complex activation. A blank amount can be entered later on the card. Sign: plus — debt; minus — overpayment; 0 — zero balance; blank — no data.',
     firstRunCrDownload: 'Download template',
     firstRunCrDownloadDetailed: 'Download detailed template',
     firstRunCrFileMetaTitle: 'Billing year',
@@ -8265,7 +8265,7 @@ export const en: Messages = {
     is3ColInitialNight: 'Initial (night)',
     is3ColInstalledAt: 'Installed on',
     is3ColOpeningBalanceKind: 'Opening balance type',
-    is3ColOpeningBalanceEur: 'Opening balance amount (EUR)',
+    is3ColOpeningBalanceEur: 'Amount due, EUR',
     importIssue_opening_balance_conflict_same_apartment:
       'Opening balance is entered once per apartment. On extra meter rows for the same apartment leave the amount blank.',
     importIssue_overlapping_paid_periods: 'Paid periods for the same apartment overlap. Fix the dates.',
@@ -8394,7 +8394,7 @@ export const en: Messages = {
     is8CapitalRepairRetryMissing: 'Retry failed or unprocessed rows',
     is8CapitalRepairRetryEmpty: 'Nothing to retry.',
     is8Outcome: 'Outcome',
-    is5InternetName: 'Internet (opening)',
+    is5InternetName: 'Internet',
     is5InternetDesc:
       'Starting internet subscriptions, loaded without connection requests or fictitious payments.',
     is5InternetStepVerify: 'Verify Internet opening',
@@ -13116,11 +13116,11 @@ export const bg: Messages = {
     firstRunStageSupportFee: 'Такса поддръжка',
     firstRunStageCapitalRepair: 'Основен ремонт',
     firstRunStageTariffs: 'Проверка на тарифите',
-    firstRunStageInternetOpening: 'Интернет — начално състояние',
+    firstRunStageInternetOpening: 'Интернет',
     firstRunInternetOpeningLead:
       'Импортирайте началните парични остатъци за интернет или потвърдете, че ги няма. Състоянието на връзката се потвърждава по-късно в картата на апартамента.',
     firstRunInternetOpeningHint:
-      'Шаблонът има четири колони. Сумата със знак задава само пари: плюс — дълг, минус — преплата, 0 — нула, празно — може по-късно. Паричният остатък не определя връзката и платения период.',
+      'Шаблонът има четири колони. «Сума за плащане, EUR»: плюс — дълг, минус — преплата, 0 — нулев остатък, празно — няма данни, може по-късно. Паричният остатък не определя връзката и платения период.',
     firstRunInternetOpeningNone: 'Към момента на настройката няма връзки и начални остатъци',
     firstRunInternetOpeningNoneBlocked:
       'Вече има интернет връзки или начални остатъци. Не може да отбележите „няма данни“ — наличните данни се запазват. Качете файл за сверка или продължете, ако импортът вече е направен.',
@@ -13131,7 +13131,7 @@ export const bg: Messages = {
     firstRunInternetDownload: 'Изтегли шаблон',
     firstRunInternetUpload: 'Качи XLSX',
     firstRunInternetTemplateHint:
-      'Първите три колони са попълнени от Книгата на обектите (115 апартамента). Попълнете сумата или я оставете празна. Връзката се потвърждава по-късно в картата → „Интернет“.',
+      'Първите три колони са попълнени от Книгата на обектите (115 апартамента). Попълнете «Сума за плащане, EUR» или я оставете празна (няма данни — може по-късно). Връзката се потвърждава по-късно в картата → „Интернет“.',
     firstRunInternetDryRunOk: 'Прегледът на интернет е проверен.',
     firstRunInternetDryRunDetail:
       'Редове: {rows}. Дълг Σ {debt}, преплата Σ {credit}. Нужно уточняване на връзката: {clarify}. Начисления и покупка на пакет не се създават.',
@@ -13353,13 +13353,13 @@ export const bg: Messages = {
     firstRunMetersColInstalled: 'Дата на монтаж',
     firstRunMetersColKind: 'Салдо',
     firstRunMetersColAmount: 'Сума, €',
-    firstRunMetersColBalance: 'Начален остатък',
+    firstRunMetersColBalance: 'Сума за плащане, EUR',
     firstRunMetersColDebt: 'Дълг, €',
     firstRunMetersColOverpayment: 'Преплата, €',
     firstRunMetersBalanceDebt: 'Дълг {amount} €',
     firstRunMetersBalanceCredit: 'Преплата {amount} €',
     firstRunMetersBalanceZero: 'Остатък 0,00 €',
-    firstRunMetersBalanceUnspecified: 'Начален остатък не е посочен',
+    firstRunMetersBalanceUnspecified: 'Сумата за плащане не е посочена',
     firstRunMetersStatDebt: 'Начален дълг',
     firstRunMetersStatOverpayment: 'Преплата',
     firstRunMetersPreviewHint:
@@ -13394,9 +13394,9 @@ export const bg: Messages = {
     firstRunMetersSelectElectricity: 'Електромери',
     firstRunMetersSelectRequired: 'Изберете поне един вид уреди.',
     firstRunMetersLead:
-      'Изтеглете шаблона: за водомери първите три колони са попълнени от Книгата. Посочете номер на водомер, показание и начален остатък със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). Няколко водомера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят по-късно в картата.',
+      'Изтеглете шаблона: за водомери първите три колони са попълнени от Книгата. Посочете номер на водомер, показание и «Сума за плащане, EUR» (+ дълг, − преплата, 0 — нулев остатък, празно — няма данни, може по-късно). Няколко водомера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят по-късно в картата.',
     firstRunMetersLeadElectricity:
-      'Изтеглете шаблона: първите три колони са попълнени от Книгата. Посочете номер на електромер, показания ден/нощ и начален остатък със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). Няколко електромера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят и потвърдят по-късно в картата.',
+      'Изтеглете шаблона: първите три колони са попълнени от Книгата. Посочете номер на електромер, показания ден/нощ и «Сума за плащане, EUR» (+ дълг, − преплата, 0 — нулев остатък, празно — няма данни, може по-късно). Няколко електромера за един апартамент — отделни редове със същите идентификатори; сумата се посочва веднъж. Данните могат да се допълнят и потвърдят по-късно в картата.',
     firstRunMetersDownload: 'Изтегляне на XLSX шаблон',
     firstRunMetersUpload: 'Качване на файл',
     firstRunMetersDryRunOk: 'Проверката е успешна: редове {rows}, вече съществуват {skipped}.',
@@ -13408,9 +13408,9 @@ export const bg: Messages = {
     firstRunMetersCommitted: 'Уредите са импортирани, модулът е активиран.',
     firstRunSfTitle: 'Такса поддръжка — начално състояние',
     firstRunSfLead:
-      '1) Потвърдете тарифата (основание — решение на общото събрание). 2) Изтеглете шаблона: апартаментите са попълнени; посочете сумата със знак (+ дълг, − преплата, 0 — нула, празно — по-късно). 3) След проверка потвърдете импорта — плащания и начисления не се създават. Годината идва от активирането на комплекса.',
+      '1) Потвърдете тарифата (основание — решение на общото събрание). 2) Изтеглете шаблона: апартаментите са попълнени; посочете «Сума за плащане, EUR» (+ дълг, − преплата, 0 — нулев остатък, празно — няма данни, може по-късно). 3) След проверка потвърдете импорта — плащания и начисления не се създават. Годината идва от активирането на комплекса.',
     firstRunSfImportColumnsHint:
-      'Шаблон: Апартамент | Секция | Блок | Сума начален остатък, EUR. Първите три колони от Книгата. Годината е автоматична по активирането. Празна сума може да се въведе по-късно в картата.',
+      'Шаблон: Апартамент | Секция | Блок | Сума за плащане, EUR. Първите три колони от Книгата. Годината е автоматична по активирането. Празна сума може да се въведе по-късно в картата. Знак: плюс — дълг; минус — преплата; 0 — нулев остатък; празно — няма данни.',
     firstRunSfDownload: 'Изтегляне на шаблон за начални остатъци',
     firstRunSfDownloadDetailed: 'Изтегляне на подробен шаблон',
     firstRunSfUpload: 'Качване на файл',
@@ -13476,9 +13476,9 @@ export const bg: Messages = {
     feeOpeningSourceRef: 'Документ-основание',
     feeOpeningRemainingDebt: 'Остатък дълг, €',
     feeOpeningOverpayment: 'Начална преплата, €',
-    feeOpeningSignedAmount: 'Сума начален остатък, EUR',
+    feeOpeningSignedAmount: 'Сума за плащане, EUR',
     feeOpeningSignedAmountHint:
-      'Знак на сумата: 50 или +50 — дълг; −50 — преплата; 0 — потвърдена нула. Исторически начисления и плащания не се изискват.',
+      'Положителна сума — дълг; отрицателна — преплата; 0 — нулев остатък; празно — няма данни, може по-късно. Исторически начисления и плащания не се изискват.',
     feeOpeningConfirmTitle: 'Потвърждение на начален остатък',
     feeOpeningPreviewDebt: 'Резултат: дълг {amount} €',
     feeOpeningPreviewCredit: 'Резултат: надплащане {amount} €',
@@ -13500,9 +13500,9 @@ export const bg: Messages = {
       'Импортът на салда в момента е недостъпен. Поправете грешките във файла и го качете отново.',
     firstRunCrTitle: 'Основен ремонт — начално състояние',
     firstRunCrLead:
-      '1) Потвърдете тарифата за капитален ремонт. 2) Изтеглете шаблона за начални остатъци и за всеки апартамент посочете сума със знак: дълг, преплата или явен нула. 3) След проверката на файла потвърдете импорта: плащания и операционни начисления не се създават; импортираният период не може да се начисли повторно.',
+      '1) Потвърдете тарифата за капитален ремонт. 2) Изтеглете шаблона и за всеки апартамент посочете «Сума за плащане, EUR»: плюс — дълг, минус — преплата, 0 — нулев остатък, празно — няма данни, може по-късно. 3) След проверката на файла потвърдете импорта: плащания и операционни начисления не се създават; импортираният период не може да се начисли повторно.',
     firstRunCrImportColumnsHint:
-      'Шаблон: Апартамент | Секция | Блок | Сума начален остатък, EUR. Първите три колони от Книгата. Годината е автоматична по активирането. Празна сума може да се въведе по-късно в картата.',
+      'Шаблон: Апартамент | Секция | Блок | Сума за плащане, EUR. Първите три колони от Книгата. Годината е автоматична по активирането. Празна сума може да се въведе по-късно в картата. Знак: плюс — дълг; минус — преплата; 0 — нулев остатък; празно — няма данни.',
     firstRunCrDownload: 'Изтегляне на шаблон',
     firstRunCrDownloadDetailed: 'Изтегляне на подробен шаблон',
     firstRunCrFileMetaTitle: 'Година на начисляване',
@@ -13924,7 +13924,7 @@ export const bg: Messages = {
     is3ColInitialNight: 'Начално (нощ)',
     is3ColInstalledAt: 'Дата на монтаж',
     is3ColOpeningBalanceKind: 'Тип на началния остатък',
-    is3ColOpeningBalanceEur: 'Сума на началния остатък (EUR)',
+    is3ColOpeningBalanceEur: 'Сума за плащане, EUR',
     importIssue_opening_balance_conflict_same_apartment:
       'Началният остатък се посочва веднъж на апартамент. В допълнителните редове за водомери на същия апартамент оставете сумата празна.',
     importIssue_overlapping_paid_periods: 'Платените периоди на един апартамент се застъпват. Поправете датите.',
@@ -14057,7 +14057,7 @@ export const bg: Messages = {
     is8CapitalRepairRetryMissing: 'Повтори неуспешните и необработените редове',
     is8CapitalRepairRetryEmpty: 'Няма редове за повтор.',
     is8Outcome: 'Резултат',
-    is5InternetName: 'Интернет (начално състояние)',
+    is5InternetName: 'Интернет',
     is5InternetDesc:
       'Начални абонаменти за интернет, зареждани без заявки за свързване и без фиктивни плащания.',
     is5InternetStepVerify: 'Проверка на началните абонаменти за интернет',

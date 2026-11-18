@@ -97,7 +97,7 @@ export const WATER_METER_HEADER_LABELS_BG: Record<(typeof WATER_METER_HEADERS)[n
   initial_reading: 'Начално показание',
   installed_at: 'Дата на монтаж',
   opening_balance_kind: 'Тип начален остатък',
-  opening_balance_eur: 'Сума начален остатък (EUR)',
+  opening_balance_eur: 'Сума за плащане, EUR',
 };
 
 export const ELECTRICITY_METER_HEADER_LABELS_BG: Record<
@@ -112,7 +112,7 @@ export const ELECTRICITY_METER_HEADER_LABELS_BG: Record<
   initial_night_reading: 'Начално (нощ)',
   installed_at: 'Дата на монтаж',
   opening_balance_kind: 'Тип начален остатък',
-  opening_balance_eur: 'Сума начален остатък (EUR)',
+  opening_balance_eur: 'Сума за плащане, EUR',
 };
 
 function normApt(value: string | undefined | null): string {

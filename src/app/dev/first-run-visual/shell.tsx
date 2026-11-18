@@ -364,6 +364,7 @@ export function FirstRunVisualShell() {
       internet_opening: 'admin.firstRunStageInternetOpening',
       budget: 'admin.firstRunStageBudget',
       uk_expenses_opening: 'admin.firstRunStageOpeningExpenses',
+      inventory_opening: 'admin.firstRunStageInventory',
       complete: 'admin.firstRunStageComplete',
     };
     return t(map[key]);

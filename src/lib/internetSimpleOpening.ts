@@ -205,7 +205,7 @@ export function parseInternetOpeningWorkbook(
     });
 
   if (detailedParsed.ok && (looksDetailed || !simpleParsed.ok)) {
-    const previewRows = detailedParsed.rows.map((row, idx) => {
+    const previewRows: Record<string, string>[] = detailedParsed.rows.map((row, idx) => {
       const n = normalizeInternetOpeningRow(row as Record<string, string>);
       return { ...n, rowNumber: String(2 + idx) };
     });
@@ -247,6 +247,9 @@ export function parseInternetOpeningWorkbook(
 
   return {
     ok: false,
-    error: detailedParsed.error || simpleParsed.error || 'parse failed',
+    error:
+      (!detailedParsed.ok ? detailedParsed.error : undefined) ||
+      (!simpleParsed.ok ? simpleParsed.error : undefined) ||
+      'parse failed',
   };
 }

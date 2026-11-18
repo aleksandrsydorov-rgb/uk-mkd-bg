@@ -11,11 +11,16 @@ export type BudgetCategory = {
   name_bg: string;
   sort_order?: number;
   active?: boolean;
-  /** Group → Article (no subgroups). Catalog text — not machine-translated at runtime. */
+  /** Group → Subgroup → Article. Catalog text — not machine-translated at runtime. */
   group_code?: string | null;
   group_name_ru?: string | null;
   group_name_en?: string | null;
   group_name_bg?: string | null;
+  /** Optional; null/empty = article sits directly under the group. */
+  subgroup_code?: string | null;
+  subgroup_name_ru?: string | null;
+  subgroup_name_en?: string | null;
+  subgroup_name_bg?: string | null;
 };
 
 /** Locale-aware group label from catalog fields (stored names, not auto-translated). */
@@ -36,6 +41,25 @@ export function budgetGroupLabel(
     return cat.group_name_en?.trim() || cat.group_name_ru?.trim() || cat.group_name_bg?.trim() || '';
   }
   return cat.group_name_ru?.trim() || cat.group_name_en?.trim() || cat.group_name_bg?.trim() || '';
+}
+
+/** Locale-aware subgroup label (empty when the article has no subgroup). */
+export function budgetSubgroupLabel(
+  cat: Pick<
+    BudgetCategory,
+    'subgroup_code' | 'subgroup_name_ru' | 'subgroup_name_en' | 'subgroup_name_bg'
+  > | null | undefined,
+  locale: string,
+): string {
+  if (!cat) return '';
+  const loc = String(locale || 'ru').toLowerCase();
+  if (loc.startsWith('bg')) {
+    return cat.subgroup_name_bg?.trim() || cat.subgroup_name_ru?.trim() || cat.subgroup_name_en?.trim() || '';
+  }
+  if (loc.startsWith('en')) {
+    return cat.subgroup_name_en?.trim() || cat.subgroup_name_ru?.trim() || cat.subgroup_name_bg?.trim() || '';
+  }
+  return cat.subgroup_name_ru?.trim() || cat.subgroup_name_en?.trim() || cat.subgroup_name_bg?.trim() || '';
 }
 
 export type BudgetYear = {

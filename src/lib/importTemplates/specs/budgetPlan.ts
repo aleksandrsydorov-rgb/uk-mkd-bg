@@ -6,7 +6,7 @@ import {
 } from '@/lib/importTemplates/workbook';
 
 /**
- * User template: Group | Budget article | Planned amount.
+ * User template: Group | Subgroup | Budget article | Planned amount.
  * Internal codes stay parseable for legacy files (includeInTemplate: false).
  */
 export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
@@ -30,23 +30,26 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
   notes: {
     ru: [
       'Заполняйте только лист «Бюджет». Примеры на листе инструкции не импортируются.',
-      'Внесите плановые суммы по предзаполненным группам и статьям из справочника.',
+      'Классификация уже предзаполнена из справочника: Группа → Подгруппа → Статья бюджета.',
+      'Внесите только «Плановая сумма, EUR». Подгруппа может быть пустой — тогда статья относится прямо к группе.',
       '0 — сохранить ноль. Пустая ячейка — не менять уже сохранённую сумму по этой статье.',
-      'Итоги групп и всего бюджета считает система — итоговые строки не нужны.',
+      'Итоги подгрупп, групп и всего бюджета считает система — итоговые строки не нужны.',
       'Год бюджета выбирается в мастере отдельно.',
     ],
     bg: [
       'Попълвайте само листа «Бюджет». Примерите в инструкцията не се импортират.',
-      'Въведете плановите суми по предварително попълнените групи и статии от справочника.',
+      'Класификацията е предварително попълнена от справочника: Група → Подгрупа → Статия на бюджета.',
+      'Въведете само «Планова сума, EUR». Подгрупата може да е празна — тогава статията е директно в групата.',
       '0 — записва нула. Празна клетка — не променя вече записаната сума за тази статия.',
-      'Итогите на групите и на целия бюджет се смятат от системата — не са нужни редове с итог.',
+      'Итогите на подгрупите, групите и на целия бюджет се смятат от системата — не са нужни редове с итог.',
       'Годината на бюджета се избира отделно в съветника.',
     ],
     en: [
       'Fill only the Budget sheet. Examples on the Instructions sheet are not imported.',
-      'Enter planned amounts for the prefilled groups and articles from the catalog.',
+      'Classification is prefilled from the catalog: Group → Subgroup → Budget article.',
+      'Enter only Planned amount, EUR. An empty Subgroup means the article sits directly under the group.',
       '0 saves zero. A blank cell leaves the saved amount for that article unchanged.',
-      'Group and budget totals are calculated by the system — do not add total rows.',
+      'Subgroup, group and budget totals are calculated by the system — do not add total rows.',
       'The budget year is chosen separately in the wizard.',
     ],
   },
@@ -71,9 +74,9 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
         'код',
       ],
       instruction: {
-        ru: 'Устаревшая колонка. В новом шаблоне не используется.',
-        bg: 'Остаряла колона. В новия шаблон не се използва.',
-        en: 'Legacy column. Not used in the current template.',
+        ru: 'Служебная колонка. В пользовательском шаблоне не используется.',
+        bg: 'Служебна колона. В потребителския шаблон не се използва.',
+        en: 'Internal column. Not used in the user template.',
       },
       example: '',
     },
@@ -81,7 +84,7 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
       key: 'group',
       required: true,
       format: 'text',
-      width: 32,
+      width: 28,
       label: {
         ru: 'Группа',
         bg: 'Група',
@@ -104,10 +107,36 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
       example: 'Содержание и обслуживание',
     },
     {
+      key: 'subgroup',
+      required: false,
+      format: 'text',
+      width: 28,
+      label: {
+        ru: 'Подгруппа',
+        bg: 'Подгрупа',
+        en: 'Subgroup',
+      },
+      aliases: [
+        'подгруппа',
+        'подгрупа',
+        'subgroup',
+        'subgroup_name',
+        'subgroup name',
+        'наименование подгруппы',
+        'име на подгрупата',
+      ],
+      instruction: {
+        ru: 'Подгруппа из справочника. Может быть пустой — статья тогда относится прямо к группе.',
+        bg: 'Подгрупа от справочника. Може да е празна — тогава статията е директно в групата.',
+        en: 'Subgroup from the catalog. May be blank — then the article sits directly under the group.',
+      },
+      example: '',
+    },
+    {
       key: 'name',
       required: true,
       format: 'text',
-      width: 36,
+      width: 32,
       label: {
         ru: 'Статья бюджета',
         bg: 'Статия на бюджета',
@@ -171,17 +200,20 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
       rows: [
         {
           group: 'Содержание и обслуживание',
+          subgroup: '',
           name: 'Уборка',
           amount: '0',
         },
         {
-          group: 'Содержание и обслуживание',
-          name: 'Охрана',
+          group: 'Регулярные услуги',
+          subgroup: 'Охрана и контроль',
+          name: 'Видеонаблюдение',
           amount: '1200.00',
         },
         {
-          group: 'Содержание и обслуживание',
-          name: 'Ремонт',
+          group: 'Регулярные услуги',
+          subgroup: 'Клининг',
+          name: 'Уборка холлов',
           amount: '',
         },
       ],
@@ -195,6 +227,8 @@ export type BudgetCatalogSeed = {
   code?: string;
   name: string;
   group: string;
+  /** Empty string = article directly under the group. */
+  subgroup?: string;
   amount?: string;
 };
 
@@ -208,6 +242,7 @@ export function buildBudgetPlanTemplateBuffer(
   }
   const rows = catalogRows.map((r) => ({
     group: String(r.group ?? ''),
+    subgroup: String(r.subgroup ?? ''),
     name: String(r.name ?? ''),
     amount: r.amount != null ? String(r.amount) : '',
   }));

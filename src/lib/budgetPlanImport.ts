@@ -23,11 +23,19 @@ export type { BudgetCatalogSeed };
 
 export const BUDGET_PLAN_CODE = 'Код статьи';
 export const BUDGET_PLAN_GROUP = 'Группа';
+export const BUDGET_PLAN_SUBGROUP = 'Подгруппа';
 export const BUDGET_PLAN_NAME = 'Статья бюджета';
 export const BUDGET_PLAN_AMOUNT = 'Плановая сумма, EUR';
 
 const CODE_HEADERS = ['код статьи', 'category code', 'код на статията', 'article code', 'code'];
 const GROUP_HEADERS = ['группа', 'група', 'group', 'group name', 'group_name'];
+const SUBGROUP_HEADERS = [
+  'подгруппа',
+  'подгрупа',
+  'subgroup',
+  'subgroup name',
+  'subgroup_name',
+];
 const NAME_HEADERS = [
   'статья бюджета',
   'статия на бюджета',
@@ -50,7 +58,10 @@ const AMOUNT_HEADERS = [
   'amount',
 ];
 
-function headerSetFor(legacy: string[], key: 'code' | 'group' | 'name' | 'amount'): Set<string> {
+function headerSetFor(
+  legacy: string[],
+  key: 'code' | 'group' | 'subgroup' | 'name' | 'amount',
+): Set<string> {
   const out = new Set(legacy.map((h) => normalizeImportHeader(h)));
   for (const spec of [BUDGET_PLAN_IMPORT_SPEC, OPENING_TOTALS_IMPORT_SPEC]) {
     const col = spec.columns.find((c) => c.key === key);
@@ -62,6 +73,7 @@ function headerSetFor(legacy: string[], key: 'code' | 'group' | 'name' | 'amount
 
 const CODE_HEADER_SET = headerSetFor(CODE_HEADERS, 'code');
 const GROUP_HEADER_SET = headerSetFor(GROUP_HEADERS, 'group');
+const SUBGROUP_HEADER_SET = headerSetFor(SUBGROUP_HEADERS, 'subgroup');
 const NAME_HEADER_SET = headerSetFor(NAME_HEADERS, 'name');
 const AMOUNT_HEADER_SET = headerSetFor(AMOUNT_HEADERS, 'amount');
 
@@ -76,6 +88,7 @@ export type BudgetPlanArticle = {
   code: string;
   name: string;
   group: string;
+  subgroup: string;
   amount: number;
 };
 
@@ -98,7 +111,8 @@ export type BudgetPlanIssueReason =
   | 'unknown_article'
   | 'ambiguous_article'
   | 'name_mismatch'
-  | 'group_mismatch';
+  | 'group_mismatch'
+  | 'subgroup_mismatch';
 
 export type BudgetPlanIssue = {
   row: number;
@@ -116,6 +130,7 @@ export type BudgetPlanPreviewRow = {
   code: string;
   name: string;
   group: string;
+  subgroup: string;
   /** Valid amount, or null when blank / invalid. */
   amount: number | null;
   /** True when the amount cell was empty (preserve existing plan — do not zero). */
@@ -144,11 +159,27 @@ export type BudgetCatalogMatch = {
   group_name_ru?: string | null;
   group_name_en?: string | null;
   group_name_bg?: string | null;
+  subgroup_code?: string | null;
+  subgroup_name_ru?: string | null;
+  subgroup_name_en?: string | null;
+  subgroup_name_bg?: string | null;
+};
+
+export type BudgetPreviewSubgroup = {
+  key: string;
+  label: string;
+  rows: BudgetPlanPreviewRow[];
+  total: number;
+  priorTotal: number | null;
 };
 
 export type BudgetPreviewGroup = {
   key: string;
   label: string;
+  /** Articles with no subgroup — shown directly under the group. */
+  directRows: BudgetPlanPreviewRow[];
+  subgroups: BudgetPreviewSubgroup[];
+  /** Flat leaf rows (direct + nested) for callers that need a simple list. */
   rows: BudgetPlanPreviewRow[];
   /** Sum of valid (non-blank) article amounts in the group. */
   total: number;
@@ -169,6 +200,16 @@ function catalogGroups(cat: BudgetCatalogMatch): string[] {
     .filter(Boolean);
 }
 
+function catalogSubgroups(cat: BudgetCatalogMatch): string[] {
+  return [cat.subgroup_code, cat.subgroup_name_ru, cat.subgroup_name_en, cat.subgroup_name_bg]
+    .map((v) => normMatch(String(v ?? '')))
+    .filter(Boolean);
+}
+
+function catalogHasEmptySubgroup(cat: BudgetCatalogMatch): boolean {
+  return catalogSubgroups(cat).length === 0;
+}
+
 function catalogGroupLabel(cat: BudgetCatalogMatch, locale: string): string {
   const loc = String(locale || 'ru').toLowerCase();
   // Never surface internal group_code to the user.
@@ -179,6 +220,17 @@ function catalogGroupLabel(cat: BudgetCatalogMatch, locale: string): string {
     return cat.group_name_en?.trim() || cat.group_name_ru?.trim() || cat.group_name_bg?.trim() || '';
   }
   return cat.group_name_ru?.trim() || cat.group_name_en?.trim() || cat.group_name_bg?.trim() || '';
+}
+
+function catalogSubgroupLabel(cat: BudgetCatalogMatch, locale: string): string {
+  const loc = String(locale || 'ru').toLowerCase();
+  if (loc.startsWith('bg')) {
+    return cat.subgroup_name_bg?.trim() || cat.subgroup_name_ru?.trim() || cat.subgroup_name_en?.trim() || '';
+  }
+  if (loc.startsWith('en')) {
+    return cat.subgroup_name_en?.trim() || cat.subgroup_name_ru?.trim() || cat.subgroup_name_bg?.trim() || '';
+  }
+  return cat.subgroup_name_ru?.trim() || cat.subgroup_name_en?.trim() || cat.subgroup_name_bg?.trim() || '';
 }
 
 function catalogArticleLabel(cat: BudgetCatalogMatch, locale: string): string {
@@ -195,33 +247,54 @@ function catalogGroupDisplayNames(cat: BudgetCatalogMatch): string[] {
     .filter(Boolean);
 }
 
-/** Match catalog rows by human group + article name (any locale label). */
+/**
+ * Match by full path Group → Subgroup → Article when the subgroup column is present.
+ * Empty subgroup matches only catalog rows without a subgroup.
+ * Legacy (no subgroup column): match by group + name; unique hit fills subgroup from catalog.
+ */
+export function matchBudgetCatalogByPath(
+  catalog: BudgetCatalogMatch[],
+  group: string,
+  subgroup: string,
+  name: string,
+  opts: { subgroupColumnPresent: boolean } = { subgroupColumnPresent: true },
+): BudgetCatalogMatch[] {
+  const g = normMatch(group);
+  const s = normMatch(subgroup);
+  const n = normMatch(name);
+  if (!n) return [];
+  return catalog.filter((cat) => {
+    if (!catalogNames(cat).includes(n)) return false;
+    if (g && !catalogGroupDisplayNames(cat).includes(g)) return false;
+    if (!opts.subgroupColumnPresent) return true;
+    if (!s) return catalogHasEmptySubgroup(cat);
+    return catalogSubgroups(cat).includes(s);
+  });
+}
+
+/** @deprecated Prefer matchBudgetCatalogByPath — kept for call sites / tests. */
 export function matchBudgetCatalogByGroupName(
   catalog: BudgetCatalogMatch[],
   group: string,
   name: string,
 ): BudgetCatalogMatch[] {
-  const g = normMatch(group);
-  const n = normMatch(name);
-  if (!n) return [];
-  return catalog.filter((cat) => {
-    if (!catalogNames(cat).includes(n)) return false;
-    if (!g) return true;
-    return catalogGroupDisplayNames(cat).includes(g);
-  });
+  return matchBudgetCatalogByPath(catalog, group, '', name, { subgroupColumnPresent: false });
 }
 
 /**
  * Resolve articles against the catalog.
- * - Current template: match by group + name; ambiguity is an error.
- * - Legacy files with a code column: match by code; optional group/name must agree.
+ * - Current template: match by Group → Subgroup → Article; ambiguity is an error.
+ * - Legacy files without subgroup: match by group + name when unique.
+ * - Legacy files with a code column: match by code; optional group/subgroup/name must agree.
  * Never auto-create categories or pick arbitrarily among matches.
  */
 export function validateBudgetPlanAgainstCatalog(
   parsed: BudgetPlanParse,
   catalog: BudgetCatalogMatch[],
   locale: string = 'ru',
+  opts: { subgroupColumnPresent?: boolean } = {},
 ): BudgetPlanParse {
+  const subgroupColumnPresent = opts.subgroupColumnPresent ?? true;
   const byCode = new Map(catalog.map((c) => [c.code.trim().toLowerCase(), c]));
   const issues: BudgetPlanIssue[] = [];
   const previewRows: BudgetPlanPreviewRow[] = parsed.previewRows.map((row) => {
@@ -229,6 +302,7 @@ export function validateBudgetPlanAgainstCatalog(
     const key = row.code.trim().toLowerCase();
     let cat = key ? byCode.get(key) : undefined;
     let group = row.group;
+    let subgroup = row.subgroup;
     let name = row.name;
     let code = row.code;
 
@@ -247,10 +321,15 @@ export function validateBudgetPlanAgainstCatalog(
         } else if (!row.group) {
           group = catalogGroupLabel(cat, locale);
         }
+        if (row.subgroup && !catalogSubgroups(cat).includes(normMatch(row.subgroup))) {
+          if (!rowIssues.includes('subgroup_mismatch')) rowIssues.push('subgroup_mismatch');
+        } else if (!row.subgroup) {
+          subgroup = catalogSubgroupLabel(cat, locale);
+        }
         code = cat.code;
       }
     } else {
-      // Current template: group + name → stable internal code.
+      // Current / human template: path → stable internal code.
       if (!row.name) {
         if (!rowIssues.includes('required_name')) rowIssues.push('required_name');
       }
@@ -258,7 +337,9 @@ export function validateBudgetPlanAgainstCatalog(
         if (!rowIssues.includes('required_group')) rowIssues.push('required_group');
       }
       if (row.name && row.group) {
-        const hits = matchBudgetCatalogByGroupName(catalog, row.group, row.name);
+        const hits = matchBudgetCatalogByPath(catalog, row.group, row.subgroup, row.name, {
+          subgroupColumnPresent,
+        });
         if (hits.length === 0) {
           if (!rowIssues.includes('unknown_article')) rowIssues.push('unknown_article');
         } else if (hits.length > 1) {
@@ -267,6 +348,7 @@ export function validateBudgetPlanAgainstCatalog(
           cat = hits[0];
           code = cat.code;
           group = catalogGroupLabel(cat, locale) || row.group;
+          subgroup = catalogSubgroupLabel(cat, locale);
           name = catalogArticleLabel(cat, locale) || row.name;
         }
       }
@@ -281,7 +363,7 @@ export function validateBudgetPlanAgainstCatalog(
       });
     }
 
-    return { ...row, code, group, name, issues: rowIssues };
+    return { ...row, code, group, subgroup, name, issues: rowIssues };
   });
 
   const blocking = new Set(previewRows.filter((r) => r.issues.length > 0).map((r) => r.row));
@@ -293,6 +375,7 @@ export function validateBudgetPlanAgainstCatalog(
         ...a,
         code: preview?.code || a.code,
         group: preview?.group ?? a.group,
+        subgroup: preview?.subgroup ?? a.subgroup,
         name: preview?.name ?? a.name,
       };
     })
@@ -343,7 +426,19 @@ export function enrichBudgetPreviewWithExisting(
   return { ...parsed, previewRows };
 }
 
-/** Group preview rows for the unified was/will preview (Group → Article). */
+function addAmountToTotals(
+  target: { total: number; priorTotal: number | null },
+  row: BudgetPlanPreviewRow,
+): void {
+  if (row.amount != null && Number.isFinite(row.amount)) {
+    target.total += row.amount;
+  }
+  if (row.priorAmount != null && Number.isFinite(row.priorAmount)) {
+    target.priorTotal = (target.priorTotal ?? 0) + row.priorAmount;
+  }
+}
+
+/** Nested preview: Group → Subgroup → Article (empty subgroup = direct under group). */
 export function buildBudgetPreviewGroups(previewRows: BudgetPlanPreviewRow[]): {
   groups: BudgetPreviewGroup[];
   grandTotal: number;
@@ -356,17 +451,34 @@ export function buildBudgetPreviewGroups(previewRows: BudgetPlanPreviewRow[]): {
     const key = normMatch(label) || '_';
     let group = map.get(key);
     if (!group) {
-      group = { key, label, rows: [], total: 0, priorTotal: null };
+      group = {
+        key,
+        label,
+        directRows: [],
+        subgroups: [],
+        rows: [],
+        total: 0,
+        priorTotal: null,
+      };
       map.set(key, group);
       order.push(key);
     }
     group.rows.push(row);
-    if (row.amount != null && Number.isFinite(row.amount)) {
-      group.total += row.amount;
+    addAmountToTotals(group, row);
+
+    const subLabel = row.subgroup.trim();
+    if (!subLabel) {
+      group.directRows.push(row);
+      continue;
     }
-    if (row.priorAmount != null && Number.isFinite(row.priorAmount)) {
-      group.priorTotal = (group.priorTotal ?? 0) + row.priorAmount;
+    const subKey = normMatch(subLabel) || '_';
+    let sub = group.subgroups.find((s) => s.key === subKey);
+    if (!sub) {
+      sub = { key: subKey, label: subLabel, rows: [], total: 0, priorTotal: null };
+      group.subgroups.push(sub);
     }
+    sub.rows.push(row);
+    addAmountToTotals(sub, row);
   }
   const groups = order.map((k) => map.get(k)!);
   const grandTotal = groups.reduce((s, g) => s + g.total, 0);
@@ -483,16 +595,24 @@ function isTotalLabel(code: string, name: string): boolean {
   return TOTAL_RE.test(code) || TOTAL_RE.test(name);
 }
 
-export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
+export type BudgetPlanParseMeta = {
+  subgroupColumnPresent: boolean;
+};
+
+export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse & BudgetPlanParseMeta {
   const rows = matrix.filter((row) => row.some((cell) => cellText(cell) !== '' || typeof cell === 'number'));
-  if (rows.length === 0) return { articles: [], previewRows: [], skipped: [], issues: [] };
+  if (rows.length === 0) {
+    return { articles: [], previewRows: [], skipped: [], issues: [], subgroupColumnPresent: false };
+  }
   const header = rows[0].map((cell) => normHeader(cellText(cell)));
   const codeAt = header.findIndex((cell) => headerMatches(CODE_HEADER_SET, cell));
   const groupAt = header.findIndex((cell) => headerMatches(GROUP_HEADER_SET, cell));
+  const subgroupAt = header.findIndex((cell) => headerMatches(SUBGROUP_HEADER_SET, cell));
   const nameAt = header.findIndex((cell) => headerMatches(NAME_HEADER_SET, cell));
   const amountAt = header.findIndex((cell) => headerMatches(AMOUNT_HEADER_SET, cell));
-  // Current template: Group + Article + Amount (no code).
-  // Legacy: Code + Name + Amount (group optional) or four-column with code.
+  const subgroupColumnPresent = subgroupAt >= 0;
+  // Current template: Group + Subgroup + Article + Amount (no code).
+  // Legacy: Code + Name + Amount (group/subgroup optional) or older 3/4-column shapes.
   const modern = codeAt < 0 && groupAt >= 0 && nameAt >= 0 && amountAt >= 0;
   const legacy = codeAt >= 0 && nameAt >= 0 && amountAt >= 0;
   if (!modern && !legacy) {
@@ -501,6 +621,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       previewRows: [],
       skipped: [],
       issues: [{ row: 1, reason: modern || groupAt >= 0 ? 'required_name' : 'required_group' }],
+      subgroupColumnPresent,
     };
   }
 
@@ -508,6 +629,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
     row: index + 2,
     code: codeAt >= 0 ? cellText(row[codeAt]) : '',
     group: groupAt >= 0 ? cellText(row[groupAt]) : '',
+    subgroup: subgroupAt >= 0 ? cellText(row[subgroupAt]) : '',
     name: cellText(row[nameAt]),
     amountCell: row[amountAt],
     amountRaw: amountRawDisplay(row[amountAt]),
@@ -523,11 +645,11 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
   const seenArticles = new Set<string>();
 
   for (const row of body) {
-    if (!row.code && !row.name && !row.group && !row.amountRaw) {
+    if (!row.code && !row.name && !row.group && !row.subgroup && !row.amountRaw) {
       skipped.push({ row: row.row, reason: 'empty' });
       continue;
     }
-    if (isTotalLabel(row.code, row.name) || isTotalLabel(row.group, '')) {
+    if (isTotalLabel(row.code, row.name) || isTotalLabel(row.group, '') || isTotalLabel(row.subgroup, '')) {
       skipped.push({ row: row.row, reason: 'total' });
       continue;
     }
@@ -579,7 +701,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       }
       seenCodes.add(key);
     } else if (row.group && row.name) {
-      const key = `${normMatch(row.group)}|${normMatch(row.name)}`;
+      const key = `${normMatch(row.group)}|${normMatch(row.subgroup)}|${normMatch(row.name)}`;
       duplicate = seenArticles.has(key);
       if (duplicate) {
         rowIssues.push('duplicate_article');
@@ -593,6 +715,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       code: row.code,
       name: row.name,
       group: row.group,
+      subgroup: row.subgroup,
       amount,
       amountBlank,
       amountRaw: row.amountRaw,
@@ -606,6 +729,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
         code: row.code,
         name: row.name,
         group: row.group,
+        subgroup: row.subgroup,
         amount: money.amount,
       });
     }
@@ -621,6 +745,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
     previewRows,
     skipped,
     issues,
+    subgroupColumnPresent,
   };
 }
 
@@ -661,7 +786,7 @@ function sheetMatrix(sheet: XLSX.WorkSheet): unknown[][] {
   return matrix;
 }
 
-export function readBudgetPlanWorkbook(data: ArrayBuffer): BudgetPlanParse {
+export function readBudgetPlanWorkbook(data: ArrayBuffer): BudgetPlanParse & BudgetPlanParseMeta {
   const book = XLSX.read(data, { type: 'array', cellText: true, cellDates: false });
   const sheet = findImportDataSheet(book, BUDGET_PLAN_IMPORT_SPEC);
   if (!sheet) {
@@ -670,6 +795,7 @@ export function readBudgetPlanWorkbook(data: ArrayBuffer): BudgetPlanParse {
       previewRows: [],
       skipped: [],
       issues: [{ row: 1, reason: 'required_code' }],
+      subgroupColumnPresent: false,
     };
   }
   return parseBudgetPlanMatrix(sheetMatrix(sheet));

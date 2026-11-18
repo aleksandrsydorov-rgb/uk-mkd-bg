@@ -1289,6 +1289,10 @@ export interface Database {
           group_name_ru: string | null;
           group_name_en: string | null;
           group_name_bg: string | null;
+          subgroup_code: string | null;
+          subgroup_name_ru: string | null;
+          subgroup_name_en: string | null;
+          subgroup_name_bg: string | null;
         };
         Insert: {
           id?: string;
@@ -1303,6 +1307,10 @@ export interface Database {
           group_name_ru?: string | null;
           group_name_en?: string | null;
           group_name_bg?: string | null;
+          subgroup_code?: string | null;
+          subgroup_name_ru?: string | null;
+          subgroup_name_en?: string | null;
+          subgroup_name_bg?: string | null;
         };
         Update: {
           id?: string;
@@ -1317,6 +1325,10 @@ export interface Database {
           group_name_ru?: string | null;
           group_name_en?: string | null;
           group_name_bg?: string | null;
+          subgroup_code?: string | null;
+          subgroup_name_ru?: string | null;
+          subgroup_name_en?: string | null;
+          subgroup_name_bg?: string | null;
         };
         Relationships: [];
       };

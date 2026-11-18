@@ -421,6 +421,14 @@
   color: #1c2422;
 }
 
+.subgroupTitle {
+  margin: 0;
+  padding-left: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3d4744;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: 1fr;

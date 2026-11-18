@@ -53,7 +53,11 @@ describe.runIf(dockerUp())('budget three-level firstrun UAT', () => {
   it('templates, path match, commit totals, legacy, cleanup', () => {
     fs.mkdirSync(OUT, { recursive: true });
     const propsBefore = Number(psql('select count(*) from properties'));
-    const linesBefore = Number(psql('select count(*) from budget_lines'));
+    const linesBefore = Number(
+      psql(
+        `select count(*) from budget_lines where year_id=(select id from budget_years where calendar_year=2026)`,
+      ),
+    );
     const stageBudget = psql(
       `select stage_key||':'||status from first_run_stage_progress where stage_key='budget'`,
     );
@@ -136,7 +140,8 @@ describe.runIf(dockerUp())('budget three-level firstrun UAT', () => {
     expect(validated.previewRows.find((r) => r.row === 4)?.code).toBe('ops_reserve');
     expect(validated.articles.find((a) => a.code === 'svc_reserve')?.amount).toBe(10);
     expect(validated.previewRows.find((r) => r.code === 'cleaning')?.subgroup).toBe('');
-    expect(validated.issues.some((i) => i.row === 8 && i.reason === 'unknown_article')).toBe(true);
+    expect(validated.previewRows.find((r) => r.row === 8)?.willCreate).toBe(true);
+    expect(validated.articles.find((a) => a.row === 8)?.name).toMatch(/Видеонаблюдение/);
     expect(validated.articles.find((a) => a.code === 'security')?.amount).toBe(0);
     expect(validated.articles.some((a) => a.code === 'ops_reserve')).toBe(false);
 
@@ -221,7 +226,13 @@ describe.runIf(dockerUp())('budget three-level firstrun UAT', () => {
     `);
 
     expect(Number(psql('select count(*) from properties'))).toBe(115);
-    expect(Number(psql('select count(*) from budget_lines'))).toBe(linesBefore);
+    expect(
+      Number(
+        psql(
+          `select count(*) from budget_lines where year_id=(select id from budget_years where calendar_year=2026)`,
+        ),
+      ),
+    ).toBe(linesBefore);
     expect(
       psql(`select stage_key||':'||status from first_run_stage_progress where stage_key='budget'`),
     ).toBe(stageBudget);

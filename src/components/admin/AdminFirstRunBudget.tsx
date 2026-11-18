@@ -33,6 +33,7 @@ import { AppFilePicker } from '@/components/ui/AppFilePicker';
 import { useI18n } from '@/i18n/I18nProvider';
 import { BUDGET_PLAN_IMPORT_SPEC, localizedTemplateFileName } from '@/lib/importTemplates';
 import {
+  budgetArticlePathKey,
   buildBudgetPlanTemplateBuffer,
   buildBudgetPreviewGroups,
   enrichBudgetPreviewWithExisting,
@@ -488,11 +489,21 @@ export function AdminFirstRunBudget({
       subgroupColumnPresent: parsed.subgroupColumnPresent,
     });
     const existingByCode = new Map<string, number>();
+    const existingByPath = new Map<string, number>();
+    const cats = categories.length > 0 ? categories : planCategories;
     for (const line of lines) {
       const code = String(line.category_code ?? '').trim().toLowerCase();
-      if (code) existingByCode.set(code, Number(line.planned_amount_eur) || 0);
+      const amount = Number(line.planned_amount_eur) || 0;
+      if (code) existingByCode.set(code, amount);
+      const cat = cats.find((c) => c.id === line.category_id);
+      const group = cat ? budgetGroupLabel(cat, locale) : '';
+      const subgroup = cat ? budgetSubgroupLabel(cat, locale) : '';
+      const name = cat ? categoryLabel(cat, locale) : line.category_name_ru;
+      if (group && name) {
+        existingByPath.set(budgetArticlePathKey(group, subgroup, name), amount);
+      }
     }
-    const enriched = enrichBudgetPreviewWithExisting(validated, existingByCode);
+    const enriched = enrichBudgetPreviewWithExisting(validated, existingByCode, existingByPath);
     setImportPreview(enriched);
     setImportIssues(enriched.issues);
   }
@@ -828,6 +839,17 @@ export function AdminFirstRunBudget({
                                     ),
                                     ...(row.amountBlank
                                       ? [t('admin.firstRunBudgetImport_blank_amount')]
+                                      : []),
+                                    ...(row.willCreate
+                                      ? [t('admin.firstRunBudgetImportWillCreate')]
+                                      : []),
+                                    ...(row.similarNames && row.similarNames.length > 0
+                                      ? [
+                                          t('admin.firstRunBudgetImportSimilarHint').replace(
+                                            '{names}',
+                                            row.similarNames.join('; '),
+                                          ),
+                                        ]
                                       : []),
                                   ];
                                   const amountText = row.amountBlank

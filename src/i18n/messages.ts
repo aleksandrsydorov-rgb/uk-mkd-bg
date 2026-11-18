@@ -2309,7 +2309,9 @@ export const ru = {
     firstRunBudgetLead:
       'Составьте план расходов УК на календарный год: выберите год, загрузите суммы из шаблона XLSX (группа → подгруппа → статья), проверьте предпросмотр и опубликуйте план. Публикация здесь только фиксирует план в системе — она не утверждает его собранием, не создаёт расходы и не меняет остатки квартир или фонда.',
     firstRunBudgetImportColumnsHint:
-      'Скачайте шаблон: группа, подгруппа и статья уже заполнены из справочника. Внесите только «Плановая сумма, EUR». Пустая подгруппа — статья прямо в группе. 0 — явный ноль; пустая ячейка не меняет сохранённый план. Итоги подгрупп, групп и бюджета считает система. После загрузки проверьте предпросмотр и нажмите «Импортировать».',
+      'Скачайте шаблон: можно заполнить суммы в справочнике или задать свои группы, подгруппы, статьи и суммы (EUR). Известные сочетания сопоставятся; новые в предпросмотре — «Будет создано» и запишутся только после подтверждения. Пустая подгруппа — статья прямо в группе. 0 — явный ноль; пустая ячейка не меняет сохранённый план. Итоги считает система.',
+    firstRunBudgetImportWillCreate: 'Будет создано',
+    firstRunBudgetImportSimilarHint: 'Похожие в справочнике (не объединяются): {names}',
     firstRunBudgetNoCharge:
       '«Опубликовать бюджет» сохраняет план как опубликованный черновик года. Расходы УК, начисления по тарифам и начальные остатки от этой кнопки не создаются и не пересчитываются.',
     firstRunBudgetModuleEnabled: 'Модуль «Бюджет» включён для настройки.',
@@ -2420,9 +2422,9 @@ export const ru = {
     firstRunBudgetImport_duplicate_code: 'статья повторяется в файле',
     firstRunBudgetImport_duplicate_article:
       'статья с этим путём «группа → подгруппа → статья» повторяется в файле',
-    firstRunBudgetImport_unknown_code: 'статья не найдена в справочнике — новые статьи из файла не создаются',
+    firstRunBudgetImport_unknown_code: 'неизвестный код статьи — в пользовательском шаблоне коды не используются',
     firstRunBudgetImport_unknown_article:
-      'статья не найдена в справочнике по пути «группа → подгруппа → статья»',
+      'статья будет создана по пути «группа → подгруппа → статья» после подтверждения',
     firstRunBudgetImport_ambiguous_article:
       'несколько статей справочника совпадают с этим путём — уточните группу, подгруппу или название',
     firstRunBudgetImport_name_mismatch: 'название статьи не совпадает со справочником',
@@ -7945,7 +7947,9 @@ export const en: Messages = {
     firstRunBudgetLead:
       'Set the annual management expense plan: choose the year, upload amounts from the XLSX template (group → subgroup → article), review the preview and publish. Publishing only records the plan — it does not adopt it by a meeting, create expenses, or change apartment or fund balances.',
     firstRunBudgetImportColumnsHint:
-      'Download the template: group, subgroup and article are prefilled from the catalog. Enter only Planned amount, EUR. An empty subgroup means the article sits directly under the group. 0 is an explicit zero; a blank cell leaves the saved plan unchanged. Subgroup, group and budget totals are calculated by the system. After upload, review the preview and import.',
+      'Download the template: fill amounts in the catalog or define your own groups, subgroups, articles and EUR amounts. Known combinations match; new ones show as “Will be created” and save only after confirmation. Empty subgroup — article under the group. 0 is an explicit zero; a blank cell leaves the saved plan unchanged. Totals are calculated by the system.',
+    firstRunBudgetImportWillCreate: 'Will be created',
+    firstRunBudgetImportSimilarHint: 'Similar in catalog (not merged): {names}',
     firstRunBudgetNoCharge:
       'Publishing the budget does not create expenses, tariff charges, or recalculate opening balances.',
     firstRunBudgetModuleEnabled: 'Budget module enabled for setup.',
@@ -8052,9 +8056,9 @@ export const en: Messages = {
     firstRunBudgetImport_duplicate_code: 'article is repeated in the file',
     firstRunBudgetImport_duplicate_article:
       'article with this group → subgroup → article path is repeated in the file',
-    firstRunBudgetImport_unknown_code: 'article not found in the catalog — new articles are not created from the file',
+    firstRunBudgetImport_unknown_code: 'unknown article code — the user template does not use codes',
     firstRunBudgetImport_unknown_article:
-      'article not found in the catalog by group → subgroup → article path',
+      'article will be created on the group → subgroup → article path after confirmation',
     firstRunBudgetImport_ambiguous_article:
       'several catalog articles match this path — clarify the group, subgroup or name',
     firstRunBudgetImport_name_mismatch: 'article name does not match the catalog',
@@ -13575,7 +13579,9 @@ export const bg: Messages = {
     firstRunBudgetLead:
       'Съставете годишния план на разходите на УК: изберете година, качете сумите от XLSX шаблона (група → подгрупа → статия), проверете прегледа и публикувайте. Публикацията само записва плана — не го приема от събрание, не създава разходи и не променя остатъците.',
     firstRunBudgetImportColumnsHint:
-      'Изтеглете шаблона: групата, подгрупата и статията са попълнени от справочника. Въведете само «Планова сума, EUR». Празна подгрупа — статията е директно в групата. 0 е явна нула; празна клетка не променя записания план. Итогите на подгрупи, групи и бюджета се смятат от системата. След качване проверете прегледа и импортирайте.',
+      'Изтеглете шаблона: попълнете суми в справочника или задайте свои групи, подгрупи, статии и суми в EUR. Познатите комбинации се съпоставят; новите са «Ще бъде създадено» и се записват само след потвърждение. Празна подгрупа — статията е в групата. 0 е явна нула; празна клетка не променя записания план. Итогите се смятат от системата.',
+    firstRunBudgetImportWillCreate: 'Ще бъде създадено',
+    firstRunBudgetImportSimilarHint: 'Подобни в справочника (не се обединяват): {names}',
     firstRunBudgetNoCharge:
       'Публикацията на бюджета не създава разходи, тарифни начисления и не преизчислява началните остатъци.',
     firstRunBudgetModuleEnabled: 'Модулът „Бюджет“ е включен за настройка.',
@@ -13685,9 +13691,9 @@ export const bg: Messages = {
     firstRunBudgetImport_duplicate_code: 'статията се повтаря във файла',
     firstRunBudgetImport_duplicate_article:
       'статия с този път «група → подгрупа → статия» се повтаря във файла',
-    firstRunBudgetImport_unknown_code: 'статията не е в справочника — нови статии от файла не се създават',
+    firstRunBudgetImport_unknown_code: 'непознат код на статия — потребителският шаблон не използва кодове',
     firstRunBudgetImport_unknown_article:
-      'статията не е намерена в справочника по път «група → подгрупа → статия»',
+      'статията ще бъде създадена по път «група → подгрупа → статия» след потвърждение',
     firstRunBudgetImport_ambiguous_article:
       'няколко статии в справочника съвпадат с този път — уточнете групата, подгрупата или името',
     firstRunBudgetImport_name_mismatch: 'името на статията не съвпада със справочника',

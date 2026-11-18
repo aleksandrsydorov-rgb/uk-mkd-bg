@@ -220,7 +220,7 @@ describe('budget plan workbook', () => {
     );
   });
 
-  it('rejects wrong path and unknown article against catalog', () => {
+  it('marks unknown paths as will-create (no blocking reject)', () => {
     const parsed = parseBudgetPlanMatrix([
       ['Группа', 'Подгруппа', 'Статья бюджета', 'Плановая сумма, EUR'],
       ['Чужая группа', '', 'Уборка', '10'],
@@ -228,12 +228,13 @@ describe('budget plan workbook', () => {
       ['Содержание и обслуживание', '', 'Опечатка', '8'],
     ]);
     const validated = validate(parsed);
-    expect(validated.issues.map((i) => `${i.row}:${i.reason}`).sort()).toEqual([
-      '2:unknown_article',
-      '3:unknown_article',
-      '4:unknown_article',
-    ]);
-    expect(validated.articles).toEqual([]);
+    expect(validated.issues).toEqual([]);
+    expect(validated.articles).toHaveLength(3);
+    expect(validated.previewRows.filter((r) => r.willCreate)).toHaveLength(3);
+    const similar = validated.previewRows.find((r) => r.row === 2);
+    expect(similar?.similarNames?.some((s) => /Уборка/i.test(s))).toBe(true);
+    const enriched = enrichBudgetPreviewWithExisting(validated, new Map());
+    expect(enriched.previewRows.every((r) => r.action === 'create')).toBe(true);
   });
 
   it('distinguishes same article names in different branches', () => {

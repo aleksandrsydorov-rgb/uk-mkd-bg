@@ -412,11 +412,15 @@ export function FirstRunBookImport({
   errorRows,
   countMismatch,
   committed,
+  objectsDone = false,
+  ownersDone = false,
+  ownersReachable = false,
   commitSummary,
   error,
   needsComplexFix,
   previewObjects,
   previewOwners,
+  onSelectPhase,
   onDownload,
   onFile,
   onCommit,
@@ -442,6 +446,12 @@ export function FirstRunBookImport({
   errorRows: FirstRunErrorRow[];
   countMismatch: { expected: number | null; actual: number | null } | null;
   committed: boolean;
+  /** Apartments substage complete (for dual-step indicator). */
+  objectsDone?: boolean;
+  /** Owners substage complete. */
+  ownersDone?: boolean;
+  /** Owners pill clickable only when apartments are done. */
+  ownersReachable?: boolean;
   /** Counts from the confirmed save response only — never from expected apartment count. */
   commitSummary: {
     clarificationCount: number;
@@ -453,6 +463,7 @@ export function FirstRunBookImport({
   needsComplexFix: boolean;
   previewObjects?: Array<Record<string, string>>;
   previewOwners?: Array<Record<string, string>>;
+  onSelectPhase?: (phase: 'objects' | 'owners') => void;
   onDownload: () => void;
   onFile: (file: File | null) => void;
   onCommit: () => void;
@@ -515,27 +526,37 @@ export function FirstRunBookImport({
       <ol className={styles.bookSubstages} aria-label={t('admin.firstRunStagePropertyBook')}>
         <li
           className={`${styles.bookSubstage} ${!isOwners ? styles.bookSubstageCurrent : ''} ${
-            isOwners || committed ? styles.bookSubstageDone : ''
+            objectsDone ? styles.bookSubstageDone : ''
           }`}
           aria-current={!isOwners ? 'step' : undefined}
         >
-          <span className={styles.bookSubstageIndex}>1</span>
-          <span className={styles.bookSubstageLabel}>{t('admin.firstRunBookSubstageApartments')}</span>
-          {isOwners || (committed && !isOwners) ? (
-            <Check className={styles.bookSubstageCheck} aria-hidden="true" />
-          ) : null}
+          <button
+            type="button"
+            className={styles.bookSubstageButton}
+            disabled={busy || !isOwners}
+            onClick={() => onSelectPhase?.('objects')}
+          >
+            <span className={styles.bookSubstageIndex}>1</span>
+            <span className={styles.bookSubstageLabel}>{t('admin.firstRunBookSubstageApartments')}</span>
+            {objectsDone ? <Check className={styles.bookSubstageCheck} aria-hidden="true" /> : null}
+          </button>
         </li>
         <li
           className={`${styles.bookSubstage} ${isOwners ? styles.bookSubstageCurrent : ''} ${
-            isOwners && committed ? styles.bookSubstageDone : ''
-          }`}
+            ownersDone ? styles.bookSubstageDone : ''
+          } ${!ownersReachable ? styles.bookSubstageLocked : ''}`}
           aria-current={isOwners ? 'step' : undefined}
         >
-          <span className={styles.bookSubstageIndex}>2</span>
-          <span className={styles.bookSubstageLabel}>{t('admin.firstRunBookSubstageOwners')}</span>
-          {isOwners && committed ? (
-            <Check className={styles.bookSubstageCheck} aria-hidden="true" />
-          ) : null}
+          <button
+            type="button"
+            className={styles.bookSubstageButton}
+            disabled={busy || isOwners || !ownersReachable}
+            onClick={() => onSelectPhase?.('owners')}
+          >
+            <span className={styles.bookSubstageIndex}>2</span>
+            <span className={styles.bookSubstageLabel}>{t('admin.firstRunBookSubstageOwners')}</span>
+            {ownersDone ? <Check className={styles.bookSubstageCheck} aria-hidden="true" /> : null}
+          </button>
         </li>
       </ol>
       <FirstRunStatusStack>

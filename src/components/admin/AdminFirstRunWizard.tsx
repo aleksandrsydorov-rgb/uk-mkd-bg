@@ -31,6 +31,8 @@ import {
   parseModuleChoice,
   previousVisibleStage,
   resolveFirstRunResumeStage,
+  resolvePropertyBookEntryStage,
+  canNavigatePropertyBookPhase,
   stageAfterCapitalRepairOpening,
   stageAfterModuleSave,
   canNavigateFirstRunStage,
@@ -52,6 +54,7 @@ import {
   type FirstRunState,
   type FirstRunTariffPrepMap,
   type MetersSelection,
+  type PropertyBookPhase,
 } from '@/lib/firstRun';
 import {
   buildPropertyBookObjectsTemplateBuffer,
@@ -378,6 +381,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   const [bookDry, setBookDry] = useState<BookDryRun | null>(null);
   const [bookObjectsCommitted, setBookObjectsCommitted] = useState(false);
   const [bookOwnersCommitted, setBookOwnersCommitted] = useState(false);
+  /** Last viewed book substage when both are complete (session; default owners on reload). */
+  const [bookLastPhase, setBookLastPhase] = useState<PropertyBookPhase | null>(null);
   const [bookCommitSummary, setBookCommitSummary] = useState<{
     clarificationCount: number;
     importableCount: number | null;
@@ -466,9 +471,9 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     const rows = state.stages;
     setBookObjectsCommitted(bookStageIsComplete('property_book_objects', rows));
     setBookOwnersCommitted(bookStageIsComplete('property_book_owners', rows));
-    // Legacy in-memory stage key → apartments step.
+    // Legacy / sidebar key → concrete apartments or owners substage.
     if (stage === 'property_book') {
-      setStage('property_book_objects');
+      setStage(resolvePropertyBookEntryStage(rows, bookLastPhase));
     }
     setMeterCommitted(
       stage === 'meters_electricity'
@@ -640,8 +645,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   }
 
   function goStage(next: FirstRunStageKey) {
-    resetImportUi(next);
-    setStage(next);
+    const resolved =
+      next === 'property_book'
+        ? resolvePropertyBookEntryStage(state?.stages, bookLastPhase)
+        : next;
+    if (resolved === 'property_book_objects' || resolved === 'property_book_owners') {
+      setBookLastPhase(resolved);
+    }
+    resetImportUi(resolved);
+    setStage(resolved);
   }
 
   async function saveTariffPrep(stageKey: FirstRunStageKey, next: FirstRunTariffPrepMap) {
@@ -820,20 +832,39 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     const saved = await guardLeaveStage();
     if (!saved) return;
 
-    const prev = previousVisibleStage(visibleFirstRunStages(moduleChoice), stage);
+    let prev = previousVisibleStage(visibleFirstRunStages(moduleChoice), stage);
     if (!prev) return;
+    if (prev === 'property_book') {
+      prev = resolvePropertyBookEntryStage(state?.stages, bookLastPhase);
+    }
     if (prev === 'welcome') setWelcomePassed(true);
     goStage(prev);
   }
 
   async function handleStageSelect(target: FirstRunStageKey) {
-    if (busy || target === stage) return;
+    if (busy) return;
     const stages = visibleFirstRunStages(moduleChoice);
     if (!canNavigateFirstRunStage(stages, target, state?.stages)) return;
+    const next =
+      target === 'property_book'
+        ? resolvePropertyBookEntryStage(state?.stages, bookLastPhase)
+        : target;
+    if (next === stage) return;
     const saved = await guardLeaveStage();
     if (!saved) return;
     if (target === 'welcome') setWelcomePassed(true);
     // Local UI jump only — does not write first_run_stage (save RPC never regresses).
+    goStage(next);
+  }
+
+  async function handleBookPhaseSelect(phase: 'objects' | 'owners') {
+    if (busy) return;
+    const target: PropertyBookPhase =
+      phase === 'owners' ? 'property_book_owners' : 'property_book_objects';
+    if (target === stage) return;
+    if (!canNavigatePropertyBookPhase(target, state?.stages)) return;
+    const saved = await guardLeaveStage();
+    if (!saved) return;
     goStage(target);
   }
 
@@ -1922,11 +1953,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           errorRows={errorRows}
           countMismatch={countMismatch ?? (state?.complex.apartment_count != null ? { expected: state.complex.apartment_count, actual: null } : null)}
           committed={bookObjectsCommitted}
+          objectsDone={bookObjectsCommitted}
+          ownersDone={bookOwnersCommitted}
+          ownersReachable={canNavigatePropertyBookPhase('property_book_owners', state?.stages)}
           commitSummary={bookCommitSummary}
           error={error}
           needsComplexFix={bookNeedsComplexFix}
           previewObjects={bookPayload?.objects}
           previewOwners={bookPayload?.owners}
+          onSelectPhase={(phase) => void handleBookPhaseSelect(phase)}
           onDownload={() =>
             downloadXlsx(
               buildPropertyBookObjectsTemplateBuffer(locale),
@@ -1949,11 +1984,15 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           errorRows={errorRows}
           countMismatch={countMismatch}
           committed={bookOwnersCommitted}
+          objectsDone={bookObjectsCommitted}
+          ownersDone={bookOwnersCommitted}
+          ownersReachable={canNavigatePropertyBookPhase('property_book_owners', state?.stages)}
           commitSummary={bookCommitSummary}
           error={error}
           needsComplexFix={false}
           previewObjects={bookPayload?.objects}
           previewOwners={bookPayload?.owners}
+          onSelectPhase={(phase) => void handleBookPhaseSelect(phase)}
           onDownload={() => void onBookOwnersTemplateDownload()}
           onFile={(file) => void onBookOwnersFile(file)}
           onCommit={() => void onBookOwnersCommit()}

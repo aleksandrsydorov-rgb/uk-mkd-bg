@@ -45,6 +45,10 @@ import {
   validateMetersSelection,
   previousVisibleStage,
   visibleFirstRunStages,
+  resolvePropertyBookEntryStage,
+  canNavigatePropertyBookPhase,
+  propertyBookNavComplete,
+  firstRunNavStage,
 } from '@/lib/firstRun';
 import {
   FRESH_INSTALL_ORDERED_FILES,
@@ -469,6 +473,53 @@ describe('R1-RC8 first-run · meters selection (optional)', () => {
     expect(visibleFirstRunStages(null)).not.toContain('meters_select');
   });
 
+  it('collapses Property Book to one sidebar step with dual-phase entry rules', () => {
+    const stages = visibleFirstRunStages({ water: false, electricity: false, internet: false });
+    expect(stages.filter((s) => s.startsWith('property_book'))).toEqual(['property_book']);
+    expect(firstRunNavStage('property_book_objects')).toBe('property_book');
+    expect(firstRunNavStage('property_book_owners')).toBe('property_book');
+    expect(
+      propertyBookNavComplete([
+        { stage_key: 'property_book_objects', status: 'complete' },
+        { stage_key: 'property_book_owners', status: 'in_progress' },
+      ]),
+    ).toBe(false);
+    expect(
+      propertyBookNavComplete([
+        { stage_key: 'property_book_objects', status: 'complete' },
+        { stage_key: 'property_book_owners', status: 'complete' },
+      ]),
+    ).toBe(true);
+    expect(resolvePropertyBookEntryStage([])).toBe('property_book_objects');
+    expect(
+      resolvePropertyBookEntryStage([{ stage_key: 'property_book_objects', status: 'complete' }]),
+    ).toBe('property_book_owners');
+    expect(
+      resolvePropertyBookEntryStage(
+        [
+          { stage_key: 'property_book_objects', status: 'complete' },
+          { stage_key: 'property_book_owners', status: 'complete' },
+        ],
+        null,
+      ),
+    ).toBe('property_book_owners');
+    expect(
+      resolvePropertyBookEntryStage(
+        [
+          { stage_key: 'property_book_objects', status: 'complete' },
+          { stage_key: 'property_book_owners', status: 'complete' },
+        ],
+        'property_book_objects',
+      ),
+    ).toBe('property_book_objects');
+    expect(canNavigatePropertyBookPhase('property_book_owners', [])).toBe(false);
+    expect(
+      canNavigatePropertyBookPhase('property_book_owners', [
+        { stage_key: 'property_book_objects', status: 'complete' },
+      ]),
+    ).toBe(true);
+  });
+
   it('previousVisibleStage follows the visible route and skips disabled stages', () => {
     const minimal = visibleFirstRunStages({ water: false, electricity: false, internet: false });
     expect(previousVisibleStage(minimal, 'welcome')).toBeNull();
@@ -476,12 +527,12 @@ describe('R1-RC8 first-run · meters selection (optional)', () => {
     expect(previousVisibleStage(minimal, 'complex_card')).toBe('modules_select');
     expect(previousVisibleStage(minimal, 'property_book_objects')).toBe('complex_card');
     expect(previousVisibleStage(minimal, 'property_book_owners')).toBe('property_book_objects');
-    expect(previousVisibleStage(minimal, 'support_fee_opening')).toBe('property_book_owners');
+    expect(previousVisibleStage(minimal, 'support_fee_opening')).toBe('property_book');
     expect(previousVisibleStage(minimal, 'complete')).toBe('uk_expenses_opening');
     expect(previousVisibleStage(minimal, 'meters_select')).toBe('property_book_owners');
-    expect(minimal).toContain('property_book_objects');
-    expect(minimal).toContain('property_book_owners');
-    expect(minimal).not.toContain('property_book');
+    expect(minimal).toContain('property_book');
+    expect(minimal).not.toContain('property_book_objects');
+    expect(minimal).not.toContain('property_book_owners');
     expect(minimal).not.toContain('inventory_opening');
     expect(
       visibleFirstRunStages({

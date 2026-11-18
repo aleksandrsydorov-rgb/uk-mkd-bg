@@ -525,14 +525,50 @@ export function visibleFirstRunStages(
     (Array.isArray(selection?.extra) && selection!.extra!.includes('inventory'));
   return FIRST_RUN_STAGES.filter((s) => {
     if (s === 'meters_select') return false;
-    // Sidebar shows apartments + owners as two steps (not a collapsed single item).
-    if (s === 'property_book') return false;
+    // Sidebar: one Property Book item; apartments/owners are in-screen substages only.
+    if (s === 'property_book_objects' || s === 'property_book_owners') return false;
     if (s === 'meters_water') return selection?.water === true;
     if (s === 'meters_electricity') return selection?.electricity === true;
     if (s === 'internet_opening') return selection?.internet === true;
     if (s === 'inventory_opening') return inventoryOn;
     return true;
   });
+}
+
+export type PropertyBookPhase = 'property_book_objects' | 'property_book_owners';
+
+function propertyBookPhaseDone(
+  key: PropertyBookPhase,
+  rows: { stage_key: string; status: string }[] | undefined,
+): boolean {
+  const done = (k: string) =>
+    rows?.some((row) => row.stage_key === k && row.status === 'complete') ?? false;
+  return done(key) || done('property_book');
+}
+
+/**
+ * Which Property Book substage to open from the sidebar / Back into the book.
+ * Unfinished first; if both complete → last viewed, default owners.
+ */
+export function resolvePropertyBookEntryStage(
+  rows: { stage_key: string; status: string }[] | undefined,
+  lastViewed: PropertyBookPhase | null = null,
+): PropertyBookPhase {
+  if (!propertyBookPhaseDone('property_book_objects', rows)) return 'property_book_objects';
+  if (!propertyBookPhaseDone('property_book_owners', rows)) return 'property_book_owners';
+  if (lastViewed === 'property_book_objects' || lastViewed === 'property_book_owners') {
+    return lastViewed;
+  }
+  return 'property_book_owners';
+}
+
+/** Owners substage requires apartments complete (legacy property_book counts as both). */
+export function canNavigatePropertyBookPhase(
+  target: PropertyBookPhase,
+  rows: { stage_key: string; status: string }[] | undefined,
+): boolean {
+  if (target === 'property_book_objects') return true;
+  return propertyBookPhaseDone('property_book_objects', rows);
 }
 
 /** First incomplete visible stage (or `complete` when all done). Resume / “last reached”. */
@@ -578,10 +614,9 @@ export function previousVisibleStage(
   current: FirstRunStageKey,
 ): FirstRunStageKey | null {
   if (current === 'meters_select') return 'property_book_owners';
-  if (current === 'property_book') {
-    // Legacy collapsed key when the sidebar lists apartments/owners separately.
-    return stages.includes('property_book_objects') ? 'complex_card' : 'complex_card';
-  }
+  // Inside the book: Back walks owners → apartments → complex card (not the sidebar list).
+  if (current === 'property_book_owners') return 'property_book_objects';
+  if (current === 'property_book_objects' || current === 'property_book') return 'complex_card';
   const index = stages.indexOf(current);
   if (index <= 0) return null;
   return stages[index - 1] ?? null;

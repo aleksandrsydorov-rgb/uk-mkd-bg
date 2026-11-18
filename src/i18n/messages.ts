@@ -2307,7 +2307,7 @@ export const ru = {
       'Настройте годовой план расходов УК: год, суммы по категориям, публикация. Расходы и начисления не создаются.',
     firstRunBudgetContinueBlocked: 'Бюджет пока недоступен',
     firstRunBudgetLead:
-      'Составьте план расходов УК на календарный год: выберите год, заполните суммы по статьям (вручную или из шаблона XLSX) и опубликуйте план. Публикация здесь только фиксирует план в системе — она не утверждает его собранием, не создаёт расходы и не меняет остатки квартир или фонда.',
+      'Составьте план расходов УК на календарный год: выберите год, загрузите суммы из шаблона XLSX (группа → подгруппа → статья), проверьте предпросмотр и опубликуйте план. Публикация здесь только фиксирует план в системе — она не утверждает его собранием, не создаёт расходы и не меняет остатки квартир или фонда.',
     firstRunBudgetImportColumnsHint:
       'Скачайте шаблон: группа, подгруппа и статья уже заполнены из справочника. Внесите только «Плановая сумма, EUR». Пустая подгруппа — статья прямо в группе. 0 — явный ноль; пустая ячейка не меняет сохранённый план. Итоги подгрупп, групп и бюджета считает система. После загрузки проверьте предпросмотр и нажмите «Импортировать».',
     firstRunBudgetNoCharge:
@@ -2320,13 +2320,16 @@ export const ru = {
     firstRunBudgetYearClosed: 'Этот год закрыт. Выберите другой год.',
     firstRunBudgetYearReady: 'Черновик года готов к заполнению.',
     firstRunBudgetExistingPublished: 'Опубликованный бюджет на этот год уже есть — без перезаписи.',
-    firstRunBudgetAmountsTitle: 'Суммы плана · {year}',
+    firstRunBudgetAmountsTitle: 'План из шаблона · {year}',
     firstRunBudgetAmountInvalid: 'Сумма по статье должна быть числом ≥ 0.',
     firstRunBudgetBasisNote: 'Основание плана (необязательно)',
     firstRunBudgetBasisNotePh: 'Например: Протокол ОС № 2 от 10.01.2026',
     firstRunBudgetBasisNoteHint:
       'Необязательно. Номер или название документа, которым утверждён план. Не заменяет решение собрания в разделе документов.',
     firstRunBudgetReviewContinue: 'К проверке перед публикацией',
+    firstRunBudgetReviewReady: 'План готов к проверке. Публикация — отдельным шагом.',
+    firstRunBudgetNeedImport: 'Сначала загрузите и подтвердите план из файла XLSX.',
+    firstRunBudgetSavedTitle: 'Сохранённый план',
     firstRunBudgetAmountsSaved: 'Суммы плана сохранены. Можно перейти к проверке и публикации.',
     firstRunBudgetBackYear: 'Сменить год',
     firstRunBudgetReviewTitle: 'Проверка плана перед публикацией · {year}',
@@ -2373,12 +2376,12 @@ export const ru = {
     firstRunBudgetPublishHint:
       'Сохраняет план как опубликованный на выбранный год. Не создаёт расходы, платежи и начисления. После публикации можно перейти к начальным расходам.',
     firstRunBudgetPublished: 'План бюджета опубликован в системе.',
-    firstRunBudgetBackAmounts: 'Изменить суммы',
+    firstRunBudgetBackAmounts: 'Вернуться к импорту плана',
     firstRunBudgetContinue: 'Далее — к начальным расходам',
     firstRunBudgetCommitted: 'Этап бюджета завершён.',
     firstRunBudgetDownload: 'Скачать шаблон XLSX',
     firstRunBudgetUpload: 'Загрузить заполненный план',
-    firstRunBudgetImportConfirm: 'Импортировать суммы из файла',
+    firstRunBudgetImportConfirm: 'Подтвердить сохранение плана',
     firstRunBudgetImportSaved: 'Статьи бюджета сохранены.',
     firstRunBudgetImportSavedDetail:
       'Сохранено статей: {count}. Год: {year}. Сумма плана: {total}.',
@@ -7940,7 +7943,7 @@ export const en: Messages = {
       'Set the annual management expense plan: year, category amounts, publish. No expenses or charges are created.',
     firstRunBudgetContinueBlocked: 'Budget not available yet',
     firstRunBudgetLead:
-      'Mandatory annual management expense plan. The complex defines the articles and amounts. Publishing does not adopt the plan, create expenses, or change opening balances.',
+      'Set the annual management expense plan: choose the year, upload amounts from the XLSX template (group → subgroup → article), review the preview and publish. Publishing only records the plan — it does not adopt it by a meeting, create expenses, or change apartment or fund balances.',
     firstRunBudgetImportColumnsHint:
       'Download the template: group, subgroup and article are prefilled from the catalog. Enter only Planned amount, EUR. An empty subgroup means the article sits directly under the group. 0 is an explicit zero; a blank cell leaves the saved plan unchanged. Subgroup, group and budget totals are calculated by the system. After upload, review the preview and import.',
     firstRunBudgetNoCharge:
@@ -7953,16 +7956,19 @@ export const en: Messages = {
     firstRunBudgetYearClosed: 'That year is closed. Pick another year.',
     firstRunBudgetYearReady: 'Year draft is ready to fill.',
     firstRunBudgetExistingPublished: 'A published budget for this year already exists — not overwritten.',
-    firstRunBudgetAmountsTitle: 'Plan amounts · {year}',
+    firstRunBudgetAmountsTitle: 'Plan from template · {year}',
     firstRunBudgetAmountInvalid: 'Each category amount must be a number ≥ 0.',
     firstRunBudgetBasisNote: 'Basis note (optional)',
     firstRunBudgetBasisNoteHint:
       'Optional. Number or title of the document that approved the plan. It does not replace a meeting decision in Documents.',
     firstRunBudgetBasisNotePh: 'Decision number/date or reference',
-    firstRunBudgetReviewContinue: 'Review',
+    firstRunBudgetReviewContinue: 'Continue to review before publish',
+    firstRunBudgetReviewReady: 'Plan is ready for review. Publishing is a separate step.',
+    firstRunBudgetNeedImport: 'First upload and confirm the plan from an XLSX file.',
+    firstRunBudgetSavedTitle: 'Saved plan',
     firstRunBudgetAmountsSaved: 'Amounts saved.',
     firstRunBudgetBackYear: 'Change year',
-    firstRunBudgetReviewTitle: 'Plan review · {year}',
+    firstRunBudgetReviewTitle: 'Plan review before publish · {year}',
     firstRunBudgetTotal: 'Total plan: {total}',
     firstRunBudgetStatus: 'Status',
     firstRunErrUnknown: 'The action could not be completed. Try again.',
@@ -8003,12 +8009,12 @@ export const en: Messages = {
     firstRunBudgetPublishHint:
       'Saves the plan as published for the selected year. Does not create expenses, payments, or charges. After publish you can continue to opening expenses.',
     firstRunBudgetPublished: 'Budget published.',
-    firstRunBudgetBackAmounts: 'Edit amounts',
+    firstRunBudgetBackAmounts: 'Back to plan import',
     firstRunBudgetContinue: 'Next — opening expenses',
     firstRunBudgetCommitted: 'Budget stage complete.',
     firstRunBudgetDownload: 'Download template',
     firstRunBudgetUpload: 'Upload plan',
-    firstRunBudgetImportConfirm: 'Import',
+    firstRunBudgetImportConfirm: 'Confirm saving the plan',
     firstRunBudgetImportSaved: 'Budget articles saved.',
     firstRunBudgetImportSavedDetail: 'Saved articles: {count}. Year: {year}. Plan total: {total}.',
     firstRunBudgetImportUnchangedDetail:
@@ -13567,7 +13573,7 @@ export const bg: Messages = {
       'Настройте годишния план на разходите на УК: година, суми по пера, публикация. Не се създават разходи или начисления.',
     firstRunBudgetContinueBlocked: 'Бюджетът все още недостъпен',
     firstRunBudgetLead:
-      'Задължителен годишен план на разходите на УК. Перата и сумите определя комплексът. Публикацията не приема плана от събрание, не създава разходи и не променя остатъците.',
+      'Съставете годишния план на разходите на УК: изберете година, качете сумите от XLSX шаблона (група → подгрупа → статия), проверете прегледа и публикувайте. Публикацията само записва плана — не го приема от събрание, не създава разходи и не променя остатъците.',
     firstRunBudgetImportColumnsHint:
       'Изтеглете шаблона: групата, подгрупата и статията са попълнени от справочника. Въведете само «Планова сума, EUR». Празна подгрупа — статията е директно в групата. 0 е явна нула; празна клетка не променя записания план. Итогите на подгрупи, групи и бюджета се смятат от системата. След качване проверете прегледа и импортирайте.',
     firstRunBudgetNoCharge:
@@ -13580,16 +13586,19 @@ export const bg: Messages = {
     firstRunBudgetYearClosed: 'Тази година е затворена. Изберете друга.',
     firstRunBudgetYearReady: 'Черновата на годината е готова за попълване.',
     firstRunBudgetExistingPublished: 'Вече има публикуван бюджет за тази година — без презапис.',
-    firstRunBudgetAmountsTitle: 'Суми на плана · {year}',
+    firstRunBudgetAmountsTitle: 'План от шаблона · {year}',
     firstRunBudgetAmountInvalid: 'Сумата по перо трябва да е число ≥ 0.',
     firstRunBudgetBasisNote: 'Бележка-основание (по желание)',
     firstRunBudgetBasisNoteHint:
       'Незадължително. Номер или име на документа, с който е одобрен планът. Не замества решение на събрание в Документи.',
     firstRunBudgetBasisNotePh: 'Номер/дата на решение или препратка',
-    firstRunBudgetReviewContinue: 'Към преглед',
+    firstRunBudgetReviewContinue: 'Към проверка преди публикация',
+    firstRunBudgetReviewReady: 'Планът е готов за проверка. Публикацията е отделна стъпка.',
+    firstRunBudgetNeedImport: 'Първо качете и потвърдете плана от XLSX файл.',
+    firstRunBudgetSavedTitle: 'Записан план',
     firstRunBudgetAmountsSaved: 'Сумите са записани.',
     firstRunBudgetBackYear: 'Смяна на годината',
-    firstRunBudgetReviewTitle: 'Преглед на плана · {year}',
+    firstRunBudgetReviewTitle: 'Проверка на плана преди публикация · {year}',
     firstRunBudgetTotal: 'Общо план: {total}',
     firstRunBudgetStatus: 'Статус',
     firstRunErrUnknown: 'Действието не беше извършено. Опитайте отново.',
@@ -13632,12 +13641,12 @@ export const bg: Messages = {
     firstRunBudgetPublishHint:
       'Запазва плана като публикуван за избраната година. Не създава разходи, плащания и начисления. След публикация можете да продължите към началните разходи.',
     firstRunBudgetPublished: 'Бюджетът е публикуван.',
-    firstRunBudgetBackAmounts: 'Промяна на сумите',
+    firstRunBudgetBackAmounts: 'Назад към импорта на плана',
     firstRunBudgetContinue: 'Напред — към началните разходи',
     firstRunBudgetCommitted: 'Етапът с бюджета е завършен.',
     firstRunBudgetDownload: 'Изтегли шаблона',
     firstRunBudgetUpload: 'Качи плана',
-    firstRunBudgetImportConfirm: 'Импортирай',
+    firstRunBudgetImportConfirm: 'Потвърди запис на плана',
     firstRunBudgetImportSaved: 'Перата на бюджета са записани.',
     firstRunBudgetImportSavedDetail:
       'Записани пера: {count}. Година: {year}. Сума на плана: {total}.',

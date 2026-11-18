@@ -41,6 +41,8 @@ import {
   validateBudgetPlanAgainstCatalog,
   type BudgetPlanIssue,
   type BudgetPlanParse,
+  type BudgetPlanPreviewRow,
+  type BudgetPreviewGroup,
 } from '@/lib/budgetPlanImport';
 
 type UntypedRpc = {
@@ -58,11 +60,108 @@ function isPublishedLike(status: string | null | undefined): boolean {
   return status === 'published' || status === 'adopted';
 }
 
+/** Saved plan lines → nested Group → Subgroup → Article rows (no zero-fill for missing cats). */
+function savedLinesToPreviewRows(
+  cats: BudgetCategory[],
+  lines: BudgetLineRow[],
+  locale: string,
+): BudgetPlanPreviewRow[] {
+  const byId = new Map(cats.map((cat) => [cat.id, cat]));
+  return lines.map((line, index) => {
+    const cat = byId.get(line.category_id);
+    return {
+      row: index + 1,
+      code: line.category_code,
+      name: cat ? categoryLabel(cat, locale) : line.category_name_ru,
+      group: cat ? budgetGroupLabel(cat, locale) : '—',
+      subgroup: cat ? budgetSubgroupLabel(cat, locale) : '',
+      amount: Number(line.planned_amount_eur) || 0,
+      amountBlank: false,
+      amountRaw: String(line.planned_amount_eur),
+      issues: [],
+      priorAmount: Number(line.planned_amount_eur) || 0,
+      action: 'unchanged',
+    };
+  });
+}
+
 export type FirstRunBudgetNavHandle = {
   /** true when Back stayed inside budget sub-steps. */
   handleBack: () => boolean;
   persistDraft: () => Promise<boolean>;
 };
+
+function SavedBudgetStructureTable({
+  grouped,
+  t,
+}: {
+  grouped: { groups: BudgetPreviewGroup[]; grandTotal: number };
+  t: (key: string) => string;
+}) {
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>{t('admin.firstRunBudgetImportColSubgroup')}</th>
+            <th>{t('admin.firstRunBudgetImportColName')}</th>
+            <th>{t('admin.firstRunBudgetImportColAmount')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grouped.groups.map((group) => (
+            <Fragment key={`saved-g-${group.key}`}>
+              <tr>
+                <td colSpan={3} className={styles.groupTitle}>
+                  {group.label}
+                </td>
+              </tr>
+              {group.directRows.map((row) => (
+                <tr key={`saved-${row.code}-${row.row}`}>
+                  <td>—</td>
+                  <td>{row.name || '—'}</td>
+                  <td>{moneyEur(row.amount ?? 0)}</td>
+                </tr>
+              ))}
+              {group.subgroups.map((sub) => (
+                <Fragment key={`saved-sg-${group.key}-${sub.key}`}>
+                  <tr>
+                    <td colSpan={3} className={styles.subgroupTitle}>
+                      {sub.label}
+                    </td>
+                  </tr>
+                  {sub.rows.map((row) => (
+                    <tr key={`saved-${row.code}-${row.row}`}>
+                      <td>{sub.label}</td>
+                      <td>{row.name || '—'}</td>
+                      <td>{moneyEur(row.amount ?? 0)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={2}>
+                      {t('admin.firstRunBudgetImportSubgroupTotal').replace('{subgroup}', sub.label)}
+                    </td>
+                    <td>{moneyEur(sub.total)}</td>
+                  </tr>
+                </Fragment>
+              ))}
+              <tr>
+                <td colSpan={2}>
+                  {t('admin.firstRunBudgetImportGroupTotal').replace('{group}', group.label)}
+                </td>
+                <td>{moneyEur(group.total)}</td>
+              </tr>
+            </Fragment>
+          ))}
+          <tr>
+            <td colSpan={2}>{t('admin.firstRunBudgetImportGrandTotal')}</td>
+            <td>{moneyEur(grouped.grandTotal)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function AdminFirstRunBudget({
   supabase,
@@ -93,7 +192,8 @@ export function AdminFirstRunBudget({
   );
   const [yearId, setYearId] = useState<string | null>(initial.yearId);
   const [yearStatus, setYearStatus] = useState<string | null>(null);
-  const [decisionNote, setDecisionNote] = useState(initial.decisionNote);
+  // Kept for draft round-trip only — never shown or required in the wizard UI.
+  const [decisionNote] = useState(initial.decisionNote);
   const [zeroConfirmed, setZeroConfirmed] = useState(initial.zeroConfirmed);
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
   const [planCategories, setPlanCategories] = useState<BudgetCategory[]>([]);
@@ -101,7 +201,6 @@ export function AdminFirstRunBudget({
   const [importPreview, setImportPreview] = useState<BudgetPlanParse | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [lines, setLines] = useState<BudgetLineRow[]>([]);
-  const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -109,14 +208,17 @@ export function AdminFirstRunBudget({
 
   const locked = isPublishedLike(yearStatus);
 
-  const total = useMemo(() => {
-    return Object.values(amounts).reduce((acc, raw) => {
-      const n = Number(String(raw).replace(',', '.'));
-      return acc + (Number.isFinite(n) ? n : 0);
-    }, 0);
-  }, [amounts]);
+  const total = useMemo(
+    () => lines.reduce((acc, line) => acc + (Number(line.planned_amount_eur) || 0), 0),
+    [lines],
+  );
 
   const needsZeroConfirm = budgetPlanRequiresZeroConfirmation(total);
+
+  const savedGrouped = useMemo(() => {
+    const cats = planCategories.length > 0 ? planCategories : categories;
+    return buildBudgetPreviewGroups(savedLinesToPreviewRows(cats, lines, locale));
+  }, [categories, lines, locale, planCategories]);
 
   const persistDraft = useCallback(
     async (next: FirstRunBudgetDraft) => {
@@ -200,19 +302,6 @@ export function AdminFirstRunBudget({
     [supabase],
   );
 
-  const seedAmountsForCategories = useCallback(
-    (cats: BudgetCategory[], prior: Record<string, string> = {}) => {
-      const map: Record<string, string> = {};
-      for (const cat of cats) {
-        map[cat.id] = prior[cat.id] ?? '0';
-      }
-      setPlanCategories(cats);
-      setAmounts(map);
-      return map;
-    },
-    [],
-  );
-
   const loadLines = useCallback(
     async (id: string, cats: BudgetCategory[]) => {
       const { data, error } = await supabase.rpc('admin_list_budget_lines', { p_year_id: id });
@@ -225,66 +314,11 @@ export function AdminFirstRunBudget({
         planned_amount_eur: Number(l.planned_amount_eur),
       }));
       setLines(list);
-      const prior: Record<string, string> = {};
-      for (const line of list) prior[line.category_id] = String(line.planned_amount_eur);
-      // Always edit the full active catalogue so publish never hits "no lines"
-      // when the operator only confirms a zero plan without prior import.
-      const planned =
-        cats.length > 0
-          ? cats
-          : list.map((line) => {
-              const known = cats.find((cat) => cat.id === line.category_id);
-              return (
-                known ?? {
-                  id: line.category_id,
-                  code: line.category_code,
-                  name_ru: line.category_name_ru,
-                  name_en: line.category_name_ru,
-                  name_bg: line.category_name_ru,
-                }
-              );
-            });
-      seedAmountsForCategories(planned, prior);
+      // Catalog for labels/template only — never invent zero amounts for missing lines.
+      setPlanCategories(cats.length > 0 ? cats : []);
       return list;
     },
-    [seedAmountsForCategories, supabase],
-  );
-
-  const commitPlanFromAmounts = useCallback(
-    async (yearNum: number, cats: BudgetCategory[]) => {
-      if (cats.length === 0) {
-        throw new Error(t('admin.firstRunErrBudgetLines'));
-      }
-      const rows: Array<{
-        row: number;
-        code: string;
-        name: string;
-        group: string;
-        amount: string;
-      }> = [];
-      for (let i = 0; i < cats.length; i += 1) {
-        const cat = cats[i]!;
-        const raw = amounts[cat.id] ?? '0';
-        const n = Number(String(raw).replace(',', '.'));
-        if (!Number.isFinite(n) || n < 0) {
-          throw new Error(t('admin.firstRunBudgetAmountInvalid'));
-        }
-        rows.push({
-          row: i + 1,
-          code: cat.code,
-          name: cat.name_ru || cat.name_en || cat.name_bg || cat.code,
-          group: budgetGroupLabel(cat, locale),
-          amount: n.toFixed(2),
-        });
-      }
-      const { data, error } = await untyped(supabase).rpc('admin_commit_budget_plan', {
-        p_calendar_year: yearNum,
-        p_rows: rows,
-      });
-      if (error) throw error;
-      return data;
-    },
-    [amounts, locale, supabase, t],
+    [supabase],
   );
 
   const presentFormError = useCallback(
@@ -300,10 +334,9 @@ export function AdminFirstRunBudget({
       const cats = await loadCategories();
       if (initial.calendarYear != null) {
         const existing = await loadYearByCalendar(initial.calendarYear);
-        if (existing) {
+          if (existing) {
           setYearId(existing.id);
           setYearStatus(existing.status);
-          if (existing.decision_note) setDecisionNote(existing.decision_note);
           await loadLines(existing.id, cats);
           if (isPublishedLike(existing.status)) {
             setStep('done');
@@ -349,11 +382,10 @@ export function AdminFirstRunBudget({
       }
       setYearId(existing?.id ?? null);
       setYearStatus(existing?.status ?? 'draft');
-      if (existing?.decision_note) setDecisionNote(String(existing.decision_note));
+      setPlanCategories(cats);
       if (existing) await loadLines(existing.id, cats);
       else {
         setLines([]);
-        seedAmountsForCategories(cats);
       }
       const nextStep: FirstRunBudgetDraft['step'] = isPublishedLike(existing?.status)
         ? 'done'
@@ -379,38 +411,29 @@ export function AdminFirstRunBudget({
     }
   }
 
-  async function onSaveAmounts(e: React.FormEvent) {
-    e.preventDefault();
+  /** Navigate to review only — never re-commit amounts from a removed form. */
+  async function onGoToReview() {
     if (locked) return;
-    onBusy(true);
+    if (lines.length === 0) {
+      setFormError(t('admin.firstRunBudgetNeedImport'));
+      return;
+    }
     setFormError(null);
-    setNote(null);
+    const yearNum = Number(calendarYear);
+    const next: FirstRunBudgetDraft = {
+      calendarYear: yearNum,
+      yearId,
+      decisionNote,
+      zeroConfirmed: false,
+      step: 'review',
+    };
+    setZeroConfirmed(false);
+    setStep('review');
     try {
-      const yearNum = Number(calendarYear);
-      const cats = (categories.length > 0 ? categories : await loadCategories()).slice();
-      if (cats.length === 0) throw new Error(t('admin.firstRunErrBudgetLines'));
-      // Atomic draft write: all active categories in one RPC (no partial upserts).
-      await commitPlanFromAmounts(yearNum, cats);
-      const existing = await loadYearByCalendar(yearNum);
-      if (!existing) throw new Error(t('admin.firstRunErrBudgetLines'));
-      setYearId(existing.id);
-      setYearStatus(existing.status);
-      await loadLines(existing.id, cats);
-      const next: FirstRunBudgetDraft = {
-        calendarYear: yearNum,
-        yearId: existing.id,
-        decisionNote,
-        zeroConfirmed: false,
-        step: 'review',
-      };
-      setZeroConfirmed(false);
-      setStep('review');
       await persistDraft(next);
-      setNote(t('admin.firstRunBudgetAmountsSaved'));
+      setNote(t('admin.firstRunBudgetReviewReady'));
     } catch (err: unknown) {
       setFormError(presentFormError(err));
-    } finally {
-      onBusy(false);
     }
   }
 
@@ -419,12 +442,6 @@ export function AdminFirstRunBudget({
       '{value}',
       issue.raw != null && String(issue.raw).trim() !== '' ? String(issue.raw) : '—',
     );
-  }
-
-  function issueText(issue: BudgetPlanIssue): string {
-    const row = t('admin.firstRunBudgetImportRow').replace('{row}', String(issue.row));
-    const reason = issueReasonText(issue);
-    return `${row}: ${reason}`;
   }
 
   function downloadTemplate() {
@@ -474,15 +491,6 @@ export function AdminFirstRunBudget({
     for (const line of lines) {
       const code = String(line.category_code ?? '').trim().toLowerCase();
       if (code) existingByCode.set(code, Number(line.planned_amount_eur) || 0);
-    }
-    // Also map via planCategories id → code when lines empty but amounts seeded.
-    for (const cat of planCategories) {
-      const code = cat.code.trim().toLowerCase();
-      if (!code || existingByCode.has(code)) continue;
-      const raw = amounts[cat.id];
-      if (raw == null || String(raw).trim() === '') continue;
-      const n = Number(String(raw).replace(',', '.'));
-      if (Number.isFinite(n)) existingByCode.set(code, n);
     }
     const enriched = enrichBudgetPreviewWithExisting(validated, existingByCode);
     setImportPreview(enriched);
@@ -551,7 +559,16 @@ export function AdminFirstRunBudget({
           .replace('{year}', String(year))
           .replace('{total}', moneyEur(savedTotal)),
       );
-      setStep('amounts');
+      const next: FirstRunBudgetDraft = {
+        calendarYear: year,
+        yearId: existing.id,
+        decisionNote,
+        zeroConfirmed: false,
+        step: 'review',
+      };
+      setZeroConfirmed(false);
+      setStep('review');
+      await persistDraft(next);
     } catch (err: unknown) {
       console.error('admin_commit_budget_plan failed', err);
       setFormError(presentFormError(err));
@@ -565,25 +582,20 @@ export function AdminFirstRunBudget({
     setFormError(null);
     setNote(null);
     try {
+      if (lines.length === 0) {
+        throw new Error(t('admin.firstRunBudgetNeedImport'));
+      }
       if (needsZeroConfirm && !zeroConfirmed) {
         throw new Error(t('admin.firstRunBudgetZeroRequired'));
       }
       const yearNum = Number(calendarYear);
-      const cats = (categories.length > 0 ? categories : await loadCategories()).slice();
-      if (cats.length === 0) throw new Error(t('admin.firstRunErrBudgetLines'));
-
       let publishYearId = yearId;
-      if (!locked) {
-        // Never publish an empty year: commit every active category first
-        // (zeros are valid when the operator confirmed a zero plan).
-        await commitPlanFromAmounts(yearNum, cats);
-        const created = await loadYearByCalendar(yearNum);
-        if (!created) throw new Error(t('admin.firstRunErrBudgetLines'));
-        publishYearId = created.id;
-        setYearId(created.id);
-        await loadLines(created.id, cats);
+      if (!publishYearId) {
+        const existing = await loadYearByCalendar(yearNum);
+        if (!existing) throw new Error(t('admin.firstRunErrBudgetLines'));
+        publishYearId = existing.id;
+        setYearId(existing.id);
       }
-      if (!publishYearId) throw new Error(t('admin.firstRunErrBudgetLines'));
 
       const draftPayload: FirstRunBudgetDraft = {
         calendarYear: yearNum,
@@ -596,8 +608,8 @@ export function AdminFirstRunBudget({
       await persistDraft(draftPayload);
 
       if (!locked) {
-        // First-run publishes the expense plan only. Adoption (GM decision) is a
-        // separate admin action — never auto-adopt from the wizard note field.
+        // Publish already-imported lines only. Do not rewrite amounts.
+        // Adoption (GM decision) is a separate admin action — never invent a basis note.
         const { error: pubErr } = await supabase.rpc('admin_set_budget_year_status', {
           p_year_id: publishYearId,
           p_status: 'published',
@@ -670,7 +682,7 @@ export function AdminFirstRunBudget({
       ) : null}
 
       {step === 'amounts' && !locked ? (
-        <form onSubmit={(e) => void onSaveAmounts(e)} className={styles.group}>
+        <div className={styles.group}>
           <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetAmountsTitle').replace('{year}', calendarYear)}
           </p>
@@ -945,34 +957,22 @@ export function AdminFirstRunBudget({
             </div>
           </div>
           {importNote ? <p className={styles.okNote}>{importNote}</p> : null}
-          <div className={styles.formGrid}>
-            {planCategories.map((cat) => (
-              <label key={cat.id} className={styles.field}>
-                {categoryLabel(cat, locale)}
-                <input
-                  className={styles.input}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={amounts[cat.id] ?? '0'}
-                  onChange={(e) => setAmounts((m) => ({ ...m, [cat.id]: e.target.value }))}
-                  required
-                />
-              </label>
-            ))}
-            <label className={`${styles.field} ${styles.span2}`}>
-              {t('admin.firstRunBudgetBasisNote')}
-              <input
-                className={styles.input}
-                value={decisionNote}
-                onChange={(e) => setDecisionNote(e.target.value)}
-                placeholder={t('admin.firstRunBudgetBasisNotePh')}
-              />
-              <span className={styles.hint}>{t('admin.firstRunBudgetBasisNoteHint')}</span>
-            </label>
-          </div>
+          {lines.length > 0 ? (
+            <div className={styles.stepBlock} style={{ marginTop: 12 }}>
+              <p className={styles.groupTitle}>{t('admin.firstRunBudgetSavedTitle')}</p>
+              <SavedBudgetStructureTable grouped={savedGrouped} t={t} />
+              <p className={styles.okNote}>
+                {t('admin.firstRunBudgetTotal').replace('{total}', moneyEur(total))}
+              </p>
+            </div>
+          ) : null}
           <FirstRunStageActions>
-            <button type="submit" className={styles.primary} disabled={busy}>
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={busy || lines.length === 0}
+              onClick={() => void onGoToReview()}
+            >
               {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetReviewContinue')}
             </button>
             <button
@@ -984,7 +984,7 @@ export function AdminFirstRunBudget({
               {t('admin.firstRunBudgetBackYear')}
             </button>
           </FirstRunStageActions>
-        </form>
+        </div>
       ) : null}
 
       {(step === 'review' || step === 'done' || locked) ? (
@@ -992,22 +992,14 @@ export function AdminFirstRunBudget({
           <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetReviewTitle').replace('{year}', calendarYear)}
           </p>
-          <ul className={styles.reviewList}>
-            {planCategories.map((cat) => (
-              <li key={cat.id} className={styles.reviewRow}>
-                <span className={styles.reviewName}>{categoryLabel(cat, locale)}</span>
-                <span className={styles.reviewAmt}>{moneyEur(Number(amounts[cat.id] ?? 0))}</span>
-              </li>
-            ))}
-          </ul>
+          {lines.length > 0 ? (
+            <SavedBudgetStructureTable grouped={savedGrouped} t={t} />
+          ) : (
+            <p className={styles.hint}>{t('admin.firstRunBudgetNeedImport')}</p>
+          )}
           <p className={styles.groupTitle}>
             {t('admin.firstRunBudgetTotal').replace('{total}', moneyEur(total))}
           </p>
-          {decisionNote.trim() ? (
-            <p className={styles.hint}>
-              {t('admin.firstRunBudgetBasisNote')}: {decisionNote.trim()}
-            </p>
-          ) : null}
           {yearStatus ? (
             <p className={styles.hint}>
               {t('admin.firstRunBudgetStatus')}: {budgetYearStatusLabel(yearStatus, t)}
@@ -1031,7 +1023,7 @@ export function AdminFirstRunBudget({
                 <button
                   type="button"
                   className={styles.primary}
-                  disabled={busy || (needsZeroConfirm && !zeroConfirmed)}
+                  disabled={busy || lines.length === 0 || (needsZeroConfirm && !zeroConfirmed)}
                   onClick={() => void onPublish()}
                 >
                   {busy ? t('admin.firstRunBusy') : t('admin.firstRunBudgetPublish')}

@@ -28,18 +28,21 @@ export const INVENTORY_IMPORT_SPEC: ImportTemplateSpec = {
       'Обязательные поля: тип, название и собственность.',
       'Оборудование: обязателен инвентарный номер. Расходники: обязательны единица и начальный остаток (или количество); артикул можно оставить пустым — он создастся сам.',
       'Категория и место хранения — название или код. Новые будут созданы при импорте. Оценка только для справки — финансовых операций не создаётся.',
+      'Повторный импорт без дублей: оборудование сопоставляется по инвентарному номеру, расходники — по артикулу (SKU). Уже существующие позиции пропускаются.',
     ],
     bg: [
       'Попълвайте само листа «Инвентар». Примерите в тази инструкция не се импортират. Вътрешни номера (ID) не се въвеждат.',
       'Задължителни полета: вид, наименование и собственост.',
       'Оборудване: задължителен е инвентарният номер. Разходни материали: задължителни са единица и начален остатък (или количество); артикулът може да е празен — ще се създаде автоматично.',
       'Категория и място на съхранение — име или код. Новите се създават при импорт. Оценката е само за справка — не се създават финансови операции.',
+      'Повторен импорт без дубли: оборудването се съпоставя по инвентарен номер, разходните материали — по артикул (SKU). Вече съществуващите позиции се пропускат.',
     ],
     en: [
       'Fill only the Inventory sheet. Examples on this Instructions sheet are not imported. Do not enter internal IDs.',
       'Required: type, name and ownership.',
       'Equipment needs an inventory number. Consumables need a unit and an opening quantity (or quantity); the article code may be left empty and is generated.',
       'Category and storage place — name or code. New ones are created on import. The estimate is informational only — no financial entries are created.',
+      'Re-import without duplicates: equipment is matched by inventory number, consumables by SKU. Existing rows are skipped.',
     ],
   },
   columns: [

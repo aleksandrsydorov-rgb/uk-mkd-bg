@@ -35,6 +35,8 @@ export const FIRST_RUN_STAGES = [
   'tariffs',
   'budget',
   'uk_expenses_opening',
+  /** Optional: only when module "inventory" is selected. */
+  'inventory_opening',
   'complete',
 ] as const;
 export type FirstRunStageKey = (typeof FIRST_RUN_STAGES)[number];
@@ -509,17 +511,61 @@ export function propertyBookNavComplete(
 
 /** Wizard steps for the saved choice. Optional stages stay hidden until selected. */
 export function visibleFirstRunStages(
-  selection: { water: boolean; electricity: boolean; budget?: boolean; internet?: boolean } | null,
+  selection: {
+    water: boolean;
+    electricity: boolean;
+    budget?: boolean;
+    internet?: boolean;
+    inventory?: boolean;
+    extra?: string[];
+  } | null,
 ): FirstRunStageKey[] {
+  const inventoryOn =
+    selection?.inventory === true ||
+    (Array.isArray(selection?.extra) && selection!.extra!.includes('inventory'));
   return FIRST_RUN_STAGES.filter((s) => {
     if (s === 'meters_select') return false;
-    // One sidebar item for the book; objects/owners are internal substages.
-    if (s === 'property_book_objects' || s === 'property_book_owners') return false;
+    // Sidebar shows apartments + owners as two steps (not a collapsed single item).
+    if (s === 'property_book') return false;
     if (s === 'meters_water') return selection?.water === true;
     if (s === 'meters_electricity') return selection?.electricity === true;
     if (s === 'internet_opening') return selection?.internet === true;
+    if (s === 'inventory_opening') return inventoryOn;
     return true;
   });
+}
+
+/** First incomplete visible stage (or `complete` when all done). Resume / “last reached”. */
+export function furthestVisibleFirstRunStage(
+  stages: FirstRunStageKey[],
+  rows: { stage_key: string; status: string }[] | undefined,
+): FirstRunStageKey {
+  const done = (key: FirstRunStageKey) => {
+    if (key === 'property_book') return propertyBookNavComplete(rows);
+    return rows?.some((row) => row.stage_key === key && row.status === 'complete') ?? false;
+  };
+  for (const key of stages) {
+    if (key === 'complete') continue;
+    if (!done(key)) return key;
+  }
+  return stages.includes('complete') ? 'complete' : (stages[stages.length - 1] ?? 'welcome');
+}
+
+/**
+ * Sidebar jump: completed steps + current furthest only.
+ * Blocks skipping past the first incomplete required stage.
+ */
+export function canNavigateFirstRunStage(
+  stages: FirstRunStageKey[],
+  target: FirstRunStageKey,
+  rows: { stage_key: string; status: string }[] | undefined,
+): boolean {
+  const idx = stages.indexOf(target);
+  if (idx < 0) return false;
+  const furthest = furthestVisibleFirstRunStage(stages, rows);
+  const furthestIdx = stages.indexOf(furthest);
+  if (furthestIdx < 0) return idx === 0;
+  return idx <= furthestIdx;
 }
 
 /**
@@ -532,17 +578,13 @@ export function previousVisibleStage(
   current: FirstRunStageKey,
 ): FirstRunStageKey | null {
   if (current === 'meters_select') return 'property_book_owners';
-  if (current === 'property_book_owners') return 'property_book_objects';
-  if (current === 'property_book_objects' || current === 'property_book') return 'complex_card';
-  const navCurrent = firstRunNavStage(current);
-  const index = stages.indexOf(navCurrent);
-  if (index <= 0) return null;
-  const prev = stages[index - 1] ?? null;
-  // Leaving a later stage “Back” into the book lands on the unfinished substage.
-  if (prev === 'property_book') {
-    return 'property_book_owners';
+  if (current === 'property_book') {
+    // Legacy collapsed key when the sidebar lists apartments/owners separately.
+    return stages.includes('property_book_objects') ? 'complex_card' : 'complex_card';
   }
-  return prev;
+  const index = stages.indexOf(current);
+  if (index <= 0) return null;
+  return stages[index - 1] ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +711,7 @@ export function stageAfterModuleSave(
   if (!done('tariffs')) return 'tariffs';
   if (!done('budget')) return 'budget';
   if (!done('uk_expenses_opening')) return 'uk_expenses_opening';
+  if (choice.extra.includes('inventory') && !done('inventory_opening')) return 'inventory_opening';
   return 'complete';
 }
 

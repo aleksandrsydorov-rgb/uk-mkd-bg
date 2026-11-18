@@ -22,6 +22,7 @@ import {
   Landmark,
   LayoutGrid,
   Receipt,
+  Package,
   ScrollText,
   Users,
   Wallet,
@@ -30,6 +31,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
+  canNavigateFirstRunStage,
   firstRunNavStage,
   propertyBookNavComplete,
   type FirstRunStageKey,
@@ -93,6 +95,7 @@ const STAGE_ICON: Record<FirstRunStageKey, LucideIcon> = {
   internet_opening: Wifi,
   budget: Wallet,
   uk_expenses_opening: ScrollText,
+  inventory_opening: Package,
   complete: BadgeCheck,
 };
 
@@ -112,6 +115,7 @@ const ICON_CLASS: Record<FirstRunStageKey, string> = {
   internet_opening: 'text-sky-600',
   budget: 'text-emerald-700',
   uk_expenses_opening: 'text-emerald-800',
+  inventory_opening: 'text-amber-700',
   complete: 'text-teal-700',
 };
 
@@ -127,6 +131,8 @@ type FrameProps = {
   showBack?: boolean;
   backDisabled?: boolean;
   onBack?: () => void;
+  /** Jump to a completed or current furthest step (local UI; does not write by itself). */
+  onStageSelect?: (stage: FirstRunStageKey) => void;
   children: ReactNode;
 };
 
@@ -145,10 +151,12 @@ export function FirstRunFrame({
   showBack = false,
   backDisabled = false,
   onBack,
+  onStageSelect,
   children,
 }: FrameProps) {
   const [open, setOpen] = useState(initialStepsOpen);
-  const navStage = firstRunNavStage(stage);
+  // Prefer the concrete stage when the sidebar lists book substages separately.
+  const navStage = stages.includes(stage) ? stage : firstRunNavStage(stage);
   const index = Math.max(0, stages.indexOf(navStage));
   const progress = t('admin.firstRunProgress')
     .replace('{n}', String(index + 1))
@@ -174,13 +182,11 @@ export function FirstRunFrame({
   function renderStep(key: FirstRunStageKey) {
     const current = key === navStage;
     const complete = isStageComplete(key, stageRows);
+    const clickable =
+      typeof onStageSelect === 'function' && canNavigateFirstRunStage(stages, key, stageRows);
     const Icon = STAGE_ICON[key];
-    return (
-      <li
-        key={key}
-        className={`${styles.step} ${current ? styles.stepCurrent : ''}`}
-        aria-current={current ? 'step' : undefined}
-      >
+    const body = (
+      <>
         <Icon className={`${styles.stepIcon} ${ICON_CLASS[key]}`} aria-hidden="true" />
         <span className={styles.stepLabel}>{stageLabel(key)}</span>
         {complete ? (
@@ -189,6 +195,31 @@ export function FirstRunFrame({
             <span className={styles.srOnly}>{t('admin.firstRunStageDone')}</span>
           </>
         ) : null}
+      </>
+    );
+    return (
+      <li
+        key={key}
+        className={`${styles.step} ${current ? styles.stepCurrent : ''} ${
+          clickable ? styles.stepClickable : styles.stepLocked
+        }`}
+        aria-current={current ? 'step' : undefined}
+      >
+        {clickable ? (
+          <button
+            type="button"
+            className={styles.stepButton}
+            disabled={backDisabled || current}
+            onClick={() => {
+              if (!current) onStageSelect?.(key);
+              setOpen(false);
+            }}
+          >
+            {body}
+          </button>
+        ) : (
+          body
+        )}
       </li>
     );
   }

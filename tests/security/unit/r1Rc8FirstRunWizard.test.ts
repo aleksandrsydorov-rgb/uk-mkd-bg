@@ -141,6 +141,8 @@ describe('R1-RC8 first-run · gate + resume', () => {
       'welcome',
       'modules_select',
       'complex_card',
+      'property_book_objects',
+      'property_book_owners',
       'property_book',
       'meters_select',
       'meters_water',
@@ -151,6 +153,7 @@ describe('R1-RC8 first-run · gate + resume', () => {
       'tariffs',
       'budget',
       'uk_expenses_opening',
+      'inventory_opening',
       'complete',
     ]);
   });
@@ -243,7 +246,8 @@ describe('R1-RC8 first-run · required published tariffs', () => {
       decision_id: null,
     };
     expect(isAnnualTariffPrep(annual)).toBe(true);
-    expect(isAnnualTariffPrep({ ...annual, basis_date: '' })).toBe(false);
+    // Capital-repair / annual prep accepts rates + basis type only (date/ref optional).
+    expect(isAnnualTariffPrep({ ...annual, basis_date: '' })).toBe(true);
     expect(
       isSupportFeeTariffPrep({
         rate_natural: 1.2,
@@ -470,10 +474,23 @@ describe('R1-RC8 first-run · meters selection (optional)', () => {
     expect(previousVisibleStage(minimal, 'welcome')).toBeNull();
     expect(previousVisibleStage(minimal, 'modules_select')).toBe('welcome');
     expect(previousVisibleStage(minimal, 'complex_card')).toBe('modules_select');
-    expect(previousVisibleStage(minimal, 'property_book')).toBe('complex_card');
-    expect(previousVisibleStage(minimal, 'support_fee_opening')).toBe('property_book');
+    expect(previousVisibleStage(minimal, 'property_book_objects')).toBe('complex_card');
+    expect(previousVisibleStage(minimal, 'property_book_owners')).toBe('property_book_objects');
+    expect(previousVisibleStage(minimal, 'support_fee_opening')).toBe('property_book_owners');
     expect(previousVisibleStage(minimal, 'complete')).toBe('uk_expenses_opening');
-    expect(previousVisibleStage(minimal, 'meters_select')).toBe('property_book');
+    expect(previousVisibleStage(minimal, 'meters_select')).toBe('property_book_owners');
+    expect(minimal).toContain('property_book_objects');
+    expect(minimal).toContain('property_book_owners');
+    expect(minimal).not.toContain('property_book');
+    expect(minimal).not.toContain('inventory_opening');
+    expect(
+      visibleFirstRunStages({
+        water: false,
+        electricity: false,
+        internet: false,
+        extra: ['inventory'],
+      }),
+    ).toContain('inventory_opening');
 
     const full = visibleFirstRunStages({ water: true, electricity: true, internet: true });
     expect(previousVisibleStage(full, 'meters_electricity')).toBe('meters_water');
@@ -837,7 +854,7 @@ describe('R1-RC8 first-run · packaging', () => {
         MIG_TARIFF_PERIOD,
       ]),
     );
-    expect(manifest.expectedChronologicalMigrationCount).toBe(221);
+    expect(manifest.expectedChronologicalMigrationCount).toBe(228);
     expect(manifest.chronologicalMigrationTree).toEqual(
       expect.arrayContaining([
         'supabase/migrations/20261130324000_r1_rc8_first_run_internet_before_tariffs_advance.sql',

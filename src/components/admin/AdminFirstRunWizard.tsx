@@ -33,6 +33,7 @@ import {
   resolveFirstRunResumeStage,
   stageAfterCapitalRepairOpening,
   stageAfterModuleSave,
+  canNavigateFirstRunStage,
   readTariffPrep,
   isFirstRunTariffPrepared,
   presentComplexFormErrors,
@@ -122,6 +123,10 @@ import {
   AdminFirstRunOpeningExpenses,
   type FirstRunOpeningNavHandle,
 } from '@/components/admin/AdminFirstRunOpeningExpenses';
+import {
+  AdminFirstRunInventory,
+  type FirstRunInventoryNavHandle,
+} from '@/components/admin/AdminFirstRunInventory';
 import { FirstRunFrame, FirstRunWelcome } from '@/components/admin/FirstRunFrame';
 import {
   FirstRunBookImport,
@@ -357,6 +362,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
   /** When editing the complex card from a later step, return there after save. */
   const budgetNavRef = useRef<FirstRunBudgetNavHandle | null>(null);
   const openingNavRef = useRef<FirstRunOpeningNavHandle | null>(null);
+  const inventoryNavRef = useRef<FirstRunInventoryNavHandle | null>(null);
   const tariffNavRef = useRef<FirstRunTariffPrepHandle | null>(null);
   const tariffsStepNavRef = useRef<FirstRunTariffsNavHandle | null>(null);
   const internetNavRef = useRef<FirstRunInternetNavHandle | null>(null);
@@ -737,6 +743,29 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         }
         return true;
       }
+      if (stage === 'inventory_opening') {
+        if (inventoryNavRef.current?.hasPendingFile()) {
+          const leave = await confirm({
+            title: t('admin.firstRunLeavePendingFileTitle'),
+            description: t('admin.firstRunLeavePendingFile'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+          if (!leave) return false;
+        }
+        const ok = (await inventoryNavRef.current?.persistDraft()) ?? true;
+        if (!ok) {
+          return confirm({
+            title: t('common.discardChangesTitle'),
+            description: t('admin.firstRunLeaveWithoutSave'),
+            confirmLabel: t('common.leaveWithoutSaving'),
+            cancelLabel: t('common.continueEditing'),
+            tone: 'danger',
+          });
+        }
+        return true;
+      }
       return true;
     } catch (err: unknown) {
       setError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
@@ -750,6 +779,36 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
     }
   }
 
+  function hasPendingImportFile(): boolean {
+    if (stage === 'inventory_opening') return inventoryNavRef.current?.hasPendingFile() ?? false;
+    if (
+      stage === 'property_book' ||
+      stage === 'property_book_objects' ||
+      stage === 'property_book_owners'
+    ) {
+      return !!bookPayload && !(bookObjectsCommitted && bookOwnersCommitted);
+    }
+    if (stage === 'meters_water' || stage === 'meters_electricity') {
+      return !!meterRows && !meterCommitted;
+    }
+    if (stage === 'support_fee_opening') return !!sfRows && !sfCommitted;
+    if (stage === 'capital_repair_opening') return !!crRows && !crCommitted;
+    return false;
+  }
+
+  async function guardLeaveStage(): Promise<boolean> {
+    if (hasPendingImportFile()) {
+      return confirm({
+        title: t('admin.firstRunLeavePendingFileTitle'),
+        description: t('admin.firstRunLeavePendingFile'),
+        confirmLabel: t('common.leaveWithoutSaving'),
+        cancelLabel: t('common.continueEditing'),
+        tone: 'danger',
+      });
+    }
+    return persistDraftBeforeBack();
+  }
+
   async function handleWizardBack() {
     if (busy) return;
     if (stage === 'welcome') return;
@@ -758,13 +817,24 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       return;
     }
 
-    const saved = await persistDraftBeforeBack();
+    const saved = await guardLeaveStage();
     if (!saved) return;
 
     const prev = previousVisibleStage(visibleFirstRunStages(moduleChoice), stage);
     if (!prev) return;
     if (prev === 'welcome') setWelcomePassed(true);
     goStage(prev);
+  }
+
+  async function handleStageSelect(target: FirstRunStageKey) {
+    if (busy || target === stage) return;
+    const stages = visibleFirstRunStages(moduleChoice);
+    if (!canNavigateFirstRunStage(stages, target, state?.stages)) return;
+    const saved = await guardLeaveStage();
+    if (!saved) return;
+    if (target === 'welcome') setWelcomePassed(true);
+    // Local UI jump only — does not write first_run_stage (save RPC never regresses).
+    goStage(target);
   }
 
   async function run(fn: () => Promise<void>) {
@@ -1691,14 +1761,24 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
 
   async function onOpeningContinue(none: boolean) {
     await run(async () => {
+      const needInventory = moduleChoice.extra.includes('inventory');
+      const next: FirstRunStageKey = needInventory ? 'inventory_opening' : 'complete';
       applyState(
         await completeFirstRunStage(supabase, {
           stage: 'uk_expenses_opening',
-          nextStage: 'complete',
+          nextStage: next,
           draft: { uk_expenses_opening_none: none },
         }),
       );
       setNote(t('admin.firstRunOpeningCommitted'));
+      goStage(next);
+    });
+  }
+
+  async function onInventoryFinished() {
+    await run(async () => {
+      await activateModule('inventory');
+      setNote(t('admin.firstRunInventoryCommitted'));
       goStage('complete');
     });
   }
@@ -1735,9 +1815,11 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       case 'complex_card':
         return t('admin.firstRunStageComplex');
       case 'property_book':
-      case 'property_book_objects':
-      case 'property_book_owners':
         return t('admin.firstRunStagePropertyBook');
+      case 'property_book_objects':
+        return t('admin.firstRunBookSubstageApartments');
+      case 'property_book_owners':
+        return t('admin.firstRunBookSubstageOwners');
       case 'meters_select':
         return t('admin.firstRunStageMetersSelect');
       case 'meters_water':
@@ -1756,6 +1838,8 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
         return t('admin.firstRunStageBudget');
       case 'uk_expenses_opening':
         return t('admin.firstRunStageOpeningExpenses');
+      case 'inventory_opening':
+        return t('admin.firstRunStageInventory');
       default:
         return t('admin.firstRunStageComplete');
     }
@@ -1781,6 +1865,7 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
       showBack={stage !== 'welcome'}
       backDisabled={busy}
       onBack={() => void handleWizardBack()}
+      onStageSelect={(key) => void handleStageSelect(key)}
     >
       {dialog}
       {error &&
@@ -2127,6 +2212,21 @@ export function AdminFirstRunWizard({ supabase, t, onDone }: Props) {
           onState={applyState}
           onNavHandle={(handle) => {
             openingNavRef.current = handle;
+          }}
+        />
+      ) : null}
+
+      {stage === 'inventory_opening' ? (
+        <AdminFirstRunInventory
+          supabase={supabase}
+          t={t}
+          draft={state?.draft ?? {}}
+          busy={busy}
+          onBusy={setBusy}
+          onState={applyState}
+          onFinished={onInventoryFinished}
+          onNavHandle={(handle) => {
+            inventoryNavRef.current = handle;
           }}
         />
       ) : null}

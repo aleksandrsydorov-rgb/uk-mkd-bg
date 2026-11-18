@@ -1736,6 +1736,29 @@ export const ru = {
     firstRunBusy: 'Подождите…',
     firstRunImporting: 'Импортируем…',
     firstRunContinue: 'Продолжить',
+    firstRunStageInventory: 'Инвентарь',
+    firstRunInventoryLead:
+      'Загрузите начальный список имущества модуля «Инвентарь» или отложите загрузку. Это не инвентаризация и не означает, что имущества нет.',
+    firstRunInventoryNoFake:
+      'Пропуск не создаёт фиктивные позиции, остатки или документы и не отключает модуль. Позже имущество можно внести в обычном разделе «Инвентарь».',
+    firstRunInventoryDefer:
+      'Пропустить загрузку сейчас. Данные будут внесены позже при инвентаризации',
+    firstRunInventoryDeferHint:
+      'Галочка сохраняет явное решение отложить загрузку. Снимите её, чтобы снова открыть импорт файла.',
+    firstRunInventoryDeferredBanner: 'Загрузка отложена. Модуль остаётся доступным после мастера.',
+    firstRunInventoryDownload: 'Скачать шаблон',
+    firstRunInventoryImportConfirm: 'Импортировать имущество из файла',
+    firstRunInventoryNeedImportOrDefer: 'Импортируйте файл или отметьте отложенную загрузку.',
+    firstRunInventoryExistingKeep:
+      'В реестре уже есть имущество (позиции: {assets}, расходники: {stock}). Пропуск не удаляет и не обнуляет эти данные.',
+    firstRunInventoryMatchHint:
+      'Сопоставление без дублей: оборудование — по инвентарному номеру; расходники — по артикулу (SKU). Одинаковые записи пропускаются.',
+    firstRunInventoryStatRows: 'Строк',
+    firstRunInventoryColQty: 'Кол-во / инв. №',
+    firstRunInventoryCommitted: 'Этап инвентаря завершён.',
+    firstRunLeavePendingFileTitle: 'Файл ещё не импортирован',
+    firstRunLeavePendingFile:
+      'Выбранный XLSX ещё не подтверждён. При переходе предпросмотр будет сброшен — импортируйте файл или отмените переход.',
     firstRunBack: 'Назад',
     firstRunStay: 'Остаться',
     firstRunLeaveWithoutSave:
@@ -7341,6 +7364,29 @@ export const en: Messages = {
     firstRunBusy: 'Please wait…',
     firstRunImporting: 'Importing…',
     firstRunContinue: 'Continue',
+    firstRunStageInventory: 'Inventory',
+    firstRunInventoryLead:
+      'Upload the opening inventory list for the Inventory module, or postpone the upload. This is not a stocktake and does not mean there is no property.',
+    firstRunInventoryNoFake:
+      'Skipping does not create fake items, balances or documents and does not disable the module. You can add property later in Inventory.',
+    firstRunInventoryDefer:
+      'Skip the upload for now. Data will be entered later during stocktaking',
+    firstRunInventoryDeferHint:
+      'The checkbox stores an explicit postpone decision. Clear it to open file import again.',
+    firstRunInventoryDeferredBanner: 'Upload postponed. The module stays available after the wizard.',
+    firstRunInventoryDownload: 'Download template',
+    firstRunInventoryImportConfirm: 'Import inventory from file',
+    firstRunInventoryNeedImportOrDefer: 'Import a file or tick postpone upload.',
+    firstRunInventoryExistingKeep:
+      'The register already has inventory (assets: {assets}, consumables: {stock}). Skipping does not delete or clear this data.',
+    firstRunInventoryMatchHint:
+      'Deduping: equipment by inventory number; consumables by SKU. Identical rows are skipped.',
+    firstRunInventoryStatRows: 'Rows',
+    firstRunInventoryColQty: 'Qty / inv. no.',
+    firstRunInventoryCommitted: 'Inventory stage complete.',
+    firstRunLeavePendingFileTitle: 'File not imported yet',
+    firstRunLeavePendingFile:
+      'The selected XLSX is not confirmed. Leaving will clear the preview — import the file or cancel.',
     firstRunBack: 'Back',
     firstRunStay: 'Stay',
     firstRunLeaveWithoutSave:
@@ -12933,6 +12979,29 @@ export const bg: Messages = {
     firstRunBusy: 'Моля, изчакайте…',
     firstRunImporting: 'Импортираме…',
     firstRunContinue: 'Продължи',
+    firstRunStageInventory: 'Инвентар',
+    firstRunInventoryLead:
+      'Качете началния списък на модул «Инвентар» или отложете качването. Това не е инвентаризация и не означава, че няма имущество.',
+    firstRunInventoryNoFake:
+      'Пропускът не създава фиктивни позиции, остатъци или документи и не изключва модула. По-късно имуществото може да се въведе в «Инвентар».',
+    firstRunInventoryDefer:
+      'Пропусни качването сега. Данните ще се въведат по-късно при инвентаризация',
+    firstRunInventoryDeferHint:
+      'Отметката записва явно решение за отлагане. Махнете я, за да отворите отново импорта.',
+    firstRunInventoryDeferredBanner: 'Качването е отложено. Модулът остава достъпен след съветника.',
+    firstRunInventoryDownload: 'Изтегли шаблона',
+    firstRunInventoryImportConfirm: 'Импортирай инвентара от файла',
+    firstRunInventoryNeedImportOrDefer: 'Импортирайте файл или отбележете отложено качване.',
+    firstRunInventoryExistingKeep:
+      'В регистъра вече има имущество (позиции: {assets}, разходни: {stock}). Пропускът не ги изтрива и не ги нулира.',
+    firstRunInventoryMatchHint:
+      'Без дубли: оборудване — по инвентарен номер; разходни — по артикул (SKU). Еднаквите редове се пропускат.',
+    firstRunInventoryStatRows: 'Редове',
+    firstRunInventoryColQty: 'К-во / инв. №',
+    firstRunInventoryCommitted: 'Етапът с инвентара е завършен.',
+    firstRunLeavePendingFileTitle: 'Файлът още не е импортиран',
+    firstRunLeavePendingFile:
+      'Избраният XLSX още не е потвърден. При напускане прегледът се нулира — импортирайте или отменете.',
     firstRunBack: 'Назад',
     firstRunStay: 'Остани',
     firstRunLeaveWithoutSave:

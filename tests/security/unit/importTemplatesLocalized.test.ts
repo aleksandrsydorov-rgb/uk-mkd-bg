@@ -207,16 +207,17 @@ describe('localized import templates matrix', () => {
     expect(parsed.rows[1].code).toBe('01');
   });
 
-  it('opening totals prefills categories without importing examples from instruction', () => {
+  it('opening totals prefills article names without importing examples from instruction', () => {
     const buf = buildLocalizedImportWorkbookWithRows(OPENING_TOTALS_IMPORT_SPEC, 'en', [
-      { code: '2.1', name: 'Cleaning', amount: '' },
+      { name: 'Cleaning', amount: '' },
     ]);
     const parsed = parseLocalizedImportBuffer(buf, OPENING_TOTALS_IMPORT_SPEC);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.rows).toHaveLength(1);
-    expect(parsed.rows[0].code).toBe('2.1');
+    expect(parsed.rows[0].name).toBe('Cleaning');
     expect(parsed.rows[0].amount).toBe('');
+    expect(parsed.rows[0].code).toBeUndefined();
   });
 
   it('water + support fee builders match specs', () => {

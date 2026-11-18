@@ -2,7 +2,8 @@ import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
 
 /**
  * Opening expense totals per budget article.
- * Same keys and header vocabulary as budgetPlanImport (code / name / amount).
+ * Template: article name + already spent (no groups/codes).
+ * Legacy files with a category code column are still accepted by the custom parser.
  */
 export const OPENING_TOTALS_IMPORT_SPEC: ImportTemplateSpec = {
   id: 'opening_totals',
@@ -24,75 +25,54 @@ export const OPENING_TOTALS_IMPORT_SPEC: ImportTemplateSpec = {
   },
   notes: {
     ru: [
-      'Заполняйте только лист «Израсходовано». Примеры в этой инструкции не импортируются.',
-      'Коды статей берутся из утверждённого бюджета; незнакомый код будет отмечен как ошибка.',
-      'Укажите, сколько уже израсходовано по статье на начало учёта. Если сумма больше плана, вы увидите предупреждение.',
+      'Статьи бюджета уже заполнены. Внесите только фактические суммы.',
+      '0 — расходов по статье не было. Пустая ячейка — не менять ранее сохранённый факт.',
+      'Перед подтверждением проверьте предпросмотр: план, факт и разницу.',
     ],
     bg: [
-      'Попълвайте само листа «Изразходвано». Примерите в тази инструкция не се импортират.',
-      'Кодовете на статиите са от утвърдения бюджет; непознат код се отбелязва като грешка.',
-      'Посочете колко вече е изразходвано по статията в началото на отчета. Ако сумата надвишава плана, ще видите предупреждение.',
+      'Бюджетните статии са попълнени. Въведете само фактическите суми.',
+      '0 — няма разходи по статията. Празна клетка — не променяйте вече записания факт.',
+      'Преди потвърждение проверете прегледа: план, факт и разлика.',
     ],
     en: [
-      'Fill only the Opening sheet. Examples on this Instructions sheet are not imported.',
-      'Article codes come from the approved budget; an unknown code is reported as an error.',
-      'Enter how much has already been spent on the article at the start of tracking. An amount above plan shows a warning.',
+      'Budget articles are prefilled. Enter only the actual amounts spent.',
+      '0 means no spend on that article. A blank cell leaves any previously saved fact unchanged.',
+      'Before confirming, review the preview: plan, fact, and difference.',
     ],
   },
   columns: [
     {
-      key: 'code',
+      key: 'name',
       required: true,
       format: 'text',
-      width: 18,
+      width: 48,
       label: {
-        ru: 'Код статьи',
-        bg: 'Код на статията',
-        en: 'Category code',
+        ru: 'Статья бюджета',
+        bg: 'Бюджетна статия',
+        en: 'Budget article',
       },
       aliases: [
-        'код статьи',
-        'category code',
-        'код на статията',
-        'code',
-        'код',
-      ],
-      instruction: {
-        ru: 'Код статьи из бюджета, например 1.1. Обязательно.',
-        bg: 'Код на статията от бюджета, напр. 1.1. Задължително.',
-        en: 'Article code from the budget, e.g. 1.1. Required.',
-      },
-      example: '1.1',
-    },
-    {
-      key: 'name',
-      required: false,
-      format: 'text',
-      width: 36,
-      label: {
-        ru: 'Название статьи',
-        bg: 'Наименование на статията',
-        en: 'Category name',
-      },
-      aliases: [
+        'статья бюджета',
         'название статьи',
         'category name',
+        'budget article',
         'наименование',
         'name',
         'наименование на статията',
         'име на статията',
+        'статия на бюджета',
         'название',
       ],
       instruction: {
-        ru: 'Название статьи — только для удобства, при загрузке берётся из бюджета. Необязательно.',
-        bg: 'Наименование на статията — за удобство, при зареждане се взема от бюджета. По желание.',
-        en: 'Article name — for convenience only; the budget name is used on import. Optional.',
+        ru: 'Название статьи из сохранённого бюджета (уже заполнено). Не меняйте, если нет уточнения в скобках для одноимённых статей.',
+        bg: 'Име на статията от записания бюджет (вече попълнено). Не го променяйте, освен ако има уточнение в скоби за едноименни статии.',
+        en: 'Article name from the saved budget (prefilled). Do not change it unless a parenthetical note disambiguates same-named articles.',
       },
       example: 'Уборка',
     },
     {
       key: 'amount',
-      required: true,
+      required: false,
       format: 'money',
       width: 24,
       label: {
@@ -112,11 +92,16 @@ export const OPENING_TOTALS_IMPORT_SPEC: ImportTemplateSpec = {
         'сума',
       ],
       instruction: {
-        ru: 'Уже израсходованная сумма в EUR (≥ 0). Если расходов не было — 0. Обязательно.',
-        bg: 'Вече изразходвана сума в EUR (≥ 0). Ако няма разходи — 0. Задължително.',
-        en: 'Amount already spent in EUR (≥ 0). Use 0 if nothing was spent. Required.',
+        ru: 'Фактическая сумма в EUR. 0 — расходов не было. Пусто — не менять сохранённый факт. Допустимы точка и запятая.',
+        bg: 'Фактическа сума в EUR. 0 — няма разходи. Празно — не променяйте записания факт. Точка и запетая са допустими.',
+        en: 'Actual amount in EUR. 0 means no spend. Blank leaves the saved fact unchanged. Dot or comma decimals are accepted.',
       },
       example: '350.00',
+      requiredLabel: {
+        ru: 'По желанию',
+        bg: 'По желание',
+        en: 'Optional',
+      },
     },
   ],
 };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ScrollText } from 'lucide-react';
 import type { Database } from '@/lib/database.types';
@@ -10,18 +10,21 @@ import styles from './FirstRunFrame.module.css';
 import { FirstRunStatusBanner, FirstRunStatusStack } from '@/components/admin/FirstRunStatusBanner';
 import { AppFilePicker } from '@/components/ui/AppFilePicker';
 import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
-import { categoryLabel, moneyEur } from '@/lib/budget';
+import {
+  budgetGroupLabel,
+  budgetSubgroupLabel,
+  categoryLabel,
+  moneyEur,
+} from '@/lib/budget';
 import { parseFirstRunBudgetDraft, saveFirstRunProgress, type FirstRunState } from '@/lib/firstRun';
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
-  applyOpeningAmountDraft,
+  buildOpeningPreviewGroups,
   buildOpeningTotalsTemplateBuffer,
-  openingAmountEditBaseline,
-  openingPreviewAction,
   parseOpeningTotalsMatrix,
-  presentOpeningPreviewAction,
   readFirstSheetMatrix,
-  rebuildOpeningTotalParse,
+  type OpeningKnownArticle,
+  type OpeningPreviewTotals,
   type OpeningTotalIssue,
   type OpeningTotalParse,
   type OpeningTotalPreviewRow,
@@ -43,24 +46,13 @@ type OpeningRow = {
   name_en: string;
   name_bg: string;
   planned_amount_eur: number;
-  opening_amount_eur: number;
-};
-
-type OpeningDraftRow = OpeningTotalPreviewRow & {
-  /** Stable key for React + edits (file row number). */
-  key: number;
-  /** Amount text as loaded from the file (empty stays empty). */
-  fileBaseline: string;
-  /** Current editable text; may differ from fileBaseline. */
-  draftRaw: string;
-  edited: boolean;
-};
-
-type SavedArticle = {
-  category_id: string;
-  code: string;
-  name: string;
-  amount: number;
+  opening_amount_eur: number | null;
+  group_name_ru?: string | null;
+  group_name_en?: string | null;
+  group_name_bg?: string | null;
+  subgroup_name_ru?: string | null;
+  subgroup_name_en?: string | null;
+  subgroup_name_bg?: string | null;
 };
 
 function untyped(supabase: SupabaseClient<Database>): UntypedRpc {
@@ -79,47 +71,212 @@ function downloadBuffer(bytes: ArrayBuffer, name: string) {
   URL.revokeObjectURL(url);
 }
 
-function toDraftRows(parsed: OpeningTotalParse): OpeningDraftRow[] {
-  return parsed.previewRows.map((row) => {
-    const fileBaseline = openingAmountEditBaseline(row);
-    return {
-      ...row,
-      key: row.row,
-      fileBaseline,
-      draftRaw: fileBaseline,
-      edited: false,
-    };
-  });
-}
-
-function recomputeDraftRow(row: OpeningDraftRow, draftRaw: string): OpeningDraftRow {
-  const next = applyOpeningAmountDraft(row, draftRaw);
-  return {
-    ...next,
-    key: row.key,
-    fileBaseline: row.fileBaseline,
-    draftRaw,
-    edited: draftRaw !== row.fileBaseline,
-  };
-}
-
-function parseFromDrafts(draftRows: OpeningDraftRow[]): OpeningTotalParse {
-  return rebuildOpeningTotalParse(draftRows);
-}
-
-function parseAmount(raw: string | undefined): number {
-  const n = Number(String(raw ?? '').replace(/\s/g, '').replace(',', '.').trim() || '0');
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : Number.NaN;
-}
-
-function amountTextFromServer(value: number): string {
-  return value > 0 ? String(value) : '';
-}
-
 function isDraftNoneFlag(draft: Record<string, unknown>): boolean {
   return ['true', 't', '1', 'yes'].includes(
     String(draft.uk_expenses_opening_none ?? '').trim().toLowerCase(),
   );
+}
+
+function formatMaybeEur(value: number | null | undefined, unsetLabel: string): string {
+  if (value == null || !Number.isFinite(value)) return unsetLabel;
+  return moneyEur(value);
+}
+
+function OpeningHierarchyPreview({
+  rows,
+  t,
+  showErrors,
+}: {
+  rows: OpeningTotalPreviewRow[];
+  t: (key: string) => string;
+  showErrors?: boolean;
+}) {
+  const grouped = useMemo(() => buildOpeningPreviewGroups(rows), [rows]);
+  const unset = t('admin.firstRunOpeningAmountMissing');
+
+  function renderTotals(totals: OpeningPreviewTotals, className: string) {
+    return (
+      <div className={`${styles.budgetTreeRow} ${styles.budgetTreeTotalRow} ${className}`}>
+        <div className={styles.budgetTreeName}>{t('admin.firstRunBudgetTotalCompact')}</div>
+        <div className={styles.budgetTreeAmts}>
+          <span>{formatMaybeEur(totals.plan, unset)}</span>
+          <span>{formatMaybeEur(totals.fact, unset)}</span>
+          <span>
+            {totals.incomplete
+              ? t('admin.firstRunOpeningDiffIncomplete')
+              : formatMaybeEur(totals.diff, unset)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function renderArticle(row: OpeningTotalPreviewRow, nested: boolean) {
+    const hasError = row.issues.length > 0;
+    const hasWarn = !hasError && row.warnings.length > 0;
+    return (
+      <Fragment key={`opening-art-${row.row}-${row.categoryId || row.name}`}>
+        <div
+          className={`${styles.budgetTreeRow} ${
+            nested ? styles.budgetTreeArticleInSub : styles.budgetTreeArticle
+          }${hasError ? ` ${styles.tableRowError}` : hasWarn ? ` ${styles.tableRowWarn}` : ''}`}
+        >
+          <div className={styles.budgetTreeName}>
+            <span className={styles.budgetTreeBullet} aria-hidden>
+              •
+            </span>
+            {row.name || '—'}
+          </div>
+          <div className={styles.budgetTreeAmts}>
+            <span>{formatMaybeEur(row.planned, unset)}</span>
+            <span>
+              {row.amountBlank
+                ? unset
+                : row.amount != null
+                  ? moneyEur(row.amount)
+                  : row.amountRaw || unset}
+            </span>
+            <span>
+              {row.amountBlank || row.amount == null || row.planned == null
+                ? '—'
+                : moneyEur(row.remainder ?? row.planned - row.amount)}
+            </span>
+          </div>
+        </div>
+        {showErrors && hasError ? (
+          <p
+            className={`${styles.budgetTreeMsg} ${styles.budgetTreeError} ${
+              nested ? '' : styles.budgetTreeMsgDirect
+            }`}
+          >
+            {row.issues
+              .map((reason) =>
+                issueReasonText(t, { reason, raw: row.amountRaw }),
+              )
+              .join(' · ')}
+          </p>
+        ) : null}
+        {showErrors && hasWarn ? (
+          <p
+            className={`${styles.budgetTreeMsg} ${styles.budgetTreeHint} ${
+              nested ? '' : styles.budgetTreeMsgDirect
+            }`}
+          >
+            {t('admin.firstRunOpeningOverPlanDetail').replace(
+              '{amount}',
+              moneyEur(row.overBy ?? 0),
+            )}
+          </p>
+        ) : null}
+      </Fragment>
+    );
+  }
+
+  return (
+    <div className={styles.budgetTree}>
+      <div className={`${styles.budgetTreeHead} ${styles.budgetTreeHeadOpening}`}>
+        <span className={styles.budgetTreeHeadName}>{t('admin.firstRunOpeningColName')}</span>
+        <div className={styles.budgetTreeAmts}>
+          <span>{t('admin.firstRunOpeningColPlan')}</span>
+          <span>{t('admin.firstRunOpeningColFact')}</span>
+          <span>{t('admin.firstRunOpeningColDiff')}</span>
+        </div>
+      </div>
+      {grouped.groups.map((group) => (
+        <Fragment key={`opening-g-${group.key}`}>
+          <div className={styles.budgetTreeGroup}>{group.label}</div>
+          {group.directRows.map((row) => renderArticle(row, false))}
+          {group.subgroups.map((sub) => (
+            <Fragment key={`opening-sg-${group.key}-${sub.key}`}>
+              <div className={styles.budgetTreeSubgroup}>{sub.label}</div>
+              {sub.rows.map((row) => renderArticle(row, true))}
+              {renderTotals(sub.totals, styles.budgetTreeTotalSub)}
+            </Fragment>
+          ))}
+          {renderTotals(group.totals, styles.budgetTreeTotalGroup)}
+        </Fragment>
+      ))}
+      <div
+        className={`${styles.budgetTreeRow} ${styles.budgetTreeTotalRow} ${styles.budgetTreeTotalGrand}`}
+      >
+        <div className={styles.budgetTreeName}>{t('admin.firstRunBudgetImportGrandTotal')}</div>
+        <div className={styles.budgetTreeAmts}>
+          <span>{formatMaybeEur(grouped.totals.plan, unset)}</span>
+          <span>{formatMaybeEur(grouped.totals.fact, unset)}</span>
+          <span>
+            {grouped.totals.incomplete
+              ? t('admin.firstRunOpeningDiffIncomplete')
+              : formatMaybeEur(grouped.totals.diff, unset)}
+          </span>
+        </div>
+      </div>
+      {grouped.totals.incomplete ? (
+        <p className={styles.hint}>{t('admin.firstRunOpeningTotalsIncompleteHint')}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function issueReasonText(
+  t: (key: string) => string,
+  issue: Pick<OpeningTotalIssue, 'reason' | 'raw'>,
+): string {
+  if (issue.reason === 'required_amount') {
+    return t('admin.firstRunOpeningAmountRequired');
+  }
+  if (issue.reason === 'unknown_code' || issue.reason === 'unknown_article') {
+    return t('admin.firstRunOpeningUnknown');
+  }
+  if (issue.reason === 'ambiguous_article') {
+    return t('admin.firstRunOpeningAmbiguous');
+  }
+  if (issue.reason === 'required_name') {
+    return t('admin.firstRunBudgetImport_required_name');
+  }
+  if (issue.reason === 'duplicate_article') {
+    return t('admin.firstRunBudgetImport_duplicate_article');
+  }
+  return t(`admin.firstRunBudgetImport_${issue.reason}`).replace('{value}', issue.raw ?? '');
+}
+
+function rowsToKnown(rows: OpeningRow[], locale: string): OpeningKnownArticle[] {
+  return rows.map((row) => ({
+    categoryId: row.category_id,
+    code: row.code,
+    name: categoryLabel(row, locale),
+    group: budgetGroupLabel(row, locale),
+    subgroup: budgetSubgroupLabel(row, locale),
+    planned: row.planned_amount_eur,
+  }));
+}
+
+function savedPreviewRows(rows: OpeningRow[], locale: string): OpeningTotalPreviewRow[] {
+  return rows.map((row, index) => {
+    const amount =
+      row.opening_amount_eur == null || !Number.isFinite(Number(row.opening_amount_eur))
+        ? null
+        : Number(row.opening_amount_eur);
+    const blank = amount == null;
+    const planned = row.planned_amount_eur;
+    const overPlan = amount != null && amount - planned > 0.000001;
+    return {
+      row: index + 2,
+      categoryId: row.category_id,
+      code: row.code,
+      name: categoryLabel(row, locale),
+      group: budgetGroupLabel(row, locale),
+      subgroup: budgetSubgroupLabel(row, locale),
+      planned,
+      amount,
+      amountRaw: amount == null ? '' : String(amount),
+      amountBlank: blank,
+      remainder: amount == null ? null : planned - amount,
+      overPlan,
+      overBy: overPlan && amount != null ? amount - planned : null,
+      issues: [],
+      warnings: overPlan ? ['over_plan'] : [],
+    };
+  });
 }
 
 export type FirstRunOpeningNavHandle = {
@@ -152,67 +309,19 @@ export function AdminFirstRunOpeningExpenses({
   const draftNoneFlag = isDraftNoneFlag(draft);
 
   const [rows, setRows] = useState<OpeningRow[]>([]);
-  const [amounts, setAmounts] = useState<Record<string, string>>({});
-  const [baseline, setBaseline] = useState<Record<string, number>>({});
-  const [savedArticles, setSavedArticles] = useState<SavedArticle[]>([]);
-  const [savedNone, setSavedNone] = useState(draftNoneFlag);
   const [saved, setSaved] = useState(false);
-  const [draftRows, setDraftRows] = useState<OpeningDraftRow[] | null>(null);
-  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [savedNone, setSavedNone] = useState(draftNoneFlag);
+  const [preview, setPreview] = useState<OpeningTotalParse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const preview = useMemo(
-    () => (draftRows ? parseFromDrafts(draftRows) : null),
-    [draftRows],
-  );
-
-  const dirty = useMemo(() => {
-    if (!saved) return false;
-    if (savedNone) {
-      // Any positive draft amount leaves the explicit "none" state.
-      return rows.some((row) => parseAmount(amounts[row.category_id]) > 0);
-    }
-    for (const row of rows) {
-      const current = parseAmount(amounts[row.category_id]);
-      if (!Number.isFinite(current)) return true;
-      const base = baseline[row.category_id] ?? 0;
-      if (Math.abs(current - base) > 0.0001) return true;
-    }
-    return false;
-  }, [amounts, baseline, rows, saved, savedNone]);
-
-  const formOverPlan = useMemo(
-    () =>
-      rows.filter((row) => {
-        const spent = parseAmount(amounts[row.category_id]);
-        return Number.isFinite(spent) && spent - row.planned_amount_eur > 0.000001;
-      }),
-    [amounts, rows],
-  );
+  const knownArticles = useMemo(() => rowsToKnown(rows, locale), [rows, locale]);
 
   const applyServerRows = useCallback(
     (list: OpeningRow[], noneFlag: boolean) => {
       setRows(list);
-      const nextAmounts: Record<string, string> = {};
-      const nextBaseline: Record<string, number> = {};
-      const articles: SavedArticle[] = [];
-      for (const row of list) {
-        const amount = Number(row.opening_amount_eur) || 0;
-        nextBaseline[row.category_id] = amount;
-        nextAmounts[row.category_id] = amountTextFromServer(amount);
-        if (amount > 0) {
-          articles.push({
-            category_id: row.category_id,
-            code: row.code,
-            name: categoryLabel(row, locale),
-            amount,
-          });
-        }
-      }
-      setAmounts(nextAmounts);
-      setBaseline(nextBaseline);
-      setSavedArticles(articles);
-      const hasPositive = articles.length > 0;
+      const hasPositive = list.some(
+        (row) => row.opening_amount_eur != null && Number(row.opening_amount_eur) > 0,
+      );
       if (hasPositive) {
         setSaved(true);
         setSavedNone(false);
@@ -224,7 +333,7 @@ export function AdminFirstRunOpeningExpenses({
         setSavedNone(false);
       }
     },
-    [locale],
+    [],
   );
 
   const fetchRows = useCallback(async (): Promise<OpeningRow[]> => {
@@ -239,7 +348,10 @@ export function AdminFirstRunOpeningExpenses({
       ...row,
       category_id: String(row.category_id),
       planned_amount_eur: Number(row.planned_amount_eur),
-      opening_amount_eur: Number(row.opening_amount_eur),
+      opening_amount_eur:
+        row.opening_amount_eur == null || row.opening_amount_eur === ('' as unknown)
+          ? null
+          : Number(row.opening_amount_eur),
     }));
   }, [budget.calendarYear, supabase, t]);
 
@@ -254,14 +366,6 @@ export function AdminFirstRunOpeningExpenses({
     );
   }, [load, t]);
 
-  function payloadRows() {
-    return rows.map((row, index) => ({
-      row: index + 2,
-      category_id: row.category_id,
-      amount: (amounts[row.category_id] ?? '').trim() || '0',
-    }));
-  }
-
   async function persistNoneFlag(nextNone: boolean): Promise<void> {
     const state = await saveFirstRunProgress(supabase, {
       stage: 'uk_expenses_opening',
@@ -273,7 +377,6 @@ export function AdminFirstRunOpeningExpenses({
   async function save(
     nextNone: boolean,
     nextRows: Array<{ row: number; category_id: string; amount: string }>,
-    opts?: { quiet?: boolean },
   ): Promise<boolean> {
     if (budget.calendarYear == null) {
       setError(t('admin.firstRunErrBudgetYear'));
@@ -291,8 +394,7 @@ export function AdminFirstRunOpeningExpenses({
       await persistNoneFlag(nextNone);
       const list = await fetchRows();
       applyServerRows(list, nextNone);
-      setDraftRows(null);
-      setBulkConfirm(false);
+      setPreview(null);
       return true;
     } catch (err: unknown) {
       setError(toUserFacingMessage(err, t, { context: 'first_run', fallback: t('admin.errGeneric') }));
@@ -305,165 +407,56 @@ export function AdminFirstRunOpeningExpenses({
   useEffect(() => {
     if (!onNavHandle) return;
     onNavHandle({
-      persistDraft: async () => {
-        if (!saved && !dirty) return true;
-        if (!dirty) return true;
-        return save(false, payloadRows(), { quiet: true });
-      },
+      persistDraft: async () => true,
     });
     return () => onNavHandle(null);
-    // payloadRows/save close over latest amounts/rows.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onNavHandle, amounts, rows, budget.calendarYear, saved, dirty, savedNone]);
+  }, [onNavHandle]);
 
   function downloadTemplate() {
     downloadBuffer(
-      buildOpeningTotalsTemplateBuffer(
-        rows.map((row) => ({
-          code: row.code,
-          name: categoryLabel(row, locale),
-          planned: row.planned_amount_eur,
-        })),
-        locale,
-      ),
+      buildOpeningTotalsTemplateBuffer(knownArticles, locale),
       localizedTemplateFileName(OPENING_TOTALS_IMPORT_SPEC, locale),
     );
   }
 
   async function onFile(file: File) {
     setError(null);
-    setBulkConfirm(false);
-    const checked = parseOpeningTotalsMatrix(
-      readFirstSheetMatrix(await file.arrayBuffer()),
-      rows.map((row) => ({
-        code: row.code,
-        name: categoryLabel(row, locale),
-        planned: row.planned_amount_eur,
-      })),
-    );
-    setDraftRows(toDraftRows(checked));
+    const checked = parseOpeningTotalsMatrix(readFirstSheetMatrix(await file.arrayBuffer()), knownArticles);
+    setPreview(checked);
   }
 
-  function updateDraftAmount(key: number, draftRaw: string) {
-    setBulkConfirm(false);
-    setDraftRows((current) => {
-      if (!current) return current;
-      return current.map((row) => (row.key === key ? recomputeDraftRow(row, draftRaw) : row));
-    });
-  }
-
-  function setDraftZero(key: number) {
-    updateDraftAmount(key, '0');
-  }
-
-  function restoreFileValue(key: number) {
-    setBulkConfirm(false);
-    setDraftRows((current) => {
-      if (!current) return current;
-      return current.map((row) =>
-        row.key === key ? recomputeDraftRow(row, row.fileBaseline) : row,
-      );
-    });
-  }
-
-  const emptyAmountKeys = useMemo(
-    () => (draftRows ?? []).filter((row) => row.draftRaw.trim() === '').map((row) => row.key),
-    [draftRows],
+  const previewGrouped = useMemo(
+    () => (preview ? buildOpeningPreviewGroups(preview.previewRows) : null),
+    [preview],
   );
 
-  function applyBulkZeros() {
-    setDraftRows((current) => {
-      if (!current) return current;
-      const empty = new Set(emptyAmountKeys);
-      return current.map((row) =>
-        empty.has(row.key) ? recomputeDraftRow(row, '0') : row,
-      );
-    });
-    setBulkConfirm(false);
-  }
-
-  function issueReasonText(issue: Pick<OpeningTotalIssue, 'reason' | 'raw'>): string {
-    if (issue.reason === 'required_amount') {
-      return t('admin.firstRunOpeningAmountRequired');
-    }
-    if (issue.reason === 'unknown_code') {
-      return t('admin.firstRunOpeningUnknown');
-    }
-    return t(`admin.firstRunBudgetImport_${issue.reason}`).replace('{value}', issue.raw ?? '');
-  }
-
-  function rowCheckText(row: OpeningDraftRow): string {
-    const parts: string[] = [];
-    for (const reason of row.issues) {
-      parts.push(issueReasonText({ reason, raw: row.amountRaw }));
-    }
-    for (const warning of row.warnings) {
-      if (warning === 'over_plan') {
-        parts.push(
-          t('admin.firstRunOpeningOverPlanDetail').replace(
-            '{amount}',
-            moneyEur(row.overBy ?? 0),
-          ),
-        );
-      }
-    }
-    return parts.join(' · ') || '—';
-  }
-
-  const previewSummary = useMemo(() => {
-    if (!preview) return null;
-    const planTotal = preview.previewRows.reduce(
-      (sum, row) => sum + (row.planned != null ? row.planned : 0),
-      0,
-    );
-    const spentTotal = preview.rows.reduce((sum, row) => sum + row.amount, 0);
-    const incomplete = preview.previewRows.some((row) => row.amount == null);
-    return {
-      articles: preview.previewRows.length,
-      errors: preview.issues.length,
-      warnings: preview.warnings.length,
-      planTotal,
-      spentTotal,
-      incomplete,
-    };
-  }, [preview]);
-
-  const savedTotal = useMemo(
-    () => savedArticles.reduce((sum, row) => sum + row.amount, 0),
-    [savedArticles],
+  const savedRows = useMemo(() => savedPreviewRows(rows, locale), [rows, locale]);
+  const savedPositiveCount = useMemo(
+    () => savedRows.filter((row) => row.amount != null && row.amount > 0).length,
+    [savedRows],
+  );
+  const savedFactTotal = useMemo(
+    () =>
+      savedRows.reduce((sum, row) => sum + (row.amount != null && row.amount > 0 ? row.amount : 0), 0),
+    [savedRows],
   );
 
   async function confirmFile() {
-    if (!preview || !draftRows || preview.issues.length > 0 || preview.rows.length === 0) return;
-    const checked = parseFromDrafts(draftRows);
-    if (checked.issues.length > 0 || checked.rows.length === 0) {
-      setDraftRows(toDraftRows(checked));
-      setError(t('admin.firstRunOpeningCheckFailTitle'));
+    if (!preview || preview.issues.length > 0) return;
+    if (preview.rows.length === 0) {
+      setError(t('admin.firstRunOpeningNoAmounts'));
       return;
     }
-    const byCode = new Map(rows.map((row) => [row.code.toLowerCase(), row]));
-    const nextRows: Array<{ row: number; category_id: string; amount: string }> = [];
-    for (const row of checked.rows) {
-      const known = byCode.get(row.code.toLowerCase());
-      if (!known) {
-        setError(t('admin.firstRunOpeningUnknown'));
-        return;
-      }
-      nextRows.push({
-        row: row.row,
-        category_id: known.category_id,
-        amount: String(row.amount),
-      });
-    }
+    const nextRows = preview.rows.map((row) => ({
+      row: row.row,
+      category_id: row.categoryId,
+      amount: String(row.amount),
+    }));
     await save(false, nextRows);
   }
 
-  async function onSaveAmounts() {
-    await save(false, payloadRows());
-  }
-
   async function onSaveNone() {
-    const savedNonZero = savedArticles.length > 0;
+    const savedNonZero = savedPositiveCount > 0;
     if (savedNonZero) {
       const ok = await confirm({
         title: t('admin.firstRunOpeningNoneConfirmTitle'),
@@ -479,28 +472,10 @@ export function AdminFirstRunOpeningExpenses({
 
   async function onContinueClick() {
     if (!saved) return;
-    if (!dirty) {
-      await onContinue(savedNone);
-      return;
-    }
-    const saveFirst = await confirm({
-      title: t('admin.firstRunOpeningUnsavedTitle'),
-      description: t('admin.firstRunOpeningUnsavedBody'),
-      confirmLabel: t('admin.firstRunOpeningSaveAndContinue'),
-      cancelLabel: t('common.cancel'),
-    });
-    if (!saveFirst) return;
-    const ok = await save(false, payloadRows());
-    if (!ok) return;
-    await onContinue(false);
-  }
-
-  async function onContinueWithoutSaving() {
-    if (!saved || !dirty) return;
     await onContinue(savedNone);
   }
 
-  const showSavedSuccess = saved && !dirty;
+  const showSavedSuccess = saved;
 
   return (
     <FirstRunScreen
@@ -510,7 +485,7 @@ export function AdminFirstRunOpeningExpenses({
       lead={t('admin.firstRunOpeningLead')}
       busy={busy}
     >
-      <p className={styles.hint}>{t('admin.budgetPlanRemainderHint')}</p>
+      <p className={styles.hint}>{t('admin.firstRunOpeningImportColumnsHint')}</p>
 
       <FirstRunStatusStack>
         {error ? <FirstRunStatusBanner tone="error" title={error} /> : null}
@@ -522,72 +497,27 @@ export function AdminFirstRunOpeningExpenses({
             tone="success"
             title={t('admin.firstRunOpeningSaved')}
             detail={t('admin.firstRunOpeningSavedDetail')
-              .replace('{count}', String(savedArticles.length))
-              .replace('{total}', moneyEur(savedTotal))}
+              .replace('{count}', String(savedPositiveCount))
+              .replace('{total}', moneyEur(savedFactTotal))}
           />
-        ) : null}
-        {dirty ? (
-          <FirstRunStatusBanner tone="warning" title={t('admin.firstRunOpeningUnsavedChanges')}>
-            <FirstRunStageActions>
-              <button
-                type="button"
-                className={styles.secondary}
-                disabled={busy}
-                onClick={() => void onContinueWithoutSaving()}
-              >
-                {t('admin.firstRunOpeningContinueWithoutSave')}
-              </button>
-            </FirstRunStageActions>
-          </FirstRunStatusBanner>
         ) : null}
       </FirstRunStatusStack>
 
-      {showSavedSuccess && !savedNone && savedArticles.length > 0 ? (
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>{t('admin.firstRunBudgetImportColCode')}</th>
-                <th>{t('admin.firstRunOpeningColName')}</th>
-                <th>{t('admin.firstRunOpeningColAmount')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {savedArticles.map((row) => (
-                <tr key={`saved-opening-${row.category_id}`}>
-                  <td>{row.code}</td>
-                  <td>{row.name}</td>
-                  <td>{moneyEur(row.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {formOverPlan.length > 0 ? (
-        <div className={styles.stepBlock}>
-          <FirstRunStatusBanner
-            tone="warning"
-            title={t('admin.firstRunOpeningOverPlan')}
-            detail={formOverPlan
-              .slice(0, 8)
-              .map((row) => {
-                const spent = parseAmount(amounts[row.category_id]);
-                return `${row.code}: ${moneyEur(spent - row.planned_amount_eur)}`;
-              })
-              .join('\n')}
-          />
-        </div>
+      {showSavedSuccess && !savedNone && savedPositiveCount > 0 ? (
+        <OpeningHierarchyPreview rows={savedRows} t={t} />
       ) : null}
 
       <div className={styles.importGrid}>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportDownload')}</p>
-          <button type="button" className={styles.secondary} disabled={busy || rows.length === 0} onClick={downloadTemplate}>
+          <button
+            type="button"
+            className={styles.secondary}
+            disabled={busy || rows.length === 0}
+            onClick={downloadTemplate}
+          >
             {t('admin.firstRunOpeningDownload')}
           </button>
-          <p className={styles.hint}>{t('admin.firstRunOpeningImportColumnsHint')}</p>
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportUpload')}</p>
@@ -604,7 +534,7 @@ export function AdminFirstRunOpeningExpenses({
         </div>
         <div className={styles.stepBlock}>
           <p className={styles.importLabel}>{t('admin.firstRunImportCheck')}</p>
-          {!preview || !draftRows ? (
+          {!preview ? (
             <p className={styles.hint}>{t('admin.firstRunImportCheckPending')}</p>
           ) : (
             <>
@@ -621,189 +551,46 @@ export function AdminFirstRunOpeningExpenses({
                 {preview.warnings.length > 0 ? (
                   <FirstRunStatusBanner
                     tone="warning"
-                    title={`${t('admin.firstRunBudgetImportStatWarnings')}: ${preview.warnings.length}`}
+                    title={t('admin.firstRunOpeningOverPlan')}
                     detail={preview.warnings
                       .slice(0, 8)
-                      .map((warn) =>
-                        t('admin.firstRunOpeningOverPlanRow')
+                      .map((warn) => {
+                        const article =
+                          preview.previewRows.find((row) => row.row === warn.row)?.name ||
+                          warn.code;
+                        return t('admin.firstRunOpeningOverPlanRow')
                           .replace('{row}', String(warn.row))
-                          .replace('{code}', warn.code)
-                          .replace('{amount}', moneyEur(warn.overBy)),
-                      )
+                          .replace('{code}', article)
+                          .replace('{amount}', moneyEur(warn.overBy));
+                      })
                       .join('\n')}
                   />
                 ) : null}
+                {preview.incomplete ? (
+                  <FirstRunStatusBanner
+                    tone="warning"
+                    title={t('admin.firstRunOpeningIncompleteTitle')}
+                    detail={t('admin.firstRunOpeningIncompleteBody')}
+                  />
+                ) : null}
               </FirstRunStatusStack>
-              {previewSummary ? (
+              {previewGrouped ? (
                 <div className={styles.stats}>
                   <div className={styles.stat}>
-                    <div className={styles.statValue}>{previewSummary.articles}</div>
+                    <div className={styles.statValue}>{preview.previewRows.length}</div>
                     <div className={styles.statLabel}>{t('admin.firstRunBudgetImportStatArticles')}</div>
                   </div>
                   <div className={styles.stat}>
-                    <div className={styles.statValue}>{previewSummary.errors}</div>
+                    <div className={styles.statValue}>{preview.issues.length}</div>
                     <div className={styles.statLabel}>{t('admin.firstRunBudgetImportStatErrors')}</div>
                   </div>
                   <div className={styles.stat}>
-                    <div className={styles.statValue}>{previewSummary.warnings}</div>
+                    <div className={styles.statValue}>{preview.warnings.length}</div>
                     <div className={styles.statLabel}>{t('admin.firstRunBudgetImportStatWarnings')}</div>
                   </div>
                 </div>
               ) : null}
-              {previewSummary ? (
-                <>
-                  <p className={styles.okNote}>
-                    {t('admin.firstRunOpeningPlanTotal').replace(
-                      '{total}',
-                      moneyEur(previewSummary.planTotal),
-                    )}
-                  </p>
-                  {previewSummary.incomplete ? (
-                    <p className={styles.hint}>
-                      {t('admin.firstRunOpeningSpentPartial').replace(
-                        '{total}',
-                        moneyEur(previewSummary.spentTotal),
-                      )}
-                    </p>
-                  ) : (
-                    <p className={styles.okNote}>
-                      {t('admin.firstRunOpeningSpentTotal').replace(
-                        '{total}',
-                        moneyEur(previewSummary.spentTotal),
-                      )}
-                    </p>
-                  )}
-                </>
-              ) : null}
-              {emptyAmountKeys.length > 0 ? (
-                <div className={styles.bulkZeroBar}>
-                  {!bulkConfirm ? (
-                    <button
-                      type="button"
-                      className={styles.secondary}
-                      disabled={busy}
-                      onClick={() => setBulkConfirm(true)}
-                    >
-                      {t('admin.firstRunOpeningBulkZero').replace('{n}', String(emptyAmountKeys.length))}
-                    </button>
-                  ) : (
-                    <>
-                      <p className={styles.hint}>{t('admin.firstRunOpeningBulkZeroConfirm')}</p>
-                      <button type="button" className={styles.primary} disabled={busy} onClick={applyBulkZeros}>
-                        {t('admin.firstRunOpeningBulkZeroApply')}
-                      </button>
-                      <button type="button" className={styles.secondary} disabled={busy} onClick={() => setBulkConfirm(false)}>
-                        {t('admin.firstRunOpeningBulkZeroCancel')}
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : null}
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>{t('admin.firstRunOpeningColRow')}</th>
-                      <th>{t('admin.firstRunBudgetImportColCode')}</th>
-                      <th>{t('admin.firstRunOpeningColName')}</th>
-                      <th>{t('admin.firstRunOpeningColPlan')}</th>
-                      <th>{t('admin.firstRunOpeningColSpent')}</th>
-                      <th>{t('admin.firstRunOpeningColRemainder')}</th>
-                      <th>{t('admin.firstRunSfColAction')}</th>
-                      <th>{t('admin.firstRunOpeningColCheck')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {draftRows.map((row) => {
-                      const hasError = row.issues.length > 0;
-                      const hasWarn = !hasError && row.warnings.length > 0;
-                      const amountError = row.issues.some((reason) =>
-                        ['required_amount', 'invalid_amount', 'negative_amount', 'amount_precision'].includes(
-                          reason,
-                        ),
-                      );
-                      const isEmpty = row.draftRaw.trim() === '';
-                      const cat = rows.find((r) => r.code.toLowerCase() === row.code.toLowerCase());
-                      const baselineAmt = cat ? baseline[cat.category_id] : undefined;
-                      const action = openingPreviewAction(baselineAmt, row.amount, hasError);
-                      const spentDisplay =
-                        row.amount != null
-                          ? moneyEur(row.amount)
-                          : isEmpty
-                            ? '—'
-                            : row.draftRaw;
-                      return (
-                        <tr
-                          key={`opening-preview-${row.key}-${row.code}`}
-                          className={
-                            hasError ? styles.tableRowError : hasWarn ? styles.tableRowWarn : undefined
-                          }
-                        >
-                          <td>{row.row}</td>
-                          <td>{row.code || '—'}</td>
-                          <td>{row.name || '—'}</td>
-                          <td>{row.planned != null ? moneyEur(row.planned) : '—'}</td>
-                          <td>
-                            <div className={styles.amountEdit}>
-                              <input
-                                className={`${styles.amountEditInput}${amountError ? ` ${styles.amountEditInputError}` : ''}`}
-                                inputMode="decimal"
-                                value={row.draftRaw}
-                                placeholder=""
-                                aria-label={`${t('admin.firstRunOpeningColSpent')} ${row.code}`}
-                                disabled={busy}
-                                onChange={(e) => updateDraftAmount(row.key, e.target.value)}
-                              />
-                              <div className={styles.amountEditActions}>
-                                {isEmpty ? (
-                                  <button
-                                    type="button"
-                                    className={styles.amountEditBtn}
-                                    disabled={busy}
-                                    title={t('admin.firstRunOpeningSetZeroHint')}
-                                    onClick={() => setDraftZero(row.key)}
-                                  >
-                                    {t('admin.firstRunOpeningSetZero')}
-                                  </button>
-                                ) : null}
-                                {row.edited ? (
-                                  <button
-                                    type="button"
-                                    className={styles.amountEditBtn}
-                                    disabled={busy}
-                                    onClick={() => restoreFileValue(row.key)}
-                                  >
-                                    {t('admin.firstRunOpeningRestoreFile')}
-                                  </button>
-                                ) : null}
-                              </div>
-                              {!isEmpty || row.amount === 0 ? (
-                                <p className={styles.amountEditHint}>{spentDisplay}</p>
-                              ) : (
-                                <p className={styles.amountEditHint}>{t('admin.firstRunOpeningSetZeroHint')}</p>
-                              )}
-                            </div>
-                          </td>
-                          <td>
-                            {row.remainder != null ? moneyEur(row.remainder) : '—'}
-                          </td>
-                          <td>{presentOpeningPreviewAction(action, t)}</td>
-                          <td
-                            className={
-                              hasError ? styles.fieldError : hasWarn ? styles.warnNoteInline : undefined
-                            }
-                          >
-                            {row.edited ? (
-                              <span className={styles.editedMark}>{t('admin.firstRunOpeningEdited')}</span>
-                            ) : null}
-                            {rowCheckText(row)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <OpeningHierarchyPreview rows={preview.previewRows} t={t} showErrors />
             </>
           )}
         </div>
@@ -816,37 +603,13 @@ export function AdminFirstRunOpeningExpenses({
               disabled={busy || !preview || preview.issues.length > 0 || preview.rows.length === 0}
               onClick={() => void confirmFile()}
             >
-              {busy ? t('admin.firstRunImporting') : t('admin.firstRunBudgetImportConfirm')}
+              {busy ? t('admin.firstRunImporting') : t('admin.firstRunOpeningConfirmImport')}
             </button>
           </FirstRunStageActions>
         </div>
       </div>
-      <div className={styles.formGrid}>
-        {rows.map((row) => {
-          const spent = parseAmount(amounts[row.category_id]);
-          const over = Number.isFinite(spent) && spent - row.planned_amount_eur > 0.000001;
-          return (
-            <label key={row.category_id} className={styles.field}>
-              {row.code} · {categoryLabel(row, locale)} · {t('admin.firstRunOpeningPlan')} {moneyEur(row.planned_amount_eur)}
-              <input
-                className={styles.input}
-                inputMode="decimal"
-                value={amounts[row.category_id] ?? ''}
-                placeholder="0"
-                onChange={(e) => {
-                  setAmounts((current) => ({ ...current, [row.category_id]: e.target.value }));
-                }}
-              />
-              {over ? <span className={styles.warnNote}>{t('admin.firstRunOpeningOverPlan')}</span> : null}
-            </label>
-          );
-        })}
-      </div>
+
       <FirstRunStageActions>
-        <button type="button" className={styles.primary} disabled={busy} onClick={() => void onSaveAmounts()}>
-          {t('admin.firstRunOpeningSave')}
-        </button>
-        <p className={`${styles.hint} ${styles.span2}`}>{t('admin.firstRunOpeningSaveHint')}</p>
         <button type="button" className={styles.secondary} disabled={busy} onClick={() => void onSaveNone()}>
           {t('admin.firstRunOpeningNone')}
         </button>

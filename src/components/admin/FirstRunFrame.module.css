@@ -451,6 +451,34 @@
   color: #5c6763;
 }
 
+.budgetTreeHeadOpening {
+  justify-content: space-between;
+}
+
+.budgetTreeHeadName {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+
+.budgetTreeAmts {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 5.5rem) minmax(4.5rem, 5.5rem) minmax(4.5rem, 5.5rem);
+  gap: 8px;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+  color: #1c2422;
+}
+
+.budgetTreeHeadOpening .budgetTreeAmts {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5c6763;
+}
+
 .budgetTreeGroup {
   margin-top: 10px;
   font-size: 14px;

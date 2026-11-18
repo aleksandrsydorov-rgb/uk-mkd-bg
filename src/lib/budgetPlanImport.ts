@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Complex budget plan workbook.
  * Preview only — confirmation goes through admin_commit_budget_plan.
  * Codes stay text so values such as 1.1 and 01 are not rewritten.
@@ -892,12 +892,16 @@ export function buildBudgetPlanTemplateBuffer(
 
 export type OpeningTotalIssueReason =
   | 'required_code'
+  | 'required_name'
   | 'required_amount'
-  | 'unknown_code'
   | 'invalid_amount'
   | 'negative_amount'
   | 'amount_precision'
-  | 'duplicate_code';
+  | 'unknown_code'
+  | 'unknown_article'
+  | 'ambiguous_article'
+  | 'duplicate_code'
+  | 'duplicate_article';
 
 export type OpeningTotalIssue = {
   row: number;
@@ -913,16 +917,86 @@ export type OpeningTotalWarning = {
   overBy: number;
 };
 
-/** Leaf rows shown in the opening-expenses preview (including invalid / empty amounts). */
+/** Catalog article used to build the template and match an uploaded file. */
+export type OpeningKnownArticle = {
+  categoryId: string;
+  code: string;
+  /** Locale-facing article title (without disambiguation). */
+  name: string;
+  group: string;
+  subgroup: string;
+  planned: number;
+};
+
+export type OpeningKnownArticleLabeled = OpeningKnownArticle & {
+  /** Unique label written into the XLSX (may include a parenthetical note). */
+  displayName: string;
+};
+
+/**
+ * Prefill labels for the template. Duplicate article titles get a short
+ * parenthetical note (subgroup → group → group → subgroup) so matching stays unique
+ * without codes or UUIDs.
+ */
+export function assignOpeningDisplayNames(
+  articles: OpeningKnownArticle[],
+): OpeningKnownArticleLabeled[] {
+  const byName = new Map<string, OpeningKnownArticle[]>();
+  for (const article of articles) {
+    const key = normMatch(article.name);
+    const list = byName.get(key) ?? [];
+    list.push(article);
+    byName.set(key, list);
+  }
+
+  return articles.map((article) => {
+    const peers = byName.get(normMatch(article.name)) ?? [article];
+    if (peers.length <= 1) {
+      return { ...article, displayName: article.name };
+    }
+
+    const sub = article.subgroup.trim();
+    if (sub) {
+      const sameSub = peers.filter((peer) => normMatch(peer.subgroup) === normMatch(sub));
+      if (sameSub.length === 1) {
+        return { ...article, displayName: `${article.name} (${sub})` };
+      }
+    }
+
+    const group = article.group.trim();
+    if (group) {
+      const sameGroup = peers.filter((peer) => normMatch(peer.group) === normMatch(group));
+      if (sameGroup.length === 1) {
+        return { ...article, displayName: `${article.name} (${group})` };
+      }
+    }
+
+    const path = [group, sub].filter(Boolean).join(' → ');
+    return {
+      ...article,
+      displayName: path ? `${article.name} (${path})` : article.name,
+    };
+  });
+}
+
+/** Leaf rows shown in the opening-expenses preview (including blank / invalid amounts). */
 export type OpeningTotalPreviewRow = {
   row: number;
+  categoryId: string;
   code: string;
   name: string;
+  group: string;
+  subgroup: string;
   planned: number | null;
-  /** Valid spent amount, or null when the cell could not be read as money. */
+  /**
+   * Valid spent amount, or null when blank (preserve) or the cell is invalid.
+   * Blank is not an error — see `amountBlank`.
+   */
   amount: number | null;
   amountRaw: string;
-  /** planned − amount when both are known; may be negative. Null when amount is missing/invalid. */
+  /** True when the file left the amount empty (do not write / do not treat as 0). */
+  amountBlank: boolean;
+  /** Plan − Fact when both are known; may be negative (overspend). */
   remainder: number | null;
   overPlan: boolean;
   overBy: number | null;
@@ -931,11 +1005,143 @@ export type OpeningTotalPreviewRow = {
 };
 
 export type OpeningTotalParse = {
-  rows: Array<{ row: number; code: string; amount: number; overPlan: boolean }>;
+  rows: Array<{
+    row: number;
+    categoryId: string;
+    code: string;
+    amount: number;
+    overPlan: boolean;
+  }>;
   previewRows: OpeningTotalPreviewRow[];
   issues: OpeningTotalIssue[];
   warnings: OpeningTotalWarning[];
+  /** True when at least one matched article has a blank fact cell. */
+  incomplete: boolean;
 };
+
+export type OpeningPreviewTotals = {
+  plan: number | null;
+  fact: number | null;
+  diff: number | null;
+  incomplete: boolean;
+};
+
+export type OpeningPreviewSubgroup = {
+  key: string;
+  label: string;
+  rows: OpeningTotalPreviewRow[];
+  totals: OpeningPreviewTotals;
+};
+
+export type OpeningPreviewGroup = {
+  key: string;
+  label: string;
+  directRows: OpeningTotalPreviewRow[];
+  subgroups: OpeningPreviewSubgroup[];
+  rows: OpeningTotalPreviewRow[];
+  totals: OpeningPreviewTotals;
+};
+
+function openingMoneyBlank(raw: unknown): boolean {
+  if (raw == null) return true;
+  if (typeof raw === 'number') return false;
+  return amountRawDisplay(raw).replace(/\u00a0/g, ' ').trim() === '';
+}
+
+function sumOpeningPlan(rows: OpeningTotalPreviewRow[]): number {
+  return rows.reduce((sum, row) => sum + (row.planned ?? 0), 0);
+}
+
+function sumOpeningFact(rows: OpeningTotalPreviewRow[]): {
+  total: number | null;
+  incomplete: boolean;
+} {
+  let total = 0;
+  let any = false;
+  let incomplete = false;
+  for (const row of rows) {
+    if (row.amountBlank || row.amount == null) {
+      incomplete = true;
+      continue;
+    }
+    any = true;
+    total += row.amount;
+  }
+  if (!any && incomplete) return { total: null, incomplete: true };
+  if (!any) return { total: 0, incomplete: false };
+  return { total, incomplete };
+}
+
+function openingSectionTotals(rows: OpeningTotalPreviewRow[]): OpeningPreviewTotals {
+  const plan = rows.length > 0 ? sumOpeningPlan(rows) : 0;
+  const factInfo = sumOpeningFact(rows);
+  const incomplete = factInfo.incomplete || rows.some((row) => row.issues.length > 0);
+  if (incomplete || factInfo.total == null) {
+    return { plan, fact: factInfo.total, diff: null, incomplete: true };
+  }
+  return {
+    plan,
+    fact: factInfo.total,
+    diff: plan - factInfo.total,
+    incomplete: false,
+  };
+}
+
+/** Nested preview: Group → Subgroup → Article with Plan / Fact / Diff totals. */
+export function buildOpeningPreviewGroups(previewRows: OpeningTotalPreviewRow[]): {
+  groups: OpeningPreviewGroup[];
+  totals: OpeningPreviewTotals;
+} {
+  const order: string[] = [];
+  const map = new Map<string, OpeningPreviewGroup>();
+  for (const row of previewRows) {
+    const label = row.group.trim() || '—';
+    const key = normMatch(label) || '_';
+    let group = map.get(key);
+    if (!group) {
+      group = {
+        key,
+        label,
+        directRows: [],
+        subgroups: [],
+        rows: [],
+        totals: { plan: 0, fact: null, diff: null, incomplete: true },
+      };
+      map.set(key, group);
+      order.push(key);
+    }
+    group.rows.push(row);
+
+    const subLabel = row.subgroup.trim();
+    if (!subLabel) {
+      group.directRows.push(row);
+      continue;
+    }
+    const subKey = normMatch(subLabel) || '_';
+    let sub = group.subgroups.find((item) => item.key === subKey);
+    if (!sub) {
+      sub = {
+        key: subKey,
+        label: subLabel,
+        rows: [],
+        totals: { plan: 0, fact: null, diff: null, incomplete: true },
+      };
+      group.subgroups.push(sub);
+    }
+    sub.rows.push(row);
+  }
+
+  const groups = order.map((key) => {
+    const group = map.get(key)!;
+    for (const sub of group.subgroups) {
+      sub.totals = openingSectionTotals(sub.rows);
+    }
+    group.totals = openingSectionTotals(group.rows);
+    return group;
+  });
+
+  return { groups, totals: openingSectionTotals(previewRows) };
+}
 
 export function readFirstSheetMatrix(data: ArrayBuffer): unknown[][] {
   const book = XLSX.read(data, { type: 'array', cellText: true, cellDates: false });
@@ -944,90 +1150,168 @@ export function readFirstSheetMatrix(data: ArrayBuffer): unknown[][] {
   return sheetMatrix(sheet);
 }
 
+function matchOpeningArticle(
+  labeled: OpeningKnownArticleLabeled[],
+  opts: { code: string; name: string },
+):
+  | { ok: true; article: OpeningKnownArticleLabeled }
+  | { ok: false; reason: OpeningTotalIssueReason } {
+  if (opts.code) {
+    const byCode = labeled.filter((item) => item.code.toLowerCase() === opts.code.toLowerCase());
+    if (byCode.length === 1) return { ok: true, article: byCode[0] };
+    if (byCode.length > 1) return { ok: false, reason: 'ambiguous_article' };
+    if (!opts.name) return { ok: false, reason: 'unknown_code' };
+  }
+
+  const nameKey = normMatch(opts.name);
+  if (!nameKey) {
+    return { ok: false, reason: opts.code ? 'unknown_code' : 'required_name' };
+  }
+
+  const byDisplay = labeled.filter((item) => normMatch(item.displayName) === nameKey);
+  if (byDisplay.length === 1) return { ok: true, article: byDisplay[0] };
+  if (byDisplay.length > 1) return { ok: false, reason: 'ambiguous_article' };
+
+  const byBase = labeled.filter((item) => normMatch(item.name) === nameKey);
+  if (byBase.length === 1) return { ok: true, article: byBase[0] };
+  if (byBase.length > 1) return { ok: false, reason: 'ambiguous_article' };
+
+  return { ok: false, reason: opts.code ? 'unknown_code' : 'unknown_article' };
+}
+
+/**
+ * Parse opening-totals workbook.
+ * Modern template: article name + amount (blank preserves prior fact).
+ * Legacy template: category code (+ optional name) + amount.
+ */
 export function parseOpeningTotalsMatrix(
   matrix: unknown[][],
-  known: Array<{ code: string; planned: number; name?: string }>,
+  known: OpeningKnownArticle[],
 ): OpeningTotalParse {
-  const empty: OpeningTotalParse = { rows: [], previewRows: [], issues: [], warnings: [] };
-  const rowsIn = matrix.filter((row) => row.some((cell) => cellText(cell) !== '' || typeof cell === 'number'));
+  const empty: OpeningTotalParse = {
+    rows: [],
+    previewRows: [],
+    issues: [],
+    warnings: [],
+    incomplete: false,
+  };
+  const labeled = assignOpeningDisplayNames(known);
+  const rowsIn = matrix.filter((row) =>
+    row.some((cell) => cellText(cell) !== '' || typeof cell === 'number'),
+  );
   if (rowsIn.length === 0) {
-    return { ...empty, issues: [{ row: 1, reason: 'required_code' }] };
+    return { ...empty, issues: [{ row: 1, reason: 'required_name' }] };
   }
+
   const header = rowsIn[0].map((cell) => normHeader(cellText(cell)));
   const codeAt = header.findIndex((cell) => headerMatches(CODE_HEADER_SET, cell));
   const nameAt = header.findIndex((cell) => headerMatches(NAME_HEADER_SET, cell));
   const amountAt = header.findIndex((cell) => headerMatches(AMOUNT_HEADER_SET, cell));
-  if (codeAt < 0 || amountAt < 0) {
-    return { ...empty, issues: [{ row: 1, reason: 'required_code' }] };
+  const modern = codeAt < 0 && nameAt >= 0 && amountAt >= 0;
+  const legacy = codeAt >= 0 && amountAt >= 0;
+  if (!modern && !legacy) {
+    return {
+      ...empty,
+      issues: [{ row: 1, reason: nameAt >= 0 ? 'required_amount' : 'required_name' }],
+    };
   }
 
-  const byCode = new Map(known.map((item) => [item.code.toLowerCase(), item]));
   const issues: OpeningTotalIssue[] = [];
   const warnings: OpeningTotalWarning[] = [];
   const rows: OpeningTotalParse['rows'] = [];
   const previewRows: OpeningTotalPreviewRow[] = [];
-  const seen = new Set<string>();
+  const seenCategory = new Set<string>();
+  let incomplete = false;
 
   rowsIn.slice(1).forEach((row, index) => {
     const line = index + 2;
-    const code = cellText(row[codeAt]);
+    const code = codeAt >= 0 ? cellText(row[codeAt]) : '';
     const fileName = nameAt >= 0 ? cellText(row[nameAt]) : '';
-    const amountCell = row[amountAt];
+    const amountCell = amountAt >= 0 ? row[amountAt] : '';
     const amountRaw = amountRawDisplay(amountCell);
     if (!code && !amountRaw && !fileName) return;
 
     const rowIssues: OpeningTotalIssueReason[] = [];
-    if (!code) {
+    if (modern && !fileName) {
+      rowIssues.push('required_name');
+      issues.push({ row: line, reason: 'required_name' });
+    }
+    if (legacy && !modern && !code) {
       rowIssues.push('required_code');
       issues.push({ row: line, reason: 'required_code' });
     }
 
-    const key = code.toLowerCase();
-    const duplicate = code.length > 0 && seen.has(key);
-    if (code) {
-      if (duplicate) {
-        rowIssues.push('duplicate_code');
-        issues.push({ row: line, reason: 'duplicate_code', code });
+    const matched =
+      rowIssues.length === 0
+        ? matchOpeningArticle(labeled, { code, name: fileName })
+        : null;
+    let article: OpeningKnownArticleLabeled | null = null;
+    if (matched) {
+      if (matched.ok) {
+        article = matched.article;
+        if (seenCategory.has(article.categoryId)) {
+          rowIssues.push('duplicate_article');
+          issues.push({
+            row: line,
+            reason: 'duplicate_article',
+            code: article.code,
+            raw: fileName || code,
+          });
+        } else {
+          seenCategory.add(article.categoryId);
+        }
+      } else {
+        rowIssues.push(matched.reason);
+        issues.push({
+          row: line,
+          reason: matched.reason,
+          code: code || undefined,
+          raw: fileName || code,
+        });
       }
-      seen.add(key);
     }
 
-    const money = parseMoneyCell(amountCell);
-    if (!money.ok) {
-      rowIssues.push(money.reason);
-      issues.push({
-        row: line,
-        reason: money.reason,
-        code: code || undefined,
-        raw: money.raw,
-      });
+    const blank = openingMoneyBlank(amountCell);
+    let amount: number | null = null;
+    if (blank) {
+      incomplete = true;
+    } else {
+      const money = parseMoneyCell(amountCell);
+      if (!money.ok) {
+        rowIssues.push(money.reason);
+        issues.push({
+          row: line,
+          reason: money.reason,
+          code: article?.code || code || undefined,
+          raw: money.raw,
+        });
+      } else {
+        amount = money.amount;
+      }
     }
 
-    const knownRow = code ? byCode.get(key) : undefined;
-    if (code && !knownRow && !duplicate) {
-      rowIssues.push('unknown_code');
-      issues.push({ row: line, reason: 'unknown_code', code });
-    }
-
-    const planned = knownRow != null ? knownRow.planned : null;
-    const amount = money.ok ? money.amount : null;
+    const planned = article != null ? article.planned : null;
     const overPlan =
       amount != null && planned != null && amount - planned > 0.000001;
     const overBy = overPlan && amount != null && planned != null ? amount - planned : null;
     const remainder = amount != null && planned != null ? planned - amount : null;
     const rowWarnings: Array<'over_plan'> = overPlan ? ['over_plan'] : [];
 
-    if (overPlan && code && overBy != null) {
-      warnings.push({ row: line, reason: 'over_plan', code: knownRow?.code ?? code, overBy });
+    if (overPlan && article && overBy != null) {
+      warnings.push({ row: line, reason: 'over_plan', code: article.code, overBy });
     }
 
     previewRows.push({
       row: line,
-      code: knownRow?.code ?? code,
-      name: (knownRow?.name && knownRow.name.trim()) || fileName,
+      categoryId: article?.categoryId ?? '',
+      code: article?.code ?? code,
+      name: article?.name || fileName,
+      group: article?.group ?? '',
+      subgroup: article?.subgroup ?? '',
       planned,
       amount,
       amountRaw,
+      amountBlank: blank,
       remainder,
       overPlan,
       overBy,
@@ -1035,46 +1319,47 @@ export function parseOpeningTotalsMatrix(
       warnings: rowWarnings,
     });
 
-    if (code && knownRow && money.ok && !duplicate) {
+    if (article && amount != null && rowIssues.length === 0) {
       rows.push({
         row: line,
-        code: knownRow.code,
-        amount: money.amount,
+        categoryId: article.categoryId,
+        code: article.code,
+        amount,
         overPlan,
       });
     }
   });
 
-  return { rows, previewRows, issues, warnings };
+  return { rows, previewRows, issues, warnings, incomplete };
 }
 
-const OPENING_STRUCTURAL_ISSUES: OpeningTotalIssueReason[] = [
-  'required_code',
-  'unknown_code',
-  'duplicate_code',
-];
-
-/** Editable amount baseline for a parsed preview row (empty stays empty). */
+/** @deprecated Kept for callers that still recompute edited preview rows. */
 export function openingAmountEditBaseline(row: OpeningTotalPreviewRow): string {
   if (row.amount != null) return String(row.amount);
-  return row.amountRaw.trim() === '' ? '' : row.amountRaw;
+  return row.amountBlank || row.amountRaw.trim() === '' ? '' : row.amountRaw;
 }
 
-/**
- * Recompute one opening preview row after an in-table amount edit.
- * Structural issues (missing/unknown/duplicate code) are preserved from the file parse.
- */
+/** @deprecated Inline preview edits are no longer used by the wizard UI. */
 export function applyOpeningAmountDraft(
   base: OpeningTotalPreviewRow,
   draftRaw: string,
 ): OpeningTotalPreviewRow {
-  const structural = base.issues.filter((reason) => OPENING_STRUCTURAL_ISSUES.includes(reason));
-  const display = draftRaw;
-  const money = parseMoneyCell(draftRaw.trim() === '' ? '' : draftRaw);
+  const structural = base.issues.filter((reason) =>
+    [
+      'required_code',
+      'required_name',
+      'unknown_code',
+      'unknown_article',
+      'ambiguous_article',
+      'duplicate_code',
+      'duplicate_article',
+    ].includes(reason),
+  );
+  const blank = draftRaw.trim() === '';
+  const money = blank ? null : parseMoneyCell(draftRaw);
   const amountIssues: OpeningTotalIssueReason[] = [];
-  if (!money.ok) amountIssues.push(money.reason);
-
-  const amount = money.ok ? money.amount : null;
+  if (!blank && money && !money.ok) amountIssues.push(money.reason);
+  const amount = !blank && money && money.ok ? money.amount : null;
   const planned = base.planned;
   const overPlan = amount != null && planned != null && amount - planned > 0.000001;
   const overBy = overPlan && amount != null && planned != null ? amount - planned : null;
@@ -1083,7 +1368,8 @@ export function applyOpeningAmountDraft(
   return {
     ...base,
     amount,
-    amountRaw: money.ok ? String(money.amount) : display,
+    amountRaw: amount != null ? String(amount) : draftRaw,
+    amountBlank: blank,
     remainder,
     overPlan,
     overBy,
@@ -1092,13 +1378,15 @@ export function applyOpeningAmountDraft(
   };
 }
 
-/** Rebuild importable rows / issues / warnings from edited preview rows. */
+/** @deprecated Inline preview edits are no longer used by the wizard UI. */
 export function rebuildOpeningTotalParse(previewRows: OpeningTotalPreviewRow[]): OpeningTotalParse {
   const issues: OpeningTotalIssue[] = [];
   const warnings: OpeningTotalWarning[] = [];
   const rows: OpeningTotalParse['rows'] = [];
+  let incomplete = false;
 
   for (const row of previewRows) {
+    if (row.amountBlank) incomplete = true;
     for (const reason of row.issues) {
       issues.push({
         row: row.row,
@@ -1110,11 +1398,10 @@ export function rebuildOpeningTotalParse(previewRows: OpeningTotalPreviewRow[]):
     if (row.overPlan && row.code && row.overBy != null) {
       warnings.push({ row: row.row, reason: 'over_plan', code: row.code, overBy: row.overBy });
     }
-    const blocking = row.issues.length > 0;
-    const structuralBlock = row.issues.some((reason) => OPENING_STRUCTURAL_ISSUES.includes(reason));
-    if (!blocking && row.amount != null && row.code && !structuralBlock) {
+    if (row.issues.length === 0 && row.amount != null && row.categoryId) {
       rows.push({
         row: row.row,
+        categoryId: row.categoryId,
         code: row.code,
         amount: row.amount,
         overPlan: row.overPlan,
@@ -1122,16 +1409,18 @@ export function rebuildOpeningTotalParse(previewRows: OpeningTotalPreviewRow[]):
     }
   }
 
-  return { rows, previewRows, issues, warnings };
+  return { rows, previewRows, issues, warnings, incomplete };
 }
 
 export function buildOpeningTotalsTemplateBuffer(
-  categories: Array<{ code: string; name: string; planned: number }>,
+  categories: OpeningKnownArticle[],
   locale: ImportTemplateLocale | string = 'ru',
 ): ArrayBuffer {
+  const labeled = assignOpeningDisplayNames(categories);
   return buildLocalizedImportWorkbookWithRows(
     OPENING_TOTALS_IMPORT_SPEC,
     toImportTemplateLocale(locale),
-    categories.map((category) => ({ code: category.code, name: category.name, amount: '' })),
+    labeled.map((category) => ({ name: category.displayName, amount: '' })),
   );
 }
+

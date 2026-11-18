@@ -2309,7 +2309,7 @@ export const ru = {
     firstRunBudgetLead:
       'Составьте план расходов УК на календарный год: выберите год, заполните суммы по статьям (вручную или из шаблона XLSX) и опубликуйте план. Публикация здесь только фиксирует план в системе — она не утверждает его собранием, не создаёт расходы и не меняет остатки квартир или фонда.',
     firstRunBudgetImportColumnsHint:
-      'Скачайте шаблон: код, группа и статья уже заполнены из справочника. Внесите только «Плановая сумма, EUR». Код храните текстом (1.10 ≠ 1.1). Пустая сумма не обнуляет план; 0 сохраняется. Итоги групп считает система. После загрузки проверьте предпросмотр «Было / станет» и нажмите «Импортировать».',
+      'Скачайте шаблон: группа и статья уже заполнены из справочника. Внесите только «Плановая сумма, EUR». 0 — явный ноль; пустая ячейка не меняет сохранённый план. Итоги считает система. После загрузки проверьте предпросмотр и нажмите «Импортировать».',
     firstRunBudgetNoCharge:
       '«Опубликовать бюджет» сохраняет план как опубликованный черновик года. Расходы УК, начисления по тарифам и начальные остатки от этой кнопки не создаются и не пересчитываются.',
     firstRunBudgetModuleEnabled: 'Модуль «Бюджет» включён для настройки.',
@@ -2403,18 +2403,23 @@ export const ru = {
     firstRunBudgetImportGrandTotal: 'Итого бюджета',
     firstRunBudgetImportCheckOk: 'Файл проверен. Можно импортировать статьи.',
     firstRunBudgetImportCheckFail: 'Исправьте ошибки в файле и загрузите его снова.',
-    firstRunBudgetImport_required_code: 'нужен код статьи',
+    firstRunBudgetImport_required_code: 'не удалось определить статью бюджета',
     firstRunBudgetImport_required_name: 'нужна статья бюджета',
+    firstRunBudgetImport_required_group: 'нужна группа',
     firstRunBudgetImport_required_amount: 'нужна сумма',
     firstRunBudgetImport_blank_amount: 'пустая сумма — существующий план не обнуляется',
     firstRunBudgetImport_invalid_amount:
       'не удалось прочитать сумму «{value}». Ожидается число (например 2556.46 или 2556,46), без разделителя тысяч в тексте',
     firstRunBudgetImport_negative_amount: 'сумма «{value}» не может быть отрицательной',
     firstRunBudgetImport_amount_precision: 'у суммы «{value}» не больше двух знаков после запятой',
-    firstRunBudgetImport_duplicate_code: 'код повторяется',
-    firstRunBudgetImport_unknown_code: 'неизвестная статья бюджета — новые статьи из файла не создаются',
-    firstRunBudgetImport_name_mismatch: 'название статьи не совпадает со справочником для этого кода',
-    firstRunBudgetImport_group_mismatch: 'группа не совпадает со справочником для этого кода',
+    firstRunBudgetImport_duplicate_code: 'статья повторяется в файле',
+    firstRunBudgetImport_duplicate_article: 'статья с этой группой и названием повторяется в файле',
+    firstRunBudgetImport_unknown_code: 'статья не найдена в справочнике — новые статьи из файла не создаются',
+    firstRunBudgetImport_unknown_article: 'статья не найдена в справочнике по группе и названию',
+    firstRunBudgetImport_ambiguous_article:
+      'несколько статей справочника совпадают с этой группой и названием — уточните строку',
+    firstRunBudgetImport_name_mismatch: 'название статьи не совпадает со справочником',
+    firstRunBudgetImport_group_mismatch: 'группа не совпадает со справочником',
     firstRunStageOpeningExpenses: 'Начальные расходы',
     firstRunOpeningLead:
       'Укажите, сколько уже потрачено по статьям опубликованного бюджета с начала года до начала учёта в системе. Суммы — исторический факт: они не списывают кассу, не создают долги квартир и не требуют чеков. Можно заполнить вручную, импортировать из шаблона XLSX или подтвердить, что расходов не было.',
@@ -7932,7 +7937,7 @@ export const en: Messages = {
     firstRunBudgetLead:
       'Mandatory annual management expense plan. The complex defines the articles and amounts. Publishing does not adopt the plan, create expenses, or change opening balances.',
     firstRunBudgetImportColumnsHint:
-      'Download the template: code, group and article are prefilled from the catalog. Enter only Planned amount, EUR. Keep the code as text (1.10 ≠ 1.1). A blank amount does not clear the plan; 0 is saved. Group totals are calculated by the system. After upload, review Was / Will become and import.',
+      'Download the template: group and article are prefilled from the catalog. Enter only Planned amount, EUR. 0 is an explicit zero; a blank cell leaves the saved plan unchanged. Totals are calculated by the system. After upload, review the preview and import.',
     firstRunBudgetNoCharge:
       'Publishing the budget does not create expenses, tariff charges, or recalculate opening balances.',
     firstRunBudgetModuleEnabled: 'Budget module enabled for setup.',
@@ -8022,18 +8027,23 @@ export const en: Messages = {
     firstRunBudgetImportGrandTotal: 'Budget total',
     firstRunBudgetImportCheckOk: 'File checked. You can import the articles.',
     firstRunBudgetImportCheckFail: 'Fix the errors in the file and upload it again.',
-    firstRunBudgetImport_required_code: 'article code is required',
+    firstRunBudgetImport_required_code: 'could not resolve the budget article',
     firstRunBudgetImport_required_name: 'budget article is required',
+    firstRunBudgetImport_required_group: 'group is required',
     firstRunBudgetImport_required_amount: 'amount is required',
     firstRunBudgetImport_blank_amount: 'blank amount — existing plan is not cleared',
     firstRunBudgetImport_invalid_amount:
       'could not read amount “{value}”. Expected a number (e.g. 2556.46 or 2556,46), without a thousands separator in text',
     firstRunBudgetImport_negative_amount: 'amount “{value}” cannot be negative',
     firstRunBudgetImport_amount_precision: 'amount “{value}” may have at most two decimal places',
-    firstRunBudgetImport_duplicate_code: 'duplicate code',
-    firstRunBudgetImport_unknown_code: 'unknown budget article — new articles are not created from the file',
-    firstRunBudgetImport_name_mismatch: 'article name does not match the catalog for this code',
-    firstRunBudgetImport_group_mismatch: 'group does not match the catalog for this code',
+    firstRunBudgetImport_duplicate_code: 'article is repeated in the file',
+    firstRunBudgetImport_duplicate_article: 'article with this group and name is repeated in the file',
+    firstRunBudgetImport_unknown_code: 'article not found in the catalog — new articles are not created from the file',
+    firstRunBudgetImport_unknown_article: 'article not found in the catalog by group and name',
+    firstRunBudgetImport_ambiguous_article:
+      'several catalog articles match this group and name — clarify the row',
+    firstRunBudgetImport_name_mismatch: 'article name does not match the catalog',
+    firstRunBudgetImport_group_mismatch: 'group does not match the catalog',
     firstRunStageOpeningExpenses: 'Opening expenses',
     firstRunOpeningLead:
       'Totals already spent on the budget articles from the start of the year until accounting starts. This historical total does not move cash or create debts or charges. Receipts are not required for it.',
@@ -13549,7 +13559,7 @@ export const bg: Messages = {
     firstRunBudgetLead:
       'Задължителен годишен план на разходите на УК. Перата и сумите определя комплексът. Публикацията не приема плана от събрание, не създава разходи и не променя остатъците.',
     firstRunBudgetImportColumnsHint:
-      'Изтеглете шаблона: кодът, групата и статията са попълнени от справочника. Въведете само «Планова сума, EUR». Кодът е текст (1.10 ≠ 1.1). Празна сума не нулира плана; 0 се записва. Итогите на групите се смятат от системата. След качване проверете «Беше / ще стане» и импортирайте.',
+      'Изтеглете шаблона: групата и статията са попълнени от справочника. Въведете само «Планова сума, EUR». 0 е явна нула; празна клетка не променя записания план. Итогите се смятат от системата. След качване проверете прегледа и импортирайте.',
     firstRunBudgetNoCharge:
       'Публикацията на бюджета не създава разходи, тарифни начисления и не преизчислява началните остатъци.',
     firstRunBudgetModuleEnabled: 'Модулът „Бюджет“ е включен за настройка.',
@@ -13642,18 +13652,23 @@ export const bg: Messages = {
     firstRunBudgetImportGrandTotal: 'Общо за бюджета',
     firstRunBudgetImportCheckOk: 'Файлът е проверен. Можете да импортирате перата.',
     firstRunBudgetImportCheckFail: 'Поправете грешките във файла и го качете отново.',
-    firstRunBudgetImport_required_code: 'нужен е код на статията',
+    firstRunBudgetImport_required_code: 'статията на бюджета не може да бъде определена',
     firstRunBudgetImport_required_name: 'нужна е статия на бюджета',
+    firstRunBudgetImport_required_group: 'нужна е група',
     firstRunBudgetImport_required_amount: 'нужна е сума',
     firstRunBudgetImport_blank_amount: 'празна сума — вече записаният план не се нулира',
     firstRunBudgetImport_invalid_amount:
       'не може да се прочете сумата „{value}“. Очаква се число (напр. 2556.46 или 2556,46), без разделител за хиляди в текста',
     firstRunBudgetImport_negative_amount: 'сумата „{value}“ не може да е отрицателна',
     firstRunBudgetImport_amount_precision: 'при сумата „{value}“ са позволени най-много два знака след десетичната запетая',
-    firstRunBudgetImport_duplicate_code: 'кодът се повтаря',
-    firstRunBudgetImport_unknown_code: 'непозната статия — нови статии от файла не се създават',
-    firstRunBudgetImport_name_mismatch: 'името на статията не съвпада със справочника за този код',
-    firstRunBudgetImport_group_mismatch: 'групата не съвпада със справочника за този код',
+    firstRunBudgetImport_duplicate_code: 'статията се повтаря във файла',
+    firstRunBudgetImport_duplicate_article: 'статия с тази група и име се повтаря във файла',
+    firstRunBudgetImport_unknown_code: 'статията не е в справочника — нови статии от файла не се създават',
+    firstRunBudgetImport_unknown_article: 'статията не е намерена в справочника по група и име',
+    firstRunBudgetImport_ambiguous_article:
+      'няколко статии в справочника съвпадат с тази група и име — уточнете реда',
+    firstRunBudgetImport_name_mismatch: 'името на статията не съвпада със справочника',
+    firstRunBudgetImport_group_mismatch: 'групата не съвпада със справочника',
     firstRunStageOpeningExpenses: 'Начални разходи',
     firstRunOpeningLead:
       'Обща сума на вече направените разходи по перата от началото на годината до старта на отчитането. Историческата сума не тегли каса и не създава задължения или начисления. Разписки за този сбор не се изискват.',

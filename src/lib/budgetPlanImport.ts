@@ -87,12 +87,16 @@ export type BudgetPlanSkip = {
 export type BudgetPlanIssueReason =
   | 'required_code'
   | 'required_name'
+  | 'required_group'
   | 'required_amount'
   | 'invalid_amount'
   | 'negative_amount'
   | 'amount_precision'
   | 'duplicate_code'
+  | 'duplicate_article'
   | 'unknown_code'
+  | 'unknown_article'
+  | 'ambiguous_article'
   | 'name_mismatch'
   | 'group_mismatch';
 
@@ -167,44 +171,51 @@ function catalogGroups(cat: BudgetCatalogMatch): string[] {
 
 function catalogGroupLabel(cat: BudgetCatalogMatch, locale: string): string {
   const loc = String(locale || 'ru').toLowerCase();
+  // Never surface internal group_code to the user.
   if (loc.startsWith('bg')) {
-    return (
-      cat.group_name_bg?.trim() ||
-      cat.group_name_ru?.trim() ||
-      cat.group_name_en?.trim() ||
-      cat.group_code?.trim() ||
-      ''
-    );
+    return cat.group_name_bg?.trim() || cat.group_name_ru?.trim() || cat.group_name_en?.trim() || '';
   }
   if (loc.startsWith('en')) {
-    return (
-      cat.group_name_en?.trim() ||
-      cat.group_name_ru?.trim() ||
-      cat.group_name_bg?.trim() ||
-      cat.group_code?.trim() ||
-      ''
-    );
+    return cat.group_name_en?.trim() || cat.group_name_ru?.trim() || cat.group_name_bg?.trim() || '';
   }
-  return (
-    cat.group_name_ru?.trim() ||
-    cat.group_name_en?.trim() ||
-    cat.group_name_bg?.trim() ||
-    cat.group_code?.trim() ||
-    ''
-  );
+  return cat.group_name_ru?.trim() || cat.group_name_en?.trim() || cat.group_name_bg?.trim() || '';
 }
 
 function catalogArticleLabel(cat: BudgetCatalogMatch, locale: string): string {
   const loc = String(locale || 'ru').toLowerCase();
-  if (loc.startsWith('bg')) return cat.name_bg || cat.name_ru || cat.name_en || cat.code;
-  if (loc.startsWith('en')) return cat.name_en || cat.name_ru || cat.name_bg || cat.code;
-  return cat.name_ru || cat.name_en || cat.name_bg || cat.code;
+  // Never fall back to internal article code in UI.
+  if (loc.startsWith('bg')) return cat.name_bg || cat.name_ru || cat.name_en || '';
+  if (loc.startsWith('en')) return cat.name_en || cat.name_ru || cat.name_bg || '';
+  return cat.name_ru || cat.name_en || cat.name_bg || '';
+}
+
+function catalogGroupDisplayNames(cat: BudgetCatalogMatch): string[] {
+  return [cat.group_name_ru, cat.group_name_en, cat.group_name_bg]
+    .map((v) => normMatch(String(v ?? '')))
+    .filter(Boolean);
+}
+
+/** Match catalog rows by human group + article name (any locale label). */
+export function matchBudgetCatalogByGroupName(
+  catalog: BudgetCatalogMatch[],
+  group: string,
+  name: string,
+): BudgetCatalogMatch[] {
+  const g = normMatch(group);
+  const n = normMatch(name);
+  if (!n) return [];
+  return catalog.filter((cat) => {
+    if (!catalogNames(cat).includes(n)) return false;
+    if (!g) return true;
+    return catalogGroupDisplayNames(cat).includes(g);
+  });
 }
 
 /**
- * Validate code / group / article against the catalog.
- * Unknown codes and typos are errors — never auto-create or merge across groups.
- * Legacy files without a group column resolve the group from the catalog by code.
+ * Resolve articles against the catalog.
+ * - Current template: match by group + name; ambiguity is an error.
+ * - Legacy files with a code column: match by code; optional group/name must agree.
+ * Never auto-create categories or pick arbitrarily among matches.
  */
 export function validateBudgetPlanAgainstCatalog(
   parsed: BudgetPlanParse,
@@ -216,22 +227,48 @@ export function validateBudgetPlanAgainstCatalog(
   const previewRows: BudgetPlanPreviewRow[] = parsed.previewRows.map((row) => {
     const rowIssues: BudgetPlanIssueReason[] = [...row.issues];
     const key = row.code.trim().toLowerCase();
-    const cat = key ? byCode.get(key) : undefined;
+    let cat = key ? byCode.get(key) : undefined;
     let group = row.group;
     let name = row.name;
+    let code = row.code;
 
-    if (row.code && !cat) {
-      if (!rowIssues.includes('unknown_code')) rowIssues.push('unknown_code');
-    } else if (cat) {
-      if (row.name && !catalogNames(cat).includes(normMatch(row.name))) {
-        if (!rowIssues.includes('name_mismatch')) rowIssues.push('name_mismatch');
-      } else if (!row.name) {
-        name = catalogArticleLabel(cat, locale);
+    if (key) {
+      // Legacy / code-bearing file.
+      if (!cat) {
+        if (!rowIssues.includes('unknown_code')) rowIssues.push('unknown_code');
+      } else {
+        if (row.name && !catalogNames(cat).includes(normMatch(row.name))) {
+          if (!rowIssues.includes('name_mismatch')) rowIssues.push('name_mismatch');
+        } else if (!row.name) {
+          name = catalogArticleLabel(cat, locale);
+        }
+        if (row.group && !catalogGroups(cat).includes(normMatch(row.group))) {
+          if (!rowIssues.includes('group_mismatch')) rowIssues.push('group_mismatch');
+        } else if (!row.group) {
+          group = catalogGroupLabel(cat, locale);
+        }
+        code = cat.code;
       }
-      if (row.group && !catalogGroups(cat).includes(normMatch(row.group))) {
-        if (!rowIssues.includes('group_mismatch')) rowIssues.push('group_mismatch');
-      } else if (!row.group) {
-        group = catalogGroupLabel(cat, locale);
+    } else {
+      // Current template: group + name → stable internal code.
+      if (!row.name) {
+        if (!rowIssues.includes('required_name')) rowIssues.push('required_name');
+      }
+      if (!row.group) {
+        if (!rowIssues.includes('required_group')) rowIssues.push('required_group');
+      }
+      if (row.name && row.group) {
+        const hits = matchBudgetCatalogByGroupName(catalog, row.group, row.name);
+        if (hits.length === 0) {
+          if (!rowIssues.includes('unknown_article')) rowIssues.push('unknown_article');
+        } else if (hits.length > 1) {
+          if (!rowIssues.includes('ambiguous_article')) rowIssues.push('ambiguous_article');
+        } else {
+          cat = hits[0];
+          code = cat.code;
+          group = catalogGroupLabel(cat, locale) || row.group;
+          name = catalogArticleLabel(cat, locale) || row.name;
+        }
       }
     }
 
@@ -239,12 +276,12 @@ export function validateBudgetPlanAgainstCatalog(
       issues.push({
         row: row.row,
         reason,
-        code: row.code || undefined,
+        code: code || undefined,
         raw: row.amountRaw,
       });
     }
 
-    return { ...row, group, name, issues: rowIssues };
+    return { ...row, code, group, name, issues: rowIssues };
   });
 
   const blocking = new Set(previewRows.filter((r) => r.issues.length > 0).map((r) => r.row));
@@ -254,10 +291,13 @@ export function validateBudgetPlanAgainstCatalog(
       const preview = previewRows.find((r) => r.row === a.row);
       return {
         ...a,
+        code: preview?.code || a.code,
         group: preview?.group ?? a.group,
         name: preview?.name ?? a.name,
       };
-    });
+    })
+    // Drop rows that never resolved to an internal code (new-format unmatched).
+    .filter((a) => a.code.trim().length > 0);
 
   return {
     articles,
@@ -451,19 +491,22 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
   const groupAt = header.findIndex((cell) => headerMatches(GROUP_HEADER_SET, cell));
   const nameAt = header.findIndex((cell) => headerMatches(NAME_HEADER_SET, cell));
   const amountAt = header.findIndex((cell) => headerMatches(AMOUNT_HEADER_SET, cell));
-  // Legacy 3-column files omit Group; code + name + amount are still required headers.
-  if (codeAt < 0 || nameAt < 0 || amountAt < 0) {
+  // Current template: Group + Article + Amount (no code).
+  // Legacy: Code + Name + Amount (group optional) or four-column with code.
+  const modern = codeAt < 0 && groupAt >= 0 && nameAt >= 0 && amountAt >= 0;
+  const legacy = codeAt >= 0 && nameAt >= 0 && amountAt >= 0;
+  if (!modern && !legacy) {
     return {
       articles: [],
       previewRows: [],
       skipped: [],
-      issues: [{ row: 1, reason: 'required_code' }],
+      issues: [{ row: 1, reason: modern || groupAt >= 0 ? 'required_name' : 'required_group' }],
     };
   }
 
   const body = rows.slice(1).map((row, index) => ({
     row: index + 2,
-    code: cellText(row[codeAt]),
+    code: codeAt >= 0 ? cellText(row[codeAt]) : '',
     group: groupAt >= 0 ? cellText(row[groupAt]) : '',
     name: cellText(row[nameAt]),
     amountCell: row[amountAt],
@@ -476,7 +519,8 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
   const previewRows: BudgetPlanPreviewRow[] = [];
   const skipped: BudgetPlanSkip[] = [];
   const issues: BudgetPlanIssue[] = [];
-  const seen = new Set<string>();
+  const seenCodes = new Set<string>();
+  const seenArticles = new Set<string>();
 
   for (const row of body) {
     if (!row.code && !row.name && !row.group && !row.amountRaw) {
@@ -493,13 +537,18 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
     }
 
     const rowIssues: BudgetPlanIssueReason[] = [];
-    if (!row.code) {
+    if (legacy && !modern && !row.code) {
+      // Legacy code-bearing header: empty code is an error.
       rowIssues.push('required_code');
       issues.push({ row: row.row, reason: 'required_code' });
     }
     if (!row.name) {
       rowIssues.push('required_name');
       issues.push({ row: row.row, reason: 'required_name', code: row.code || undefined });
+    }
+    if (modern && !row.group) {
+      rowIssues.push('required_group');
+      issues.push({ row: row.row, reason: 'required_group' });
     }
 
     const money = parseMoneyCell(row.amountCell);
@@ -520,14 +569,23 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       });
     }
 
-    const key = row.code.toLowerCase();
-    const duplicate = row.code.length > 0 && seen.has(key);
+    let duplicate = false;
     if (row.code) {
+      const key = row.code.toLowerCase();
+      duplicate = seenCodes.has(key);
       if (duplicate) {
         rowIssues.push('duplicate_code');
         issues.push({ row: row.row, reason: 'duplicate_code', code: row.code });
       }
-      seen.add(key);
+      seenCodes.add(key);
+    } else if (row.group && row.name) {
+      const key = `${normMatch(row.group)}|${normMatch(row.name)}`;
+      duplicate = seenArticles.has(key);
+      if (duplicate) {
+        rowIssues.push('duplicate_article');
+        issues.push({ row: row.row, reason: 'duplicate_article' });
+      }
+      seenArticles.add(key);
     }
 
     previewRows.push({
@@ -541,7 +599,8 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       issues: rowIssues,
     });
 
-    if (row.code && row.name && money.ok && !duplicate) {
+    // Articles with a code can commit after catalog validation; modern rows get a code later.
+    if (row.name && money.ok && !duplicate && (row.code || (modern && row.group))) {
       articles.push({
         row: row.row,
         code: row.code,
@@ -556,7 +615,9 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
     issues.filter((issue) => issue.reason === 'duplicate_code').map((issue) => issue.code?.toLowerCase()),
   );
   return {
-    articles: articles.filter((article) => !duplicateCodes.has(article.code.toLowerCase())),
+    articles: articles.filter(
+      (article) => !article.code || !duplicateCodes.has(article.code.toLowerCase()),
+    ),
     previewRows,
     skipped,
     issues,

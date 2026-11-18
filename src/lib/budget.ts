@@ -28,31 +28,14 @@ export function budgetGroupLabel(
 ): string {
   if (!cat) return '';
   const loc = String(locale || 'ru').toLowerCase();
+  // Prefer localized catalog names; never surface internal group_code to users.
   if (loc.startsWith('bg')) {
-    return (
-      cat.group_name_bg?.trim() ||
-      cat.group_name_ru?.trim() ||
-      cat.group_name_en?.trim() ||
-      cat.group_code?.trim() ||
-      ''
-    );
+    return cat.group_name_bg?.trim() || cat.group_name_ru?.trim() || cat.group_name_en?.trim() || '';
   }
   if (loc.startsWith('en')) {
-    return (
-      cat.group_name_en?.trim() ||
-      cat.group_name_ru?.trim() ||
-      cat.group_name_bg?.trim() ||
-      cat.group_code?.trim() ||
-      ''
-    );
+    return cat.group_name_en?.trim() || cat.group_name_ru?.trim() || cat.group_name_bg?.trim() || '';
   }
-  return (
-    cat.group_name_ru?.trim() ||
-    cat.group_name_en?.trim() ||
-    cat.group_name_bg?.trim() ||
-    cat.group_code?.trim() ||
-    ''
-  );
+  return cat.group_name_ru?.trim() || cat.group_name_en?.trim() || cat.group_name_bg?.trim() || '';
 }
 
 export type BudgetYear = {

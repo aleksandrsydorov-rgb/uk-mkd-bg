@@ -427,9 +427,10 @@ export function AdminFirstRunBudget({
   }
 
   function downloadTemplate() {
-    const seedCats = (planCategories.length > 0 ? planCategories : categories).slice();
+    const seedCats = (planCategories.length > 0 ? planCategories : categories)
+      .slice()
+      .filter((cat) => cat.active !== false && cat.code !== '1.10');
     const catalogRows = seedCats.map((cat) => ({
-      code: cat.code,
       group: budgetGroupLabel(cat, locale),
       name: categoryLabel(cat, locale),
       amount: '',
@@ -751,20 +752,29 @@ export function AdminFirstRunBudget({
                               <thead>
                                 <tr>
                                   <th>{t('admin.firstRunBudgetImportColRow')}</th>
-                                  <th>{t('admin.firstRunBudgetImportColCode')}</th>
+                                  <th>{t('admin.firstRunBudgetImportColName')}</th>
                                   <th>{t('admin.firstRunErrReason')}</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {importIssues.map((issue) => (
-                                  <tr
-                                    key={`${issue.row}-${issue.reason}-${issue.code ?? ''}-${issue.raw ?? ''}`}
-                                  >
-                                    <td>{issue.row}</td>
-                                    <td>{issue.code || '—'}</td>
-                                    <td className={styles.fieldError}>{issueReasonText(issue)}</td>
-                                  </tr>
-                                ))}
+                                {importIssues.map((issue) => {
+                                  const preview = importPreview.previewRows.find(
+                                    (r) => r.row === issue.row,
+                                  );
+                                  const articleLabel =
+                                    preview?.name?.trim() ||
+                                    preview?.group?.trim() ||
+                                    '—';
+                                  return (
+                                    <tr
+                                      key={`${issue.row}-${issue.reason}-${issue.code ?? ''}-${issue.raw ?? ''}`}
+                                    >
+                                      <td>{issue.row}</td>
+                                      <td>{articleLabel}</td>
+                                      <td className={styles.fieldError}>{issueReasonText(issue)}</td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -780,7 +790,6 @@ export function AdminFirstRunBudget({
                             <thead>
                               <tr>
                                 <th>{t('admin.firstRunBudgetImportColRow')}</th>
-                                <th>{t('admin.firstRunBudgetImportColCode')}</th>
                                 <th>{t('admin.firstRunBudgetImportColGroup')}</th>
                                 <th>{t('admin.firstRunBudgetImportColName')}</th>
                                 <th>{t('admin.firstRunBudgetImportColPrior')}</th>
@@ -793,7 +802,7 @@ export function AdminFirstRunBudget({
                               {grouped.groups.map((group) => (
                                 <Fragment key={`g-${group.key}`}>
                                   <tr>
-                                    <td colSpan={8} className={styles.groupTitle}>
+                                    <td colSpan={7} className={styles.groupTitle}>
                                       {group.label}
                                     </td>
                                   </tr>
@@ -818,9 +827,8 @@ export function AdminFirstRunBudget({
                                         ? moneyEur(row.priorAmount)
                                         : '—';
                                     return (
-                                      <tr key={`preview-${row.row}-${row.code}`}>
+                                      <tr key={`preview-${row.row}-${row.code || row.name}`}>
                                         <td>{row.row}</td>
-                                        <td>{row.code || '—'}</td>
                                         <td>{row.group || '—'}</td>
                                         <td>{row.name || '—'}</td>
                                         <td>{priorText}</td>
@@ -845,7 +853,7 @@ export function AdminFirstRunBudget({
                                     );
                                   })}
                                   <tr>
-                                    <td colSpan={4}>
+                                    <td colSpan={3}>
                                       {t('admin.firstRunBudgetImportGroupTotal').replace(
                                         '{group}',
                                         group.label,
@@ -862,7 +870,7 @@ export function AdminFirstRunBudget({
                                 </Fragment>
                               ))}
                               <tr>
-                                <td colSpan={4}>{t('admin.firstRunBudgetImportGrandTotal')}</td>
+                                <td colSpan={3}>{t('admin.firstRunBudgetImportGrandTotal')}</td>
                                 <td>
                                   {grouped.priorGrandTotal != null
                                     ? moneyEur(grouped.priorGrandTotal)

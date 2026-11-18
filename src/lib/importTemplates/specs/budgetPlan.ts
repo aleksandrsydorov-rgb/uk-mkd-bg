@@ -1,8 +1,13 @@
 import type { ImportTemplateSpec } from '@/lib/importTemplates/types';
+import {
+  buildLocalizedImportWorkbook,
+  buildLocalizedImportWorkbookWithRows,
+  toImportTemplateLocale,
+} from '@/lib/importTemplates/workbook';
 
 /**
- * Keys match budgetPlanImport (code / name / amount).
- * Aliases include every header accepted by CODE_HEADERS / NAME_HEADERS / AMOUNT_HEADERS there.
+ * Keys: code / group / name / amount.
+ * Two levels only: Group → Budget article (no subgroups).
  */
 export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
   id: 'budget_plan',
@@ -24,22 +29,31 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
   },
   notes: {
     ru: [
-      'Заполняйте только лист «Бюджет». Примеры в этой инструкции не импортируются.',
-      'Код статьи хранится как текст: 1.1 и 01 не преобразуются. Строки разделов и итогов статьями не становятся.',
-      'Суммы читаются из значения ячейки, а не из её формата в Excel.',
-      'Год бюджета выбирается в мастере отдельно. Загрузка не утверждает план собранием.',
+      'Заполняйте только лист «Бюджет». Примеры на листе инструкции не импортируются.',
+      'Два уровня: Группа → Статья бюджета. Подгрупп нет.',
+      'Код, группа и статья предзаполнены из справочника. Код храните текстом: 1.10 не должен стать 1.1 или датой.',
+      'Одна строка — одна статья. Итоги групп и бюджета считает система — отдельные итоговые строки не нужны.',
+      'Пустая сумма не обнуляет уже сохранённый план; явный 0 сохраняется. Совпадение кода, группы и статьи обязательно.',
+      'Старый файл без колонки «Группа» принимается: группа берётся из справочника по коду.',
+      'Год бюджета выбирается в мастере отдельно.',
     ],
     bg: [
-      'Попълвайте само листа «Бюджет». Примерите в тази инструкция не се импортират.',
-      'Кодът на статията е текст: 1.1 и 01 не се преобразуват. Редовете за раздели и общи суми не стават статии.',
-      'Сумите се четат от стойността на клетката, а не от формата ѝ в Excel.',
-      'Годината на бюджета се избира отделно в съветника. Зареждането не утвърждава плана със събрание.',
+      'Попълвайте само листа «Бюджет». Примерите в инструкцията не се импортират.',
+      'Две нива: Група → Статия на бюджета. Няма подгрупи.',
+      'Кодът, групата и статията са попълнени от справочника. Кодът е текст: 1.10 не става 1.1 или дата.',
+      'Един ред — една статия. Итогите на групите и бюджета се смятат от системата.',
+      'Празна сума не нулира вече записания план; явна 0 се записва. Код, група и статия трябва да съвпадат.',
+      'Стар файл без колона «Група» се приема: групата се взима от справочника по кода.',
+      'Годината на бюджета се избира отделно в съветника.',
     ],
     en: [
-      'Fill only the Budget sheet. Examples on this Instructions sheet are not imported.',
-      'The article code is stored as text: 1.1 and 01 are not converted. Section and total rows do not become articles.',
-      'Amounts are read from the cell value, not from its Excel number format.',
-      'The budget year is chosen separately in the wizard. Uploading does not approve the plan at a meeting.',
+      'Fill only the Budget sheet. Examples on the Instructions sheet are not imported.',
+      'Two levels: Group → Budget article. No subgroups.',
+      'Code, group and article are prefilled from the catalog. Keep the code as text: 1.10 must not become 1.1 or a date.',
+      'One row is one article. Group and budget totals are calculated by the system — do not import total rows.',
+      'A blank amount does not clear a saved plan; an explicit 0 is saved. Code, group and article must match the catalog.',
+      'A legacy file without a Group column is accepted: the group is taken from the catalog by code.',
+      'The budget year is chosen separately in the wizard.',
     ],
   },
   columns: [
@@ -47,25 +61,52 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
       key: 'code',
       required: true,
       format: 'text',
-      width: 18,
+      width: 14,
       label: {
         ru: 'Код статьи',
         bg: 'Код на статията',
-        en: 'Category code',
+        en: 'Article code',
       },
       aliases: [
         'код статьи',
         'category code',
         'код на статията',
+        'article code',
         'code',
         'код',
       ],
       instruction: {
-        ru: 'Код статьи бюджета, например 1.1. Уникален в файле. Обязательно.',
-        bg: 'Код на бюджетната статия, напр. 1.1. Уникален във файла. Задължително.',
-        en: 'Budget article code, e.g. 1.1. Unique in the file. Required.',
+        ru: 'Код статьи из справочника, например 1.10. Текст, не число Excel. Обязательно.',
+        bg: 'Код на статията от справочника, напр. 1.10. Текст, не число от Excel. Задължително.',
+        en: 'Article code from the catalog, e.g. 1.10. Text, not an Excel number. Required.',
       },
-      example: '1.1',
+      example: '1.10',
+    },
+    {
+      key: 'group',
+      required: false,
+      format: 'text',
+      width: 28,
+      label: {
+        ru: 'Группа',
+        bg: 'Група',
+        en: 'Group',
+      },
+      aliases: [
+        'группа',
+        'група',
+        'group',
+        'group_name',
+        'group name',
+        'наименование группы',
+        'име на групата',
+      ],
+      instruction: {
+        ru: 'Группа статьи из справочника. При старом файле без этой колонки группа определяется по коду.',
+        bg: 'Група на статията от справочника. При стар файл без колоната групата се определя по кода.',
+        en: 'Article group from the catalog. On a legacy file without this column, the group is resolved from the code.',
+      },
+      example: 'Содержание и текущие расходы',
     },
     {
       key: 'name',
@@ -73,13 +114,16 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
       format: 'text',
       width: 36,
       label: {
-        ru: 'Название статьи',
-        bg: 'Наименование на статията',
-        en: 'Category name',
+        ru: 'Статья бюджета',
+        bg: 'Статия на бюджета',
+        en: 'Budget article',
       },
       aliases: [
+        'статья бюджета',
+        'статия на бюджета',
         'название статьи',
         'category name',
+        'budget article',
         'наименование',
         'name',
         'наименование на статията',
@@ -87,39 +131,95 @@ export const BUDGET_PLAN_IMPORT_SPEC: ImportTemplateSpec = {
         'название',
       ],
       instruction: {
-        ru: 'Название статьи бюджета. Обязательно.',
-        bg: 'Наименование на бюджетната статия. Задължително.',
-        en: 'Budget article name. Required.',
+        ru: 'Название статьи из справочника. Должно совпадать с кодом. Обязательно.',
+        bg: 'Име на статията от справочника. Трябва да съвпада с кода. Задължително.',
+        en: 'Article name from the catalog. Must match the code. Required.',
       },
-      example: 'Уборка',
+      example: 'Резерв группы 1',
     },
     {
       key: 'amount',
-      required: true,
+      required: false,
       format: 'money',
-      width: 18,
+      width: 20,
       label: {
-        ru: 'План на год, EUR',
-        bg: 'План за годината, EUR',
-        en: 'Annual plan, EUR',
+        ru: 'Плановая сумма, EUR',
+        bg: 'Планова сума, EUR',
+        en: 'Planned amount, EUR',
       },
       aliases: [
+        'плановая сумма, eur',
+        'планова сума, eur',
+        'planned amount, eur',
         'план на год, eur',
         'annual plan, eur',
         'план за годината, eur',
-        'уже израсходовано, eur',
-        'already spent, eur',
-        'вече изразходвано, eur',
         'amount',
         'сумма',
         'сума',
       ],
       instruction: {
-        ru: 'Плановая сумма на год в EUR (≥ 0). Число, не текст. Обязательно.',
-        bg: 'Планова сума за годината в EUR (≥ 0). Число, не текст. Задължително.',
-        en: 'Planned amount for the year in EUR (≥ 0). A number, not text. Required.',
+        ru: 'План в EUR. 0 — сохранить ноль; пусто — не менять уже сохранённую сумму. Итоги не вводите.',
+        bg: 'План в EUR. 0 — записва нула; празно — не пипа вече записаната сума. Не въвеждайте итози.',
+        en: 'Plan in EUR. 0 saves zero; blank leaves an existing amount unchanged. Do not enter totals.',
       },
-      example: '2400.00',
+      example: '1000.00',
     },
   ],
+  instructionScenarios: [
+    {
+      title: {
+        ru: 'Примеры (не импортируются)',
+        bg: 'Примери (не се импортират)',
+        en: 'Examples (not imported)',
+      },
+      rows: [
+        {
+          code: '1.10',
+          group: 'Содержание и текущие расходы',
+          name: 'Резерв группы 1',
+          amount: '50',
+        },
+        {
+          code: 'cleaning',
+          group: 'Содержание и обслуживание',
+          name: 'Уборка',
+          amount: '0',
+        },
+        {
+          code: 'security',
+          group: 'Содержание и обслуживание',
+          name: 'Охрана',
+          amount: '',
+        },
+      ],
+    },
+  ],
+  templateInputRows: 80,
 };
+
+export type BudgetCatalogSeed = {
+  code: string;
+  name: string;
+  group: string;
+  amount?: string;
+};
+
+export function buildBudgetPlanTemplateBuffer(
+  locale: 'ru' | 'bg' | 'en' | string = 'ru',
+  catalogRows?: BudgetCatalogSeed[],
+): ArrayBuffer {
+  const loc = toImportTemplateLocale(locale);
+  if (!catalogRows?.length) {
+    return buildLocalizedImportWorkbook(BUDGET_PLAN_IMPORT_SPEC, loc);
+  }
+  const rows = catalogRows.map((r) => ({
+    code: String(r.code ?? ''),
+    group: String(r.group ?? ''),
+    name: String(r.name ?? ''),
+    amount: r.amount != null ? String(r.amount) : '',
+  }));
+  return buildLocalizedImportWorkbookWithRows(BUDGET_PLAN_IMPORT_SPEC, loc, rows, {
+    extraBlankRows: 20,
+  });
+}

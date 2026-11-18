@@ -11,7 +11,49 @@ export type BudgetCategory = {
   name_bg: string;
   sort_order?: number;
   active?: boolean;
+  /** Group → Article (no subgroups). Catalog text — not machine-translated at runtime. */
+  group_code?: string | null;
+  group_name_ru?: string | null;
+  group_name_en?: string | null;
+  group_name_bg?: string | null;
 };
+
+/** Locale-aware group label from catalog fields (stored names, not auto-translated). */
+export function budgetGroupLabel(
+  cat: Pick<
+    BudgetCategory,
+    'group_code' | 'group_name_ru' | 'group_name_en' | 'group_name_bg'
+  > | null | undefined,
+  locale: string,
+): string {
+  if (!cat) return '';
+  const loc = String(locale || 'ru').toLowerCase();
+  if (loc.startsWith('bg')) {
+    return (
+      cat.group_name_bg?.trim() ||
+      cat.group_name_ru?.trim() ||
+      cat.group_name_en?.trim() ||
+      cat.group_code?.trim() ||
+      ''
+    );
+  }
+  if (loc.startsWith('en')) {
+    return (
+      cat.group_name_en?.trim() ||
+      cat.group_name_ru?.trim() ||
+      cat.group_name_bg?.trim() ||
+      cat.group_code?.trim() ||
+      ''
+    );
+  }
+  return (
+    cat.group_name_ru?.trim() ||
+    cat.group_name_en?.trim() ||
+    cat.group_name_bg?.trim() ||
+    cat.group_code?.trim() ||
+    ''
+  );
+}
 
 export type BudgetYear = {
   id: string;

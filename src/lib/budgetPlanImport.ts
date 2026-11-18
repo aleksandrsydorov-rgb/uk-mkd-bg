@@ -9,22 +9,38 @@ import * as XLSX from 'xlsx';
 import {
   BUDGET_PLAN_IMPORT_SPEC,
   OPENING_TOTALS_IMPORT_SPEC,
-  buildLocalizedImportWorkbook,
+  buildBudgetPlanTemplateBuffer as buildBudgetPlanTemplateFromSpec,
   buildLocalizedImportWorkbookWithRows,
   columnHeaderCandidates,
   findImportDataSheet,
   normalizeImportHeader,
   toImportTemplateLocale,
+  type BudgetCatalogSeed,
   type ImportTemplateLocale,
 } from '@/lib/importTemplates';
 
-export const BUDGET_PLAN_CODE = 'Код статьи';
-export const BUDGET_PLAN_NAME = 'Название статьи';
-export const BUDGET_PLAN_AMOUNT = 'План на год, EUR';
+export type { BudgetCatalogSeed };
 
-const CODE_HEADERS = ['код статьи', 'category code', 'код на статията', 'code'];
-const NAME_HEADERS = ['название статьи', 'category name', 'наименование', 'name'];
+export const BUDGET_PLAN_CODE = 'Код статьи';
+export const BUDGET_PLAN_GROUP = 'Группа';
+export const BUDGET_PLAN_NAME = 'Статья бюджета';
+export const BUDGET_PLAN_AMOUNT = 'Плановая сумма, EUR';
+
+const CODE_HEADERS = ['код статьи', 'category code', 'код на статията', 'article code', 'code'];
+const GROUP_HEADERS = ['группа', 'група', 'group', 'group name', 'group_name'];
+const NAME_HEADERS = [
+  'статья бюджета',
+  'статия на бюджета',
+  'название статьи',
+  'category name',
+  'budget article',
+  'наименование',
+  'name',
+];
 const AMOUNT_HEADERS = [
+  'плановая сумма, eur',
+  'планова сума, eur',
+  'planned amount, eur',
   'план на год, eur',
   'annual plan, eur',
   'план за годината, eur',
@@ -34,7 +50,7 @@ const AMOUNT_HEADERS = [
   'amount',
 ];
 
-function headerSetFor(legacy: string[], key: 'code' | 'name' | 'amount'): Set<string> {
+function headerSetFor(legacy: string[], key: 'code' | 'group' | 'name' | 'amount'): Set<string> {
   const out = new Set(legacy.map((h) => normalizeImportHeader(h)));
   for (const spec of [BUDGET_PLAN_IMPORT_SPEC, OPENING_TOTALS_IMPORT_SPEC]) {
     const col = spec.columns.find((c) => c.key === key);
@@ -45,6 +61,7 @@ function headerSetFor(legacy: string[], key: 'code' | 'name' | 'amount'): Set<st
 }
 
 const CODE_HEADER_SET = headerSetFor(CODE_HEADERS, 'code');
+const GROUP_HEADER_SET = headerSetFor(GROUP_HEADERS, 'group');
 const NAME_HEADER_SET = headerSetFor(NAME_HEADERS, 'name');
 const AMOUNT_HEADER_SET = headerSetFor(AMOUNT_HEADERS, 'amount');
 
@@ -58,6 +75,7 @@ export type BudgetPlanArticle = {
   row: number;
   code: string;
   name: string;
+  group: string;
   amount: number;
 };
 
@@ -73,7 +91,10 @@ export type BudgetPlanIssueReason =
   | 'invalid_amount'
   | 'negative_amount'
   | 'amount_precision'
-  | 'duplicate_code';
+  | 'duplicate_code'
+  | 'unknown_code'
+  | 'name_mismatch'
+  | 'group_mismatch';
 
 export type BudgetPlanIssue = {
   row: number;
@@ -90,8 +111,11 @@ export type BudgetPlanPreviewRow = {
   row: number;
   code: string;
   name: string;
-  /** Valid amount, or null when the cell could not be read as money. */
+  group: string;
+  /** Valid amount, or null when blank / invalid. */
   amount: number | null;
+  /** True when the amount cell was empty (preserve existing plan — do not zero). */
+  amountBlank: boolean;
   /** Original amount cell for display when invalid. */
   amountRaw: string;
   issues: BudgetPlanIssueReason[];
@@ -107,21 +131,168 @@ export type BudgetPlanParse = {
   issues: BudgetPlanIssue[];
 };
 
-/** Attach create/update/unchanged actions from existing plan amounts by category code. */
+export type BudgetCatalogMatch = {
+  code: string;
+  name_ru: string;
+  name_en: string;
+  name_bg: string;
+  group_code?: string | null;
+  group_name_ru?: string | null;
+  group_name_en?: string | null;
+  group_name_bg?: string | null;
+};
+
+export type BudgetPreviewGroup = {
+  key: string;
+  label: string;
+  rows: BudgetPlanPreviewRow[];
+  /** Sum of valid (non-blank) article amounts in the group. */
+  total: number;
+  priorTotal: number | null;
+};
+
+function normMatch(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function catalogNames(cat: BudgetCatalogMatch): string[] {
+  return [cat.name_ru, cat.name_en, cat.name_bg].map((v) => normMatch(v)).filter(Boolean);
+}
+
+function catalogGroups(cat: BudgetCatalogMatch): string[] {
+  return [cat.group_code, cat.group_name_ru, cat.group_name_en, cat.group_name_bg]
+    .map((v) => normMatch(String(v ?? '')))
+    .filter(Boolean);
+}
+
+function catalogGroupLabel(cat: BudgetCatalogMatch, locale: string): string {
+  const loc = String(locale || 'ru').toLowerCase();
+  if (loc.startsWith('bg')) {
+    return (
+      cat.group_name_bg?.trim() ||
+      cat.group_name_ru?.trim() ||
+      cat.group_name_en?.trim() ||
+      cat.group_code?.trim() ||
+      ''
+    );
+  }
+  if (loc.startsWith('en')) {
+    return (
+      cat.group_name_en?.trim() ||
+      cat.group_name_ru?.trim() ||
+      cat.group_name_bg?.trim() ||
+      cat.group_code?.trim() ||
+      ''
+    );
+  }
+  return (
+    cat.group_name_ru?.trim() ||
+    cat.group_name_en?.trim() ||
+    cat.group_name_bg?.trim() ||
+    cat.group_code?.trim() ||
+    ''
+  );
+}
+
+function catalogArticleLabel(cat: BudgetCatalogMatch, locale: string): string {
+  const loc = String(locale || 'ru').toLowerCase();
+  if (loc.startsWith('bg')) return cat.name_bg || cat.name_ru || cat.name_en || cat.code;
+  if (loc.startsWith('en')) return cat.name_en || cat.name_ru || cat.name_bg || cat.code;
+  return cat.name_ru || cat.name_en || cat.name_bg || cat.code;
+}
+
+/**
+ * Validate code / group / article against the catalog.
+ * Unknown codes and typos are errors — never auto-create or merge across groups.
+ * Legacy files without a group column resolve the group from the catalog by code.
+ */
+export function validateBudgetPlanAgainstCatalog(
+  parsed: BudgetPlanParse,
+  catalog: BudgetCatalogMatch[],
+  locale: string = 'ru',
+): BudgetPlanParse {
+  const byCode = new Map(catalog.map((c) => [c.code.trim().toLowerCase(), c]));
+  const issues: BudgetPlanIssue[] = [];
+  const previewRows: BudgetPlanPreviewRow[] = parsed.previewRows.map((row) => {
+    const rowIssues: BudgetPlanIssueReason[] = [...row.issues];
+    const key = row.code.trim().toLowerCase();
+    const cat = key ? byCode.get(key) : undefined;
+    let group = row.group;
+    let name = row.name;
+
+    if (row.code && !cat) {
+      if (!rowIssues.includes('unknown_code')) rowIssues.push('unknown_code');
+    } else if (cat) {
+      if (row.name && !catalogNames(cat).includes(normMatch(row.name))) {
+        if (!rowIssues.includes('name_mismatch')) rowIssues.push('name_mismatch');
+      } else if (!row.name) {
+        name = catalogArticleLabel(cat, locale);
+      }
+      if (row.group && !catalogGroups(cat).includes(normMatch(row.group))) {
+        if (!rowIssues.includes('group_mismatch')) rowIssues.push('group_mismatch');
+      } else if (!row.group) {
+        group = catalogGroupLabel(cat, locale);
+      }
+    }
+
+    for (const reason of rowIssues) {
+      issues.push({
+        row: row.row,
+        reason,
+        code: row.code || undefined,
+        raw: row.amountRaw,
+      });
+    }
+
+    return { ...row, group, name, issues: rowIssues };
+  });
+
+  const blocking = new Set(previewRows.filter((r) => r.issues.length > 0).map((r) => r.row));
+  const articles = parsed.articles
+    .filter((a) => !blocking.has(a.row))
+    .map((a) => {
+      const preview = previewRows.find((r) => r.row === a.row);
+      return {
+        ...a,
+        group: preview?.group ?? a.group,
+        name: preview?.name ?? a.name,
+      };
+    });
+
+  return {
+    articles,
+    previewRows,
+    skipped: parsed.skipped,
+    issues,
+  };
+}
+
+/** Attach create/update/unchanged/skip actions from existing plan amounts by category code. */
 export function enrichBudgetPreviewWithExisting(
   parsed: BudgetPlanParse,
   existingByCode: Map<string, number>,
 ): BudgetPlanParse {
   const previewRows = parsed.previewRows.map((row) => {
-    if (row.issues.length > 0 || row.amount == null) {
-      return { ...row, priorAmount: null, action: 'error' as BudgetPreviewAction };
-    }
     const key = row.code.trim().toLowerCase();
+    const prior = key && existingByCode.has(key) ? (existingByCode.get(key) ?? 0) : null;
+    if (row.issues.length > 0) {
+      return { ...row, priorAmount: prior, action: 'error' as BudgetPreviewAction };
+    }
+    if (row.amountBlank) {
+      // Blank amount never zeros an existing plan and is not imported.
+      return {
+        ...row,
+        priorAmount: prior,
+        action: 'unchanged' as BudgetPreviewAction,
+      };
+    }
+    if (row.amount == null) {
+      return { ...row, priorAmount: prior, action: 'error' as BudgetPreviewAction };
+    }
     if (!key) return { ...row, priorAmount: null, action: 'error' as BudgetPreviewAction };
-    if (!existingByCode.has(key)) {
+    if (prior == null) {
       return { ...row, priorAmount: null, action: 'create' as BudgetPreviewAction };
     }
-    const prior = existingByCode.get(key) ?? 0;
     const same = Math.abs(prior - row.amount) < 0.0001;
     return {
       ...row,
@@ -130,6 +301,40 @@ export function enrichBudgetPreviewWithExisting(
     };
   });
   return { ...parsed, previewRows };
+}
+
+/** Group preview rows for the unified was/will preview (Group → Article). */
+export function buildBudgetPreviewGroups(previewRows: BudgetPlanPreviewRow[]): {
+  groups: BudgetPreviewGroup[];
+  grandTotal: number;
+  priorGrandTotal: number | null;
+} {
+  const order: string[] = [];
+  const map = new Map<string, BudgetPreviewGroup>();
+  for (const row of previewRows) {
+    const label = row.group.trim() || '—';
+    const key = normMatch(label) || '_';
+    let group = map.get(key);
+    if (!group) {
+      group = { key, label, rows: [], total: 0, priorTotal: null };
+      map.set(key, group);
+      order.push(key);
+    }
+    group.rows.push(row);
+    if (row.amount != null && Number.isFinite(row.amount)) {
+      group.total += row.amount;
+    }
+    if (row.priorAmount != null && Number.isFinite(row.priorAmount)) {
+      group.priorTotal = (group.priorTotal ?? 0) + row.priorAmount;
+    }
+  }
+  const groups = order.map((k) => map.get(k)!);
+  const grandTotal = groups.reduce((s, g) => s + g.total, 0);
+  const anyPrior = groups.some((g) => g.priorTotal != null);
+  const priorGrandTotal = anyPrior
+    ? groups.reduce((s, g) => s + (g.priorTotal ?? 0), 0)
+    : null;
+  return { groups, grandTotal, priorGrandTotal };
 }
 
 export function presentBudgetPreviewAction(
@@ -243,8 +448,10 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
   if (rows.length === 0) return { articles: [], previewRows: [], skipped: [], issues: [] };
   const header = rows[0].map((cell) => normHeader(cellText(cell)));
   const codeAt = header.findIndex((cell) => headerMatches(CODE_HEADER_SET, cell));
+  const groupAt = header.findIndex((cell) => headerMatches(GROUP_HEADER_SET, cell));
   const nameAt = header.findIndex((cell) => headerMatches(NAME_HEADER_SET, cell));
   const amountAt = header.findIndex((cell) => headerMatches(AMOUNT_HEADER_SET, cell));
+  // Legacy 3-column files omit Group; code + name + amount are still required headers.
   if (codeAt < 0 || nameAt < 0 || amountAt < 0) {
     return {
       articles: [],
@@ -257,6 +464,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
   const body = rows.slice(1).map((row, index) => ({
     row: index + 2,
     code: cellText(row[codeAt]),
+    group: groupAt >= 0 ? cellText(row[groupAt]) : '',
     name: cellText(row[nameAt]),
     amountCell: row[amountAt],
     amountRaw: amountRawDisplay(row[amountAt]),
@@ -271,11 +479,11 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
   const seen = new Set<string>();
 
   for (const row of body) {
-    if (!row.code && !row.name && !row.amountRaw) {
+    if (!row.code && !row.name && !row.group && !row.amountRaw) {
       skipped.push({ row: row.row, reason: 'empty' });
       continue;
     }
-    if (isTotalLabel(row.code, row.name)) {
+    if (isTotalLabel(row.code, row.name) || isTotalLabel(row.group, '')) {
       skipped.push({ row: row.row, reason: 'total' });
       continue;
     }
@@ -293,8 +501,16 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       rowIssues.push('required_name');
       issues.push({ row: row.row, reason: 'required_name', code: row.code || undefined });
     }
+
     const money = parseMoneyCell(row.amountCell);
-    if (!money.ok) {
+    let amount: number | null = null;
+    let amountBlank = false;
+    if (money.ok) {
+      amount = money.amount;
+    } else if (money.reason === 'required_amount') {
+      // Blank planned amount: preview-only preserve — do not treat as an error or zero.
+      amountBlank = true;
+    } else {
       rowIssues.push(money.reason);
       issues.push({
         row: row.row,
@@ -303,6 +519,7 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
         raw: money.raw,
       });
     }
+
     const key = row.code.toLowerCase();
     const duplicate = row.code.length > 0 && seen.has(key);
     if (row.code) {
@@ -317,13 +534,21 @@ export function parseBudgetPlanMatrix(matrix: unknown[][]): BudgetPlanParse {
       row: row.row,
       code: row.code,
       name: row.name,
-      amount: money.ok ? money.amount : null,
+      group: row.group,
+      amount,
+      amountBlank,
       amountRaw: row.amountRaw,
       issues: rowIssues,
     });
 
     if (row.code && row.name && money.ok && !duplicate) {
-      articles.push({ row: row.row, code: row.code, name: row.name, amount: money.amount });
+      articles.push({
+        row: row.row,
+        code: row.code,
+        name: row.name,
+        group: row.group,
+        amount: money.amount,
+      });
     }
   }
 
@@ -391,8 +616,9 @@ export function readBudgetPlanWorkbook(data: ArrayBuffer): BudgetPlanParse {
 
 export function buildBudgetPlanTemplateBuffer(
   locale: ImportTemplateLocale | string = 'ru',
+  catalogRows?: BudgetCatalogSeed[],
 ): ArrayBuffer {
-  return buildLocalizedImportWorkbook(BUDGET_PLAN_IMPORT_SPEC, toImportTemplateLocale(locale));
+  return buildBudgetPlanTemplateFromSpec(locale, catalogRows);
 }
 
 export type OpeningTotalIssueReason =

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { Wallet } from 'lucide-react';
@@ -17,6 +17,7 @@ import {
   type FirstRunState,
 } from '@/lib/firstRun';
 import {
+  budgetGroupLabel,
   categoryLabel,
   moneyEur,
   type BudgetCategory,
@@ -32,9 +33,11 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { BUDGET_PLAN_IMPORT_SPEC, localizedTemplateFileName } from '@/lib/importTemplates';
 import {
   buildBudgetPlanTemplateBuffer,
+  buildBudgetPreviewGroups,
   enrichBudgetPreviewWithExisting,
   presentBudgetPreviewAction,
   readBudgetPlanWorkbook,
+  validateBudgetPlanAgainstCatalog,
   type BudgetPlanIssue,
   type BudgetPlanParse,
 } from '@/lib/budgetPlanImport';
@@ -251,7 +254,13 @@ export function AdminFirstRunBudget({
       if (cats.length === 0) {
         throw new Error(t('admin.firstRunErrBudgetLines'));
       }
-      const rows: Array<{ row: number; code: string; name: string; amount: string }> = [];
+      const rows: Array<{
+        row: number;
+        code: string;
+        name: string;
+        group: string;
+        amount: string;
+      }> = [];
       for (let i = 0; i < cats.length; i += 1) {
         const cat = cats[i]!;
         const raw = amounts[cat.id] ?? '0';
@@ -263,6 +272,7 @@ export function AdminFirstRunBudget({
           row: i + 1,
           code: cat.code,
           name: cat.name_ru || cat.name_en || cat.name_bg || cat.code,
+          group: budgetGroupLabel(cat, locale),
           amount: n.toFixed(2),
         });
       }
@@ -273,7 +283,7 @@ export function AdminFirstRunBudget({
       if (error) throw error;
       return data;
     },
-    [amounts, supabase, t],
+    [amounts, locale, supabase, t],
   );
 
   const presentFormError = useCallback(
@@ -417,7 +427,14 @@ export function AdminFirstRunBudget({
   }
 
   function downloadTemplate() {
-    const bytes = buildBudgetPlanTemplateBuffer(locale);
+    const seedCats = (planCategories.length > 0 ? planCategories : categories).slice();
+    const catalogRows = seedCats.map((cat) => ({
+      code: cat.code,
+      group: budgetGroupLabel(cat, locale),
+      name: categoryLabel(cat, locale),
+      amount: '',
+    }));
+    const bytes = buildBudgetPlanTemplateBuffer(locale, catalogRows);
     const blob = new Blob([bytes], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
@@ -433,6 +450,17 @@ export function AdminFirstRunBudget({
     setFormError(null);
     setImportNote(null);
     const parsed = readBudgetPlanWorkbook(await file.arrayBuffer());
+    const catalog = (categories.length > 0 ? categories : planCategories).map((cat) => ({
+      code: cat.code,
+      name_ru: cat.name_ru,
+      name_en: cat.name_en,
+      name_bg: cat.name_bg,
+      group_code: cat.group_code,
+      group_name_ru: cat.group_name_ru,
+      group_name_en: cat.group_name_en,
+      group_name_bg: cat.group_name_bg,
+    }));
+    const validated = validateBudgetPlanAgainstCatalog(parsed, catalog, locale);
     const existingByCode = new Map<string, number>();
     for (const line of lines) {
       const code = String(line.category_code ?? '').trim().toLowerCase();
@@ -447,7 +475,7 @@ export function AdminFirstRunBudget({
       const n = Number(String(raw).replace(',', '.'));
       if (Number.isFinite(n)) existingByCode.set(code, n);
     }
-    const enriched = enrichBudgetPreviewWithExisting(parsed, existingByCode);
+    const enriched = enrichBudgetPreviewWithExisting(validated, existingByCode);
     setImportPreview(enriched);
     setImportIssues(enriched.issues);
   }
@@ -471,6 +499,7 @@ export function AdminFirstRunBudget({
           row: article.row,
           code: article.code,
           name: article.name,
+          group: article.group,
           amount: article.amount.toFixed(2),
         })),
       });
@@ -697,93 +726,157 @@ export function AdminFirstRunBudget({
                       <div className={styles.statLabel}>{t('admin.firstRunBudgetImportStatWarnings')}</div>
                     </div>
                   </div>
-                  {importIssues.length === 0 ? (
-                    <p className={styles.okNote}>
-                      {t('admin.firstRunBudgetImportFullTotal').replace(
-                        '{total}',
-                        moneyEur(importPreview.articles.reduce((sum, row) => sum + row.amount, 0)),
-                      )}
-                    </p>
-                  ) : importPreview.articles.length > 0 ? (
-                    <p className={styles.hint}>
-                      {t('admin.firstRunBudgetImportPartialTotal').replace(
-                        '{total}',
-                        moneyEur(importPreview.articles.reduce((sum, row) => sum + row.amount, 0)),
-                      )}
-                    </p>
-                  ) : null}
-                  {importIssues.length > 0 ? (
-                    <div className={styles.tableWrap}>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            <th>{t('admin.firstRunBudgetImportColRow')}</th>
-                            <th>{t('admin.firstRunBudgetImportColCode')}</th>
-                            <th>{t('admin.firstRunErrReason')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {importIssues.map((issue) => (
-                            <tr key={`${issue.row}-${issue.reason}-${issue.code ?? ''}-${issue.raw ?? ''}`}>
-                              <td>{issue.row}</td>
-                              <td>{issue.code || '—'}</td>
-                              <td className={styles.fieldError}>{issueReasonText(issue)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                  <p className={styles.hint} style={{ marginTop: 8 }}>
-                    {t('admin.firstRunBudgetPreviewYear').replace('{year}', String(calendarYear || '—'))}
-                  </p>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>{t('admin.firstRunBudgetImportColRow')}</th>
-                          <th>{t('admin.firstRunBudgetImportColCode')}</th>
-                          <th>{t('admin.firstRunBudgetImportColName')}</th>
-                          <th>{t('admin.firstRunBudgetImportColPrior')}</th>
-                          <th>{t('admin.firstRunBudgetImportColAmount')}</th>
-                          <th>{t('admin.firstRunSfColAction')}</th>
-                          <th>{t('admin.firstRunBudgetImportColNotes')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {importPreview.previewRows.map((row) => {
-                          const notes = row.issues.map((reason) =>
-                            issueReasonText({ reason, raw: row.amountRaw }),
-                          );
-                          const amountText =
-                            row.amount != null
-                              ? moneyEur(row.amount)
-                              : row.amountRaw.trim() !== ''
-                                ? row.amountRaw
-                                : '—';
-                          const priorText =
-                            row.priorAmount != null && Number.isFinite(row.priorAmount)
-                              ? moneyEur(row.priorAmount)
-                              : '—';
-                          return (
-                            <tr key={`preview-${row.row}-${row.code}`}>
-                              <td>{row.row}</td>
-                              <td>{row.code || '—'}</td>
-                              <td>{row.name || '—'}</td>
-                              <td>{priorText}</td>
-                              <td className={row.amount == null && row.issues.length > 0 ? styles.fieldError : undefined}>
-                                {amountText}
-                              </td>
-                              <td>{presentBudgetPreviewAction(row.action, t)}</td>
-                              <td className={notes.length > 0 ? styles.fieldError : undefined}>
-                                {notes.join(' · ') || '—'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  {(() => {
+                    const grouped = buildBudgetPreviewGroups(importPreview.previewRows);
+                    return (
+                      <>
+                        {importIssues.length === 0 ? (
+                          <p className={styles.okNote}>
+                            {t('admin.firstRunBudgetImportFullTotal').replace(
+                              '{total}',
+                              moneyEur(grouped.grandTotal),
+                            )}
+                          </p>
+                        ) : importPreview.articles.length > 0 ? (
+                          <p className={styles.hint}>
+                            {t('admin.firstRunBudgetImportPartialTotal').replace(
+                              '{total}',
+                              moneyEur(grouped.grandTotal),
+                            )}
+                          </p>
+                        ) : null}
+                        {importIssues.length > 0 ? (
+                          <div className={styles.tableWrap}>
+                            <table className={styles.table}>
+                              <thead>
+                                <tr>
+                                  <th>{t('admin.firstRunBudgetImportColRow')}</th>
+                                  <th>{t('admin.firstRunBudgetImportColCode')}</th>
+                                  <th>{t('admin.firstRunErrReason')}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {importIssues.map((issue) => (
+                                  <tr
+                                    key={`${issue.row}-${issue.reason}-${issue.code ?? ''}-${issue.raw ?? ''}`}
+                                  >
+                                    <td>{issue.row}</td>
+                                    <td>{issue.code || '—'}</td>
+                                    <td className={styles.fieldError}>{issueReasonText(issue)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
+                        <p className={styles.hint} style={{ marginTop: 8 }}>
+                          {t('admin.firstRunBudgetPreviewYear').replace(
+                            '{year}',
+                            String(calendarYear || '—'),
+                          )}
+                        </p>
+                        <div className={styles.tableWrap}>
+                          <table className={styles.table}>
+                            <thead>
+                              <tr>
+                                <th>{t('admin.firstRunBudgetImportColRow')}</th>
+                                <th>{t('admin.firstRunBudgetImportColCode')}</th>
+                                <th>{t('admin.firstRunBudgetImportColGroup')}</th>
+                                <th>{t('admin.firstRunBudgetImportColName')}</th>
+                                <th>{t('admin.firstRunBudgetImportColPrior')}</th>
+                                <th>{t('admin.firstRunBudgetImportColWill')}</th>
+                                <th>{t('admin.firstRunSfColAction')}</th>
+                                <th>{t('admin.firstRunBudgetImportColNotes')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {grouped.groups.map((group) => (
+                                <Fragment key={`g-${group.key}`}>
+                                  <tr>
+                                    <td colSpan={8} className={styles.groupTitle}>
+                                      {group.label}
+                                    </td>
+                                  </tr>
+                                  {group.rows.map((row) => {
+                                    const notes = [
+                                      ...row.issues.map((reason) =>
+                                        issueReasonText({ reason, raw: row.amountRaw }),
+                                      ),
+                                      ...(row.amountBlank
+                                        ? [t('admin.firstRunBudgetImport_blank_amount')]
+                                        : []),
+                                    ];
+                                    const amountText = row.amountBlank
+                                      ? '—'
+                                      : row.amount != null
+                                        ? moneyEur(row.amount)
+                                        : row.amountRaw.trim() !== ''
+                                          ? row.amountRaw
+                                          : '—';
+                                    const priorText =
+                                      row.priorAmount != null && Number.isFinite(row.priorAmount)
+                                        ? moneyEur(row.priorAmount)
+                                        : '—';
+                                    return (
+                                      <tr key={`preview-${row.row}-${row.code}`}>
+                                        <td>{row.row}</td>
+                                        <td>{row.code || '—'}</td>
+                                        <td>{row.group || '—'}</td>
+                                        <td>{row.name || '—'}</td>
+                                        <td>{priorText}</td>
+                                        <td
+                                          className={
+                                            row.amount == null && row.issues.length > 0
+                                              ? styles.fieldError
+                                              : undefined
+                                          }
+                                        >
+                                          {amountText}
+                                        </td>
+                                        <td>{presentBudgetPreviewAction(row.action, t)}</td>
+                                        <td
+                                          className={
+                                            row.issues.length > 0 ? styles.fieldError : undefined
+                                          }
+                                        >
+                                          {notes.join(' · ') || '—'}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                  <tr>
+                                    <td colSpan={4}>
+                                      {t('admin.firstRunBudgetImportGroupTotal').replace(
+                                        '{group}',
+                                        group.label,
+                                      )}
+                                    </td>
+                                    <td>
+                                      {group.priorTotal != null
+                                        ? moneyEur(group.priorTotal)
+                                        : '—'}
+                                    </td>
+                                    <td>{moneyEur(group.total)}</td>
+                                    <td colSpan={2} />
+                                  </tr>
+                                </Fragment>
+                              ))}
+                              <tr>
+                                <td colSpan={4}>{t('admin.firstRunBudgetImportGrandTotal')}</td>
+                                <td>
+                                  {grouped.priorGrandTotal != null
+                                    ? moneyEur(grouped.priorGrandTotal)
+                                    : '—'}
+                                </td>
+                                <td>{moneyEur(grouped.grandTotal)}</td>
+                                <td colSpan={2} />
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               )}
             </div>

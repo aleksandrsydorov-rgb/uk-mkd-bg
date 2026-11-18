@@ -235,14 +235,17 @@ describe('Email Core · provider gates', () => {
       return new Response(JSON.stringify({ message: 'lm_test secret body' }), { status: 500 });
     });
     const result = await runOutboxWorker({
-      supabase: readySupabase(),
+      supabase: readySupabase('lettermint'),
       env: {
         EMAIL_SENDING_ENABLED: 'true',
         EMAIL_MAIL_PROVIDER: 'lettermint',
         LETTERMINT_PROJECT_TOKEN: 'lm_test',
         RESEND_API_KEY: 're_test',
       },
-      http: { fetch: fetchMock as unknown as typeof fetch },
+      adapter: createLettermintAdapter({
+        apiKey: 'lm_test',
+        http: { fetch: fetchMock as unknown as typeof fetch },
+      }),
     });
     expect(result.retried).toBe(1);
     expect(result.sent).toBe(0);
@@ -288,14 +291,14 @@ describe('Email Core · idempotency window', () => {
 });
 
 describe('Email Core · Lettermint webhook stays out of Resend', () => {
-  it('does not route Lettermint events through the Svix receiver', () => {
+  it('keeps Lettermint on its own signed webhook route', () => {
     const route = readFileSync('src/app/api/email/resend-webhook/route.ts', 'utf8');
     expect(route.toLowerCase()).not.toContain('lettermint');
-    expect(existsSync('src/app/api/email/lettermint-webhook/route.ts')).toBe(false);
+    expect(existsSync('src/app/api/email/lettermint-webhook/route.ts')).toBe(true);
   });
 });
 
-function readySupabase() {
+function readySupabase(provider: 'resend' | 'lettermint' = 'resend') {
   return {
     rpc: vi.fn(async (name: string) => {
       if (name === 'email_core_worker_get_context') {
@@ -303,12 +306,17 @@ function readySupabase() {
           data: {
             email_enabled: true,
             db_ready: true,
+            mail_provider: provider,
+            has_provider_token: provider === 'lettermint',
             sender_email: 'mail@example.com',
             sender_name: 'Complex',
             reply_to_email: null,
           },
           error: null,
         };
+      }
+      if (name === 'email_core_worker_get_provider_token_ciphertext') {
+        return { data: null, error: null };
       }
       if (name === 'email_core_digest_flush_ready') return { data: null, error: null };
       if (name === 'email_core_claim_outbox_batch') {

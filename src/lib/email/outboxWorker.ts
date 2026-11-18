@@ -8,12 +8,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import {
   hasActiveMailCredential,
+  hasLettermintProjectToken,
   isEmailSendingEnvEnabled,
   isPermanentProviderFailure,
   outboxAttemptNeedsOperatorReview,
   resolveEmailMailProvider,
 } from '@/lib/emailCore';
-import { createConfiguredMailAdapter } from '@/lib/email/mailAdapter';
+import { createMailAdapterForWorker } from '@/lib/email/mailAdapter';
 import type { MailAdapter } from '@/lib/email/mailSend';
 import { renderTransactionalEmail } from '@/lib/email/templates';
 import { isNonPublicInviteUrl } from '@/lib/publicAppUrl';
@@ -76,23 +77,33 @@ export function assertWorkerAuthorized(
   return { ok: true };
 }
 
-export function canWorkerSend(env: EnvProbe = process.env as EnvProbe): {
+export function canWorkerSend(
+  env: EnvProbe = process.env as EnvProbe,
+  opts?: { dbProvider?: string | null; dbHasToken?: boolean }
+): {
   ok: boolean;
   reason?: string;
 } {
   if (!isEmailSendingEnvEnabled(env)) {
     return { ok: false, reason: 'EMAIL_SENDING_ENABLED=false' };
   }
-  const provider = resolveEmailMailProvider(env);
+  const dbProvider = String(opts?.dbProvider ?? '')
+    .trim()
+    .toLowerCase();
+  const provider =
+    dbProvider === 'lettermint' || dbProvider === 'resend'
+      ? (dbProvider as 'lettermint' | 'resend')
+      : resolveEmailMailProvider(env);
   if (!provider) {
     return { ok: false, reason: 'EMAIL_MAIL_PROVIDER_invalid' };
   }
-  if (!hasActiveMailCredential(env)) {
-    return {
-      ok: false,
-      reason:
-        provider === 'lettermint' ? 'LETTERMINT_PROJECT_TOKEN_missing' : 'RESEND_API_KEY_missing',
-    };
+  if (provider === 'lettermint') {
+    if (opts?.dbHasToken === true) return { ok: true };
+    if (hasLettermintProjectToken(env)) return { ok: true };
+    return { ok: false, reason: 'LETTERMINT_PROJECT_TOKEN_missing' };
+  }
+  if (!hasActiveMailCredential({ ...env, EMAIL_MAIL_PROVIDER: 'resend' })) {
+    return { ok: false, reason: 'RESEND_API_KEY_missing' };
   }
   return { ok: true };
 }
@@ -109,12 +120,13 @@ export async function runOutboxWorker(opts: {
   limit?: number;
 }): Promise<WorkerRunResult> {
   const env = opts.env ?? (process.env as EnvProbe);
-  const gate = canWorkerSend(env);
-  if (!gate.ok) {
+
+  // Fast host kill-switch before any RPC.
+  if (!isEmailSendingEnvEnabled(env)) {
     return {
       ok: true,
       skipped: true,
-      reason: gate.reason,
+      reason: 'EMAIL_SENDING_ENABLED=false',
       claimed: 0,
       sent: 0,
       failed: 0,
@@ -122,7 +134,9 @@ export async function runOutboxWorker(opts: {
     };
   }
 
-  const { data: ctxRaw, error: ctxErr } = await opts.supabase.rpc('email_core_worker_get_context');
+  const ctxResult = await opts.supabase.rpc('email_core_worker_get_context');
+  const ctxRaw = ctxResult?.data;
+  const ctxErr = ctxResult?.error;
   if (ctxErr) {
     return {
       ok: false,
@@ -136,6 +150,22 @@ export async function runOutboxWorker(opts: {
   }
 
   const ctx = asRecord(ctxRaw);
+  const gate = canWorkerSend(env, {
+    dbProvider: String(ctx.mail_provider ?? ''),
+    dbHasToken: ctx.has_provider_token === true,
+  });
+  if (!gate.ok) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: gate.reason,
+      claimed: 0,
+      sent: 0,
+      failed: 0,
+      retried: 0,
+    };
+  }
+
   if (ctx.email_enabled !== true || ctx.db_ready !== true) {
     return {
       ok: true,
@@ -205,7 +235,14 @@ export async function runOutboxWorker(opts: {
     };
   }
 
-  const adapter = opts.adapter ?? createConfiguredMailAdapter(env, opts.http);
+  const adapter =
+    opts.adapter ??
+    (await createMailAdapterForWorker({
+      supabase: opts.supabase,
+      env,
+      http: opts.http,
+      mailProvider: String(ctx.mail_provider ?? ''),
+    }));
 
   let sent = 0;
   let failed = 0;
@@ -331,6 +368,13 @@ export async function runOutboxWorker(opts: {
         p_error_code: null,
         p_provider_response_class: 'accepted',
       });
+      if (row.module_key === 'email_test') {
+        try {
+          await opts.supabase.rpc('email_core_service_mark_send_probe_accepted' as never);
+        } catch {
+          /* optional status upgrade */
+        }
+      }
       sent += 1;
     } else {
       const permanent = isPermanentProviderFailure(result.errorCode, result.responseClass);

@@ -23,8 +23,13 @@ services:
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://check.amadeus11.online}
       SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
+      # Host emergency kill-switch. For UI Lettermint connection to send mail, set true once on VPS.
+      EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-true}
       EMAIL_WORKER_SECRET: ${EMAIL_WORKER_SECRET:-}
+      EMAIL_SETTINGS_ENCRYPTION_KEY: ${EMAIL_SETTINGS_ENCRYPTION_KEY:-}
+      EMAIL_MAIL_PROVIDER: ${EMAIL_MAIL_PROVIDER:-lettermint}
+      LETTERMINT_PROJECT_TOKEN: ${LETTERMINT_PROJECT_TOKEN:-}
+      LETTERMINT_WEBHOOK_SECRET: ${LETTERMINT_WEBHOOK_SECRET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
     stop_grace_period: 20s
@@ -34,5 +39,36 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+
+  # Outbox drain ~every minute (Docker VPS). Does not use vercel.json.
+  amadeus11-email-worker:
+    image: curlimages/curl:8.5.0
+    container_name: amadeus11-email-worker-r1-rc8
+    restart: unless-stopped
+    depends_on:
+      amadeus11-app:
+        condition: service_healthy
+    environment:
+      EMAIL_WORKER_SECRET: ${EMAIL_WORKER_SECRET:-}
+      EMAIL_WORKER_URL: ${EMAIL_WORKER_URL:-http://amadeus11-app:3000/api/email/worker}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        echo "email-worker loop starting"
+        while true; do
+          if [ -n "$${EMAIL_WORKER_SECRET}" ]; then
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $${EMAIL_WORKER_SECRET}" \
+              -H "Content-Type: application/json" \
+              "$${EMAIL_WORKER_URL}" \
+              || echo "email-worker tick failed"
+          else
+            echo "EMAIL_WORKER_SECRET missing — skip"
+          fi
+          sleep 60
+        done
     security_opt:
       - no-new-privileges:true

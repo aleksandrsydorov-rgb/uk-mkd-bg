@@ -85,8 +85,15 @@ export type EmailDeliveryStatus =
 
 export type EmailTemplateLocale = 'bg' | 'ru' | 'en';
 
+export type EmailConnectionStatus =
+  | 'not_configured'
+  | 'enabled_untested'
+  | 'accepted'
+  | 'disabled'
+  | 'error';
+
 export type ComplexEmailSettings = {
-  mail_provider: 'resend';
+  mail_provider: EmailMailProviderName;
   sender_name: string;
   sender_email: string | null;
   reply_to_email: string | null;
@@ -100,6 +107,10 @@ export type ComplexEmailSettings = {
   sending_ready: boolean;
   phase: string;
   secrets_in_database: boolean;
+  has_provider_token: boolean;
+  connection_status: EmailConnectionStatus;
+  sending_enabled_at: string | null;
+  send_probe_accepted_at: string | null;
   updated_at: string | null;
   updated_by_email: string | null;
   verified_senders: VerifiedSender[];
@@ -142,10 +153,20 @@ export type DeriveDeliveryStatusInput = {
   emailEnabled: boolean;
   serverSecretPresent: boolean;
   recentFailureRate?: number;
+  mailProvider?: EmailMailProviderName;
+  hasProviderToken?: boolean;
+  hostSendingEnabled?: boolean;
 };
 
 export function deriveDeliveryStatus(input: DeriveDeliveryStatusInput): EmailDeliveryStatus {
   if (input.platformDisabled) return 'disabled_by_platform';
+  if (input.mailProvider === 'lettermint') {
+    if (!input.senderEmail || !input.hasProviderToken) return 'not_configured';
+    if ((input.recentFailureRate ?? 0) >= 0.5) return 'degraded';
+    if (!input.emailEnabled) return 'paused';
+    if (input.hostSendingEnabled === false) return 'paused';
+    return 'ready';
+  }
   if (input.domainStatus === 'pending') return 'domain_pending';
   if (
     input.verifiedDomain &&
@@ -269,12 +290,21 @@ export function outboxAttemptNeedsOperatorReview(input: {
   return input.nowMs - started >= EMAIL_ATTEMPT_REVIEW_WINDOW_MS;
 }
 
-/** Host transport selected by EMAIL_MAIL_PROVIDER. No secrets. */
+/** Host transport hint for UI. No secrets. DB provider may override at send time. */
 export function emailProviderUiPayload(
   env: EnvProbe = process.env as EnvProbe
-): { provider: EmailMailProviderName | 'invalid' } {
+): {
+  provider: EmailMailProviderName | 'invalid';
+  host_sending_enabled: boolean;
+  encryption_configured: boolean;
+} {
   const provider = resolveEmailMailProvider(env);
-  return { provider: provider ?? 'invalid' };
+  const enc = Boolean((env.EMAIL_SETTINGS_ENCRYPTION_KEY ?? '').trim());
+  return {
+    provider: provider ?? 'invalid',
+    host_sending_enabled: isEmailSendingEnvEnabled(env),
+    encryption_configured: enc,
+  };
 }
 
 export function emailOutboxOperatorLabelKey(row: {
@@ -381,6 +411,19 @@ export function parseEmailSettingsPayload(data: unknown): ComplexEmailSettings {
     (s) => s.status === 'verified' && normalizeEmail(s.email) === normalizeEmail(sender_email ?? '')
   );
 
+  const mailProviderRaw = String(row.mail_provider ?? 'resend').trim().toLowerCase();
+  const mail_provider: EmailMailProviderName =
+    mailProviderRaw === 'lettermint' ? 'lettermint' : 'resend';
+  const has_provider_token = asBool(row.has_provider_token, false);
+  const connectionRaw = String(row.connection_status ?? '').trim();
+  const connection_status = (
+    ['not_configured', 'enabled_untested', 'accepted', 'disabled', 'error'].includes(connectionRaw)
+      ? connectionRaw
+      : email_enabled
+        ? 'enabled_untested'
+        : 'not_configured'
+  ) as EmailConnectionStatus;
+
   const configStatus = (asString(row.delivery_status) ?? 'not_configured') as EmailDeliveryStatus;
   const appStatus = deriveDeliveryStatus({
     platformDisabled: asBool(row.platform_disabled, false),
@@ -390,12 +433,15 @@ export function parseEmailSettingsPayload(data: unknown): ComplexEmailSettings {
     hasVerifiedSender,
     emailEnabled: email_enabled,
     serverSecretPresent: serverSecretPresent(),
+    mailProvider: mail_provider,
+    hasProviderToken: has_provider_token,
+    hostSendingEnabled: isEmailSendingEnvEnabled(),
   });
 
   const sending_ready = appStatus === 'ready';
 
   return {
-    mail_provider: 'resend',
+    mail_provider,
     sender_name: String(row.sender_name ?? ''),
     sender_email,
     reply_to_email: asString(row.reply_to_email),
@@ -409,6 +455,10 @@ export function parseEmailSettingsPayload(data: unknown): ComplexEmailSettings {
     sending_ready,
     phase: asString(row.phase) ?? EMAIL_CORE_PHASE,
     secrets_in_database: asBool(row.secrets_in_database, false),
+    has_provider_token: asBool(row.has_provider_token, false),
+    connection_status,
+    sending_enabled_at: asString(row.sending_enabled_at),
+    send_probe_accepted_at: asString(row.send_probe_accepted_at),
     updated_at: asString(row.updated_at),
     updated_by_email: asString(row.updated_by_email),
     verified_senders,

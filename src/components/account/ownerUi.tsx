@@ -1,6 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { SectionPanelTabs } from '@/components/ui/SectionPanelTabs';
 
 export function SectionHeader({
   title,
@@ -72,46 +74,34 @@ export function PillTabs<T extends string>({
   items,
   value,
   onChange,
+  'aria-label': ariaLabel,
 }: {
-  items: Array<{ id: T; label: string; count?: number }>;
+  items: Array<{
+    id: T;
+    label: string;
+    icon?: LucideIcon;
+    count?: number;
+    disabled?: boolean;
+    href?: string;
+  }>;
   value: T;
   onChange: (id: T) => void;
+  'aria-label'?: string;
 }) {
   return (
-    <div className="-mx-1 overflow-x-auto pb-1" role="tablist">
-      <div className="flex min-w-min gap-2 px-1">
-        {items.map((item) => {
-          const selected = item.id === value;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              onKeyDown={(e) => {
-                if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-                e.preventDefault();
-                const i = items.findIndex((x) => x.id === value);
-                const next = e.key === 'ArrowRight'
-                  ? items[(i + 1) % items.length]
-                  : items[(i - 1 + items.length) % items.length];
-                if (next) onChange(next.id);
-              }}
-              onClick={() => onChange(item.id)}
-              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium whitespace-nowrap ${
-                selected
-                  ? 'border-accent/25 bg-accent-bg text-accent'
-                  : 'border-border bg-surface text-secondary hover:bg-hover'
-              }`}
-            >
-              {item.label}
-              {typeof item.count === 'number' ? <span className="ml-1.5 tabular-nums opacity-80">{item.count}</span> : null}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <SectionPanelTabs
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(id) => onChange(id as T)}
+      items={items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        icon: item.icon,
+        count: item.count,
+        disabled: item.disabled,
+        href: item.href,
+      }))}
+    />
   );
 }
 

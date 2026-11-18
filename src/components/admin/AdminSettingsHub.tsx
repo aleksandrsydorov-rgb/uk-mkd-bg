@@ -2,6 +2,15 @@
 
 import type { ReactNode } from 'react';
 import {
+  LayoutDashboard,
+  Building2,
+  Boxes,
+  KeyRound,
+  Bell,
+  Wallet,
+  Shield,
+} from 'lucide-react';
+import {
   AdminPageHeader,
   AdminTabBar,
   AdminToggle,
@@ -90,15 +99,32 @@ export function AdminSettingsHub({
   onNavigateSection,
   overviewCards,
 }: Props) {
-  const tabs = [
-    { id: 'hub', label: t('admin.settingsTabHub') },
-    { id: 'complex', label: t('admin.settingsTabComplex') },
-    { id: 'modules', label: t('admin.settingsTabModules') },
-    { id: 'access', label: t('admin.settingsTabAccess') },
-    { id: 'notify', label: t('admin.settingsTabNotify') },
-    { id: 'finance', label: t('admin.settingsTabFinance') },
-    { id: 'security', label: t('admin.settingsTabSecurity') },
-  ];
+  const tabs = SETTINGS_TABS.map((id) => {
+    const icons = {
+      hub: LayoutDashboard,
+      complex: Building2,
+      modules: Boxes,
+      access: KeyRound,
+      notify: Bell,
+      finance: Wallet,
+      security: Shield,
+    } as const;
+    const labels = {
+      hub: t('admin.settingsTabHub'),
+      complex: t('admin.settingsTabComplex'),
+      modules: t('admin.settingsTabModules'),
+      access: t('admin.settingsTabAccess'),
+      notify: t('admin.settingsTabNotify'),
+      finance: t('admin.settingsTabFinance'),
+      security: t('admin.settingsTabSecurity'),
+    } as const;
+    return {
+      id,
+      label: labels[id],
+      icon: icons[id],
+      href: `/admin?section=${encodeURIComponent('настройки')}&tab=${encodeURIComponent(id)}`,
+    };
+  });
 
   let body: ReactNode = null;
 
@@ -319,6 +345,7 @@ export function AdminSettingsHub({
     <div className="min-w-0 space-y-5">
       <AdminPageHeader title={t('admin.settingsTitle')} secondary={t('admin.settingsLead')} />
       <AdminTabBar
+        aria-label={t('admin.settingsTitle')}
         tabs={tabs}
         active={activeTab}
         onChange={(id) => onTabChange(parseSettingsTab(id))}

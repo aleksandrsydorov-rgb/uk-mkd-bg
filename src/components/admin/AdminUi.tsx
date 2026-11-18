@@ -1,7 +1,9 @@
 'use client';
 
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { EmptyState, SectionHeader, StatusBadge } from '@/components/account/ownerUi';
+import { SectionPanelTabs } from '@/components/ui/SectionPanelTabs';
 
 export { EmptyState as AdminEmptyState, StatusBadge };
 
@@ -287,39 +289,37 @@ export function AdminTabBar({
   tabs,
   active,
   onChange,
+  'aria-label': ariaLabel,
 }: {
-  tabs: { id: string; label: ReactNode; badge?: boolean; badgeLabel?: string }[];
+  tabs: {
+    id: string;
+    label: ReactNode;
+    icon?: LucideIcon;
+    badge?: boolean;
+    badgeLabel?: string;
+    count?: number;
+    disabled?: boolean;
+    href?: string;
+  }[];
   active: string;
   onChange: (id: string) => void;
+  'aria-label'?: string;
 }) {
   return (
-    <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist">
-      {tabs.map((tab) => {
-        const on = tab.id === active;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            aria-label={tab.badgeLabel}
-            onClick={() => onChange(tab.id)}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${
-              on ? 'bg-accent text-white' : 'border border-border bg-surface text-secondary hover:bg-hover'
-            }`}
-          >
-            {tab.label}
-            {tab.badge ? (
-              <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  on ? 'bg-white' : 'bg-warning'
-                }`}
-                aria-hidden
-              />
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
+    <SectionPanelTabs
+      aria-label={ariaLabel}
+      value={active}
+      onChange={onChange}
+      items={tabs.map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        icon: tab.icon,
+        badge: tab.badge,
+        badgeLabel: tab.badgeLabel,
+        count: tab.count,
+        disabled: tab.disabled,
+        href: tab.href,
+      }))}
+    />
   );
 }

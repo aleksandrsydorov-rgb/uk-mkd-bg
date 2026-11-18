@@ -41,6 +41,7 @@ import {
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
+import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
 import { StatusBadge } from '@/components/account/ownerUi';
 import {
@@ -60,6 +61,8 @@ import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
   owner_name: string | null;
 };
 
@@ -515,7 +518,22 @@ export function AdminInternet({
                         {formatOwnerDate(row.created_at, locale)}
                       </td>
                       <td className={adminTableCellClass}>
-                        {row.apartment_number ? `№${row.apartment_number}` : '—'}
+                        {(() => {
+                          const prop =
+                            (row.property_id
+                              ? properties.find((p) => p.id === row.property_id)
+                              : null) ??
+                            (row.apartment_number
+                              ? {
+                                  id: row.property_id ?? 0,
+                                  apartment_number: row.apartment_number,
+                                }
+                              : null);
+                          if (prop && prop.id) {
+                            return <PropertyIdentityLink property={prop} module="internet" compact />;
+                          }
+                          return row.apartment_number ? `№${row.apartment_number}` : '—';
+                        })()}
                       </td>
                       <td className={adminTableCellClass}>
                         {row.internet_action === 'enable'

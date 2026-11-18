@@ -70,10 +70,20 @@ import {
   adminInfoGridClass,
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
+import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
 import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { formatIdealPartsPercent } from '@/lib/propertyBook';
 import { ownerVisibleError } from '@/lib/ownerError';
 import { toUserFacingMessage } from '@/lib/userFacingError';
+import {
+  formatPropertyIdentity,
+  rankPropertySearch,
+} from '@/lib/propertyIdentity';
+import {
+  parseApartmentCardTab,
+  parsePropertyIdParam,
+  type ApartmentCardTab,
+} from '@/lib/apartmentCardNav';
 import {
   STAFF_ROLE_OPTIONS,
   annualSupportFee,
@@ -1533,6 +1543,23 @@ function AdminPortal() {
     openUtilityTab('электроэнергия', 'overview');
   }, [allowed, authReady, openUtilityTab, searchParams, sectionQuery, showElectricityFinance, staffRole]);
 
+  // Deep-link: /admin?section=квартиры&property=<id>&cardTab=…
+  useEffect(() => {
+    if (!allowed || !authReady) return;
+    if (activeMenu !== 'квартиры') {
+      setDetailProperty(null);
+      return;
+    }
+    const pid = parsePropertyIdParam(searchParams.get('property'));
+    if (!pid) {
+      setDetailProperty(null);
+      return;
+    }
+    const match = properties.find((p) => p.id === pid) ?? null;
+    if (!match) return;
+    setDetailProperty((prev) => (prev?.id === match.id ? prev : match));
+  }, [allowed, authReady, activeMenu, searchParams, properties]);
+
   useEffect(() => {
     if (!allowed || !authReady) return;
     if (sectionQuery !== 'такса' && sectionQuery !== 'капремонт' && sectionQuery !== 'тарифы') return;
@@ -1867,7 +1894,37 @@ function AdminPortal() {
   // ---------- ВСПОМОГАТЕЛЬНЫЕ ----------
   function propertyFullById(id: number) {
     const p = properties.find((x) => x.id === id);
-    return p ? `${t('picker.apt', { n: p.apartment_number })}, ${p.owner_name}` : `#${id}`;
+    if (!p) return id ? `#${id}` : '—';
+    const identity = formatPropertyIdentity(p, t);
+    const owner = (p.owner_name ?? '').trim();
+    return owner ? `${identity} — ${owner}` : identity;
+  }
+
+  function openApartmentCard(property: Property, cardTab?: ApartmentCardTab | null) {
+    setDetailProperty(property);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('section', 'квартиры');
+    params.set('property', String(property.id));
+    const tab = parseApartmentCardTab(cardTab ?? null);
+    if (tab !== 'инфо') params.set('cardTab', tab);
+    else params.delete('cardTab');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  function closeApartmentCard() {
+    setDetailProperty(null);
+    const ret = searchParams.get('return');
+    if (ret) {
+      router.replace(`${pathname}?${ret}`, { scroll: false });
+      return;
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('property');
+    params.delete('cardTab');
+    params.delete('return');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
   function guestsForProperty(propId: number) {
@@ -1970,16 +2027,9 @@ function AdminPortal() {
   const filteredProperties = useMemo(() => {
     let result = [...properties];
 
-    // Поиск
+    // Поиск — exact apartment number before partial; section/block/owner supported
     if (aptSearch.trim()) {
-      const q = aptSearch.trim().toLowerCase();
-      result = result.filter((p) =>
-        String(p.apartment_number ?? '').toLowerCase().includes(q) ||
-        String(p.owner_name ?? '').toLowerCase().includes(q) ||
-        String(p.owner_email ?? '').toLowerCase().includes(q) ||
-        String(p.owner_phone ?? '').toLowerCase().includes(q) ||
-        String(p.company_name ?? '').toLowerCase().includes(q)
-      );
+      result = rankPropertySearch(result, aptSearch).map((hit) => hit.property as Property);
     }
 
     // Этаж
@@ -3615,18 +3665,20 @@ function AdminPortal() {
                   key={p.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setDetailProperty(p)}
+                  onClick={() => openApartmentCard(p)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setDetailProperty(p);
+                      openApartmentCard(p);
                     }
                   }}
                   className={`${adminCardClass} w-full cursor-pointer px-3 py-2.5 text-left`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">№ {p.apartment_number}</div>
+                      <div className="text-sm font-semibold text-foreground break-words">
+                        {formatPropertyIdentity(p, t)}
+                      </div>
                       <div className="truncate text-xs text-secondary">{ownerPrimary}</div>
                       <div className="mt-0.5 text-[11px] text-muted">
                         {p.area_sqm ?? '—'} {t('common.sqm')} · {p.floor ?? '—'} {t('common.floor')}
@@ -3698,10 +3750,10 @@ function AdminPortal() {
                       <tr
                         key={p.id}
                         className={`${adminTableRowClass} cursor-pointer`}
-                        onClick={() => setDetailProperty(p)}
+                        onClick={() => openApartmentCard(p)}
                       >
                         <td className={`${adminTableCellClass} font-semibold text-foreground`}>
-                          № {p.apartment_number}
+                          <span className="break-words">{formatPropertyIdentity(p, t)}</span>
                           {p.archived_at ? (
                             <span className="ml-2 text-xs font-medium text-warning">{t('admin.aptArchivedBadge')}</span>
                           ) : null}
@@ -3780,8 +3832,18 @@ function AdminPortal() {
                 supportRate={supportRate}
                 supportOutstanding={sfDebtOf(detailProperty)}
                 supportOver={supportOverpayment(detailProperty.overpayment)}
-                onClose={() => setDetailProperty(null)}
-                onEdit={() => { startEditProp(detailProperty); setDetailProperty(null); }}
+                initialTab={parseApartmentCardTab(searchParams.get('cardTab'))}
+                onTabChange={(tab) => {
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.set('section', 'квартиры');
+                  params.set('property', String(detailProperty.id));
+                  if (tab !== 'инфо') params.set('cardTab', tab);
+                  else params.delete('cardTab');
+                  const qs = params.toString();
+                  router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+                }}
+                onClose={closeApartmentCard}
+                onEdit={() => { startEditProp(detailProperty); closeApartmentCard(); }}
                 onOpenChat={() => {
                   if (detailProperty) {
                     setSelectedChatThread({
@@ -3793,7 +3855,7 @@ function AdminPortal() {
                       unread: 0,
                     });
                   }
-                  setDetailProperty(null);
+                  closeApartmentCard();
                   navigateAdminSection('чат');
                 }}
                 onChanged={loadAll}
@@ -3802,11 +3864,11 @@ function AdminPortal() {
                     ? () => { void handleDeleteProp(detailProperty.id); }
                     : undefined
                 }
-                onOpenTransfer={() => { setDetailProperty(null); navigateAdminSection('смены'); }}
+                onOpenTransfer={() => { closeApartmentCard(); navigateAdminSection('смены'); }}
                 onTakePayment={() => {
                   // Open the Support Fee apartment card (register → card) for this property.
                   const targetId = detailProperty.id;
-                  setDetailProperty(null);
+                  closeApartmentCard();
                   if (!visibleSectionSet.has('такса')) return;
                   const params = new URLSearchParams(searchParams.toString());
                   params.set('section', 'такса');
@@ -3951,7 +4013,14 @@ function AdminPortal() {
                         <div className="mt-1 truncate text-sm font-medium text-foreground">{r.subject || '—'}</div>
                         {preview ? <div className="truncate text-xs text-secondary">{preview}</div> : null}
                         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
-                          <span className="truncate">{propertyFullById(r.property_id ?? 0)}</span>
+                          {(() => {
+                            const prop = properties.find((p) => p.id === r.property_id);
+                            return prop ? (
+                              <PropertyIdentityLink property={prop} module="requests" compact className="truncate text-xs" />
+                            ) : (
+                              <span className="truncate">{propertyFullById(r.property_id ?? 0)}</span>
+                            );
+                          })()}
                           {r.photo_url ? <span className="shrink-0">{t('admin.reqPhoto')}</span> : null}
                         </div>
                       </button>
@@ -3978,7 +4047,16 @@ function AdminPortal() {
                             <td className={`${adminTableCellClass} whitespace-nowrap text-xs text-muted`}>
                               {formatOwnerDateTime(r.created_at, locale)}
                             </td>
-                            <td className={adminTableCellClass}>{propertyFullById(r.property_id ?? 0)}</td>
+                            <td className={adminTableCellClass}>
+                              {(() => {
+                                const prop = properties.find((p) => p.id === r.property_id);
+                                return prop ? (
+                                  <PropertyIdentityLink property={prop} module="requests" />
+                                ) : (
+                                  propertyFullById(r.property_id ?? 0)
+                                );
+                              })()}
+                            </td>
                             <td className={adminTableCellClass}>
                               <div className="max-w-md truncate font-medium text-foreground">{r.subject || '—'}</div>
                               {preview ? <div className="max-w-md truncate text-xs text-secondary">{preview}</div> : null}
@@ -4006,7 +4084,16 @@ function AdminPortal() {
                   <div className={adminModalHeaderClass}>
                     <div className="min-w-0">
                       <h3 className="truncate text-lg font-semibold text-foreground">{requestDetail.subject || '—'}</h3>
-                      <p className="mt-0.5 text-sm text-secondary">{propertyFullById(requestDetail.property_id ?? 0)}</p>
+                      <p className="mt-0.5 text-sm text-secondary">
+                        {(() => {
+                          const prop = properties.find((p) => p.id === requestDetail.property_id);
+                          return prop ? (
+                            <PropertyIdentityLink property={prop} module="requests" showOpenAction />
+                          ) : (
+                            propertyFullById(requestDetail.property_id ?? 0)
+                          );
+                        })()}
+                      </p>
                     </div>
                     <button type="button" onClick={() => setRequestDetailId(null)} className={adminBtnSecondaryClass}>
                       {t('common.close')}
@@ -5810,7 +5897,7 @@ function AdminPortal() {
                     </button>
                     <div className="min-w-0 flex-1">
                       <h2 className="truncate text-sm font-semibold text-accent">
-                        {t('common.apt')} {selectedChatProperty.apartment_number}
+                        {formatPropertyIdentity(selectedChatProperty, t)}
                         {selectedChatThread?.guestAccessId
                           ? ` — ${t('account.guestChatSender')}`
                           : ` — ${selectedChatProperty.owner_name}`}
@@ -6365,8 +6452,8 @@ export default function AdminPage() {
 // =====================================================================
 function ApartmentDetailModal({
   property, requests, meterReadings, guests, pets, chatMessages, chatSeenAt, supportRate,
-  supportOutstanding, supportOver,
-  onClose, onEdit, onOpenChat, onTakePayment, onChanged, onDelete, onOpenTransfer,
+  supportOutstanding, supportOver, initialTab = 'инфо',
+  onClose, onEdit, onOpenChat, onTakePayment, onChanged, onDelete, onOpenTransfer, onTabChange,
 }: {
   property: Property;
   requests: Request[];
@@ -6379,6 +6466,7 @@ function ApartmentDetailModal({
   /** D1 canonical SF outstanding (remaining_due sum). */
   supportOutstanding: number;
   supportOver: number;
+  initialTab?: ApartmentCardTab;
   onClose: () => void;
   onEdit: () => void;
   onOpenChat: () => void;
@@ -6386,11 +6474,12 @@ function ApartmentDetailModal({
   onChanged: () => Promise<void> | void;
   onDelete?: () => void;
   onOpenTransfer: () => void;
+  onTabChange?: (tab: ApartmentCardTab) => void;
 }) {
   const { t, locale } = useI18n();
   const { confirm, dialog } = useAppConfirm(t('common.close'));
   const [supabase] = useState(() => createBrowserClient());
-  const [activeTab, setActiveTab] = useState<'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат'>('инфо');
+  const [activeTab, setActiveTab] = useState<ApartmentCardTab>(parseApartmentCardTab(initialTab));
   const [waterTariffPrice, setWaterTariffPrice] = useState<number | null>(null);
   const [electricityTariff, setElectricityTariff] = useState<CurrentElectricityTariffView | null>(null);
   const [petForm, setPetForm] = useState({ species: 'dog', name: '', chip_no: '', passport_no: '' });
@@ -6407,9 +6496,33 @@ function ApartmentDetailModal({
   const [guestSaving, setGuestSaving] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
+  // Reset workplace state when switching apartments so data/forms never leak across cards.
+  useEffect(() => {
+    setActiveTab(parseApartmentCardTab(initialTab));
+    setLocalError(null);
+    setPetForm({ species: 'dog', name: '', chip_no: '', passport_no: '' });
+    setGuestForm({
+      first_name: '',
+      last_name: '',
+      birth_year: '',
+      is_child: false,
+      is_permanent: true,
+      check_in: '',
+      check_out: '',
+    });
+    setWaterTariffPrice(null);
+    setElectricityTariff(null);
+  }, [property.id, initialTab]);
+
+  function selectTab(tab: ApartmentCardTab) {
+    setActiveTab(tab);
+    onTabChange?.(tab);
+  }
+
   const annualFee = annualSupportFee(property.area_sqm, supportRate);
   const monthlyFee = monthlySupportFee(property.area_sqm, supportRate);
   const unreadChats = chatMessages.filter((m) => isNewOwnerMessage(m, chatMessages, chatSeenAt)).length;
+  const identityTitle = formatPropertyIdentity(property, t);
 
   useEffect(() => {
     let cancelled = false;
@@ -6560,8 +6673,8 @@ function ApartmentDetailModal({
         {/* ШАПКА */}
         <div className={adminModalHeaderClass}>
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-foreground">
-              {t('picker.apt', { n: property.apartment_number })}
+            <h3 className="break-words text-lg font-semibold text-foreground">
+              {identityTitle}
             </h3>
             <p className="mt-0.5 truncate text-sm text-secondary">
               {(property.owner_name ?? '').trim() || (property.owner_email ?? '').trim() || '—'}
@@ -6593,29 +6706,20 @@ function ApartmentDetailModal({
           <div className="border-b border-danger/25 bg-danger-bg px-4 py-2 text-sm text-danger">{localError}</div>
         ) : null}
 
-        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 py-2">
-          {[
-            { key: 'инфо', label: t('admin.tabObject'), count: null },
-            { key: 'жильцы', label: t('admin.tabStay'), count: guests.length + pets.length },
-            { key: 'финансы', label: t('admin.tabFinance'), count: null },
-            { key: 'счётчики', label: t('admin.tabMeters'), count: meterReadings.length },
-            { key: 'заявки', label: t('admin.tabRequests'), count: requests.length },
-            { key: 'чат', label: t('admin.tabChat'), count: chatMessages.length },
-          ].map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as 'инфо' | 'финансы' | 'счётчики' | 'заявки' | 'жильцы' | 'чат')}
-              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm ${
-                activeTab === tab.key
-                  ? 'bg-accent text-white'
-                  : 'text-secondary hover:bg-hover'
-              }`}>
-              {tab.label}
-              {tab.count !== null && tab.count > 0 && (
-                <span className="ml-1 text-xs bg-hover rounded-full px-1.5 py-0.5 text-secondary">
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="shrink-0 px-4 py-2">
+          <AdminTabBar
+            aria-label={identityTitle}
+            active={activeTab}
+            onChange={(id) => selectTab(parseApartmentCardTab(id))}
+            tabs={[
+              { id: 'инфо', label: t('admin.tabObject') },
+              { id: 'жильцы', label: t('admin.tabStay'), count: (guests.length + pets.length) || undefined },
+              { id: 'финансы', label: t('admin.tabFinance') },
+              { id: 'счётчики', label: t('admin.tabMeters'), count: meterReadings.length || undefined },
+              { id: 'заявки', label: t('admin.tabRequests'), count: requests.length || undefined },
+              { id: 'чат', label: t('admin.tabChat'), count: chatMessages.length || undefined },
+            ]}
+          />
         </div>
 
         {/* КОНТЕНТ ВКЛАДОК */}
@@ -6624,6 +6728,12 @@ function ApartmentDetailModal({
           {activeTab === 'инфо' && (
             <div className={`${adminInfoGridClass} text-sm`}>
               <InfoRow label={t('admin.phAptNo')} value={String(property.apartment_number ?? '—')} />
+              {property.section_code?.trim() ? (
+                <InfoRow label={t('admin.bookSection')} value={property.section_code.trim()} />
+              ) : null}
+              {property.block_code?.trim() ? (
+                <InfoRow label={t('admin.bookBlock')} value={property.block_code.trim()} />
+              ) : null}
               <InfoRow label={t('admin.phFloor')} value={String(property.floor ?? '—')} />
               <InfoRow label={t('admin.phArea')} value={`${property.area_sqm ?? '—'} ${t('common.sqm')}`} />
               <InfoRow label={t('form.colStatus')} value={labelListing(listingStatus(property.status), t)} />
@@ -6678,15 +6788,15 @@ function ApartmentDetailModal({
                 </div>
               </div>
               <div className={`${adminCardClass} p-3`}>
-                <div className="text-secondary text-xs mb-2">Тарифы</div>
+                <div className="text-secondary text-xs mb-2">{t('admin.moduleTariffs')}</div>
                 <div className="grid gap-1 text-xs text-secondary sm:grid-cols-2">
-                  <div>{t('admin.elDayShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh), locale) : '—'}</div>
-                  <div>{t('admin.elNightShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh), locale) : '—'}</div>
+                  <div>{t('form.elDayShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.day_price_eur_per_kwh), locale) : '—'}</div>
+                  <div>{t('form.elNightShort')}: {electricityTariff ? formatElectricityTariff(Number(electricityTariff.night_price_eur_per_kwh), locale) : '—'}</div>
                   <div>{t('admin.water')}: {waterTariffPrice == null || Number.isNaN(waterTariffPrice) ? '—' : `${formatEur(waterTariffPrice, locale)}/м³`}</div>
                   <div>
                     {supportRate == null
                       ? t('admin.feeTariffNotConfigured')
-                      : `Такса: ${supportRate} €/м²·год`}
+                      : `${t('admin.supportFee')}: ${supportRate} €/м²·год`}
                   </div>
                 </div>
                 <button
@@ -6694,7 +6804,7 @@ function ApartmentDetailModal({
                   onClick={onTakePayment}
                   className={`${adminBtnPrimaryClass} mt-3`}
                 >
-                  Принять оплату таксы
+                  {t('admin.feePayTitle')}
                 </button>
               </div>
             </div>

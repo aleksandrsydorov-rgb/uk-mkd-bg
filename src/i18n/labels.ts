@@ -146,7 +146,7 @@ export function labelPollStatus(raw: string | null | undefined, t: Translate) {
 export function labelOwnerType(raw: string | null | undefined, t: Translate) {
   if (raw === 'юридическое лицо') return t('ownerType.company');
   if (raw === 'физическое лицо') return t('ownerType.person');
-  if (!raw) return t('admin.notSpecified');
+  if (!raw) return t('book.notSpecified');
   warnUnknownLabel('owner type', raw);
   return t('admin.valueUnknown');
 }

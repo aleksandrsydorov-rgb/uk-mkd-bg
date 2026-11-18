@@ -98,6 +98,8 @@ import {
 } from '@/lib/paymentReceipts/afterPayment';
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
+import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
+import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 
 export type SupportFeeWorkplaceTab = 'register' | 'charges' | 'payments';
 
@@ -112,6 +114,8 @@ export function parseSupportFeeWorkplaceTab(raw: string | null | undefined): Sup
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
   owner_name: string | null;
   area_sqm?: number | null;
   overpayment?: number | null;
@@ -1019,9 +1023,9 @@ export function AdminSupportFeeWorkplace({
           ? properties.find((p) => p.id === propertyId)
           : null;
     const aptLabel = apt
-      ? `№ ${apt.apartment_number}${apt.owner_name ? ` · ${apt.owner_name}` : ''}`
+      ? `${formatPropertyIdentity(apt, t)}${apt.owner_name ? ` — ${apt.owner_name}` : ''}`
       : row
-        ? `№ ${row.property_id}`
+        ? `#${row.property_id}`
         : '—';
     const dateLabel = row?.created_at ? formatOwnerDateTime(row.created_at, locale) : '—';
     const amountLabel = row ? formatEurAmount(Number(row.amount), locale) : '—';
@@ -1291,7 +1295,13 @@ export function AdminSupportFeeWorkplace({
                         openCard(row.propertyId);
                       }}
                     >
-                      <td className={adminTableCellClass}>№ {row.apartmentNumber}</td>
+                      <td className={adminTableCellClass}>
+                        {property ? (
+                          <PropertyIdentityLink property={property} module="support" />
+                        ) : (
+                          `№ ${row.apartmentNumber}`
+                        )}
+                      </td>
                       <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
                       <td
                         className={`${adminTableCellClass} tabular-nums ${outstanding > 0 ? 'text-danger' : ''}`}
@@ -1432,8 +1442,9 @@ export function AdminSupportFeeWorkplace({
                         return (
                           <li key={a.id} className="flex justify-between gap-2 tabular-nums">
                             <span>
-                              № {apt?.apartment_number ?? a.property_id}
-                              {apt?.owner_name ? ` · ${apt.owner_name}` : ''}
+                              {apt
+                                ? `${formatPropertyIdentity(apt, t)}${apt.owner_name ? ` — ${apt.owner_name}` : ''}`
+                                : `#${a.property_id}`}
                             </span>
                             <span>{formatEurAmount(Number(a.final_amount), locale)}</span>
                           </li>
@@ -1558,8 +1569,8 @@ export function AdminSupportFeeWorkplace({
                 <option value="">{t('admin.sfFilterAll')}</option>
                 {sortedProps.map((p) => (
                   <option key={p.id} value={p.id}>
-                    № {p.apartment_number}
-                    {p.owner_name ? ` · ${p.owner_name}` : ''}
+                    {formatPropertyIdentity(p, t)}
+                    {p.owner_name ? ` — ${p.owner_name}` : ''}
                   </option>
                 ))}
               </select>
@@ -1608,8 +1619,12 @@ export function AdminSupportFeeWorkplace({
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatOwnerDateTime(row.created_at, locale)}
                       </td>
-                      <td className={`${adminTableCellClass} tabular-nums`}>
-                        № {apt?.apartment_number ?? row.property_id}
+                      <td className={adminTableCellClass}>
+                        {apt ? (
+                          <PropertyIdentityLink property={apt} module="support" compact />
+                        ) : (
+                          `#${row.property_id}`
+                        )}
                       </td>
                       <td className={adminTableCellClass}>
                         <div>{t(supportLedgerKindLabelKey(row.kind))}</div>
@@ -1710,8 +1725,12 @@ export function AdminSupportFeeWorkplace({
             {t('admin.feeBackToRegister')}
           </AdminSecondaryButton>
           <p className="text-sm text-secondary">
-            № {selected?.apartment_number ?? '—'}
-            {selected?.owner_name ? ` · ${selected.owner_name}` : ''}
+            {selected ? (
+              <PropertyIdentityLink property={selected} module="support" showOpenAction />
+            ) : (
+              '—'
+            )}
+            {selected?.owner_name ? ` — ${selected.owner_name}` : ''}
           </p>
         </div>
 

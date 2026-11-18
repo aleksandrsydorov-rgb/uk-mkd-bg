@@ -57,10 +57,14 @@ import {
   prepareReceiptIntentFromFields,
 } from '@/lib/paymentReceipts/afterPayment';
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
+import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
+import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
   owner_name: string | null;
 };
 
@@ -415,7 +419,19 @@ export function AdminUtilityFinanceWorkplace({
                       openCard(row.propertyId);
                     }}
                   >
-                    <td className={adminTableCellClass}>№ {row.apartmentNumber}</td>
+                    <td className={adminTableCellClass}>
+                      {(() => {
+                        const prop = properties.find((p) => p.id === row.propertyId);
+                        return prop ? (
+                          <PropertyIdentityLink
+                            property={prop}
+                            module={service === 'water' ? 'water' : service === 'electricity' ? 'electricity' : 'internet'}
+                          />
+                        ) : (
+                          `№ ${row.apartmentNumber}`
+                        );
+                      })()}
+                    </td>
                     <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
                     <td className={`${adminTableCellClass} tabular-nums`}>
                       {formatEur(row.chargedEur, locale)}
@@ -455,10 +471,17 @@ export function AdminUtilityFinanceWorkplace({
         </AdminSecondaryButton>
         <p className="text-sm text-secondary">
           {t('admin.utilFinCardHeading', {
-            apt: String(selected?.apartment_number ?? '—'),
+            apt: selected ? formatPropertyIdentity(selected, t) : '—',
             service: t(serviceTitleKey(service)),
           })}
         </p>
+        {selected ? (
+          <PropertyIdentityLink
+            property={selected}
+            module={service === 'water' ? 'water' : service === 'electricity' ? 'electricity' : 'internet'}
+            showOpenAction
+          />
+        ) : null}
       </div>
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
@@ -497,8 +520,8 @@ export function AdminUtilityFinanceWorkplace({
           <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
             <dt className="text-muted">{t('admin.utilFinApartment')}</dt>
             <dd>
-              № {selected?.apartment_number ?? '—'}
-              {selected?.owner_name ? ` · ${selected.owner_name}` : ''}
+              {selected ? formatPropertyIdentity(selected, t) : '—'}
+              {selected?.owner_name ? ` — ${selected.owner_name}` : ''}
             </dd>
             <dt className="text-muted">{t('admin.utilFinService')}</dt>
             <dd>{t(serviceTitleKey(service))}</dd>

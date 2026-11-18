@@ -69,6 +69,8 @@ import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
   owner_name: string | null;
 };
 

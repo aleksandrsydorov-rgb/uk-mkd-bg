@@ -114,10 +114,14 @@ import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { normalizeFirstRunErrors, type FirstRunErrorRow } from '@/lib/firstRun';
 import { presentImportReason } from '@/lib/firstRunUserMessage';
 import { FirstRunErrorTable } from '@/components/admin/FirstRunSteps';
+import { formatPropertyIdentity } from '@/lib/propertyIdentity';
+import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
 
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
 };
 
 type OwnerForm = {
@@ -1265,7 +1269,14 @@ export function AdminPropertyBook({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-foreground">
-                          № {row.apartment_number}
+                          {formatPropertyIdentity(
+                            {
+                              apartment_number: row.apartment_number,
+                              section_code: row.section_code,
+                              block_code: row.block_code,
+                            },
+                            t,
+                          )}
                         </p>
                         <p className="truncate text-xs text-muted">
                           {[
@@ -1336,7 +1347,15 @@ export function AdminPropertyBook({
                         }}
                       >
                         <td className={`${adminTableCellClass} font-semibold text-foreground`}>
-                          № {row.apartment_number}
+                          <PropertyIdentityLink
+                            property={{
+                              id: row.property_id,
+                              apartment_number: row.apartment_number,
+                              section_code: row.section_code,
+                              block_code: row.block_code,
+                            }}
+                            module="info"
+                          />
                         </td>
                         <td className={adminTableCellClass}>{row.block_code || '—'}</td>
                         <td className={adminTableCellClass}>{row.section_code || '—'}</td>

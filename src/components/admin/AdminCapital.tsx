@@ -96,10 +96,14 @@ import {
   prepareReceiptIntentFromFields,
 } from '@/lib/paymentReceipts/afterPayment';
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
+import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
+import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
   owner_name: string | null;
   area_sqm?: number | null;
 };
@@ -1178,7 +1182,16 @@ export function AdminCapital({
                       openCard(row.propertyId);
                     }}
                   >
-                    <td className={adminTableCellClass}>№ {row.apartmentNumber}</td>
+                    <td className={adminTableCellClass}>
+                      {(() => {
+                        const prop = properties.find((p) => p.id === row.propertyId);
+                        return prop ? (
+                          <PropertyIdentityLink property={prop} module="capital" />
+                        ) : (
+                          `№ ${row.apartmentNumber}`
+                        );
+                      })()}
+                    </td>
                     <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
                     <td
                       className={`${adminTableCellClass} tabular-nums ${row.status === 'debt' ? 'text-danger' : ''}`}
@@ -1365,8 +1378,8 @@ export function AdminCapital({
                 <option value="">{t('admin.sfFilterAll')}</option>
                 {sorted.map((p) => (
                   <option key={p.id} value={p.id}>
-                    № {p.apartment_number}
-                    {p.owner_name ? ` · ${p.owner_name}` : ''}
+                    {formatPropertyIdentity(p, t)}
+                    {p.owner_name ? ` — ${p.owner_name}` : ''}
                   </option>
                 ))}
               </select>
@@ -1408,8 +1421,12 @@ export function AdminCapital({
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatOwnerDateTime(row.created_at, locale)}
                       </td>
-                      <td className={`${adminTableCellClass} tabular-nums`}>
-                        № {apt?.apartment_number ?? row.property_id}
+                      <td className={adminTableCellClass}>
+                        {apt ? (
+                          <PropertyIdentityLink property={apt} module="capital" compact />
+                        ) : (
+                          `#${row.property_id}`
+                        )}
                         {apt?.owner_name ? (
                           <div className="text-[10px] text-muted">{apt.owner_name}</div>
                         ) : null}
@@ -1464,8 +1481,8 @@ export function AdminCapital({
                 <option value="">{t('admin.sfFilterAll')}</option>
                 {sorted.map((p) => (
                   <option key={p.id} value={p.id}>
-                    № {p.apartment_number}
-                    {p.owner_name ? ` · ${p.owner_name}` : ''}
+                    {formatPropertyIdentity(p, t)}
+                    {p.owner_name ? ` — ${p.owner_name}` : ''}
                   </option>
                 ))}
               </select>
@@ -1550,8 +1567,12 @@ export function AdminCapital({
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatOwnerDateTime(row.created_at, locale)}
                       </td>
-                      <td className={`${adminTableCellClass} tabular-nums`}>
-                        № {apt?.apartment_number ?? row.property_id}
+                      <td className={adminTableCellClass}>
+                        {apt ? (
+                          <PropertyIdentityLink property={apt} module="capital" compact />
+                        ) : (
+                          `#${row.property_id}`
+                        )}
                       </td>
                       <td className={adminTableCellClass}>{t(capitalOpsHistoryTitleKey(row.kind))}</td>
                       <td className={`${adminTableCellClass} tabular-nums`}>
@@ -1596,8 +1617,12 @@ export function AdminCapital({
             {t('admin.capitalBackToRegister')}
           </AdminSecondaryButton>
           <p className="text-sm text-secondary">
-            № {selected?.apartment_number ?? '—'}
-            {selected?.owner_name ? ` · ${selected.owner_name}` : ''}
+            {selected ? (
+              <PropertyIdentityLink property={selected} module="capital" showOpenAction />
+            ) : (
+              '—'
+            )}
+            {selected?.owner_name ? ` — ${selected.owner_name}` : ''}
           </p>
         </div>
 

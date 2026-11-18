@@ -3,23 +3,26 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { adminFieldClass } from '@/components/admin/AdminUi';
+import {
+  formatPropertyIdentity,
+  highlightPropertyMatch,
+  rankPropertySearch,
+  type PropertyIdentityFields,
+} from '@/lib/propertyIdentity';
 
-export type ApartmentOption = {
+export type ApartmentOption = PropertyIdentityFields & {
   id: number;
   apartment_number: string | number | null;
-  owner_name?: string | null;
-  owner_email?: string | null;
 };
 
-function apartmentNumber(value: string | number | null | undefined) {
-  return String(value ?? '').trim();
-}
-
-export function apartmentOptionLabel(property: ApartmentOption) {
-  const number = apartmentNumber(property.apartment_number);
+/** Full identity + optional owner for selected value / list rows. */
+export function apartmentOptionLabel(
+  property: ApartmentOption,
+  t: (key: string, vars?: Record<string, string | number>) => string
+) {
+  const identity = formatPropertyIdentity(property, t);
   const owner = (property.owner_name ?? '').trim();
-  const title = number ? `№${number}` : '—';
-  return owner ? `${title} — ${owner}` : title;
+  return owner ? `${identity} — ${owner}` : identity;
 }
 
 export function ApartmentCombobox({
@@ -45,22 +48,10 @@ export function ApartmentCombobox({
   const [active, setActive] = useState(0);
 
   const selected = properties.find((property) => property.id === value) ?? null;
-  const selectedLabel = selected ? apartmentOptionLabel(selected) : '';
+  const selectedLabel = selected ? apartmentOptionLabel(selected, t) : '';
 
   const filtered = useMemo(() => {
-    const sorted = [...properties].sort((a, b) =>
-      apartmentNumber(a.apartment_number).localeCompare(apartmentNumber(b.apartment_number), undefined, {
-        numeric: true,
-      }),
-    );
-    const q = query.trim().toLowerCase();
-    if (!q) return sorted;
-    return sorted.filter((property) => {
-      const number = apartmentNumber(property.apartment_number).toLowerCase();
-      const owner = (property.owner_name ?? '').toLowerCase();
-      const email = (property.owner_email ?? '').toLowerCase();
-      return number.includes(q) || owner.includes(q) || (email.length > 0 && email.includes(q));
-    });
+    return rankPropertySearch(properties, query).map((hit) => hit.property as ApartmentOption);
   }, [properties, query]);
 
   useEffect(() => {
@@ -151,7 +142,8 @@ export function ApartmentCombobox({
             <li className="px-3 py-2 text-sm text-muted">{t('admin.aptSearchEmpty')}</li>
           ) : (
             filtered.map((property, index) => {
-              const label = apartmentOptionLabel(property);
+              const label = apartmentOptionLabel(property, t);
+              const chunks = highlightPropertyMatch(label, query);
               const isActive = index === active;
               const isSelected = property.id === value;
               return (
@@ -167,7 +159,15 @@ export function ApartmentCombobox({
                     choose(property.id);
                   }}
                 >
-                  {label}
+                  {chunks.map((chunk, i) =>
+                    chunk.match ? (
+                      <mark key={i} className="rounded-sm bg-accent/15 px-0.5 text-foreground">
+                        {chunk.text}
+                      </mark>
+                    ) : (
+                      <span key={i}>{chunk.text}</span>
+                    )
+                  )}
                 </li>
               );
             })

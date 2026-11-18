@@ -5326,6 +5326,15 @@ export const ru = {
     voteAlreadyCast: 'Голос по этому вопросу уже учтён.',
   },
   picker: { apt: 'ап. {n}' },
+  property: {
+    identityApt: 'Апартамент №{n}',
+    identityAptUnknown: 'Апартамент',
+    identitySection: 'Секция {section}',
+    identityBlock: 'Блок {block}',
+    identityBlockShort: 'блок {block}',
+    openCard: 'Открыть карточку',
+    openCardAria: 'Открыть карточку квартиры {label}',
+  },
   poll: {
     budget: 'Бюджет: {n} €',
     voting: 'Голосование: {start} — {end}',
@@ -11066,6 +11075,15 @@ export const en: Messages = {
     voteAlreadyCast: 'Your vote on this item is already recorded.',
   },
   picker: { apt: 'apt. {n}' },
+  property: {
+    identityApt: 'Apartment №{n}',
+    identityAptUnknown: 'Apartment',
+    identitySection: 'Section {section}',
+    identityBlock: 'Block {block}',
+    identityBlockShort: 'block {block}',
+    openCard: 'Open card',
+    openCardAria: 'Open apartment card {label}',
+  },
   poll: {
     budget: 'Budget: {n} €',
     voting: 'Voting: {start} — {end}',
@@ -16820,6 +16838,15 @@ export const bg: Messages = {
     voteAlreadyCast: 'Гласът по тази точка вече е записан.',
   },
   picker: { apt: 'ап. {n}' },
+  property: {
+    identityApt: 'Апартамент №{n}',
+    identityAptUnknown: 'Апартамент',
+    identitySection: 'Секция {section}',
+    identityBlock: 'Блок {block}',
+    identityBlockShort: 'блок {block}',
+    openCard: 'Отвори картата',
+    openCardAria: 'Отвори картата на апартамент {label}',
+  },
   poll: {
     budget: 'Бюджет: {n} €',
     voting: 'Гласуване: {start} — {end}',

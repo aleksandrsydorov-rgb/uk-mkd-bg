@@ -60,11 +60,12 @@ export async function createMailAdapterForWorker(opts: {
   if (provider === 'lettermint') {
     let apiKey = '';
     try {
-      const { data, error } = await opts.supabase.rpc(
+      const tokenRes = await opts.supabase.rpc(
         'email_core_worker_get_provider_token_ciphertext' as never
       );
-      if (!error && typeof data === 'string' && data.trim()) {
-        apiKey = decryptProviderToken(data, env);
+      const cipher = tokenRes.data as unknown;
+      if (!tokenRes.error && typeof cipher === 'string' && cipher.trim()) {
+        apiKey = decryptProviderToken(cipher, env);
       }
     } catch {
       apiKey = '';

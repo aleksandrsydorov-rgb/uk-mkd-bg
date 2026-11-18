@@ -95,7 +95,8 @@ export async function POST(request: Request) {
 
   let complexName = 'AMADEUS 11';
   try {
-    const { data: name } = await supabase.rpc('admin_get_complex_display_name');
+    const nameRes = await supabase.rpc('admin_get_complex_display_name' as never);
+    const name = nameRes.data as unknown;
     if (typeof name === 'string' && name.trim()) complexName = name.trim();
   } catch {
     /* fallback */

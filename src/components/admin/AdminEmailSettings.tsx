@@ -109,7 +109,8 @@ export function AdminEmailSettings({
       setProjectToken('');
       setMissing(false);
       try {
-        const { data: name } = await supabase.rpc('admin_get_complex_display_name' as never);
+        const nameRes = await supabase.rpc('admin_get_complex_display_name' as never);
+        const name = nameRes.data as unknown;
         if (typeof name === 'string' && name.trim()) setComplexName(name.trim());
         else if (s.sender_name) setComplexName(s.sender_name);
       } catch {

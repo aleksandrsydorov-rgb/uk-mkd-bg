@@ -39,6 +39,12 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
 
   const moduleKeys = useMemo(() => catalogModuleKeys().filter((k) => k !== 'email_test'), []);
 
+  function moduleLabel(moduleKey: string) {
+    const key = `notify.module.${moduleKey}`;
+    const label = t(key);
+    return label === key ? t('admin.emailModuleOther') : label;
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -125,7 +131,7 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
           <ul className="mt-3 space-y-2">
             {moduleKeys.map((mk) => (
               <li key={mk} className="flex items-center justify-between gap-3 text-sm">
-                <code className="text-foreground">{mk}</code>
+                <span className="text-foreground">{moduleLabel(mk)}</span>
                 <label className="flex items-center gap-2 text-secondary">
                   <input
                     type="checkbox"
@@ -157,7 +163,7 @@ export function AdminNotificationPolicyPanel({ supabase, t, canManage }: Props) 
               <option value="all">{t('notify.allModules')}</option>
               {moduleKeys.map((mk) => (
                 <option key={mk} value={mk}>
-                  {mk}
+                  {moduleLabel(mk)}
                 </option>
               ))}
             </select>

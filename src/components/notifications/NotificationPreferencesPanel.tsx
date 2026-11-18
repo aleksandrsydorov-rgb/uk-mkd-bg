@@ -121,7 +121,9 @@ export function NotificationPreferencesPanel({
         <p className="mt-1 text-sm text-secondary">{t('notify.prefsLead')}</p>
         {roleHint === 'admin' ? (
           <p className="mt-1 text-xs text-muted">
-            {t('notify.adminModeHint', { mode: SUGGESTED_ADMIN_NOTIFICATION_MODE })}
+            {t('notify.adminModeHint', {
+              mode: t(`notify.mode.${SUGGESTED_ADMIN_NOTIFICATION_MODE}`),
+            })}
           </p>
         ) : null}
       </div>

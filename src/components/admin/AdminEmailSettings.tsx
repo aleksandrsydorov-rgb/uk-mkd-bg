@@ -102,6 +102,78 @@ function emailEventLabel(
   return map[v] ?? t('admin.emailEventOther');
 }
 
+function domainStatusLabel(
+  status: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const v = String(status ?? '').trim().toLowerCase();
+  const map: Record<string, string> = {
+    none: t('admin.emailDomainStatusNone'),
+    pending: t('admin.emailDomainStatusPending'),
+    verified: t('admin.emailDomainStatusVerified'),
+    failed: t('admin.emailDomainStatusFailed'),
+  };
+  return map[v] ?? t('admin.emailDiagStatusUnknown');
+}
+
+function providerLabel(
+  provider: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const v = String(provider ?? '').trim().toLowerCase();
+  if (!v || v === 'invalid') return t('admin.emailProviderUnavailable');
+  if (v === 'resend') return t('admin.emailProviderResend');
+  if (v === 'lettermint') return t('admin.emailProviderLettermint');
+  return t('admin.emailProviderUnavailable');
+}
+
+function outboxStatusFilterLabel(
+  status: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const map: Record<string, string> = {
+    queued: t('admin.emailOutboxQueued'),
+    sending: t('admin.emailOutboxSending'),
+    sent: t('admin.emailOutboxSent'),
+    failed: t('admin.emailOutboxFailed'),
+    blocked_not_ready: t('admin.emailOutboxBlocked'),
+    cancelled: t('admin.emailOutboxCancelled'),
+  };
+  return map[status] ?? status;
+}
+
+function previewTemplateLabel(
+  key: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const map: Record<string, string> = {
+    pb1_property_invite: t('admin.emailTplInvite'),
+    ua_nudge: t('admin.emailTplActivationReminder'),
+    ownership_change_approved: t('admin.emailTplOwnershipApproved'),
+    meeting_notice: t('admin.emailTplMeeting'),
+    email_test: t('admin.emailTplTest'),
+  };
+  return map[key] ?? t('admin.emailModuleOther');
+}
+
+function honestyUserLabel(
+  honesty: string | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const v = String(honesty ?? '').trim();
+  const map: Record<string, string> = {
+    QUEUED: t('admin.emailHonestyQueued'),
+    ACCEPTED: t('admin.emailHonestyAccepted'),
+    SENT: t('admin.emailHonestyDelivered'),
+    FAILED: t('admin.emailHonestyFailed'),
+    COPY_LINK: t('admin.emailHonestyCopyLink'),
+    LOCAL_ONLY: t('admin.emailHonestyLocalOnly'),
+    PROVIDER_NOT_CONFIGURED: t('admin.emailHonestyNotConfigured'),
+    in_app_only: t('admin.emailHonestyInAppOnly'),
+  };
+  return map[v] ?? t('admin.emailHonestyNotReady');
+}
+
 export function AdminEmailSettings({
   supabase,
   canManage,
@@ -116,6 +188,7 @@ export function AdminEmailSettings({
   const [success, setSuccess] = useState<string | null>(null);
   const [settings, setSettings] = useState<ComplexEmailSettings | null>(null);
   const [hostProvider, setHostProvider] = useState<string | null>(null);
+  const [hostSendingEnabled, setHostSendingEnabled] = useState<boolean | null>(null);
   const [diagnostics, setDiagnostics] = useState<EmailDiagnosticRow[]>([]);
   const [summary, setSummary] = useState<EmailQueueSummary | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -143,6 +216,17 @@ export function AdminEmailSettings({
         setHostProvider(typeof body.provider === 'string' ? body.provider : null);
       } catch {
         setHostProvider(null);
+      }
+      try {
+        const healthRes = await fetch('/api/health');
+        const health = (await healthRes.json()) as { email_sending_enabled?: unknown };
+        setHostSendingEnabled(
+          typeof health.email_sending_enabled === 'boolean'
+            ? health.email_sending_enabled
+            : null,
+        );
+      } catch {
+        setHostSendingEnabled(null);
       }
       setSenderName(s.sender_name);
       setSenderEmail(s.sender_email ?? '');
@@ -243,7 +327,11 @@ export function AdminEmailSettings({
       if (result.queued || result.honesty === 'QUEUED') {
         setSuccess(t('admin.emailTestQueued'));
       } else {
-        setSuccess(t('admin.emailTestBlocked', { status: result.honesty || result.status }));
+        setSuccess(
+          t('admin.emailTestBlocked', {
+            status: honestyUserLabel(result.honesty || result.status, t),
+          }),
+        );
       }
     } catch (err) {
       setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
@@ -293,18 +381,31 @@ export function AdminEmailSettings({
                 <p className="mt-1 text-xs text-secondary">{t('admin.emailPhaseNote')}</p>
                 <ul className="mt-2 space-y-1 text-xs text-muted">
                   <li>
-                    {t('admin.emailProvider')}: {hostProvider ?? t('admin.emailProviderUnavailable')}
+                    {t('admin.emailProvider')}: {providerLabel(hostProvider, t)}
                   </li>
                   <li>
                     {t('admin.emailDomain')}:{' '}
                     {settings.verified_domain
-                      ? `${settings.verified_domain} (${settings.domain_status})`
+                      ? `${settings.verified_domain} (${domainStatusLabel(settings.domain_status, t)})`
                       : t('admin.emailDomainNone')}
                   </li>
                   <li>{t('admin.emailSecretsNote')}</li>
                   <li>
-                    {t('admin.emailSendingFlag')}: host EMAIL_SENDING_ENABLED · DB email_enabled=
-                    {String(settings.email_enabled)}
+                    {t('admin.emailSendingFlag')}:{' '}
+                    {t('admin.emailSendingHost', {
+                      state:
+                        hostSendingEnabled === null
+                          ? t('admin.emailFlagUnknown')
+                          : hostSendingEnabled
+                            ? t('admin.emailFlagOn')
+                            : t('admin.emailFlagOff'),
+                    })}
+                    {' · '}
+                    {t('admin.emailSendingComplex', {
+                      state: settings.email_enabled
+                        ? t('admin.emailFlagOn')
+                        : t('admin.emailFlagOff'),
+                    })}
                   </li>
                   <li>{t('admin.emailCronNote')}</li>
                 </ul>
@@ -314,9 +415,14 @@ export function AdminEmailSettings({
                 <div className="rounded-lg border border-border px-3 py-2.5 text-xs text-secondary sm:col-span-2">
                   <p className="font-medium text-foreground">{t('admin.emailQueueSummary')}</p>
                   <p className="mt-1">
-                    claimable={summary.claimable} · queued={summary.queued} · sent={summary.sent} ·
-                    failed={summary.failed} · blocked={summary.blocked_not_ready} · cancelled=
-                    {summary.cancelled}
+                    {t('admin.emailQueueLine', {
+                      claimable: summary.claimable,
+                      queued: summary.queued,
+                      sent: summary.sent,
+                      failed: summary.failed,
+                      blocked: summary.blocked_not_ready,
+                      cancelled: summary.cancelled,
+                    })}
                   </p>
                 </div>
               ) : null}
@@ -372,9 +478,9 @@ export function AdminEmailSettings({
                   disabled={!canManage || saving}
                   onChange={(e) => setLocale(e.target.value as EmailTemplateLocale)}
                 >
-                  <option value="bg">BG</option>
-                  <option value="ru">RU</option>
-                  <option value="en">EN</option>
+                  <option value="bg">{t('admin.emailLocaleBg')}</option>
+                  <option value="ru">{t('admin.emailLocaleRu')}</option>
+                  <option value="en">{t('admin.emailLocaleEn')}</option>
                 </select>
               </label>
 
@@ -413,9 +519,9 @@ export function AdminEmailSettings({
               onChange={(e) => setPreviewKey(e.target.value as EmailPreviewTemplateKey)}
             >
               {EMAIL_PREVIEW_TEMPLATE_KEYS.map((key) => (
-                <option key={key} value={key}>
-                  {key}
-                </option>
+                  <option key={key} value={key}>
+                    {previewTemplateLabel(key, t)}
+                  </option>
               ))}
             </select>
           </label>
@@ -426,9 +532,9 @@ export function AdminEmailSettings({
               value={previewLocale}
               onChange={(e) => setPreviewLocale(e.target.value as EmailTemplateLocale)}
             >
-              <option value="bg">BG</option>
-              <option value="ru">RU</option>
-              <option value="en">EN</option>
+              <option value="bg">{t('admin.emailLocaleBg')}</option>
+              <option value="ru">{t('admin.emailLocaleRu')}</option>
+              <option value="en">{t('admin.emailLocaleEn')}</option>
             </select>
           </label>
           <label className="space-y-1 text-xs text-muted">
@@ -438,8 +544,8 @@ export function AdminEmailSettings({
               value={previewMode}
               onChange={(e) => setPreviewMode(e.target.value as 'html' | 'text')}
             >
-              <option value="html">HTML</option>
-              <option value="text">Text</option>
+              <option value="html">{t('admin.emailPreviewHtml')}</option>
+              <option value="text">{t('admin.emailPreviewText')}</option>
             </select>
           </label>
         </div>
@@ -506,12 +612,14 @@ export function AdminEmailSettings({
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="all">{t('admin.emailFilterAll')}</option>
-              <option value="queued">queued</option>
-              <option value="sent">sent</option>
-              <option value="failed">failed</option>
-              <option value="blocked_not_ready">blocked_not_ready</option>
-              <option value="cancelled">cancelled</option>
-              <option value="sending">sending</option>
+              <option value="queued">{outboxStatusFilterLabel('queued', t)}</option>
+              <option value="sent">{outboxStatusFilterLabel('sent', t)}</option>
+              <option value="failed">{outboxStatusFilterLabel('failed', t)}</option>
+              <option value="blocked_not_ready">
+                {outboxStatusFilterLabel('blocked_not_ready', t)}
+              </option>
+              <option value="cancelled">{outboxStatusFilterLabel('cancelled', t)}</option>
+              <option value="sending">{outboxStatusFilterLabel('sending', t)}</option>
             </select>
           </label>
           <label className="space-y-1 text-xs text-muted">
@@ -524,7 +632,7 @@ export function AdminEmailSettings({
               <option value="all">{t('admin.emailFilterAll')}</option>
               {moduleOptions.map((m) => (
                 <option key={m} value={m}>
-                  {m}
+                  {emailModuleTitle(m, t)}
                 </option>
               ))}
             </select>

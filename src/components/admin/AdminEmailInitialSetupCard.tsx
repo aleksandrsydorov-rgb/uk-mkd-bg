@@ -157,15 +157,20 @@ export function AdminEmailInitialSetupCard({ supabase, t, canManage = true }: Pr
               disabled={!canManage || saving}
               onChange={(e) => setLocale(e.target.value as EmailTemplateLocale)}
             >
-              <option value="bg">BG</option>
-              <option value="ru">RU</option>
-              <option value="en">EN</option>
+              <option value="bg">{t('admin.emailLocaleBg')}</option>
+              <option value="ru">{t('admin.emailLocaleRu')}</option>
+              <option value="en">{t('admin.emailLocaleEn')}</option>
             </select>
           </label>
           <p className="text-xs text-muted">{t('admin.emailIsVerifiedNote')}</p>
           <p className="text-xs text-muted">
-            {t('admin.emailSendingFlag')}: email_enabled={String(settings.email_enabled)} ·
-            sending_ready={String(settings.sending_ready)}
+            {t('admin.emailSendingComplex', {
+              state: settings.email_enabled ? t('admin.emailFlagOn') : t('admin.emailFlagOff'),
+            })}
+            {' · '}
+            {t('admin.emailSendingReady', {
+              state: settings.sending_ready ? t('admin.emailFlagOn') : t('admin.emailFlagOff'),
+            })}
           </p>
           {!validation.ok ? (
             <p className="text-xs text-danger">{t('admin.emailIsValidationFailed')}</p>

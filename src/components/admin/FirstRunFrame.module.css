@@ -429,6 +429,130 @@
   color: #3d4744;
 }
 
+/* Budget wizard: hierarchical Group → Subgroup → Article (no wide table). */
+.budgetTree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 8px 0 4px;
+}
+
+.budgetTreeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid #e3e8e6;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5c6763;
+}
+
+.budgetTreeGroup {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1c2422;
+  overflow-wrap: anywhere;
+}
+
+.budgetTreeSubgroup {
+  margin-top: 6px;
+  padding-left: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3d4744;
+  overflow-wrap: anywhere;
+}
+
+.budgetTreeRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 3px 0;
+}
+
+.budgetTreeArticle {
+  padding-left: 28px;
+}
+
+.budgetTreeArticleInSub {
+  padding-left: 42px;
+}
+
+.budgetTreeName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: #1c2422;
+  overflow-wrap: anywhere;
+}
+
+.budgetTreeBullet {
+  flex: none;
+  margin-right: 6px;
+  color: #5c6763;
+}
+
+.budgetTreeAmt {
+  flex: 0 0 auto;
+  max-width: 46%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+  color: #1c2422;
+}
+
+.budgetTreeTotalRow {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px dashed #e3e8e6;
+  font-weight: 600;
+}
+
+.budgetTreeTotalSub {
+  padding-left: 42px;
+}
+
+.budgetTreeTotalGroup {
+  padding-left: 14px;
+}
+
+.budgetTreeTotalGrand {
+  margin-top: 8px;
+  padding-left: 0;
+  border-top: 1px solid #cfd6d3;
+  padding-top: 8px;
+  font-size: 14px;
+}
+
+.budgetTreeMsg {
+  margin: 0 0 4px;
+  padding-left: 42px;
+  font-size: 12px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.budgetTreeMsgDirect {
+  padding-left: 28px;
+}
+
+.budgetTreeError {
+  color: #b42318;
+}
+
+.budgetTreeHint {
+  color: #5c6763;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: 1fr;

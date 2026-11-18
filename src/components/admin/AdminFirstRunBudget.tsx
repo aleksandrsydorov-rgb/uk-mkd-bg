@@ -37,7 +37,6 @@ import {
   buildBudgetPlanTemplateBuffer,
   buildBudgetPreviewGroups,
   enrichBudgetPreviewWithExisting,
-  presentBudgetPreviewAction,
   readBudgetPlanWorkbook,
   validateBudgetPlanAgainstCatalog,
   type BudgetPlanIssue,
@@ -92,75 +91,199 @@ export type FirstRunBudgetNavHandle = {
   persistDraft: () => Promise<boolean>;
 };
 
-function SavedBudgetStructureTable({
+/** Locale-aware plan amount for the hierarchy view (display only). */
+function formatPlanEur(n: number, locale: string): string {
+  const loc = locale.toLowerCase().startsWith('bg')
+    ? 'bg-BG'
+    : locale.toLowerCase().startsWith('en')
+      ? 'en-GB'
+      : 'ru-RU';
+  return `${Number(n).toLocaleString(loc, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} €`;
+}
+
+/** Amount that will remain / be saved after confirm (blank keeps prior). */
+function planAmountToShow(row: BudgetPlanPreviewRow): number | null {
+  if (row.amount != null && Number.isFinite(row.amount)) return row.amount;
+  if (row.amountBlank && row.priorAmount != null && Number.isFinite(row.priorAmount)) {
+    return row.priorAmount;
+  }
+  return null;
+}
+
+function sumPlanAmounts(rows: BudgetPlanPreviewRow[]): number {
+  return rows.reduce((acc, row) => {
+    const n = planAmountToShow(row);
+    return n != null ? acc + n : acc;
+  }, 0);
+}
+
+function BudgetHierarchyList({
   grouped,
   t,
+  locale,
+  mode,
+  issueReasonText,
 }: {
   grouped: { groups: BudgetPreviewGroup[]; grandTotal: number };
   t: (key: string) => string;
+  locale: string;
+  mode: 'preview' | 'saved';
+  issueReasonText?: (issue: Pick<BudgetPlanIssue, 'reason' | 'raw'>) => string;
 }) {
+  const fmt = (n: number) => formatPlanEur(n, locale);
+  const amountLabel = (row: BudgetPlanPreviewRow) => {
+    const n = planAmountToShow(row);
+    if (n != null) return fmt(n);
+    return t('admin.firstRunBudgetPlanUnset');
+  };
+
+  let grand = 0;
+  for (const g of grouped.groups) {
+    grand += sumPlanAmounts(g.rows);
+  }
+  // Saved view: prefer structural totals from grouped when all amounts are present.
+  if (mode === 'saved' && grouped.groups.every((g) => g.rows.every((r) => r.amount != null))) {
+    grand = grouped.grandTotal;
+  }
+
   return (
-    <div className={styles.tableWrap}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>{t('admin.firstRunBudgetImportColSubgroup')}</th>
-            <th>{t('admin.firstRunBudgetImportColName')}</th>
-            <th>{t('admin.firstRunBudgetImportColAmount')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {grouped.groups.map((group) => (
-            <Fragment key={`saved-g-${group.key}`}>
-              <tr>
-                <td colSpan={3} className={styles.groupTitle}>
-                  {group.label}
-                </td>
-              </tr>
-              {group.directRows.map((row) => (
-                <tr key={`saved-${row.code}-${row.row}`}>
-                  <td>—</td>
-                  <td>{row.name || '—'}</td>
-                  <td>{moneyEur(row.amount ?? 0)}</td>
-                </tr>
-              ))}
-              {group.subgroups.map((sub) => (
-                <Fragment key={`saved-sg-${group.key}-${sub.key}`}>
-                  <tr>
-                    <td colSpan={3} className={styles.subgroupTitle}>
-                      {sub.label}
-                    </td>
-                  </tr>
+    <div className={styles.budgetTree}>
+      <div className={styles.budgetTreeHead}>
+        <span>{t('admin.firstRunBudgetPlanCol')}</span>
+      </div>
+      {grouped.groups.map((group) => {
+        const groupTotal = sumPlanAmounts(group.rows);
+        return (
+          <Fragment key={`tree-g-${group.key}`}>
+            <div className={styles.budgetTreeGroup}>{group.label}</div>
+            {group.directRows.map((row) => (
+              <Fragment key={`tree-d-${row.row}-${row.code || row.name}`}>
+                <div className={`${styles.budgetTreeRow} ${styles.budgetTreeArticle}`}>
+                  <div className={styles.budgetTreeName}>
+                    <span className={styles.budgetTreeBullet} aria-hidden>
+                      •
+                    </span>
+                    {row.name || '—'}
+                  </div>
+                  <div className={styles.budgetTreeAmt}>{amountLabel(row)}</div>
+                </div>
+                {mode === 'preview' ? (
+                  <BudgetArticleNotes
+                    row={row}
+                    direct
+                    t={t}
+                    issueReasonText={issueReasonText}
+                  />
+                ) : null}
+              </Fragment>
+            ))}
+            {group.subgroups.map((sub) => {
+              const subTotal = sumPlanAmounts(sub.rows);
+              return (
+                <Fragment key={`tree-sg-${group.key}-${sub.key}`}>
+                  <div className={styles.budgetTreeSubgroup}>{sub.label}</div>
                   {sub.rows.map((row) => (
-                    <tr key={`saved-${row.code}-${row.row}`}>
-                      <td>{sub.label}</td>
-                      <td>{row.name || '—'}</td>
-                      <td>{moneyEur(row.amount ?? 0)}</td>
-                    </tr>
+                    <Fragment key={`tree-a-${row.row}-${row.code || row.name}`}>
+                      <div
+                        className={`${styles.budgetTreeRow} ${styles.budgetTreeArticleInSub}`}
+                      >
+                        <div className={styles.budgetTreeName}>
+                          <span className={styles.budgetTreeBullet} aria-hidden>
+                            •
+                          </span>
+                          {row.name || '—'}
+                        </div>
+                        <div className={styles.budgetTreeAmt}>{amountLabel(row)}</div>
+                      </div>
+                      {mode === 'preview' ? (
+                        <BudgetArticleNotes
+                          row={row}
+                          direct={false}
+                          t={t}
+                          issueReasonText={issueReasonText}
+                        />
+                      ) : null}
+                    </Fragment>
                   ))}
-                  <tr>
-                    <td colSpan={2}>
-                      {t('admin.firstRunBudgetImportSubgroupTotal').replace('{subgroup}', sub.label)}
-                    </td>
-                    <td>{moneyEur(sub.total)}</td>
-                  </tr>
+                  <div
+                    className={`${styles.budgetTreeRow} ${styles.budgetTreeTotalRow} ${styles.budgetTreeTotalSub}`}
+                  >
+                    <div className={styles.budgetTreeName}>{t('admin.firstRunBudgetTotalCompact')}</div>
+                    <div className={styles.budgetTreeAmt}>{fmt(subTotal)}</div>
+                  </div>
                 </Fragment>
-              ))}
-              <tr>
-                <td colSpan={2}>
-                  {t('admin.firstRunBudgetImportGroupTotal').replace('{group}', group.label)}
-                </td>
-                <td>{moneyEur(group.total)}</td>
-              </tr>
-            </Fragment>
-          ))}
-          <tr>
-            <td colSpan={2}>{t('admin.firstRunBudgetImportGrandTotal')}</td>
-            <td>{moneyEur(grouped.grandTotal)}</td>
-          </tr>
-        </tbody>
-      </table>
+              );
+            })}
+            <div
+              className={`${styles.budgetTreeRow} ${styles.budgetTreeTotalRow} ${styles.budgetTreeTotalGroup}`}
+            >
+              <div className={styles.budgetTreeName}>{t('admin.firstRunBudgetTotalCompact')}</div>
+              <div className={styles.budgetTreeAmt}>{fmt(groupTotal)}</div>
+            </div>
+          </Fragment>
+        );
+      })}
+      <div
+        className={`${styles.budgetTreeRow} ${styles.budgetTreeTotalRow} ${styles.budgetTreeTotalGrand}`}
+      >
+        <div className={styles.budgetTreeName}>{t('admin.firstRunBudgetImportGrandTotal')}</div>
+        <div className={styles.budgetTreeAmt}>{fmt(grand)}</div>
+      </div>
     </div>
+  );
+}
+
+function BudgetArticleNotes({
+  row,
+  direct,
+  t,
+  issueReasonText,
+}: {
+  row: BudgetPlanPreviewRow;
+  direct: boolean;
+  t: (key: string) => string;
+  issueReasonText?: (issue: Pick<BudgetPlanIssue, 'reason' | 'raw'>) => string;
+}) {
+  const pad = direct ? styles.budgetTreeMsgDirect : undefined;
+  const errors = row.issues.map((reason) => {
+    const reasonText = issueReasonText
+      ? issueReasonText({ reason, raw: row.amountRaw })
+      : reason;
+    return t('admin.firstRunBudgetImportErrorWithRow')
+      .replace('{row}', String(row.row))
+      .replace('{reason}', reasonText);
+  });
+  const hints: string[] = [];
+  if (row.amountBlank) hints.push(t('admin.firstRunBudgetImport_blank_amount'));
+  if (row.willCreate) hints.push(t('admin.firstRunBudgetImportWillCreate'));
+  if (row.similarNames && row.similarNames.length > 0) {
+    hints.push(
+      t('admin.firstRunBudgetImportSimilarHint').replace('{names}', row.similarNames.join('; ')),
+    );
+  }
+  if (errors.length === 0 && hints.length === 0) return null;
+  return (
+    <>
+      {errors.map((text) => (
+        <p
+          key={`err-${row.row}-${text}`}
+          className={`${styles.budgetTreeMsg} ${styles.budgetTreeError} ${pad ?? ''}`.trim()}
+        >
+          {text}
+        </p>
+      ))}
+      {hints.map((text) => (
+        <p
+          key={`hint-${row.row}-${text}`}
+          className={`${styles.budgetTreeMsg} ${styles.budgetTreeHint} ${pad ?? ''}`.trim()}
+        >
+          {text}
+        </p>
+      ))}
+    </>
   );
 }
 
@@ -761,55 +884,23 @@ export function AdminFirstRunBudget({
                   </div>
                   {(() => {
                     const grouped = buildBudgetPreviewGroups(importPreview.previewRows);
+                    const previewTotal = sumPlanAmounts(importPreview.previewRows);
                     return (
                       <>
                         {importIssues.length === 0 ? (
                           <p className={styles.okNote}>
                             {t('admin.firstRunBudgetImportFullTotal').replace(
                               '{total}',
-                              moneyEur(grouped.grandTotal),
+                              formatPlanEur(previewTotal, locale),
                             )}
                           </p>
                         ) : importPreview.articles.length > 0 ? (
                           <p className={styles.hint}>
                             {t('admin.firstRunBudgetImportPartialTotal').replace(
                               '{total}',
-                              moneyEur(grouped.grandTotal),
+                              formatPlanEur(previewTotal, locale),
                             )}
                           </p>
-                        ) : null}
-                        {importIssues.length > 0 ? (
-                          <div className={styles.tableWrap}>
-                            <table className={styles.table}>
-                              <thead>
-                                <tr>
-                                  <th>{t('admin.firstRunBudgetImportColRow')}</th>
-                                  <th>{t('admin.firstRunBudgetImportColName')}</th>
-                                  <th>{t('admin.firstRunErrReason')}</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {importIssues.map((issue) => {
-                                  const preview = importPreview.previewRows.find(
-                                    (r) => r.row === issue.row,
-                                  );
-                                  const articleLabel =
-                                    preview?.name?.trim() ||
-                                    preview?.group?.trim() ||
-                                    '—';
-                                  return (
-                                    <tr
-                                      key={`${issue.row}-${issue.reason}-${issue.code ?? ''}-${issue.raw ?? ''}`}
-                                    >
-                                      <td>{issue.row}</td>
-                                      <td>{articleLabel}</td>
-                                      <td className={styles.fieldError}>{issueReasonText(issue)}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
                         ) : null}
                         <p className={styles.hint} style={{ marginTop: 8 }}>
                           {t('admin.firstRunBudgetPreviewYear').replace(
@@ -817,142 +908,13 @@ export function AdminFirstRunBudget({
                             String(calendarYear || '—'),
                           )}
                         </p>
-                        <div className={styles.tableWrap}>
-                          <table className={styles.table}>
-                            <thead>
-                              <tr>
-                                <th>{t('admin.firstRunBudgetImportColRow')}</th>
-                                <th>{t('admin.firstRunBudgetImportColSubgroup')}</th>
-                                <th>{t('admin.firstRunBudgetImportColName')}</th>
-                                <th>{t('admin.firstRunBudgetImportColPrior')}</th>
-                                <th>{t('admin.firstRunBudgetImportColWill')}</th>
-                                <th>{t('admin.firstRunSfColAction')}</th>
-                                <th>{t('admin.firstRunBudgetImportColNotes')}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {grouped.groups.map((group) => {
-                                const renderLeaf = (row: (typeof group.rows)[number]) => {
-                                  const notes = [
-                                    ...row.issues.map((reason) =>
-                                      issueReasonText({ reason, raw: row.amountRaw }),
-                                    ),
-                                    ...(row.amountBlank
-                                      ? [t('admin.firstRunBudgetImport_blank_amount')]
-                                      : []),
-                                    ...(row.willCreate
-                                      ? [t('admin.firstRunBudgetImportWillCreate')]
-                                      : []),
-                                    ...(row.similarNames && row.similarNames.length > 0
-                                      ? [
-                                          t('admin.firstRunBudgetImportSimilarHint').replace(
-                                            '{names}',
-                                            row.similarNames.join('; '),
-                                          ),
-                                        ]
-                                      : []),
-                                  ];
-                                  const amountText = row.amountBlank
-                                    ? '—'
-                                    : row.amount != null
-                                      ? moneyEur(row.amount)
-                                      : row.amountRaw.trim() !== ''
-                                        ? row.amountRaw
-                                        : '—';
-                                  const priorText =
-                                    row.priorAmount != null && Number.isFinite(row.priorAmount)
-                                      ? moneyEur(row.priorAmount)
-                                      : '—';
-                                  return (
-                                    <tr key={`preview-${row.row}-${row.code || row.name}`}>
-                                      <td>{row.row}</td>
-                                      <td>{row.subgroup || '—'}</td>
-                                      <td>{row.name || '—'}</td>
-                                      <td>{priorText}</td>
-                                      <td
-                                        className={
-                                          row.amount == null && row.issues.length > 0
-                                            ? styles.fieldError
-                                            : undefined
-                                        }
-                                      >
-                                        {amountText}
-                                      </td>
-                                      <td>{presentBudgetPreviewAction(row.action, t)}</td>
-                                      <td
-                                        className={
-                                          row.issues.length > 0 ? styles.fieldError : undefined
-                                        }
-                                      >
-                                        {notes.join(' · ') || '—'}
-                                      </td>
-                                    </tr>
-                                  );
-                                };
-                                return (
-                                  <Fragment key={`g-${group.key}`}>
-                                    <tr>
-                                      <td colSpan={7} className={styles.groupTitle}>
-                                        {group.label}
-                                      </td>
-                                    </tr>
-                                    {group.directRows.map(renderLeaf)}
-                                    {group.subgroups.map((sub) => (
-                                      <Fragment key={`sg-${group.key}-${sub.key}`}>
-                                        <tr>
-                                          <td colSpan={7} className={styles.subgroupTitle}>
-                                            {sub.label}
-                                          </td>
-                                        </tr>
-                                        {sub.rows.map(renderLeaf)}
-                                        <tr>
-                                          <td colSpan={3}>
-                                            {t('admin.firstRunBudgetImportSubgroupTotal').replace(
-                                              '{subgroup}',
-                                              sub.label,
-                                            )}
-                                          </td>
-                                          <td>
-                                            {sub.priorTotal != null
-                                              ? moneyEur(sub.priorTotal)
-                                              : '—'}
-                                          </td>
-                                          <td>{moneyEur(sub.total)}</td>
-                                          <td colSpan={2} />
-                                        </tr>
-                                      </Fragment>
-                                    ))}
-                                    <tr>
-                                      <td colSpan={3}>
-                                        {t('admin.firstRunBudgetImportGroupTotal').replace(
-                                          '{group}',
-                                          group.label,
-                                        )}
-                                      </td>
-                                      <td>
-                                        {group.priorTotal != null
-                                          ? moneyEur(group.priorTotal)
-                                          : '—'}
-                                      </td>
-                                      <td>{moneyEur(group.total)}</td>
-                                      <td colSpan={2} />
-                                    </tr>
-                                  </Fragment>
-                                );
-                              })}
-                              <tr>
-                                <td colSpan={3}>{t('admin.firstRunBudgetImportGrandTotal')}</td>
-                                <td>
-                                  {grouped.priorGrandTotal != null
-                                    ? moneyEur(grouped.priorGrandTotal)
-                                    : '—'}
-                                </td>
-                                <td>{moneyEur(grouped.grandTotal)}</td>
-                                <td colSpan={2} />
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
+                        <BudgetHierarchyList
+                          grouped={grouped}
+                          t={t}
+                          locale={locale}
+                          mode="preview"
+                          issueReasonText={issueReasonText}
+                        />
                       </>
                     );
                   })()}
@@ -982,9 +944,14 @@ export function AdminFirstRunBudget({
           {lines.length > 0 ? (
             <div className={styles.stepBlock} style={{ marginTop: 12 }}>
               <p className={styles.groupTitle}>{t('admin.firstRunBudgetSavedTitle')}</p>
-              <SavedBudgetStructureTable grouped={savedGrouped} t={t} />
+              <BudgetHierarchyList
+                grouped={savedGrouped}
+                t={t}
+                locale={locale}
+                mode="saved"
+              />
               <p className={styles.okNote}>
-                {t('admin.firstRunBudgetTotal').replace('{total}', moneyEur(total))}
+                {t('admin.firstRunBudgetTotal').replace('{total}', formatPlanEur(total, locale))}
               </p>
             </div>
           ) : null}
@@ -1015,12 +982,17 @@ export function AdminFirstRunBudget({
             {t('admin.firstRunBudgetReviewTitle').replace('{year}', calendarYear)}
           </p>
           {lines.length > 0 ? (
-            <SavedBudgetStructureTable grouped={savedGrouped} t={t} />
+            <BudgetHierarchyList
+              grouped={savedGrouped}
+              t={t}
+              locale={locale}
+              mode="saved"
+            />
           ) : (
             <p className={styles.hint}>{t('admin.firstRunBudgetNeedImport')}</p>
           )}
           <p className={styles.groupTitle}>
-            {t('admin.firstRunBudgetTotal').replace('{total}', moneyEur(total))}
+            {t('admin.firstRunBudgetTotal').replace('{total}', formatPlanEur(total, locale))}
           </p>
           {yearStatus ? (
             <p className={styles.hint}>

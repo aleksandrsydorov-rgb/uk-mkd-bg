@@ -210,26 +210,22 @@ export function AdminWater({
     [waterTabs, activeTab, focusPropertyId, propertyId],
   );
 
-  const moduleBalanceTone = moduleTotals ? balanceTone(moduleTotals.balanceEur) : 'settled';
-  const moduleBalanceStatus =
-    moduleBalanceTone === 'debt'
-      ? t('admin.balDebt')
-      : moduleBalanceTone === 'over'
-        ? t('admin.balOver')
-        : t('admin.balSettled');
+  // Complex card: outstanding debt only (overpayments are never netted into this figure).
+  const moduleDebtEur = moduleTotals ? Math.max(0, Number(moduleTotals.balanceEur) || 0) : 0;
+  const moduleHasDebt = moduleDebtEur > 0;
   const moduleBalanceCard = {
     value:
       canFinance && moduleTotals
-        ? formatEur(Math.abs(moduleTotals.balanceEur), locale)
+        ? formatEur(moduleDebtEur, locale)
         : canFinance
           ? t('common.loading')
           : '—',
     secondary: canFinance
       ? moduleTotals
-        ? `${moduleBalanceStatus} · ${t('admin.utilRegBalanceComplex')}`
+        ? `${moduleHasDebt ? t('admin.balDebt') : t('account.noDebt')} · ${t('admin.utilRegBalanceComplex')}`
         : t('admin.utilRegBalanceComplexLoading')
       : t('admin.waterNoAccess'),
-    alert: Boolean(canFinance && moduleTotals && moduleBalanceTone === 'debt'),
+    alert: Boolean(canFinance && moduleTotals && moduleHasDebt),
   };
 
   const payKeyRef = useRef(crypto.randomUUID());

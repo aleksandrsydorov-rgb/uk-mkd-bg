@@ -42,10 +42,15 @@ export type UtilityFinanceRegisterRow = {
   status: 'debt' | 'credit' | 'settled';
 };
 
-/** Module-wide rollup of register rows (same ledger formula as per-apartment get_*_balance). */
+/**
+ * Module-wide rollup for the complex balance card.
+ * Per-apartment balance_eur uses the existing ledger formula (debt > 0, credit < 0).
+ * Card total sums only outstanding debts — apartment overpayments are not netted.
+ */
 export type UtilityModuleTotals = {
   chargedEur: number;
   paidEur: number;
+  /** Sum of positive per-apartment balances only (complex outstanding debt). */
   balanceEur: number;
   propertyCount: number;
 };
@@ -55,13 +60,14 @@ export function sumModuleTotalsFromRegisterRows(
 ): UtilityModuleTotals {
   let chargedEur = 0;
   let paidEur = 0;
-  let balanceEur = 0;
+  let debtEur = 0;
   for (const row of rows) {
     chargedEur += Number(row.chargedEur) || 0;
     paidEur += Number(row.paidEur) || 0;
-    balanceEur += Number(row.balanceEur) || 0;
+    const bal = Number(row.balanceEur) || 0;
+    if (bal > 0) debtEur += bal;
   }
-  return { chargedEur, paidEur, balanceEur, propertyCount: rows.length };
+  return { chargedEur, paidEur, balanceEur: debtEur, propertyCount: rows.length };
 }
 
 export function ledgerTableForService(service: UtilityFinanceService): string {

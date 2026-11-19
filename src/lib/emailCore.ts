@@ -635,6 +635,86 @@ export async function listEmailDiagnostics(
   });
 }
 
+export type EmailHistoryRow = {
+  id: number;
+  module_key: string;
+  template_key: string;
+  locale: string;
+  to_email: string | null;
+  to_masked: string | null;
+  recipient_name: string | null;
+  apartment_label: string | null;
+  status: string;
+  user_status: string;
+  attempts: number;
+  last_error_code: string | null;
+  next_attempt_at: string | null;
+  provider_message_id_present: boolean;
+  latest_event_type: string | null;
+  created_at: string;
+  updated_at: string | null;
+  event_occurred_at: string | null;
+};
+
+export type EmailHistoryPage = {
+  rows: EmailHistoryRow[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export async function listEmailHistory(
+  supabase: Sb,
+  opts: {
+    limit?: number;
+    offset?: number;
+    query?: string | null;
+    status?: string | null;
+    from?: string | null;
+    to?: string | null;
+  } = {}
+): Promise<EmailHistoryPage> {
+  const { data, error } = await supabase.rpc('admin_list_email_history' as never, {
+    p_limit: opts.limit ?? 20,
+    p_offset: opts.offset ?? 0,
+    p_query: opts.query?.trim() ? opts.query.trim() : null,
+    p_status: opts.status && opts.status !== 'all' ? opts.status : null,
+    p_from: opts.from ?? null,
+    p_to: opts.to ?? null,
+  } as never);
+  if (error) throw error;
+  const root = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const rawRows = Array.isArray(root.rows) ? root.rows : [];
+  return {
+    total: Number(root.total ?? 0),
+    limit: Number(root.limit ?? opts.limit ?? 20),
+    offset: Number(root.offset ?? opts.offset ?? 0),
+    rows: rawRows.map((r) => {
+      const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : {};
+      return {
+        id: Number(o.id ?? 0),
+        module_key: String(o.module_key ?? ''),
+        template_key: String(o.template_key ?? ''),
+        locale: String(o.locale ?? ''),
+        to_email: asString(o.to_email),
+        to_masked: asString(o.to_masked),
+        recipient_name: asString(o.recipient_name),
+        apartment_label: asString(o.apartment_label),
+        status: String(o.status ?? ''),
+        user_status: String(o.user_status ?? ''),
+        attempts: Number(o.attempts ?? 0),
+        last_error_code: asString(o.last_error_code),
+        next_attempt_at: asString(o.next_attempt_at),
+        provider_message_id_present: asBool(o.provider_message_id_present, false),
+        latest_event_type: asString(o.latest_event_type),
+        created_at: String(o.created_at ?? ''),
+        updated_at: asString(o.updated_at),
+        event_occurred_at: asString(o.event_occurred_at),
+      };
+    }),
+  };
+}
+
 export async function fetchEmailQueueSummary(
   supabase: Sb
 ): Promise<EmailQueueSummary | null> {

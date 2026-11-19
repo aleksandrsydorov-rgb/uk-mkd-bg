@@ -157,6 +157,10 @@ import {
   parseSettingsTab,
   type SettingsTabId,
 } from '@/components/admin/AdminSettingsHub';
+import {
+  AdminNotificationsWorkplace,
+  parseNotificationsTab,
+} from '@/components/admin/AdminNotificationsWorkplace';
 import { AdminInitialSetup } from '@/components/admin/AdminInitialSetup';
 import { AdminFirstRunWizard } from '@/components/admin/AdminFirstRunWizard';
 import {
@@ -376,6 +380,7 @@ type AdminSection =
   | 'вода'
   | 'персонал'
   | 'настройки'
+  | 'уведомления'
   | 'такса'
   | 'электроэнергия'
   | 'капремонт'
@@ -412,6 +417,7 @@ const ADMIN_SECTIONS: readonly AdminSection[] = [
   'вода',
   'персонал',
   'настройки',
+  'уведомления',
   'такса',
   'электроэнергия',
   'капремонт',
@@ -506,6 +512,7 @@ function AdminPortal() {
           ['вода', 'admin.water'],
           ['персонал', 'admin.staff'],
           ['настройки', 'admin.settings'],
+          ['уведомления', 'admin.notifications'],
           ['такса', 'admin.fee'],
           ['электроэнергия', 'admin.electricityFinance'],
           ['капремонт', 'admin.capital'],
@@ -682,6 +689,7 @@ function AdminPortal() {
       showLegalDocuments: canManageCriticalAccess,
       showStaff: canManageCriticalAccess || canEditStaff,
       showSettings: true,
+      showNotifications: canManageCriticalAccess,
       showInitialSetup: canManageCriticalAccess,
       showPlatform: showPlatformSupport,
       showUserActivation,
@@ -1436,7 +1444,9 @@ function AdminPortal() {
   /** Guest/pet forms dirty inside the apartment card (synced from ApartmentDetailModal). */
   const apartmentCardDirtyRef = useRef(false);
   useEffect(() => {
-    if (activeMenu !== 'собрания') sectionLeaveGuardRef.current = null;
+    if (activeMenu !== 'собрания' && activeMenu !== 'уведомления') {
+      sectionLeaveGuardRef.current = null;
+    }
   }, [activeMenu]);
 
   const navigateAdminSection = useCallback(
@@ -1577,6 +1587,35 @@ function AdminPortal() {
     if (allowedTabs.includes(raw)) return;
     openUtilityTab('электроэнергия', 'overview');
   }, [allowed, authReady, openUtilityTab, searchParams, sectionQuery, showElectricityFinance, staffRole]);
+
+  // Legacy Settings → Notifications tab → dedicated section.
+  useEffect(() => {
+    if (!allowed || !authReady || loading) return;
+    if (sectionQuery !== 'настройки') return;
+    if (searchParams.get('tab') !== 'notify') return;
+    if (!visibleSectionSet.has('уведомления')) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('section', 'уведомления');
+    params.set('tab', 'overview');
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [
+    allowed,
+    authReady,
+    loading,
+    pathname,
+    router,
+    searchParams,
+    sectionQuery,
+    visibleSectionSet,
+  ]);
+
+  useEffect(() => {
+    if (!allowed || !authReady || sectionQuery !== 'уведомления') return;
+    const raw = searchParams.get('tab');
+    if (!raw) return;
+    if ((['overview', 'settings', 'history'] as string[]).includes(raw)) return;
+    openSectionTab('уведомления', 'overview');
+  }, [allowed, authReady, openSectionTab, searchParams, sectionQuery]);
 
   // Deep-link: /admin?section=квартиры&property=<id>&cardTab=…
   // When the card has unsaved guest/pet edits, keep the current property until the user confirms leave.
@@ -5749,6 +5788,29 @@ function AdminPortal() {
             )}
           </div>
         );
+
+      case 'уведомления': {
+        if (!canManageCriticalAccess) {
+          return (
+            <AdminEmptyState
+              title={t('admin.notifications')}
+              text={t('admin.errForbidden')}
+            />
+          );
+        }
+        const notifyTab = parseNotificationsTab(searchParams.get('tab'));
+        return (
+          <AdminNotificationsWorkplace
+            supabase={supabase}
+            canManage={canManageCriticalAccess}
+            activeTab={notifyTab}
+            onTabChange={(tab) => openSectionTab('уведомления', tab)}
+            onRegisterLeaveGuard={(guard) => {
+              sectionLeaveGuardRef.current = guard;
+            }}
+          />
+        );
+      }
 
       case 'настройки': {
         const overviewCardEligibility: Record<OverviewCardKey, boolean> = {

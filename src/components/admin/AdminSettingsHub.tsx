@@ -17,8 +17,6 @@ import {
   adminCardClass,
   adminBtnSecondaryClass,
 } from '@/components/admin/AdminUi';
-import { AdminEmailSettings } from '@/components/admin/AdminEmailSettings';
-import { AdminNotificationPolicyPanel } from '@/components/admin/AdminNotificationPolicyPanel';
 import { AdminBuildingProfile } from '@/components/admin/AdminBuildingProfile';
 import { AdminInitialSetup } from '@/components/admin/AdminInitialSetup';
 import { parseModuleCatalogFilter } from '@/components/admin/AdminModuleCatalogPanel';
@@ -153,7 +151,7 @@ export function AdminSettingsHub({
           title={t('admin.settingsTabNotify')}
           lead={t('admin.settingsHubNotifyLead')}
           actionLabel={t('admin.settingsHubOpen')}
-          onClick={() => onTabChange('notify')}
+          onClick={() => onNavigateSection('уведомления')}
         />
         <HubCard
           title={t('admin.settingsTabFinance')}
@@ -283,14 +281,18 @@ export function AdminSettingsHub({
       </div>
     );
   } else if (activeTab === 'notify') {
+    // Legacy tab — page redirects to section=уведомления; keep a soft pointer if redirect lags.
     body = (
-      <div className="space-y-6">
-        <AdminEmailSettings supabase={supabase} canManage={canManageCriticalAccess} />
-        <AdminNotificationPolicyPanel
-          supabase={supabase}
-          t={t}
-          canManage={canManageCriticalAccess}
-        />
+      <div className={`${adminCardClass} space-y-3 p-4`}>
+        <p className="text-[15px] font-semibold text-foreground">{t('admin.settingsTabNotify')}</p>
+        <p className="text-sm text-secondary">{t('admin.settingsHubNotifyLead')}</p>
+        <button
+          type="button"
+          className={adminBtnSecondaryClass}
+          onClick={() => onNavigateSection('уведомления')}
+        >
+          {t('admin.settingsHubOpen')} →
+        </button>
       </div>
     );
   } else if (activeTab === 'finance') {

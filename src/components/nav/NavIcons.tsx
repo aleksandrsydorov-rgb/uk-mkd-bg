@@ -36,6 +36,7 @@ import {
   CircleDollarSign,
   LifeBuoy,
   LogOut,
+  Bell,
   type LucideProps,
 } from 'lucide-react';
 
@@ -94,6 +95,7 @@ const SECTION_ICON_CLASS: Record<string, string> = {
   чат: 'text-cyan-600',
   персонал: 'text-orange-600',
   настройки: 'text-slate-600',
+  уведомления: 'text-sky-700',
   платформа: 'text-fuchsia-600',
   активация: 'text-rose-600',
   начальная_настройка: 'text-fuchsia-600',
@@ -137,6 +139,7 @@ const SECTION_ICON_CHIP: Record<string, string> = {
   чат: 'bg-cyan-500/12',
   персонал: 'bg-orange-500/12',
   настройки: 'bg-slate-500/12',
+  уведомления: 'bg-sky-500/12',
   платформа: 'bg-fuchsia-500/12',
   активация: 'bg-rose-500/12',
   начальная_настройка: 'bg-fuchsia-500/12',
@@ -223,6 +226,7 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   чат: MessagesSquare,
   персонал: Users,
   настройки: Settings,
+  уведомления: Bell,
   платформа: Satellite,
   активация: UserPlus,
   начальная_настройка: Puzzle,

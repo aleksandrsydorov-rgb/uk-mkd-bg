@@ -12,6 +12,7 @@ export type AdminNavSection =
   | 'вода'
   | 'персонал'
   | 'настройки'
+  | 'уведомления'
   | 'такса'
   | 'электроэнергия'
   | 'капремонт'
@@ -80,6 +81,8 @@ export type AdminNavFlags = {
   showLegalDocuments: boolean;
   showStaff: boolean;
   showSettings: boolean;
+  /** Complex admin notifications / email workplace. */
+  showNotifications: boolean;
   showInitialSetup: boolean;
   showPlatform: boolean;
   showUserActivation: boolean;
@@ -166,6 +169,7 @@ export function buildAdminNavGroups(f: AdminNavFlags): AdminNavGroup[] {
       items: nonempty([
         ...(f.showStaff ? (['персонал'] as const) : []),
         ...(f.showSettings ? (['настройки'] as const) : []),
+        ...(f.showNotifications ? (['уведомления'] as const) : []),
         ...(f.showInitialSetup ? (['начальная_настройка'] as const) : []),
         ...(f.showPlatform ? (['платформа'] as const) : []),
         ...(f.showUserActivation ? (['активация'] as const) : []),
@@ -243,7 +247,11 @@ export function buildStaffNavGroups(f: AdminNavFlags): AdminNavGroup[] {
     {
       id: 'settings',
       labelKey: 'settings',
-      items: nonempty([...(f.showSettings ? (['настройки'] as const) : []), ...(f.showStaff ? (['персонал'] as const) : [])]),
+      items: nonempty([
+        ...(f.showSettings ? (['настройки'] as const) : []),
+        ...(f.showNotifications ? (['уведомления'] as const) : []),
+        ...(f.showStaff ? (['персонал'] as const) : []),
+      ]),
     },
   ];
 

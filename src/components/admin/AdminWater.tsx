@@ -58,10 +58,15 @@ import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFin
 import { AdminWaterMetersRegister } from '@/components/admin/AdminWaterMetersRegister';
 import { AdminWaterReadingsRegister } from '@/components/admin/AdminWaterReadingsRegister';
 import { AdminWaterReadingSubmitForm } from '@/components/admin/AdminWaterReadingSubmitForm';
+import {
+  AdminWaterHistoryRegister,
+  readWaterHistoryFiltersFromSearch,
+} from '@/components/admin/AdminWaterHistoryRegister';
 import { AdminModal } from '@/components/admin/AdminModal';
 import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import type { WaterMeterRegisterRow } from '@/lib/waterMetersRegister';
 import type { WaterReadingRegisterRow } from '@/lib/waterReadingsRegister';
+import type { WaterHistoryRegisterRow } from '@/lib/waterHistoryRegister';
 import { presentMeterReadingStatus } from '@/lib/meterReadingHistory';
 import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
@@ -247,12 +252,24 @@ export function AdminWater({
   const [submitMeterId, setSubmitMeterId] = useState('');
   const [rowSubmit, setRowSubmit] = useState<WaterReadingRegisterRow | null>(null);
   const [readingsRefreshSignal, setReadingsRefreshSignal] = useState(0);
+  const [historyShellPropertyId, setHistoryShellPropertyId] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if ((params.get('tab') ?? '') !== 'history') return null;
+    const pidRaw = Number(params.get('property') ?? '');
+    return Number.isFinite(pidRaw) && pidRaw > 0 ? pidRaw : null;
+  });
+  const [historyPeriodFrom, setHistoryPeriodFrom] = useState('');
+  const [historyPeriodTo, setHistoryPeriodTo] = useState('');
   const metersListScrollRef = useRef<HTMLDivElement | null>(null);
   const metersListScrollTopRef = useRef(0);
   const meterReturnFocusRef = useRef<HTMLElement | null>(null);
   const readingsListScrollRef = useRef<HTMLDivElement | null>(null);
   const readingsListScrollTopRef = useRef(0);
   const readingsReturnFocusRef = useRef<HTMLElement | null>(null);
+  const historyListScrollRef = useRef<HTMLDivElement | null>(null);
+  const historyListScrollTopRef = useRef(0);
+  const historyReturnFocusRef = useRef<HTMLElement | null>(null);
   const activeTab = onTabChange
     ? parseAdminUtilityTab(tab, allowedWaterTabs)
     : parseAdminUtilityTab(localTab, allowedWaterTabs);
@@ -302,22 +319,6 @@ export function AdminWater({
   const correctKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
-    // Overview / finance / meters / readings / payments — no auto apartment.
-    // History still needs a property for the existing journal panel.
-    if (
-      activeTab === 'finance' ||
-      activeTab === 'overview' ||
-      activeTab === 'meter' ||
-      activeTab === 'readings' ||
-      activeTab === 'payments'
-    ) {
-      return;
-    }
-    if (propertyId === '' && sorted[0]) selectProperty(sorted[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once when list arrives
-  }, [propertyId, sorted, activeTab]);
-
-  useEffect(() => {
     if (!staffRole) return;
     if (!onTabChange) {
       if (!allowedWaterTabs.includes(localTab)) setLocalTab('overview');
@@ -332,6 +333,10 @@ export function AdminWater({
     }
     if (next !== 'readings' && readingsShell !== 'none') {
       const ok = await closeReadingsShell({ keepScroll: false });
+      if (!ok) return;
+    }
+    if (next !== 'history' && historyShellPropertyId != null) {
+      const ok = await closeHistoryShell({ keepScroll: false });
       if (!ok) return;
     }
     if (onTabChange) onTabChange(next);
@@ -555,6 +560,90 @@ export function AdminWater({
     });
   }
 
+  function writeHistoryShellToUrl(property: number | '') {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('section', 'вода');
+    params.set('tab', 'history');
+    if (property === '' || property == null) params.delete('property');
+    else params.set('property', String(property));
+    const qs = params.toString();
+    const url = qs ? `${pathname}?${qs}` : pathname;
+    window.history.replaceState(window.history.state, '', url);
+  }
+
+  function openHistoryDetail(row: WaterHistoryRegisterRow, rowEl: HTMLElement | null) {
+    historyListScrollTopRef.current = historyListScrollRef.current?.scrollTop ?? window.scrollY;
+    historyReturnFocusRef.current = rowEl;
+    closeWaterCorrection();
+    setSuccess(null);
+    setError(null);
+    const live =
+      typeof window !== 'undefined'
+        ? readWaterHistoryFiltersFromSearch(window.location.search)
+        : { periodFrom: '', periodTo: '' };
+    setHistoryPeriodFrom(live.periodFrom);
+    setHistoryPeriodTo(live.periodTo);
+    selectProperty(row.propertyId);
+    setHistoryShellPropertyId(row.propertyId);
+    writeHistoryShellToUrl(row.propertyId);
+  }
+
+  async function closeHistoryShell(opts?: { keepScroll?: boolean; force?: boolean }) {
+    if (!opts?.force && correctReadingId) {
+      const dirty =
+        correctReason.trim() !== '' ||
+        correctConfirm ||
+        (correctTarget != null &&
+          String(correctValue).trim() !== String(correctTarget.current_value));
+      if (dirty) {
+        const ok = await confirm({
+          title: t('common.discardChangesTitle'),
+          description: t('common.discardChangesBody'),
+          confirmLabel: t('common.leaveWithoutSaving'),
+          cancelLabel: t('common.continueEditing'),
+          tone: 'danger',
+        });
+        if (!ok) return false;
+      }
+    }
+    closeWaterCorrection();
+    setHistoryShellPropertyId(null);
+    writeHistoryShellToUrl('');
+    onPropertyChange?.('');
+    setPropertyId('');
+    const keepScroll = opts?.keepScroll !== false;
+    if (keepScroll) {
+      requestAnimationFrame(() => {
+        if (historyListScrollRef.current) {
+          historyListScrollRef.current.scrollTop = historyListScrollTopRef.current;
+        } else {
+          window.scrollTo({ top: historyListScrollTopRef.current });
+        }
+      });
+    }
+    return true;
+  }
+
+  // Deep-link: ?tab=history&property=<pid> opens journal shell (legacy apartment history links).
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const pidRaw = Number(params.get('property') ?? '');
+    const pid = Number.isFinite(pidRaw) && pidRaw > 0 ? pidRaw : null;
+    if (pid == null) {
+      if (historyShellPropertyId != null) setHistoryShellPropertyId(null);
+      return;
+    }
+    if (historyShellPropertyId !== pid) setHistoryShellPropertyId(pid);
+    if (propertyId !== pid) selectProperty(pid);
+    const live = readWaterHistoryFiltersFromSearch(window.location.search);
+    setHistoryPeriodFrom(live.periodFrom);
+    setHistoryPeriodTo(live.periodTo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- URL seed for history shell
+  }, [activeTab]);
+
   // Deep-link: ?tab=readings&wrForm=1 | wrReading= | wrMeter=
   useEffect(() => {
     if (activeTab !== 'readings') return;
@@ -661,13 +750,15 @@ export function AdminWater({
       .select('*')
       .eq('property_id', pid)
       .order('installed_at', { ascending: false });
+    // History journal may need more rows (all meters incl. replaced). Other tabs keep a lighter window.
+    const readingLimit = activeTab === 'history' ? 2000 : 200;
     const readingQ = supabase
       .from('water_readings')
       .select('*')
       .eq('property_id', pid)
       .order('reading_date', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(200);
+      .limit(readingLimit);
     const pendingQ = supabase
       .from('utility_opening_pending' as never)
       .select('id, status')
@@ -735,7 +826,7 @@ export function AdminWater({
     setNeedsInitialOpening(
       pendingRows.length > 0 || (active != null && active.opening_confirmed_at == null) || (!active && pendingRows.length > 0),
     );
-  }, [canFinance, canSee, propertyId, supabase, t]);
+  }, [activeTab, canFinance, canSee, propertyId, supabase, t]);
 
   useEffect(() => {
     void loadTariffs();
@@ -982,7 +1073,7 @@ export function AdminWater({
     const ctx = rowSubmit;
     void closeRowSubmit({ force: true });
     if (readingsShell === 'submit') void closeReadingsShell({ force: true, keepScroll: false });
-    if (pid == null || pid === '') {
+    if (pid == null) {
       void selectTab('meter');
       return;
     }
@@ -1063,10 +1154,24 @@ export function AdminWater({
     waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
   const onOverview = activeTab === 'overview';
-  const onApartmentScoped = activeTab === 'history';
   const detailOpen = activeTab === 'meter' && meterShellPropertyId != null;
   const readingsSubmitOpen = activeTab === 'readings' && readingsShell === 'submit';
   const readingsDetailOpen = activeTab === 'readings' && readingsShell === 'detail';
+  const historyDetailOpen = activeTab === 'history' && historyShellPropertyId != null;
+  const historyDetailProperty =
+    historyShellPropertyId != null
+      ? sorted.find((p) => p.id === historyShellPropertyId) ?? null
+      : null;
+  const historyDetailTitle = historyDetailProperty
+    ? formatPropertyIdentity(
+        {
+          apartment_number: historyDetailProperty.apartment_number,
+          section_code: historyDetailProperty.section_code,
+          block_code: historyDetailProperty.block_code,
+        },
+        t,
+      )
+    : t('admin.readingHistory');
   const detailProperty = sorted.find((p) => p.id === propertyId) ?? null;
   const detailTitle = detailMeter
     ? `${t('admin.meterNumber')}: ${detailMeter.meter_number?.trim() ? detailMeter.meter_number : '—'}`
@@ -1255,23 +1360,6 @@ export function AdminWater({
             <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
           )}
         </>
-      ) : null}
-
-      {onApartmentScoped ? (
-        <AdminCard>
-          <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
-          <ApartmentCombobox
-            className="mt-1 max-w-xl"
-            properties={sorted}
-            value={propertyId}
-            onChange={(id) => {
-              selectProperty(id);
-              setSuccess(null);
-              setError(null);
-              closeWaterCorrection();
-            }}
-          />
-        </AdminCard>
       ) : null}
 
       {activeTab === 'meter' ? (
@@ -1784,72 +1872,105 @@ export function AdminWater({
       </WorkplaceCardShell>
 
       {activeTab === 'history' ? (
-        <div className={adminCardClass + ' space-y-4 p-4 md:p-5'}>
-          {correctTarget &&
-            canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
-              <AdminMeterCorrectionPanel
-                originalSummary={
-                  <p>
-                    {t('admin.meterCorrectionOriginal', {
-                      current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
-                      consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
-                    })}
-                  </p>
-                }
-                valueFields={
-                  <label className="block text-secondary">
-                    {t('admin.meterCorrectionNewValue')}
-                    <input
-                      className={`mt-1 block w-full ${fieldClass}`}
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={correctValue}
-                      onChange={(e) => setCorrectValue(e.target.value)}
-                      disabled={correctBusy}
-                      required
-                    />
-                  </label>
-                }
-                reason={correctReason}
-                onReasonChange={setCorrectReason}
-                confirmed={correctConfirm}
-                onConfirmedChange={setCorrectConfirm}
-                hasCharge={correctHasCharge}
-                estimatedDeltaEur={correctDelta}
-                busy={correctBusy}
-                onSubmit={() => void handleCorrectReading()}
-                onCancel={closeWaterCorrection}
-              />
-            )}
-          <MeterReadingHistory
-            utility="water"
-            entries={historyEntries}
-            title={t('admin.readingHistory')}
-            emptyTitle={t('admin.noReadings')}
-            rowActions={(entry) => {
-              const row = readings.find((r) => String(r.id) === entry.actionKey);
-              if (!row) return null;
-              const isLatestCorrectable =
-                lastReading?.id === row.id && row.status === 'active';
-              const rowHasCharge = waterReadingHasCharge(row);
-              const showCorrect =
-                isLatestCorrectable &&
-                canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
-              if (!showCorrect) return null;
-              return (
-                <button
-                  type="button"
-                  className="text-sm text-accent hover:underline"
-                  onClick={() => openWaterCorrection(row)}
-                >
-                  {t('admin.meterCorrectionAction')}
-                </button>
-              );
-            }}
+        canSee ? (
+          <AdminWaterHistoryRegister
+            supabase={supabase}
+            properties={sorted}
+            canOperate={canSee}
+            refreshSignal={readingsRefreshSignal}
+            focusPropertyId={historyShellPropertyId ?? ''}
+            listScrollRef={historyListScrollRef}
+            onOpenHistory={openHistoryDetail}
           />
-        </div>
+        ) : (
+          <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
+        )
       ) : null}
+
+      <WorkplaceCardShell
+        open={historyDetailOpen}
+        entityKey={historyShellPropertyId != null ? `history-${historyShellPropertyId}` : 'history'}
+        title={t('admin.readingHistory')}
+        titleMeta={historyDetailTitle}
+        closeLabel={t('admin.waterMetersDetailClose')}
+        onClose={() => void closeHistoryShell()}
+        onRequestClose={() => void closeHistoryShell()}
+        returnFocusRef={historyReturnFocusRef}
+      >
+        <div className="space-y-4">
+          {meterLoading ? (
+            <p className="text-sm text-muted">{t('common.loading')}</p>
+          ) : (
+            <>
+              {correctTarget &&
+                canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
+                  <AdminMeterCorrectionPanel
+                    originalSummary={
+                      <p>
+                        {t('admin.meterCorrectionOriginal', {
+                          current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
+                          consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
+                        })}
+                      </p>
+                    }
+                    valueFields={
+                      <label className="block text-secondary">
+                        {t('admin.meterCorrectionNewValue')}
+                        <input
+                          className={`mt-1 block w-full ${fieldClass}`}
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          value={correctValue}
+                          onChange={(e) => setCorrectValue(e.target.value)}
+                          disabled={correctBusy}
+                          required
+                        />
+                      </label>
+                    }
+                    reason={correctReason}
+                    onReasonChange={setCorrectReason}
+                    confirmed={correctConfirm}
+                    onConfirmedChange={setCorrectConfirm}
+                    hasCharge={correctHasCharge}
+                    estimatedDeltaEur={correctDelta}
+                    busy={correctBusy}
+                    onSubmit={() => void handleCorrectReading()}
+                    onCancel={closeWaterCorrection}
+                  />
+                )}
+              <MeterReadingHistory
+                utility="water"
+                entries={historyEntries}
+                title={t('admin.readingHistory')}
+                emptyTitle={t('admin.noReadings')}
+                periodFrom={historyPeriodFrom}
+                periodTo={historyPeriodTo}
+                rowActions={(entry) => {
+                  const row = readings.find((r) => String(r.id) === entry.actionKey);
+                  if (!row) return null;
+                  const isLatestCorrectable =
+                    lastReading?.id === row.id && row.status === 'active';
+                  const rowHasCharge = waterReadingHasCharge(row);
+                  const showCorrect =
+                    isLatestCorrectable &&
+                    canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
+                  if (!showCorrect) return null;
+                  return (
+                    <button
+                      type="button"
+                      className="text-sm text-accent hover:underline"
+                      onClick={() => openWaterCorrection(row)}
+                    >
+                      {t('admin.meterCorrectionAction')}
+                    </button>
+                  );
+                }}
+              />
+            </>
+          )}
+        </div>
+      </WorkplaceCardShell>
 
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { formatKwh, formatM3 } from '@/lib/utilities';
@@ -73,6 +73,8 @@ export function MeterReadingHistory({
   emptyTitle,
   rowActions,
   compact,
+  periodFrom,
+  periodTo,
 }: {
   entries: MeterReadingHistoryEntry[];
   utility: 'water' | 'electricity';
@@ -81,11 +83,21 @@ export function MeterReadingHistory({
   rowActions?: (entry: MeterReadingHistoryEntry) => ReactNode;
   /** Denser layout for owner cards. */
   compact?: boolean;
+  /** Optional seed / controlled period from a parent register. */
+  periodFrom?: string;
+  periodTo?: string;
 }) {
   const { t, locale } = useI18n();
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [from, setFrom] = useState(periodFrom ?? '');
+  const [to, setTo] = useState(periodTo ?? '');
   const unit = utility === 'water' ? t('account.m3') : t('account.kwh');
+
+  useEffect(() => {
+    if (periodFrom !== undefined) setFrom(periodFrom);
+  }, [periodFrom]);
+  useEffect(() => {
+    if (periodTo !== undefined) setTo(periodTo);
+  }, [periodTo]);
 
   const visible = useMemo(
     () => sortHistoryNewestFirst(filterHistoryByPeriod(entries, from, to)),

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -34,6 +35,7 @@ import {
   type SupportFeePublishIntent,
   type TariffHistoryRow,
   type TariffListRow,
+  parseTariffKey,
   parseTariffTab,
   type TariffTab,
 } from '@/lib/tariffs';
@@ -185,6 +187,8 @@ export function AdminTariffs({
   tab: tabRaw,
   onTabChange,
   policyYear: policyYearRaw,
+  focusTariffKey: focusTariffKeyRaw,
+  returnSearch,
 }: {
   supabase: SupabaseClient<Database>;
   locale: string;
@@ -203,7 +207,12 @@ export function AdminTariffs({
   onTabChange?: (tab: TariffTab) => void;
   /** Billing year for «Годовая политика» when opened from SF charges. */
   policyYear?: number | null;
+  /** Deep-link highlight / scroll target (`?tariff=water`). */
+  focusTariffKey?: string | null;
+  /** Encoded prior admin query (`?return=…`) for back to the caller register. */
+  returnSearch?: string | null;
 }) {
+  const focusTariffKey = parseTariffKey(focusTariffKeyRaw);
   const { t } = useI18n();
   const { confirm, dialog } = useAppConfirm(t('common.close'));
   const supportFeeModuleOn = enabledModules?.support_fee !== false;
@@ -366,10 +375,23 @@ export function AdminTariffs({
     return new Set<FirstRunTariffKey>(tariffKeysForModules(flags));
   }, [enabledModules]);
 
-  const visibleRows = useMemo(
-    () => rows.filter((r) => allowedTariffKeys.has(r.tariff_key as FirstRunTariffKey)),
-    [rows, allowedTariffKeys],
-  );
+  const visibleRows = useMemo(() => {
+    const filtered = rows.filter((r) => allowedTariffKeys.has(r.tariff_key as FirstRunTariffKey));
+    if (!focusTariffKey) return filtered;
+    return [...filtered].sort((a, b) => {
+      if (a.tariff_key === focusTariffKey) return -1;
+      if (b.tariff_key === focusTariffKey) return 1;
+      return 0;
+    });
+  }, [rows, allowedTariffKeys, focusTariffKey]);
+
+  useEffect(() => {
+    if (!focusTariffKey || loading || tab !== 'current') return;
+    const el = document.getElementById(`tariff-card-${focusTariffKey}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+  }, [focusTariffKey, loading, tab, visibleRows]);
 
   const byKey = useMemo(() => {
     const m = new Map<string, TariffListRow>();
@@ -1303,11 +1325,19 @@ export function AdminTariffs({
     const editing = publishKey === row.tariff_key;
     const future = row.nearest_future_version_id != null;
 
+    const focused = focusTariffKey != null && row.tariff_key === focusTariffKey;
     return (
       <AdminCard
         key={row.tariff_id}
-        className={`flex flex-col gap-4 ${editing ? 'sm:col-span-2 xl:col-span-3 border-accent/30' : 'h-full'}`}
+        className={`flex flex-col gap-4 ${
+          editing ? 'sm:col-span-2 xl:col-span-3 border-accent/30' : 'h-full'
+        } ${focused ? 'border-accent ring-2 ring-accent/35' : ''}`}
       >
+        <div
+          id={`tariff-card-${row.tariff_key}`}
+          tabIndex={focused ? -1 : undefined}
+          className={focused ? 'rounded-lg outline-none' : undefined}
+        >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">{row.default_name}</p>
@@ -1366,6 +1396,7 @@ export function AdminTariffs({
         ) : null}
 
         {editing ? renderPublishForm(row.tariff_key) : null}
+        </div>
       </AdminCard>
     );
   }
@@ -1425,10 +1456,26 @@ export function AdminTariffs({
     );
   }
 
+  const returnHref = (returnSearch ?? '').replace(/^\?/, '').trim();
+  const returnToWater =
+    returnHref.includes('section=%D0%B2%D0%BE%D0%B4%D0%B0') ||
+    returnHref.includes('section=вода') ||
+    /(^|&)section=вода(&|$)/.test(returnHref);
+
   return (
     <div className="min-w-0 space-y-4">
       {dialog}
       <AdminPageHeader title={t('admin.tcTitle')} secondary={t('admin.tcLead')} />
+      {returnHref && returnToWater ? (
+        <p>
+          <Link
+            href={`/admin?${returnHref}`}
+            className="text-sm font-medium text-accent underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            ← {t('admin.utilRegBackFromTariff')}
+          </Link>
+        </p>
+      ) : null}
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
 
       <AdminTabBar

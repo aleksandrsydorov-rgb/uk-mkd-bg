@@ -174,6 +174,7 @@ export function AdminUtilityFinanceWorkplace({
   onPropertyChange,
   extraCardActions,
   onModuleTotals,
+  showDebtorsSignal = 0,
 }: {
   service: UtilityFinanceService;
   supabase: SupabaseClient<Database>;
@@ -185,6 +186,8 @@ export function AdminUtilityFinanceWorkplace({
   extraCardActions?: React.ReactNode;
   /** Module-wide totals from the same ledger aggregate as the register (not one apartment). */
   onModuleTotals?: (totals: UtilityModuleTotals | null) => void;
+  /** Increment to filter the register to complex debtors (water overview debt card). */
+  showDebtorsSignal?: number;
 }) {
   const { t, locale } = useI18n();
   const [view, setView] = useState<'register' | 'card'>('register');
@@ -481,6 +484,34 @@ export function AdminUtilityFinanceWorkplace({
   useEffect(() => {
     if (view === 'card' && propertyId !== '') void loadCard();
   }, [view, propertyId, loadCard]);
+
+  const registerAnchorRef = useRef<HTMLDivElement | null>(null);
+  const lastDebtorsSignalRef = useRef(0);
+
+  useEffect(() => {
+    if (!showDebtorsSignal || showDebtorsSignal === lastDebtorsSignalRef.current) return;
+    lastDebtorsSignalRef.current = showDebtorsSignal;
+    userFilterEditRef.current = true;
+    preferRegisterRef.current = true;
+    setView('register');
+    setPropertyId('');
+    onPropertyChange?.('');
+    setFilters((f) => ({
+      ...EMPTY_UTILITY_MODULE_FILTERS,
+      periodFrom: f.periodFrom,
+      periodTo: f.periodTo,
+      periodYm: f.periodYm,
+      status: 'debt',
+      sort: 'section_apartment',
+    }));
+    const scroll = () => {
+      registerAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    requestAnimationFrame(() => {
+      scroll();
+      window.setTimeout(scroll, 80);
+    });
+  }, [showDebtorsSignal, onPropertyChange]);
 
   const sectionOptions = useMemo(() => listSectionsFromProperties(properties), [properties]);
 
@@ -801,7 +832,11 @@ export function AdminUtilityFinanceWorkplace({
     );
 
     return (
-      <div className="space-y-4">
+      <div
+        ref={registerAnchorRef}
+        id={service === 'water' ? 'utility-water-register' : undefined}
+        className="space-y-4"
+      >
         <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
           <div>
             <h2 className="text-base font-semibold tracking-tight text-foreground">

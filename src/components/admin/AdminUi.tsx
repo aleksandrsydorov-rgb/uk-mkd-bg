@@ -53,6 +53,7 @@ export function AdminMetricCard({
   onClick,
   alert = false,
   align = 'left',
+  'aria-label': ariaLabel,
 }: {
   label: string;
   value: string;
@@ -60,23 +61,36 @@ export function AdminMetricCard({
   onClick?: () => void;
   alert?: boolean;
   align?: 'left' | 'center';
+  'aria-label'?: string;
 }) {
   const centered = align === 'center';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${adminCardClass} flex w-full flex-col px-3 py-2.5 hover:bg-hover/50 ${
-        centered ? 'items-center text-center' : 'text-left'
-      }`}
-    >
+  const interactive = typeof onClick === 'function';
+  const className = `${adminCardClass} flex h-full w-full flex-col px-3 py-2.5 ${
+    centered ? 'items-center text-center' : 'text-left'
+  } ${
+    interactive
+      ? 'cursor-pointer hover:bg-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2'
+      : ''
+  }`;
+  const body = (
+    <>
       <span className="text-xs text-muted">{label}</span>
-      <span className={`mt-1 text-xl font-semibold tabular-nums leading-none ${alert ? 'text-danger' : 'text-foreground'}`}>
+      <span
+        className={`mt-1 text-xl font-semibold tabular-nums leading-none ${alert ? 'text-danger' : 'text-foreground'}`}
+      >
         {value}
       </span>
       {secondary ? <span className="mt-1 text-xs text-secondary">{secondary}</span> : null}
-    </button>
+    </>
   );
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} aria-label={ariaLabel ?? label} className={className}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
 
 export function AdminCard({

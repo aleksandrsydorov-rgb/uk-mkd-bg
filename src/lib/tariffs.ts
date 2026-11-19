@@ -15,6 +15,29 @@ export function parseTariffTab(raw: string | null | undefined): TariffTab {
     : 'current';
 }
 
+export function parseTariffKey(raw: string | null | undefined): TariffKey | null {
+  const v = String(raw ?? '').trim();
+  return (TARIFF_KEYS as readonly string[]).includes(v) ? (v as TariffKey) : null;
+}
+
+/** Deep-link: Finance → Tariffs, focused on one catalog key (e.g. water). */
+export function buildTariffsHref(opts: {
+  tariffKey?: TariffKey | null;
+  tab?: TariffTab | null;
+  returnSearch?: string | null;
+  pathname?: string;
+}): string {
+  const pathname = opts.pathname ?? '/admin';
+  const params = new URLSearchParams();
+  params.set('section', 'тарифы');
+  const tab = parseTariffTab(opts.tab ?? 'current');
+  params.set('tab', tab);
+  if (opts.tariffKey) params.set('tariff', opts.tariffKey);
+  const ret = (opts.returnSearch ?? '').replace(/^\?/, '').trim();
+  if (ret) params.set('return', ret);
+  return `${pathname}?${params.toString()}`;
+}
+
 export type TariffListRow = {
   tariff_id: string;
   tariff_key: string;

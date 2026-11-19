@@ -3578,6 +3578,9 @@ export const ru = {
     utilRegFilterSection: 'Секция',
     utilRegFilterPeriod: 'Расчётный период',
     utilRegFilterPeriodReadings: 'Период показаний',
+    utilRegOpenTariff: 'Открыть тариф',
+    utilRegShowDebtors: 'Показать должников комплекса в реестре',
+    utilRegBackFromTariff: 'К реестру воды',
     utilRegDateFrom: 'С',
     utilRegDateTo: 'По',
     utilRegPeriodScopeHint:
@@ -9509,6 +9512,9 @@ export const en: Messages = {
     utilRegFilterSection: 'Section',
     utilRegFilterPeriod: 'Billing period',
     utilRegFilterPeriodReadings: 'Reading period',
+    utilRegOpenTariff: 'Open tariff',
+    utilRegShowDebtors: 'Show complex debtors in the register',
+    utilRegBackFromTariff: 'Back to water register',
     utilRegDateFrom: 'From',
     utilRegDateTo: 'To',
     utilRegPeriodScopeHint:
@@ -15449,6 +15455,9 @@ export const bg: Messages = {
     utilRegFilterSection: 'Секция',
     utilRegFilterPeriod: 'Отчетен период',
     utilRegFilterPeriodReadings: 'Период на показанията',
+    utilRegOpenTariff: 'Отвори тарифа',
+    utilRegShowDebtors: 'Покажи длъжниците на комплекса в регистъра',
+    utilRegBackFromTariff: 'Към регистъра за вода',
     utilRegDateFrom: 'От',
     utilRegDateTo: 'До',
     utilRegPeriodScopeHint:

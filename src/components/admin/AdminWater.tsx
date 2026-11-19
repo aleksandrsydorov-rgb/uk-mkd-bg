@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -35,7 +37,7 @@ import {
 } from '@/lib/utilities';
 import { buildWaterHistoryEntries, type WaterHistoryInput } from '@/lib/meterReadingHistory';
 import { toUserFacingMessage } from '@/lib/userFacingError';
-import { parseRatesJson } from '@/lib/tariffs';
+import { buildTariffsHref, parseRatesJson } from '@/lib/tariffs';
 import {
   AdminCard,
   AdminMetricCard,
@@ -111,6 +113,8 @@ export function AdminWater({
   onPropertyChange?: (id: number | '') => void;
 }) {
   const { t, locale } = useI18n();
+  const pathname = usePathname() || '/admin';
+  const [showDebtorsSignal, setShowDebtorsSignal] = useState(0);
   const canSee = canSeeWaterAdmin(staffRole);
   const canMeter = canAssignWaterMeter(staffRole);
   const canFinance = canManageWaterFinance(staffRole);
@@ -664,6 +668,92 @@ export function AdminWater({
     await loadPropertyWater();
   }
 
+  const waterModeLabel =
+    waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
+  const retiredMeters = meters.filter((m) => m.retired_at);
+  const onOverview = activeTab === 'overview';
+  const onMeterOrReadings = activeTab === 'meter' || activeTab === 'readings';
+
+  function waterTariffHref() {
+    // Normalize via URLSearchParams so Cyrillic section values are not double-encoded in `return`.
+    const liveSearch =
+      typeof window !== 'undefined' ? new URLSearchParams(window.location.search).toString() : '';
+    return buildTariffsHref({
+      tariffKey: 'water',
+      tab: 'current',
+      returnSearch: liveSearch,
+      pathname,
+    });
+  }
+
+  const tariffValueLabel = tariffLoading
+    ? t('common.loading')
+    : tariff
+      ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³`
+      : '—';
+
+  function renderOverviewCards() {
+    return (
+      <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
+        <div className={`${adminCardClass} flex h-full min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
+          <span className="text-xs text-muted">{t('admin.waterMode')}</span>
+          <span className="mt-0.5 text-[11px] text-secondary">{t('admin.waterModeWho')}</span>
+          {canChangeWaterMode ? (
+            <select
+              className={`mt-2 ${fieldClass}`}
+              value={waterMode}
+              aria-label={t('admin.waterMode')}
+              onChange={(e) => onSaveWaterMode?.(e.target.value as WaterMode)}
+            >
+              <option value="owner_and_staff">{t('admin.elModeOwnerAndStaff')}</option>
+              <option value="staff_only">{t('admin.elModeStaffOnly')}</option>
+            </select>
+          ) : (
+            <span className="mt-2 text-base font-semibold leading-tight text-foreground">
+              {waterModeLabel}
+            </span>
+          )}
+        </div>
+        <div className={`${adminCardClass} flex h-full min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
+          <span className="text-xs text-muted">{t('admin.currentTariff')}</span>
+          {tariff ? (
+            <>
+              <Link
+                href={waterTariffHref()}
+                className="mt-1 w-fit text-xl font-semibold tabular-nums leading-none text-accent underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                {tariffValueLabel}
+              </Link>
+              <Link
+                href={waterTariffHref()}
+                className="mt-1 w-fit text-xs font-medium text-accent underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                {t('admin.utilRegOpenTariff')}
+              </Link>
+            </>
+          ) : (
+            <>
+              <span className="mt-1 text-xl font-semibold tabular-nums leading-none text-foreground">
+                {tariffValueLabel}
+              </span>
+              <span className="mt-1 text-xs text-secondary">{t('admin.noTariff')}</span>
+            </>
+          )}
+        </div>
+        <div className="h-full min-h-[5.5rem]">
+          <AdminMetricCard
+            label={t('admin.waterBalance')}
+            value={moduleBalanceCard.value}
+            secondary={moduleBalanceCard.secondary}
+            alert={moduleBalanceCard.alert}
+            aria-label={t('admin.utilRegShowDebtors')}
+            onClick={() => setShowDebtorsSignal((n) => n + 1)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (!canSee) {
     return (
       <AdminCard>
@@ -682,42 +772,7 @@ export function AdminWater({
     }
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
-          <div className={`${adminCardClass} flex h-full min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
-            <span className="text-xs text-muted">{t('admin.waterMode')}</span>
-            <span className="mt-0.5 text-[11px] text-secondary">{t('admin.waterModeWho')}</span>
-            {canChangeWaterMode ? (
-              <select
-                className={`mt-2 ${fieldClass}`}
-                value={waterMode}
-                aria-label={t('admin.waterMode')}
-                onChange={(e) => onSaveWaterMode?.(e.target.value as WaterMode)}
-              >
-                <option value="owner_and_staff">{t('admin.elModeOwnerAndStaff')}</option>
-                <option value="staff_only">{t('admin.elModeStaffOnly')}</option>
-              </select>
-            ) : (
-              <span className="mt-2 text-base font-semibold leading-tight text-foreground">
-                {waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff')}
-              </span>
-            )}
-          </div>
-          <div className="h-full min-h-[5.5rem] [&_button]:h-full">
-            <AdminMetricCard
-              label={t('admin.currentTariff')}
-              value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
-              secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
-            />
-          </div>
-          <div className="h-full min-h-[5.5rem] [&_button]:h-full">
-            <AdminMetricCard
-              label={t('admin.waterBalance')}
-              value={moduleBalanceCard.value}
-              secondary={moduleBalanceCard.secondary}
-              alert={moduleBalanceCard.alert}
-            />
-          </div>
-        </div>
+        {renderOverviewCards()}
         <AdminUtilityFinanceWorkplace
           service="water"
           supabase={supabase}
@@ -726,16 +781,11 @@ export function AdminWater({
           focusPropertyId={focusPropertyId ?? ''}
           onPropertyChange={selectProperty}
           onModuleTotals={setModuleTotals}
+          showDebtorsSignal={showDebtorsSignal}
         />
       </div>
     );
   }
-
-  const waterModeLabel =
-    waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
-  const retiredMeters = meters.filter((m) => m.retired_at);
-  const onOverview = activeTab === 'overview';
-  const onMeterOrReadings = activeTab === 'meter' || activeTab === 'readings';
 
   return (
     <div className="space-y-3">
@@ -751,48 +801,7 @@ export function AdminWater({
 
       {onOverview ? (
         <>
-          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
-            <div className={`${adminCardClass} flex h-full min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
-              <span className="text-xs text-muted">{t('admin.waterMode')}</span>
-              <span className="mt-0.5 text-[11px] text-secondary">{t('admin.waterModeWho')}</span>
-              {canChangeWaterMode ? (
-                <select
-                  className={`mt-2 ${fieldClass}`}
-                  value={waterMode}
-                  aria-label={t('admin.waterMode')}
-                  onChange={(e) => onSaveWaterMode?.(e.target.value as WaterMode)}
-                >
-                  <option value="owner_and_staff">{t('admin.elModeOwnerAndStaff')}</option>
-                  <option value="staff_only">{t('admin.elModeStaffOnly')}</option>
-                </select>
-              ) : (
-                <span className="mt-2 text-base font-semibold leading-tight text-foreground">
-                  {waterModeLabel}
-                </span>
-              )}
-            </div>
-            <div className="h-full min-h-[5.5rem] [&_button]:h-full">
-              <AdminMetricCard
-                label={t('admin.currentTariff')}
-                value={
-                  tariffLoading
-                    ? t('common.loading')
-                    : tariff
-                      ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³`
-                      : '—'
-                }
-                secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
-              />
-            </div>
-            <div className="h-full min-h-[5.5rem] [&_button]:h-full">
-              <AdminMetricCard
-                label={t('admin.waterBalance')}
-                value={moduleBalanceCard.value}
-                secondary={moduleBalanceCard.secondary}
-                alert={moduleBalanceCard.alert}
-              />
-            </div>
-          </div>
+          {renderOverviewCards()}
           {canFinance ? (
             <AdminUtilityFinanceWorkplace
               service="water"
@@ -802,6 +811,7 @@ export function AdminWater({
               focusPropertyId={focusPropertyId ?? ''}
               onPropertyChange={selectProperty}
               onModuleTotals={setModuleTotals}
+              showDebtorsSignal={showDebtorsSignal}
             />
           ) : (
             <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>

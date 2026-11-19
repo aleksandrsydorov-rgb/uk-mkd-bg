@@ -5973,6 +5973,8 @@ function AdminPortal() {
             tab={searchParams.get('tab')}
             onTabChange={(next) => openSectionTab('тарифы', next)}
             policyYear={tariffPolicyYear}
+            focusTariffKey={searchParams.get('tariff')}
+            returnSearch={searchParams.get('return')}
           />
         );
       }

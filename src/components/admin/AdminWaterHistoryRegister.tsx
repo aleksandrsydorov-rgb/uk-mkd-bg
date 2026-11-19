@@ -23,13 +23,12 @@ import {
 import {
   AdminEmptyState,
   AdminInlineAlert,
-  AdminSecondaryButton,
   AdminTableShell,
-  adminFieldClass,
   adminTableCellClass,
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
+import { AdminUtilityRegisterFiltersBar } from '@/components/admin/AdminUtilityRegisterFiltersBar';
 
 type PropertyOption = {
   id: number;
@@ -173,89 +172,46 @@ export function AdminWaterHistoryRegister({
       ref={(node) => {
         if (listScrollRef) listScrollRef.current = node;
       }}
-      className="space-y-3"
+      className="space-y-4"
     >
-      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            {t('admin.waterHistoryTitle')}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted">{t('admin.waterHistoryLead')}</p>
-        </div>
-        <p className="text-xs tabular-nums text-muted">{countLabel}</p>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.waterHistorySearch')}
-          <input
-            type="search"
-            value={filters.query}
-            onChange={(e) => patchFilters({ query: e.target.value })}
-            placeholder={t('admin.waterHistorySearchPh')}
-            className={`mt-1 block w-56 ${adminFieldClass}`}
-          />
-        </label>
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.utilRegFilterSection')}
-          <select
-            value={filters.section}
-            onChange={(e) => patchFilters({ section: e.target.value })}
-            className={`mt-1 block w-36 ${adminFieldClass}`}
-          >
-            <option value="">{t('admin.sfFilterAll')}</option>
-            {sections.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.waterMetersFilterBlock')}
-          <select
-            value={filters.block}
-            onChange={(e) => patchFilters({ block: e.target.value })}
-            className={`mt-1 block w-36 ${adminFieldClass}`}
-          >
-            <option value="">{t('admin.sfFilterAll')}</option>
-            {blocks.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.utilRegDateFrom')}
-          <input
-            type="date"
-            value={filters.periodFrom}
-            onChange={(e) => patchFilters({ periodFrom: e.target.value })}
-            className={`mt-1 block w-40 ${adminFieldClass}`}
-          />
-        </label>
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.utilRegDateTo')}
-          <input
-            type="date"
-            value={filters.periodTo}
-            onChange={(e) => patchFilters({ periodTo: e.target.value })}
-            className={`mt-1 block w-40 ${adminFieldClass}`}
-          />
-        </label>
-        <AdminSecondaryButton
-          type="button"
-          disabled={!filtersActive}
-          onClick={() => {
+      <AdminUtilityRegisterFiltersBar
+        countLabel={countLabel}
+        search={{
+          value: filters.query,
+          onChange: (query) => patchFilters({ query }),
+          placeholder: t('admin.waterHistorySearchPh'),
+        }}
+        section={{
+          value: filters.section,
+          onChange: (section) => patchFilters({ section }),
+          options: sections.map((s) => ({ value: s, label: s })),
+        }}
+        block={{
+          value: filters.block,
+          onChange: (block) => patchFilters({ block }),
+          options: blocks.map((b) => ({ value: b, label: b })),
+        }}
+        periodFrom={{
+          value: filters.periodFrom,
+          onChange: (periodFrom) => patchFilters({ periodFrom }),
+        }}
+        periodTo={{
+          value: filters.periodTo,
+          onChange: (periodTo) => patchFilters({ periodTo }),
+          min: filters.periodFrom || undefined,
+        }}
+        reset={{
+          disabled: !filtersActive,
+          onClick: () => {
             userEditRef.current = true;
             setFilters(EMPTY_WATER_HISTORY_FILTERS);
-          }}
-        >
-          {t('admin.sfFilterReset')}
-        </AdminSecondaryButton>
-      </div>
-      <p className="text-[11px] text-muted">{t('admin.waterHistoryRangeHint')}</p>
+          },
+        }}
+        hint={{
+          summary: t('admin.waterHistoryRangeHintShort'),
+          detail: t('admin.waterHistoryRangeHint'),
+        }}
+      />
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {loading ? (

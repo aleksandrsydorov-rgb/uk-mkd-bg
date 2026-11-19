@@ -23,13 +23,12 @@ import {
 import {
   AdminEmptyState,
   AdminInlineAlert,
-  AdminSecondaryButton,
   AdminTableShell,
-  adminFieldClass,
   adminTableCellClass,
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
+import { AdminUtilityRegisterFiltersBar } from '@/components/admin/AdminUtilityRegisterFiltersBar';
 
 type PropertyOption = {
   id: number;
@@ -157,70 +156,33 @@ export function AdminWaterMetersRegister({
       ref={(node) => {
         if (listScrollRef) listScrollRef.current = node;
       }}
-      className="space-y-3"
+      className="space-y-4"
     >
-      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            {t('admin.waterMetersTitle')}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted">{t('admin.waterMetersLead')}</p>
-        </div>
-        <p className="text-xs tabular-nums text-muted">{countLabel}</p>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.waterMetersSearch')}
-          <input
-            type="search"
-            value={filters.query}
-            onChange={(e) => patchFilters({ query: e.target.value })}
-            placeholder={t('admin.waterMetersSearchPh')}
-            className={`mt-1 block w-56 ${adminFieldClass}`}
-          />
-        </label>
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.utilRegFilterSection')}
-          <select
-            value={filters.section}
-            onChange={(e) => patchFilters({ section: e.target.value })}
-            className={`mt-1 block w-36 ${adminFieldClass}`}
-          >
-            <option value="">{t('admin.sfFilterAll')}</option>
-            {sections.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs font-medium text-secondary">
-          {t('admin.waterMetersFilterBlock')}
-          <select
-            value={filters.block}
-            onChange={(e) => patchFilters({ block: e.target.value })}
-            className={`mt-1 block w-36 ${adminFieldClass}`}
-          >
-            <option value="">{t('admin.sfFilterAll')}</option>
-            {blocks.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </label>
-        <AdminSecondaryButton
-          type="button"
-          disabled={!filtersActive}
-          onClick={() => {
+      <AdminUtilityRegisterFiltersBar
+        countLabel={countLabel}
+        search={{
+          value: filters.query,
+          onChange: (query) => patchFilters({ query }),
+          placeholder: t('admin.waterMetersSearchPh'),
+        }}
+        section={{
+          value: filters.section,
+          onChange: (section) => patchFilters({ section }),
+          options: sections.map((s) => ({ value: s, label: s })),
+        }}
+        block={{
+          value: filters.block,
+          onChange: (block) => patchFilters({ block }),
+          options: blocks.map((b) => ({ value: b, label: b })),
+        }}
+        reset={{
+          disabled: !filtersActive,
+          onClick: () => {
             userEditRef.current = true;
             setFilters(EMPTY_WATER_METER_FILTERS);
-          }}
-        >
-          {t('admin.sfFilterReset')}
-        </AdminSecondaryButton>
-      </div>
+          },
+        }}
+      />
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {loading ? (

@@ -3565,6 +3565,7 @@ export const ru = {
     waterReadingsColStatus: 'Статус',
     waterReadingsRangeHint:
       'Диапазон дат меняет, какое последнее показание показывается для каждого прибора. Приборы без показаний в диапазоне остаются в списке.',
+    waterReadingsRangeHintShort: 'Диапазон дат выбирает последнее показание по каждому прибору.',
     waterReadingsFormTitle: 'Передать показания',
     waterReadingsDetailTitle: 'Показание',
     waterReadingsNoReading: 'По этому прибору нет показаний в выбранном диапазоне.',
@@ -3587,6 +3588,7 @@ export const ru = {
     waterHistoryNoEntries: 'Нет записей',
     waterHistoryRangeHint:
       'Диапазон дат меняет колонку «Последняя запись» и передаётся в журнал апартамента. Апартаменты без записей в диапазоне остаются в списке.',
+    waterHistoryRangeHintShort: 'Диапазон дат — для колонки «Последняя запись» и журнала апартамента.',
     utilTabTariff: 'Тариф',
     utilTabFinance: 'Финансы',
     utilFinRegisterTitle: 'Реестр апартаментов',
@@ -3634,6 +3636,9 @@ export const ru = {
       'Период меняет только колонки показаний и расхода. Начислено / оплачено / баланс — итоги за всё время.',
     utilRegWaterDateRangeHint:
       'Диапазон дат меняет только колонки показаний и расхода: начальные — последнее действительное показание до «С», конечные — последнее внутри «С»–«По», расход — по сохранённым показаниям (с учётом приборов, замен и корректировок). Начислено / оплачено / баланс — итоги за всё время.',
+    utilRegWaterDateRangeHintShort:
+      'Диапазон дат — для показаний; начислено / оплачено / баланс — за всё время.',
+    utilRegFilterHintMore: 'Подробнее',
     utilRegFilterConnection: 'Статус подключения',
     utilRegFilterBalance: 'Финансовый баланс',
     utilRegFilterSort: 'Сортировка',
@@ -9546,6 +9551,7 @@ export const en: Messages = {
     waterReadingsColStatus: 'Status',
     waterReadingsRangeHint:
       'The date range chooses which latest reading is shown per meter. Meters with no reading in range stay listed.',
+    waterReadingsRangeHintShort: 'Date range picks the latest reading shown per meter.',
     waterReadingsFormTitle: 'Submit reading',
     waterReadingsDetailTitle: 'Reading',
     waterReadingsNoReading: 'No reading for this meter in the selected range.',
@@ -9568,6 +9574,7 @@ export const en: Messages = {
     waterHistoryNoEntries: 'No entries',
     waterHistoryRangeHint:
       'The date range changes the «Last entry» column and is passed into the apartment journal. Apartments with no entries in the range stay listed.',
+    waterHistoryRangeHintShort: 'Date range applies to the Last entry column and the apartment journal.',
     utilTabTariff: 'Tariff',
     utilTabFinance: 'Finance',
     utilFinRegisterTitle: 'Apartment register',
@@ -9615,6 +9622,9 @@ export const en: Messages = {
       'Period changes reading and consumption columns only. Charged / paid / balance are all-time totals.',
     utilRegWaterDateRangeHint:
       'The date range changes reading and consumption columns only: opening = last valid reading before From, closing = last valid reading in From–To, consumption = sum of stored readings (meters, replacements, corrections). Charged / paid / balance are all-time totals.',
+    utilRegWaterDateRangeHintShort:
+      'Date range applies to readings; charged / paid / balance are all-time totals.',
+    utilRegFilterHintMore: 'More',
     utilRegFilterConnection: 'Connection status',
     utilRegFilterBalance: 'Financial balance',
     utilRegFilterSort: 'Sort',
@@ -15536,6 +15546,7 @@ export const bg: Messages = {
     waterReadingsColStatus: 'Статус',
     waterReadingsRangeHint:
       'Диапазонът от дати избира кое последно показание се показва за всеки уред. Уреди без показание в диапазона остават в списъка.',
+    waterReadingsRangeHintShort: 'Диапазонът от дати избира последното показание за всеки уред.',
     waterReadingsFormTitle: 'Предай показания',
     waterReadingsDetailTitle: 'Показание',
     waterReadingsNoReading: 'Няма показание за този уред в избрания диапазон.',
@@ -15558,6 +15569,7 @@ export const bg: Messages = {
     waterHistoryNoEntries: 'Няма записи',
     waterHistoryRangeHint:
       'Диапазонът от дати променя колоната „Последен запис“ и се предава в журнала на апартамента. Апартаменти без записи в диапазона остават в списъка.',
+    waterHistoryRangeHintShort: 'Диапазонът от дати е за колоната „Последен запис“ и журнала.',
     utilTabTariff: 'Тарифа',
     utilTabFinance: 'Финанси',
     utilFinRegisterTitle: 'Регистър на апартаменти',
@@ -15605,6 +15617,9 @@ export const bg: Messages = {
       'Периодът променя само колоните за показания и разход. Начислено / платено / салдо са общи за всички периоди.',
     utilRegWaterDateRangeHint:
       'Диапазонът от дати променя само колоните за показания и разход: начални — последното валидно показание преди „От“, крайни — последното в „От“–„До“, разход — по записаните показания (уреди, смени и корекции). Начислено / платено / салдо са общи за всички периоди.',
+    utilRegWaterDateRangeHintShort:
+      'Диапазонът от дати е за показанията; начислено / платено / салдо са за целия период.',
+    utilRegFilterHintMore: 'Още',
     utilRegFilterConnection: 'Статус на връзката',
     utilRegFilterBalance: 'Финансово салдо',
     utilRegFilterSort: 'Сортиране',

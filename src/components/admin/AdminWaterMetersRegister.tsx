@@ -11,6 +11,7 @@ import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 import {
   EMPTY_WATER_METER_FILTERS,
   buildWaterMeterRegisterRows,
+  countWaterMeterRegisterStats,
   filterWaterMeterRegisterRows,
   formatSectionBlock,
   listBlocksFromProperties,
@@ -130,7 +131,15 @@ export function AdminWaterMetersRegister({
     [properties, filters.section],
   );
   const visible = useMemo(() => filterWaterMeterRegisterRows(rows, filters), [rows, filters]);
+  const stats = useMemo(() => countWaterMeterRegisterStats(visible), [visible]);
   const filtersActive = waterMeterFiltersActive(filters);
+  const countLabel =
+    stats.meters !== stats.apartments
+      ? t('admin.waterRegCountAptsMeters', {
+          a: String(stats.apartments),
+          m: String(stats.meters),
+        })
+      : t('admin.waterRegCountApts', { a: String(stats.apartments) });
 
   function patchFilters(patch: Partial<WaterMeterRegisterFilters>) {
     userEditRef.current = true;
@@ -157,9 +166,7 @@ export function AdminWaterMetersRegister({
           </h2>
           <p className="mt-0.5 text-xs text-muted">{t('admin.waterMetersLead')}</p>
         </div>
-        <p className="text-xs tabular-nums text-muted">
-          {t('admin.utilFinRegisterCount', { n: String(visible.length) })}
-        </p>
+        <p className="text-xs tabular-nums text-muted">{countLabel}</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -236,11 +243,13 @@ export function AdminWaterMetersRegister({
               </thead>
               <tbody>
                 {visible.map((row) => {
-                  const selected = focusMeterId === row.meterId;
+                  const rowKey = row.meterId ?? `apt-${row.propertyId}`;
+                  const selected = Boolean(focusMeterId) && focusMeterId === row.meterId;
                   return (
                     <tr
-                      key={row.meterId}
-                      data-meter-id={row.meterId}
+                      key={rowKey}
+                      data-meter-id={row.meterId ?? ''}
+                      data-property-id={row.propertyId}
                       tabIndex={0}
                       className={`${adminTableRowClass} cursor-pointer focus-visible:bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 ${
                         selected ? 'bg-accent-bg/60' : ''
@@ -295,12 +304,14 @@ export function AdminWaterMetersRegister({
 
           <ul className="space-y-2 md:hidden">
             {visible.map((row) => {
-              const selected = focusMeterId === row.meterId;
+              const rowKey = row.meterId ?? `apt-${row.propertyId}`;
+              const selected = Boolean(focusMeterId) && focusMeterId === row.meterId;
               return (
-                <li key={row.meterId}>
+                <li key={rowKey}>
                   <button
                     type="button"
-                    data-meter-id={row.meterId}
+                    data-meter-id={row.meterId ?? ''}
+                    data-property-id={row.propertyId}
                     className={`w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-left hover:bg-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
                       selected ? 'border-accent/40 bg-accent-bg/40' : ''
                     }`}

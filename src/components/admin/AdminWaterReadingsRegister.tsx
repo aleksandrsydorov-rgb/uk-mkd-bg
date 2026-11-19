@@ -18,6 +18,7 @@ import { listBlocksFromProperties } from '@/lib/waterMetersRegister';
 import {
   EMPTY_WATER_READING_FILTERS,
   buildWaterReadingRegisterRows,
+  countWaterReadingRegisterStats,
   filterWaterReadingRegisterRows,
   waterReadingFiltersActive,
   type WaterReadingRegisterFilters,
@@ -178,7 +179,15 @@ export function AdminWaterReadingsRegister({
     [properties, filters.section],
   );
   const visible = useMemo(() => filterWaterReadingRegisterRows(rows, filters), [rows, filters]);
+  const stats = useMemo(() => countWaterReadingRegisterStats(visible), [visible]);
   const filtersActive = waterReadingFiltersActive(filters);
+  const countLabel =
+    stats.meters !== stats.apartments
+      ? t('admin.waterRegCountAptsMeters', {
+          a: String(stats.apartments),
+          m: String(stats.meters),
+        })
+      : t('admin.waterRegCountApts', { a: String(stats.apartments) });
 
   function patchFilters(patch: Partial<WaterReadingRegisterFilters>) {
     userEditRef.current = true;
@@ -211,9 +220,7 @@ export function AdminWaterReadingsRegister({
           <p className="mt-0.5 text-xs text-muted">{t('admin.waterReadingsLead')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs tabular-nums text-muted">
-            {t('admin.utilFinRegisterCount', { n: String(visible.length) })}
-          </p>
+          <p className="text-xs tabular-nums text-muted">{countLabel}</p>
           {canSubmit ? (
             <AdminPrimaryButton type="button" onClick={onOpenSubmit}>
               {t('admin.waterReadingsSubmit')}
@@ -320,13 +327,15 @@ export function AdminWaterReadingsRegister({
               </thead>
               <tbody>
                 {visible.map((row) => {
+                  const rowKey = row.meterId ?? `apt-${row.propertyId}`;
                   const selected =
                     (focusReadingId && row.readingId === focusReadingId) ||
-                    (!focusReadingId && focusMeterId === row.meterId);
+                    (!focusReadingId && Boolean(focusMeterId) && focusMeterId === row.meterId);
                   return (
                     <tr
-                      key={row.meterId}
-                      data-meter-id={row.meterId}
+                      key={rowKey}
+                      data-meter-id={row.meterId ?? ''}
+                      data-property-id={row.propertyId}
                       data-reading-id={row.readingId ?? ''}
                       tabIndex={0}
                       className={`${adminTableRowClass} cursor-pointer focus-visible:bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 ${
@@ -378,10 +387,11 @@ export function AdminWaterReadingsRegister({
 
           <ul className="space-y-2 md:hidden">
             {visible.map((row) => (
-              <li key={row.meterId}>
+              <li key={row.meterId ?? `apt-${row.propertyId}`}>
                 <button
                   type="button"
-                  data-meter-id={row.meterId}
+                  data-meter-id={row.meterId ?? ''}
+                  data-property-id={row.propertyId}
                   className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-left hover:bg-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                   onClick={(e) => onOpenReading(row, e.currentTarget)}
                 >

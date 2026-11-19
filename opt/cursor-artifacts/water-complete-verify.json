@@ -1,0 +1,78 @@
+[
+  {
+    "check": "property book count",
+    "ok": true,
+    "count": 115
+  },
+  {
+    "check": "apt 23 in book",
+    "ok": true,
+    "ids": [
+      {
+        "id": 27,
+        "section": "A",
+        "block": null
+      },
+      {
+        "id": 106,
+        "section": "В",
+        "block": null
+      },
+      {
+        "id": 63,
+        "section": "Б",
+        "block": null
+      }
+    ]
+  },
+  {
+    "check": "meters tab apartment count 115",
+    "ok": true,
+    "apartments": "115",
+    "meters": "80"
+  },
+  {
+    "check": "meters unique property ids == book",
+    "ok": true,
+    "uiCount": 115,
+    "bookCount": 115
+  },
+  {
+    "check": "search 23 includes all book apt 23",
+    "ok": true,
+    "expected23": [
+      27,
+      106,
+      63
+    ],
+    "hitIds": [
+      27,
+      63,
+      106
+    ]
+  },
+  {
+    "check": "empty meter rows exist",
+    "ok": true
+  },
+  {
+    "check": "empty meter shell opens",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=meter&property=11"
+  },
+  {
+    "check": "readings apartment count 115",
+    "ok": true,
+    "apartments": "115"
+  },
+  {
+    "check": "readings unique property ids == book",
+    "ok": true,
+    "uiCount": 115
+  },
+  {
+    "check": "overview register shows 115",
+    "ok": true,
+    "shown": "115"
+  }
+]

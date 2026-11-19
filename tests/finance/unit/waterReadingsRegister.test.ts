@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildWaterReadingRegisterRows,
+  countWaterReadingRegisterStats,
   filterWaterReadingRegisterRows,
 } from '@/lib/waterReadingsRegister';
 
@@ -9,10 +10,12 @@ describe('waterReadingsRegister', () => {
     { id: 1, apartment_number: '10', section_code: 'Б', block_code: '1', owner_name: 'Иванов' },
     { id: 2, apartment_number: '2', section_code: 'A', block_code: '1', owner_name: 'Petrov' },
     { id: 3, apartment_number: '2', section_code: 'Б', block_code: '2', owner_name: null },
+    { id: 4, apartment_number: '23', section_code: 'A', block_code: '1', owner_name: null },
+    { id: 5, apartment_number: '23', section_code: 'В', block_code: '1', owner_name: 'X' },
   ];
 
   const meters = [
-    { id: 'm-b10', property_id: 1, meter_number: '00123', retired_at: null },
+    { id: 'm-b10', property_id: 1, meter_number: '00100', retired_at: null },
     { id: 'm-a2', property_id: 2, meter_number: '99', retired_at: null },
     { id: 'm-a2-b', property_id: 2, meter_number: '100', retired_at: null },
     { id: 'm-b2', property_id: 3, meter_number: 'x', retired_at: null },
@@ -58,43 +61,36 @@ describe('waterReadingsRegister', () => {
     },
   ];
 
-  it('one row per current meter; keeps meters without readings; preserves explicit zero', () => {
+  it('keeps every property; empty rows without meters; preserves explicit zero', () => {
     const rows = buildWaterReadingRegisterRows(meters, readings, properties);
-    expect(rows.map((r) => r.meterId)).toEqual(['m-a2', 'm-a2-b', 'm-b10', 'm-b2']);
+    expect(new Set(rows.map((r) => r.propertyId)).size).toBe(5);
+    expect(rows.find((r) => r.propertyId === 4)?.meterId).toBeNull();
+    expect(rows.find((r) => r.propertyId === 5)?.meterId).toBeNull();
     expect(rows.find((r) => r.meterId === 'm-a2-b')?.readingId).toBeNull();
     expect(rows.find((r) => r.meterId === 'm-b10')?.currentValue).toBe(0);
-    expect(rows.find((r) => r.meterId === 'm-b10')?.readingId).toBe('r-new');
     expect(rows.find((r) => r.meterId === 'm-a2')?.statusCode).toBe('opening');
+    const stats = countWaterReadingRegisterStats(rows);
+    expect(stats.apartments).toBe(5);
+    expect(stats.meters).toBe(4);
   });
 
-  it('date range picks latest reading inside range', () => {
+  it('date range picks latest reading inside range; empty apt stays', () => {
     const rows = buildWaterReadingRegisterRows(meters, readings, properties, '2024-01-01', '2024-02-01');
     expect(rows.find((r) => r.meterId === 'm-b10')?.readingId).toBe('r-old');
     expect(rows.find((r) => r.meterId === 'm-a2')?.readingId).toBeNull();
+    expect(rows.some((r) => r.propertyId === 5 && r.meterId == null)).toBe(true);
   });
 
-  it('filters by apartment, owner, meter, section and block', () => {
+  it('filters by apartment number across sections without merging ids', () => {
     const rows = buildWaterReadingRegisterRows(meters, readings, properties);
-    expect(filterWaterReadingRegisterRows(rows, {
-      query: 'Иван',
-      section: '',
-      block: '',
-      periodFrom: '',
-      periodTo: '',
-    }).map((r) => r.meterId)).toEqual(['m-b10']);
-    expect(filterWaterReadingRegisterRows(rows, {
-      query: '2',
-      section: 'A',
-      block: '',
-      periodFrom: '',
-      periodTo: '',
-    }).map((r) => r.meterId)).toEqual(['m-a2', 'm-a2-b']);
-    expect(filterWaterReadingRegisterRows(rows, {
-      query: '',
-      section: 'Б',
-      block: '2',
-      periodFrom: '',
-      periodTo: '',
-    }).map((r) => r.meterId)).toEqual(['m-b2']);
+    expect(
+      filterWaterReadingRegisterRows(rows, {
+        query: '23',
+        section: '',
+        block: '',
+        periodFrom: '',
+        periodTo: '',
+      }).map((r) => r.propertyId),
+    ).toEqual([4, 5]);
   });
 });

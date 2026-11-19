@@ -1,6 +1,6 @@
 /**
- * Presentation helpers for the water meters register (current devices only).
- * Enrichment is client-side from existing water_meters + properties — no new RPCs.
+ * Presentation helpers for the water meters register.
+ * Source of truth = property book apartments; meters left-join (no fictitious rows in DB).
  */
 
 import { compareApartmentNumbers } from '@/lib/supportFeeRegister';
@@ -11,7 +11,8 @@ import {
 } from '@/lib/utilityModuleRegister';
 
 export type WaterMeterRegisterRow = {
-  meterId: string;
+  /** Null when the apartment has no current (non-retired) meter. */
+  meterId: string | null;
   propertyId: number;
   apartmentNumber: string;
   sectionCode: string;
@@ -36,6 +37,23 @@ export function waterMeterFiltersActive(f: WaterMeterRegisterFilters): boolean {
   return Boolean(String(f.query ?? '').trim()) || Boolean(f.section) || Boolean(f.block);
 }
 
+function sortMeterRows(a: WaterMeterRegisterRow, b: WaterMeterRegisterRow): number {
+  const bySection = compareSectionCodes(a.sectionCode, b.sectionCode);
+  if (bySection !== 0) return bySection;
+  const byBlock = compareSectionCodes(a.blockCode, b.blockCode);
+  if (byBlock !== 0) return byBlock;
+  const byApt = compareApartmentNumbers(a.apartmentNumber, b.apartmentNumber);
+  if (byApt !== 0) return byApt;
+  return String(a.meterNumber).localeCompare(String(b.meterNumber), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+/**
+ * One row per current meter; apartments without a current meter get a single empty row (—).
+ * Join key is property id — never apartment number alone.
+ */
 export function buildWaterMeterRegisterRows(
   meters: Array<{
     id: string;
@@ -51,35 +69,61 @@ export function buildWaterMeterRegisterRows(
     block_code?: string | null;
   }>,
 ): WaterMeterRegisterRow[] {
-  const byId = new Map(properties.map((p) => [Number(p.id), p]));
-  const rows: WaterMeterRegisterRow[] = [];
+  const metersByProp = new Map<number, typeof meters>();
   for (const m of meters) {
     if (m.retired_at) continue;
     const pid = Number(m.property_id);
     if (!Number.isFinite(pid)) continue;
-    const prop = byId.get(pid);
-    rows.push({
-      meterId: String(m.id),
-      propertyId: pid,
-      apartmentNumber: prop?.apartment_number != null ? String(prop.apartment_number) : '',
-      sectionCode: String(prop?.section_code ?? '').trim(),
-      blockCode: String(prop?.block_code ?? '').trim(),
-      meterNumber: m.meter_number != null ? String(m.meter_number) : '',
-      installedAt: m.installed_at ? String(m.installed_at) : null,
-    });
+    const list = metersByProp.get(pid);
+    if (list) list.push(m);
+    else metersByProp.set(pid, [m]);
   }
-  return rows.sort((a, b) => {
-    const bySection = compareSectionCodes(a.sectionCode, b.sectionCode);
-    if (bySection !== 0) return bySection;
-    const byBlock = compareSectionCodes(a.blockCode, b.blockCode);
-    if (byBlock !== 0) return byBlock;
-    const byApt = compareApartmentNumbers(a.apartmentNumber, b.apartmentNumber);
-    if (byApt !== 0) return byApt;
-    return String(a.meterNumber).localeCompare(String(b.meterNumber), undefined, {
-      numeric: true,
-      sensitivity: 'base',
-    });
-  });
+
+  const rows: WaterMeterRegisterRow[] = [];
+  for (const prop of properties) {
+    const pid = Number(prop.id);
+    if (!Number.isFinite(pid)) continue;
+    const apartmentNumber = prop.apartment_number != null ? String(prop.apartment_number) : '';
+    const sectionCode = String(prop.section_code ?? '').trim();
+    const blockCode = String(prop.block_code ?? '').trim();
+    const propMeters = metersByProp.get(pid) ?? [];
+    if (propMeters.length === 0) {
+      rows.push({
+        meterId: null,
+        propertyId: pid,
+        apartmentNumber,
+        sectionCode,
+        blockCode,
+        meterNumber: '',
+        installedAt: null,
+      });
+      continue;
+    }
+    for (const m of propMeters) {
+      rows.push({
+        meterId: String(m.id),
+        propertyId: pid,
+        apartmentNumber,
+        sectionCode,
+        blockCode,
+        meterNumber: m.meter_number != null ? String(m.meter_number) : '',
+        installedAt: m.installed_at ? String(m.installed_at) : null,
+      });
+    }
+  }
+  return rows.sort(sortMeterRows);
+}
+
+/** Match apartment number for search: numeric queries match the whole number (23 ≠ 123). */
+export function apartmentQueryMatches(apartmentNumber: string, query: string): boolean {
+  const apt = String(apartmentNumber ?? '').trim().toLowerCase();
+  const q = String(query ?? '').trim().toLowerCase();
+  if (!q) return true;
+  if (!apt) return false;
+  if (/^\d+$/.test(q) && /^\d+$/.test(apt)) {
+    return apt.replace(/^0+/, '') === q.replace(/^0+/, '') || apt === q;
+  }
+  return apt.includes(q);
 }
 
 export function filterWaterMeterRegisterRows(
@@ -91,10 +135,23 @@ export function filterWaterMeterRegisterRows(
     if (filters.section && row.sectionCode !== filters.section) return false;
     if (filters.block && row.blockCode !== filters.block) return false;
     if (!q) return true;
-    const apt = row.apartmentNumber.toLowerCase();
     const meter = row.meterNumber.toLowerCase();
-    return apt.includes(q) || meter.includes(q);
+    return apartmentQueryMatches(row.apartmentNumber, q) || meter.includes(q);
   });
+}
+
+export function countWaterMeterRegisterStats(rows: WaterMeterRegisterRow[]): {
+  apartments: number;
+  meters: number;
+  rows: number;
+} {
+  const aptIds = new Set<number>();
+  let meters = 0;
+  for (const row of rows) {
+    aptIds.add(row.propertyId);
+    if (row.meterId) meters += 1;
+  }
+  return { apartments: aptIds.size, meters, rows: rows.length };
 }
 
 export function listBlocksFromProperties(

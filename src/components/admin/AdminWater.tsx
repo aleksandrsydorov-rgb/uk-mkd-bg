@@ -213,6 +213,18 @@ export function AdminWater({
     const raw = new URLSearchParams(window.location.search).get('meter');
     return raw && raw.trim() ? raw.trim() : null;
   });
+  /** Property id for meter-tab WorkplaceCardShell (allows open with no meter). */
+  const [meterShellPropertyId, setMeterShellPropertyId] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if ((params.get('tab') ?? '') !== 'meter') return null;
+    const mid = (params.get('meter') ?? '').trim();
+    const pidRaw = Number(params.get('property') ?? '');
+    if (mid || (Number.isFinite(pidRaw) && pidRaw > 0)) {
+      return Number.isFinite(pidRaw) && pidRaw > 0 ? pidRaw : null;
+    }
+    return null;
+  });
   const [readingsShell, setReadingsShell] = useState<'none' | 'submit' | 'detail'>(() => {
     if (typeof window === 'undefined') return 'none';
     const params = new URLSearchParams(window.location.search);
@@ -312,7 +324,7 @@ export function AdminWater({
   }, [onTabChange, tab, allowedWaterTabs, localTab, staffRole]);
 
   async function selectTab(next: AdminUtilityTab) {
-    if (next !== 'meter' && detailMeterId) {
+    if (next !== 'meter' && (detailMeterId || meterShellPropertyId != null)) {
       closeMeterDetail({ keepScroll: false });
     }
     if (next !== 'readings' && readingsShell !== 'none') {
@@ -345,12 +357,14 @@ export function AdminWater({
     setSuccess(null);
     setError(null);
     selectProperty(row.propertyId);
+    setMeterShellPropertyId(row.propertyId);
     setDetailMeterId(row.meterId);
     writeMeterDetailToUrl(row.meterId, row.propertyId);
   }
 
   function closeMeterDetail(opts?: { keepScroll?: boolean }) {
     setDetailMeterId(null);
+    setMeterShellPropertyId(null);
     setShowAssign(false);
     setShowReplace(false);
     writeMeterDetailToUrl(null, '');
@@ -368,20 +382,27 @@ export function AdminWater({
     }
   }
 
-  // Deep-link: ?tab=meter&meter=<id>&property=<pid>
+  // Deep-link: ?tab=meter&meter=<id>&property=<pid> (property alone opens empty meter card)
   useEffect(() => {
     if (activeTab !== 'meter') return;
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const mid = (params.get('meter') ?? '').trim();
-    if (!mid) {
+    const pidRaw = Number(params.get('property') ?? '');
+    const pid = Number.isFinite(pidRaw) && pidRaw > 0 ? pidRaw : null;
+    if (!mid && !pid) {
       if (detailMeterId) setDetailMeterId(null);
+      if (meterShellPropertyId != null) setMeterShellPropertyId(null);
       return;
     }
-    if (detailMeterId !== mid) setDetailMeterId(mid);
-    const pidRaw = Number(params.get('property') ?? '');
-    if (Number.isFinite(pidRaw) && pidRaw > 0 && propertyId !== pidRaw) {
-      selectProperty(pidRaw);
+    if (mid) {
+      if (detailMeterId !== mid) setDetailMeterId(mid);
+    } else if (detailMeterId) {
+      setDetailMeterId(null);
+    }
+    if (pid != null) {
+      if (meterShellPropertyId !== pid) setMeterShellPropertyId(pid);
+      if (propertyId !== pid) selectProperty(pid);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- URL seed for meter detail
   }, [activeTab]);
@@ -521,11 +542,19 @@ export function AdminWater({
 
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
   const propertyActiveMeters = meters.filter((m) => !m.retired_at);
-  const shellMeterId = detailMeterId ?? detailReadingMeterId;
-  const detailMeter =
-    shellMeterId != null
-      ? meters.find((m) => m.id === shellMeterId) ?? activeMeter
-      : activeMeter;
+  const detailMeter = (() => {
+    if (detailMeterId != null) {
+      return meters.find((m) => m.id === detailMeterId) ?? null;
+    }
+    if (activeTab === 'meter' && meterShellPropertyId != null) {
+      // Explicit apartment card without a selected meter — do not invent one.
+      return null;
+    }
+    if (detailReadingMeterId != null) {
+      return meters.find((m) => m.id === detailReadingMeterId) ?? activeMeter;
+    }
+    return activeMeter;
+  })();
   const lastReading = lastActiveReading(
     detailMeter ? readings.filter((r) => r.meter_id === detailMeter.id) : readings,
   );
@@ -946,7 +975,7 @@ export function AdminWater({
   const retiredMeters = meters.filter((m) => m.retired_at);
   const onOverview = activeTab === 'overview';
   const onApartmentScoped = activeTab === 'history';
-  const detailOpen = activeTab === 'meter' && Boolean(detailMeterId);
+  const detailOpen = activeTab === 'meter' && meterShellPropertyId != null;
   const readingsSubmitOpen = activeTab === 'readings' && readingsShell === 'submit';
   const readingsDetailOpen = activeTab === 'readings' && readingsShell === 'detail';
   const detailProperty = sorted.find((p) => p.id === propertyId) ?? null;
@@ -1169,7 +1198,7 @@ export function AdminWater({
 
       <WorkplaceCardShell
         open={detailOpen}
-        entityKey={detailMeterId ?? 'meter'}
+        entityKey={detailMeterId ?? `apt-${meterShellPropertyId ?? 'meter'}`}
         title={detailTitle}
         titleMeta={detailTitleMeta}
         closeLabel={t('admin.waterMetersDetailClose')}

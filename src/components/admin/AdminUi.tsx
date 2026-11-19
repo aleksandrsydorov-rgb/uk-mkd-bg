@@ -263,6 +263,7 @@ export const ADMIN_UTILITY_TABS = [
   'overview',
   'meter',
   'readings',
+  'payments',
   'history',
   'tariff',
   'finance',

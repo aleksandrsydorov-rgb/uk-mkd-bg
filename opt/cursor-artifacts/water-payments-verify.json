@@ -1,0 +1,59 @@
+[
+  {
+    "check": "five tabs order",
+    "tabs": [
+      "Обзор",
+      "Счётчики",
+      "Показания",
+      "Оплаты",
+      "История"
+    ],
+    "ok": true
+  },
+  {
+    "check": "active payments",
+    "ok": true,
+    "active": "Оплаты"
+  },
+  {
+    "check": "existing finance register visible",
+    "ok": true
+  },
+  {
+    "check": "url tab=payments",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments"
+  },
+  {
+    "check": "tabs scrollbar hidden",
+    "ok": true,
+    "scrollBar": {
+      "scrollbarWidth": "none",
+      "overflowX": "auto",
+      "clientHeight": 56,
+      "scrollHeight": 56,
+      "scrollWidth": 1134,
+      "clientWidth": 1134
+    }
+  },
+  {
+    "check": "payment form available",
+    "ok": true
+  },
+  {
+    "check": "property preserved in URL",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments&property=5"
+  },
+  {
+    "check": "reload keeps payments+property",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments&property=5",
+    "before": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments&property=5"
+  },
+  {
+    "check": "back leaves or stays coherently",
+    "url": "http://127.0.0.1:3078/admin",
+    "ok": true
+  }
+]

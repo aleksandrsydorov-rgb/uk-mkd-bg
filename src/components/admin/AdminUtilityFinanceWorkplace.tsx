@@ -175,6 +175,7 @@ export function AdminUtilityFinanceWorkplace({
   extraCardActions,
   onModuleTotals,
   showDebtorsSignal = 0,
+  ledgerKinds,
 }: {
   service: UtilityFinanceService;
   supabase: SupabaseClient<Database>;
@@ -188,6 +189,8 @@ export function AdminUtilityFinanceWorkplace({
   onModuleTotals?: (totals: UtilityModuleTotals | null) => void;
   /** Increment to filter the register to complex debtors (water overview debt card). */
   showDebtorsSignal?: number;
+  /** When set, ops history shows only these ledger kinds (e.g. payment / payment_reversal). */
+  ledgerKinds?: readonly string[];
 }) {
   const { t, locale } = useI18n();
   const [view, setView] = useState<'register' | 'card'>('register');
@@ -1134,11 +1137,19 @@ export function AdminUtilityFinanceWorkplace({
         </p>
         {cardLoading ? (
           <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
-        ) : ledger.length === 0 ? (
-          <div className="mt-3">
-            <AdminEmptyState title={t('admin.utilFinNoLedger')} />
-          </div>
-        ) : (
+        ) : (() => {
+          const visibleLedger =
+            ledgerKinds && ledgerKinds.length > 0
+              ? ledger.filter((row) => ledgerKinds.includes(String(row.kind)))
+              : ledger;
+          if (visibleLedger.length === 0) {
+            return (
+              <div className="mt-3">
+                <AdminEmptyState title={t('admin.utilFinNoLedger')} />
+              </div>
+            );
+          }
+          return (
           <div className="mt-3">
             <AdminTableShell>
               <table className="w-full min-w-[28rem] text-sm">
@@ -1152,7 +1163,7 @@ export function AdminUtilityFinanceWorkplace({
                   </tr>
                 </thead>
                 <tbody>
-                  {ledger.map((row) => (
+                  {visibleLedger.map((row) => (
                     <tr key={String(row.id)} className={adminTableRowClass}>
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatOwnerDate(row.created_at)}
@@ -1177,7 +1188,8 @@ export function AdminUtilityFinanceWorkplace({
               </table>
             </AdminTableShell>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

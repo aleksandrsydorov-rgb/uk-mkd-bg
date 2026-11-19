@@ -135,14 +135,21 @@ export function AdminWater({
       { id: 'overview', label: t('admin.utilTabOverview') },
       { id: 'meter', label: t('admin.waterTabMeters') },
       { id: 'readings', label: t('admin.waterTabReadings') },
+      { id: 'payments', label: t('admin.waterTabPayments') },
       { id: 'history', label: t('admin.waterTabHistory') },
     ];
-    // finance stays URL-routable from Финансы nav; not shown in the four-tab chrome.
+    // finance stays URL-routable from Финансы nav; not shown in the five-tab chrome.
     if (canFinance) items.push({ id: 'finance', label: t('admin.utilTabFinance') });
     return items;
   }, [t, canFinance]);
   const allowedWaterTabs = useMemo(() => waterTabs.map((item) => item.id), [waterTabs]);
-  const PANEL_TAB_IDS: readonly AdminUtilityTab[] = ['overview', 'meter', 'readings', 'history'];
+  const PANEL_TAB_IDS: readonly AdminUtilityTab[] = [
+    'overview',
+    'meter',
+    'readings',
+    'payments',
+    'history',
+  ];
 
   const sorted = useMemo(
     () =>
@@ -280,13 +287,14 @@ export function AdminWater({
   const correctKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
-    // Overview / finance / meters / readings register — no auto apartment.
+    // Overview / finance / meters / readings / payments — no auto apartment.
     // History still needs a property for the existing journal panel.
     if (
       activeTab === 'finance' ||
       activeTab === 'overview' ||
       activeTab === 'meter' ||
-      activeTab === 'readings'
+      activeTab === 'readings' ||
+      activeTab === 'payments'
     ) {
       return;
     }
@@ -1419,6 +1427,23 @@ export function AdminWater({
           onOpenReading={openReadingDetail}
           onOpenSubmit={openReadingsSubmit}
         />
+      ) : null}
+
+      {activeTab === 'payments' ? (
+        canFinance ? (
+          <AdminUtilityFinanceWorkplace
+            service="water"
+            supabase={supabase}
+            properties={sorted}
+            canOperate={canFinance}
+            focusPropertyId={focusPropertyId ?? ''}
+            onPropertyChange={selectProperty}
+            onModuleTotals={setModuleTotals}
+            ledgerKinds={['payment', 'payment_reversal']}
+          />
+        ) : (
+          <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
+        )
       ) : null}
 
       <WorkplaceCardShell

@@ -3570,14 +3570,17 @@ export const ru = {
     waterReadingsDetailTitle: 'Показание',
     waterReadingsNoReading: 'По этому прибору нет показаний в выбранном диапазоне.',
     waterReadingsMultiMeterLimit:
-      'Отправка идёт через существующий submit_water_reading по апартаменту: сервер ожидает один активный водомер. Выбор прибора в форме не передаётся в API.',
+      'В апартаменте несколько водомеров — выберите прибор, затем введите новое показание и дату.',
     waterReadingsMultiMeterBlock:
-      'В апартаменте несколько активных водомеров. Текущий API submit_water_reading принимает только апартамент (без номера прибора) и не может однозначно записать показание. Отправка заблокирована.',
+      'В апартаменте несколько активных водомеров. Выберите конкретный прибор, чтобы передать показание.',
+    waterReadingsNeedMeter: 'Выберите водомер для этого апартамента.',
+    waterReadingsMeterNotOnProperty: 'Этот водомер не относится к выбранному апартаменту.',
     waterReadingsNoMeterExplain:
       'У апартамента нет текущего водомера. Сначала назначьте прибор на вкладке «Счётчики».',
     waterReadingsGoToMeters: 'К счётчикам апартамента',
     waterReadingsLastKnown: 'Последнее известное показание',
     waterReadingsPickMeter: 'Прибор',
+    waterReadingsPickMeterPh: 'Выберите прибор',
     waterHistoryTitle: 'История показаний',
     waterHistoryLead:
       'Все апартаменты книги собственности. Откройте строку, чтобы увидеть журнал показаний по всем водомерам апартамента, включая заменённые.',
@@ -4962,6 +4965,8 @@ export const ru = {
     errMeterAssigned: 'Для этой квартиры уже назначен активный водосчётчик.',
     errMeterInUse: 'Этот номер счётчика уже используется.',
     errNoMeter: 'Для квартиры не назначен водосчётчик.',
+    errMeterRequired: 'В апартаменте несколько водомеров — укажите прибор.',
+    errMeterNotOnProperty: 'Этот водомер не относится к выбранному апартаменту.',
     errReadingLower: 'Новые показания не могут быть меньше предыдущих.',
     errCorrectionReason: 'Укажите причину коррекции.',
     errCorrectionLatest: 'Исправить можно только последние активные показания.',
@@ -9556,14 +9561,17 @@ export const en: Messages = {
     waterReadingsDetailTitle: 'Reading',
     waterReadingsNoReading: 'No reading for this meter in the selected range.',
     waterReadingsMultiMeterLimit:
-      'Submit still uses existing submit_water_reading by apartment: the server expects one active water meter. Meter choice in the form is not sent to the API.',
+      'This apartment has several meters — pick a device, then enter the new reading and date.',
     waterReadingsMultiMeterBlock:
-      'This apartment has several active water meters. Current submit_water_reading accepts only the apartment (no meter id) and cannot target one device. Submit is blocked.',
+      'This apartment has several active water meters. Choose a specific meter to submit a reading.',
+    waterReadingsNeedMeter: 'Choose a water meter for this apartment.',
+    waterReadingsMeterNotOnProperty: 'That water meter does not belong to the selected apartment.',
     waterReadingsNoMeterExplain:
       'This apartment has no current water meter. Assign a device on the Meters tab first.',
     waterReadingsGoToMeters: 'Go to apartment meters',
     waterReadingsLastKnown: 'Last known reading',
     waterReadingsPickMeter: 'Meter',
+    waterReadingsPickMeterPh: 'Select a meter',
     waterHistoryTitle: 'Reading history',
     waterHistoryLead:
       'All property-book apartments. Open a row to see the reading journal for every water meter in the apartment, including replaced devices.',
@@ -10944,6 +10952,8 @@ export const en: Messages = {
     errMeterAssigned: 'This apartment already has an active water meter.',
     errMeterInUse: 'This meter number is already in use.',
     errNoMeter: 'No water meter is assigned to this apartment.',
+    errMeterRequired: 'This apartment has several meters — specify which one.',
+    errMeterNotOnProperty: 'That water meter does not belong to the selected apartment.',
     errReadingLower: 'The new reading cannot be lower than the previous one.',
     errCorrectionReason: 'A correction reason is required.',
     errCorrectionLatest: 'Only the latest active reading may be corrected.',
@@ -15551,14 +15561,17 @@ export const bg: Messages = {
     waterReadingsDetailTitle: 'Показание',
     waterReadingsNoReading: 'Няма показание за този уред в избрания диапазон.',
     waterReadingsMultiMeterLimit:
-      'Изпращането минава през съществуващия submit_water_reading по апартамент: сървърът очаква един активен водомер. Изборът на уред във формата не се подава към API.',
+      'В апартамента има няколко водомера — изберете уред, след това въведете новото показание и дата.',
     waterReadingsMultiMeterBlock:
-      'В апартамента има няколко активни водомера. Текущият submit_water_reading приема само апартамент (без id на уред) и не може да адресира конкретен уред. Изпращането е блокирано.',
+      'В апартамента има няколко активни водомера. Изберете конкретен уред, за да предадете показание.',
+    waterReadingsNeedMeter: 'Изберете водомер за този апартамент.',
+    waterReadingsMeterNotOnProperty: 'Този водомер не принадлежи на избрания апартамент.',
     waterReadingsNoMeterExplain:
       'Апартаментът няма текущ водомер. Първо назначете уред в раздела „Уреди“.',
     waterReadingsGoToMeters: 'Към уредите на апартамента',
     waterReadingsLastKnown: 'Последно известно показание',
     waterReadingsPickMeter: 'Уред',
+    waterReadingsPickMeterPh: 'Изберете уред',
     waterHistoryTitle: 'История на показанията',
     waterHistoryLead:
       'Всички апартаменти от книгата. Отворете ред, за да видите журнала за всички водомери на апартамента, включително заменените.',
@@ -16940,6 +16953,8 @@ export const bg: Messages = {
     errMeterAssigned: 'За този апартамент вече има активен водомер.',
     errMeterInUse: 'Този номер на водомер вече се използва.',
     errNoMeter: 'За апартамента не е назначен водомер.',
+    errMeterRequired: 'В апартамента има няколко водомера — посочете уреда.',
+    errMeterNotOnProperty: 'Този водомер не принадлежи на избрания апартамент.',
     errReadingLower: 'Новото показание не може да бъде по-малко от предишното.',
     errCorrectionReason: 'Посочете причина за корекцията.',
     errCorrectionLatest: 'Може да се коригира само последното активно показание.',

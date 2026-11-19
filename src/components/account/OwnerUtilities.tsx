@@ -585,6 +585,8 @@ export function OwnerUtilities({
         const code = mapSubmitWaterError(error.message ?? '');
         const map: Record<ReturnType<typeof mapSubmitWaterError>, string> = {
           noMeter: t('account.utilErrNoMeter'),
+          meterRequired: t('admin.errMeterRequired'),
+          meterNotOnProperty: t('admin.errMeterNotOnProperty'),
           lower: t('account.utilErrLower'),
           datePrev: t('account.utilErrDatePrev'),
           future: t('account.utilErrFuture'),

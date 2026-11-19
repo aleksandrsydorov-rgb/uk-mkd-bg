@@ -75,14 +75,16 @@ export function AdminWaterReadingSubmitForm({
   const activeMeters = meters;
   const noMeter = propertyId !== '' && !metersLoading && activeMeters.length === 0;
   const multiMeter = !metersLoading && activeMeters.length > 1;
-  /** Server submit_water_reading has no p_meter_id — only safe when exactly one active meter. */
-  const apiCanAddress = !metersLoading && activeMeters.length === 1;
   const selectedMeter =
     selectedMeterId
       ? activeMeters.find((m) => m.id === selectedMeterId) ?? null
       : activeMeters.length === 1
         ? activeMeters[0]
         : null;
+  const meterReady =
+    !metersLoading &&
+    !noMeter &&
+    (activeMeters.length === 1 || Boolean(selectedMeter));
   const meterNumberLabel =
     selectedMeter?.meter_number?.trim() ||
     (activeMeters.length === 1 ? activeMeters[0]?.meter_number?.trim() : '') ||
@@ -148,16 +150,21 @@ export function AdminWaterReadingSubmitForm({
         </AdminInlineAlert>
       ) : null}
 
-      {multiMeter ? (
-        <AdminInlineAlert tone="warning">{t('admin.waterReadingsMultiMeterBlock')}</AdminInlineAlert>
-      ) : null}
-
       {mode === 'picker' && propertyId !== '' && activeMeters.length === 1 ? (
         <p className="text-sm text-secondary">
           {t('admin.meterNumber')}:{' '}
           <span className="font-medium text-foreground">
             {activeMeters[0]?.meter_number?.trim() ? activeMeters[0].meter_number : '—'}
           </span>
+          {lastKnownValue != null ? (
+            <>
+              {' · '}
+              {t('admin.waterReadingsLastKnown')}:{' '}
+              <span className="tabular-nums font-medium text-foreground">
+                {formatM3(lastKnownValue, locale)}
+              </span>
+            </>
+          ) : null}
         </p>
       ) : null}
 
@@ -168,9 +175,10 @@ export function AdminWaterReadingSubmitForm({
             className={`mt-1 block w-full ${fieldClass}`}
             value={selectedMeterId}
             onChange={(e) => onMeterChange(e.target.value)}
-            disabled
+            disabled={busy}
+            required
           >
-            <option value="">{t('admin.sfFilterAll')}</option>
+            <option value="">{t('admin.waterReadingsPickMeterPh')}</option>
             {activeMeters.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.meter_number?.trim() ? m.meter_number : m.id.slice(0, 8)}
@@ -180,7 +188,16 @@ export function AdminWaterReadingSubmitForm({
         </label>
       ) : null}
 
-      {!noMeter && !multiMeter ? (
+      {mode === 'picker' && multiMeter && selectedMeter ? (
+        <p className="text-sm text-secondary">
+          {t('admin.waterReadingsLastKnown')}:{' '}
+          <span className="tabular-nums font-medium text-foreground">
+            {lastKnownValue == null ? '—' : formatM3(lastKnownValue, locale)}
+          </span>
+        </p>
+      ) : null}
+
+      {!noMeter && meterReady ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-xs text-muted">
             {t('account.utilCurrentM3')}
@@ -192,7 +209,7 @@ export function AdminWaterReadingSubmitForm({
               value={submitValue}
               onChange={(e) => onSubmitValueChange(e.target.value)}
               required
-              disabled={busy || !apiCanAddress}
+              disabled={busy}
             />
           </label>
           <label className="block text-xs text-muted">
@@ -204,17 +221,17 @@ export function AdminWaterReadingSubmitForm({
               value={submitDate}
               onChange={(e) => onSubmitDateChange(e.target.value)}
               required
-              disabled={busy || !apiCanAddress}
+              disabled={busy}
             />
           </label>
         </div>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {!noMeter && !multiMeter ? (
+        {!noMeter && meterReady ? (
           <AdminPrimaryButton
             type="submit"
-            disabled={busy || !canSubmit || propertyId === '' || !apiCanAddress}
+            disabled={busy || !canSubmit || propertyId === ''}
           >
             {busy ? t('account.utilSubmitting') : t('admin.waterReadingsSubmit')}
           </AdminPrimaryButton>

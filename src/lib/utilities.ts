@@ -149,11 +149,13 @@ export function estimateWaterCorrectionDeltaEur(
   return Math.round((newCharge - oldCharge) * 100) / 100;
 }
 
-export function mapSubmitWaterError(message: string): 'noMeter' | 'lower' | 'datePrev' | 'future' | 'conflict' | 'disabled' | 'staffOnly' | 'generic' {
+export function mapSubmitWaterError(message: string): 'noMeter' | 'meterRequired' | 'meterNotOnProperty' | 'lower' | 'datePrev' | 'future' | 'conflict' | 'disabled' | 'staffOnly' | 'generic' {
   const msg = message.toLowerCase();
   if (msg.includes('water readings are disabled')) return 'disabled';
   if (msg.includes('submitted by the management company') || (msg.includes('not authorized') && msg.includes('staff'))) return 'staffOnly';
   if (msg.includes('no active water meter')) return 'noMeter';
+  if (msg.includes('multiple active water meters') || msg.includes('meter_id is required')) return 'meterRequired';
+  if (msg.includes('water meter not found for property')) return 'meterNotOnProperty';
   if (msg.includes('cannot be lower than previous')) return 'lower';
   if (msg.includes('earlier than previous reading') || msg.includes('earlier than meter installation')) return 'datePrev';
   if (msg.includes('cannot be in the future')) return 'future';
@@ -227,6 +229,8 @@ export type AdminRpcErrorKey =
   | 'admin.errMeterAssigned'
   | 'admin.errMeterInUse'
   | 'admin.errNoMeter'
+  | 'admin.errMeterRequired'
+  | 'admin.errMeterNotOnProperty'
   | 'admin.errReadingLower'
   | 'admin.errTariffDate'
   | 'admin.errNoTariff'
@@ -271,6 +275,8 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   if (msg.includes('active water meter is already assigned') || msg.includes('active electricity meter is already assigned')) return 'admin.errMeterAssigned';
   if (msg.includes('meter number is already in use')) return 'admin.errMeterInUse';
   if (msg.includes('no active water meter') || msg.includes('no active electricity meter') || msg.includes('electricity meter is not assigned')) return 'admin.errNoMeter';
+  if (msg.includes('multiple active water meters') || msg.includes('meter_id is required')) return 'admin.errMeterRequired';
+  if (msg.includes('water meter not found for property')) return 'admin.errMeterNotOnProperty';
   if (msg.includes('cannot be lower than previous')) return 'admin.errReadingLower';
   if (msg.includes('correction reason is required')) return 'admin.errCorrectionReason';
   if (msg.includes('only the latest active reading may be corrected')) return 'admin.errCorrectionLatest';

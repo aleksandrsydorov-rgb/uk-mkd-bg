@@ -1022,18 +1022,18 @@ export function AdminWater({
       setError(t('admin.waterReadingsNoMeterExplain'));
       return;
     }
-    if (activeCount !== 1) {
-      // submit_water_reading has no p_meter_id; multi-row SELECT INTO would fail or be ambiguous.
-      setError(t('admin.waterReadingsMultiMeterBlock'));
+    const resolvedMeterId =
+      (submitMeterId || rowSubmit?.meterId || '').trim() ||
+      (activeCount === 1 ? propertyActiveMeters[0]?.id ?? '' : '');
+    if (activeCount > 1 && !resolvedMeterId) {
+      setError(t('admin.waterReadingsNeedMeter'));
       return;
     }
-    // Row popup: never send when the clicked meter is not the sole active meter.
     if (
-      rowSubmit?.meterId &&
-      propertyActiveMeters[0] &&
-      propertyActiveMeters[0].id !== rowSubmit.meterId
+      resolvedMeterId &&
+      !propertyActiveMeters.some((m) => m.id === resolvedMeterId)
     ) {
-      setError(t('admin.waterReadingsMultiMeterBlock'));
+      setError(t('admin.waterReadingsMeterNotOnProperty'));
       return;
     }
     const parsed = parseWaterVolume(String(submitValue));
@@ -1050,12 +1050,22 @@ export function AdminWater({
       return;
     }
     setSubmitBusy(true);
-    const { error: rpcErr } = await supabase.rpc('submit_water_reading', {
+    const rpcArgs: {
+      p_property_id: number;
+      p_current_value: number;
+      p_reading_date: string;
+      p_idempotency_key: string;
+      p_meter_id?: string;
+    } = {
       p_property_id: Number(propertyId),
       p_current_value: normalizeWaterVolume(parsed),
       p_reading_date: submitDate,
       p_idempotency_key: submitKeyRef.current,
-    });
+    };
+    if (resolvedMeterId) {
+      rpcArgs.p_meter_id = resolvedMeterId;
+    }
+    const { error: rpcErr } = await supabase.rpc('submit_water_reading', rpcArgs);
     setSubmitBusy(false);
     if (rpcErr) {
       rpcFail(rpcErr.message);
@@ -1070,8 +1080,12 @@ export function AdminWater({
         notifyPropertyOwnersEvent(supabase, {
           eventKey: 'meters_reading_accepted',
           propertyId: Number(propertyId),
-          entityId: `water_read:${propertyId}:${submitDate}`,
-          payload: { utility: 'water', reading_date: submitDate },
+          entityId: `water_read:${propertyId}:${resolvedMeterId || 'auto'}:${submitDate}`,
+          payload: {
+            utility: 'water',
+            reading_date: submitDate,
+            meter_id: resolvedMeterId || null,
+          },
         })
       )
       .catch(() => undefined);
@@ -1699,11 +1713,16 @@ export function AdminWater({
             }))}
             selectedMeterId={submitMeterId}
             onMeterChange={setSubmitMeterId}
-            lastKnownValue={
-              lastReading != null && Number.isFinite(Number(lastReading.current_value))
-                ? Number(lastReading.current_value)
-                : null
-            }
+            lastKnownValue={(() => {
+              const mid =
+                submitMeterId ||
+                (propertyActiveMeters.length === 1 ? propertyActiveMeters[0]?.id ?? '' : '');
+              if (!mid) return null;
+              const lr = lastActiveReading(readings.filter((r) => r.meter_id === mid));
+              return lr != null && Number.isFinite(Number(lr.current_value))
+                ? Number(lr.current_value)
+                : null;
+            })()}
             submitValue={submitValue}
             onSubmitValueChange={setSubmitValue}
             submitDate={submitDate}

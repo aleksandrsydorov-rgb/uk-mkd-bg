@@ -5519,6 +5519,7 @@ export interface Database {
           p_current_value: number;
           p_reading_date: string;
           p_idempotency_key: string;
+          p_meter_id?: string | null;
         };
         Returns: {
           reading_id: string;

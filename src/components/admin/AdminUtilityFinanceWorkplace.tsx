@@ -23,9 +23,11 @@ import {
   ledgerTableForService,
   paymentRpcForService,
   receiptModuleForService,
+  sumModuleTotalsFromRegisterRows,
   type UtilityFinanceRegisterRow,
   type UtilityFinanceService,
   type UtilityLedgerAggRow,
+  type UtilityModuleTotals,
 } from '@/lib/utilityFinanceRegister';
 import {
   EMPTY_UTILITY_MODULE_FILTERS,
@@ -130,6 +132,7 @@ export function AdminUtilityFinanceWorkplace({
   focusPropertyId,
   onPropertyChange,
   extraCardActions,
+  onModuleTotals,
 }: {
   service: UtilityFinanceService;
   supabase: SupabaseClient<Database>;
@@ -139,6 +142,8 @@ export function AdminUtilityFinanceWorkplace({
   onPropertyChange?: (id: number | '') => void;
   /** Optional service-specific actions below the payment form (e.g. internet period charge). */
   extraCardActions?: React.ReactNode;
+  /** Module-wide totals from the same ledger aggregate as the register (not one apartment). */
+  onModuleTotals?: (totals: UtilityModuleTotals | null) => void;
 }) {
   const { t, locale } = useI18n();
   const [view, setView] = useState<'register' | 'card'>('register');
@@ -357,11 +362,13 @@ export function AdminUtilityFinanceWorkplace({
       setWaterRows([]);
       setElectricityRows([]);
       setInternetRows([]);
+      onModuleTotals?.(null);
       return;
     }
     const balances = aggregateUtilityBalances((ledgerRes.data ?? []) as UtilityLedgerAggRow[]);
     const base = buildUtilityFinanceRegisterRows(properties, balances);
     setRegisterRows(base);
+    onModuleTotals?.(sumModuleTotalsFromRegisterRows(base));
 
     if (service === 'water') {
       const er = enrichRes as { data: unknown; error: { message?: string } | null };
@@ -428,7 +435,7 @@ export function AdminUtilityFinanceWorkplace({
     setInternetRows(buildInternetRegisterRows(base, properties, subs, tariffLabel));
     setWaterRows([]);
     setElectricityRows([]);
-  }, [canOperate, locale, properties, service, supabase, t]);
+  }, [canOperate, locale, onModuleTotals, properties, service, supabase, t]);
 
   const loadCard = useCallback(async () => {
     if (!canOperate || propertyId === '') return;

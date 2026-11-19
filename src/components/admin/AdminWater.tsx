@@ -51,6 +51,7 @@ import {
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
+import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
 import {
   emptyReceiptPayFields,
@@ -183,9 +184,32 @@ export function AdminWater({
   const [correctConfirm, setCorrectConfirm] = useState(false);
   const [correctBusy, setCorrectBusy] = useState(false);
   const [localTab, setLocalTab] = useState<AdminUtilityTab>('overview');
+  const [moduleTotals, setModuleTotals] = useState<UtilityModuleTotals | null>(null);
   const activeTab = onTabChange
     ? parseAdminUtilityTab(tab, allowedWaterTabs)
     : parseAdminUtilityTab(localTab, allowedWaterTabs);
+
+  const moduleBalanceTone = moduleTotals ? balanceTone(moduleTotals.balanceEur) : 'settled';
+  const moduleBalanceStatus =
+    moduleBalanceTone === 'debt'
+      ? t('admin.balDebt')
+      : moduleBalanceTone === 'over'
+        ? t('admin.balOver')
+        : t('admin.balSettled');
+  const moduleBalanceCard = {
+    value:
+      canFinance && moduleTotals
+        ? formatEur(Math.abs(moduleTotals.balanceEur), locale)
+        : canFinance
+          ? t('common.loading')
+          : '—',
+    secondary: canFinance
+      ? moduleTotals
+        ? `${moduleBalanceStatus} · ${t('admin.utilRegBalanceComplex')}`
+        : t('admin.utilRegBalanceComplexLoading')
+      : t('admin.waterNoAccess'),
+    alert: Boolean(canFinance && moduleTotals && moduleBalanceTone === 'debt'),
+  };
 
   const payKeyRef = useRef(crypto.randomUUID());
   const submitKeyRef = useRef(crypto.randomUUID());
@@ -638,13 +662,6 @@ export function AdminWater({
         </AdminCard>
       );
     }
-    const financeTone = balanceTone(balance.balance_eur);
-    const financeStatus =
-      financeTone === 'debt'
-        ? t('admin.balDebt')
-        : financeTone === 'over'
-          ? t('admin.balOver')
-          : t('admin.balSettled');
     const financeModeLabel =
       waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
     return (
@@ -659,9 +676,9 @@ export function AdminWater({
           />
           <AdminMetricCard
             label={t('admin.waterBalance')}
-            value={formatEur(Math.abs(balance.balance_eur), locale)}
-            secondary={`${financeStatus} · ${t('admin.utilRegBalanceSelectedApt')}`}
-            alert={financeTone === 'debt'}
+            value={moduleBalanceCard.value}
+            secondary={moduleBalanceCard.secondary}
+            alert={moduleBalanceCard.alert}
           />
         </div>
         {canChangeWaterMode ? (
@@ -695,6 +712,7 @@ export function AdminWater({
           canOperate={canFinance}
           focusPropertyId={focusPropertyId}
           onPropertyChange={selectProperty}
+          onModuleTotals={setModuleTotals}
         />
       </div>
     );
@@ -771,17 +789,9 @@ export function AdminWater({
             />
             <AdminMetricCard
               label={t('admin.waterBalance')}
-              value={
-                canFinance
-                  ? formatEur(Math.abs(balance.balance_eur), locale)
-                  : '—'
-              }
-              secondary={
-                canFinance
-                  ? `${statusLabel} · ${t('admin.utilRegBalanceSelectedApt')}`
-                  : t('admin.waterNoAccess')
-              }
-              alert={canFinance && tone === 'debt'}
+              value={moduleBalanceCard.value}
+              secondary={moduleBalanceCard.secondary}
+              alert={moduleBalanceCard.alert}
             />
           </div>
           {canFinance ? (
@@ -792,6 +802,7 @@ export function AdminWater({
               canOperate={canFinance}
               focusPropertyId={focusPropertyId}
               onPropertyChange={selectProperty}
+              onModuleTotals={setModuleTotals}
             />
           ) : null}
         </div>

@@ -460,7 +460,7 @@ export function AdminInternet({
                 ? t('common.loading')
                 : formatEur(Math.abs(fundBalance), locale)
             }
-            secondary={fundStatusFinance}
+            secondary={`${fundStatusFinance} · ${t('admin.utilRegBalanceComplex')}`}
             alert={fundToneFinance === 'debt'}
           />
         </div>

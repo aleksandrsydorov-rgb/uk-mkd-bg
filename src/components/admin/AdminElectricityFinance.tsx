@@ -38,6 +38,7 @@ import {
 } from '@/components/admin/AdminUi';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
+import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import {
   emptyReceiptPayFields,
   PaymentReceiptPayFields,
@@ -87,7 +88,8 @@ export function AdminElectricityFinance({
   properties: PropertyOption[];
   staffRole: string;
   embedded?: boolean;
-  panel?: 'overview' | 'tariff' | 'finance';
+  /** module = overview cards + register (utilities menu default). */
+  panel?: 'overview' | 'tariff' | 'finance' | 'module';
   focusPropertyId?: number | '';
   onPropertyChange?: (id: number | '') => void;
   onOpenTab?: (tab: AdminUtilityTab) => void;
@@ -116,6 +118,7 @@ export function AdminElectricityFinance({
     setPropertyId((current) => (current === focusPropertyId ? current : focusPropertyId));
   }, [focusPropertyId]);
   const [tariff, setTariff] = useState<CurrentElectricityTariffView | null>(null);
+  const [moduleTotals, setModuleTotals] = useState<UtilityModuleTotals | null>(null);
   const [charges, setCharges] = useState<ElectricityCharge[]>([]);
   const [ledger, setLedger] = useState<ElectricityLedger[]>([]);
   const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
@@ -304,6 +307,80 @@ export function AdminElectricityFinance({
     tone === 'debt' ? t('admin.balDebt') : tone === 'over' ? t('admin.balOver') : t('admin.balSettled');
   const showTariff = !panel || panel === 'tariff';
   const showFinance = !panel || panel === 'finance';
+  const moduleTone = moduleTotals ? balanceTone(moduleTotals.balanceEur) : 'settled';
+  const moduleStatus =
+    moduleTone === 'debt'
+      ? t('admin.balDebt')
+      : moduleTone === 'over'
+        ? t('admin.balOver')
+        : t('admin.balSettled');
+  const moduleBalanceCard = {
+    value: moduleTotals
+      ? formatEur(Math.abs(moduleTotals.balanceEur), locale)
+      : canFinance
+        ? t('common.loading')
+        : '—',
+    secondary: moduleTotals
+      ? `${moduleStatus} · ${t('admin.utilRegBalanceComplex')}`
+      : canFinance
+        ? t('admin.utilRegBalanceComplexLoading')
+        : t('admin.waterNoAccess'),
+    alert: Boolean(moduleTotals && moduleTone === 'debt'),
+  };
+
+  const moduleCards = (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <AdminMetricCard
+        label={t('admin.electricityMode')}
+        value={modeLabel ?? '—'}
+        secondary={modeLabel ? t('admin.utilRegModeHint') : undefined}
+      />
+      <AdminMetricCard
+        label={t('admin.utilRegTariffsDayNight')}
+        value={
+          listLoading
+            ? t('common.loading')
+            : tariff
+              ? `${t('account.elDay')}: ${formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)}`
+              : '—'
+        }
+        secondary={
+          tariff
+            ? `${t('account.elNight')}: ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)} · ${t('admin.tariffManageInCore')}`
+            : t('admin.noTariff')
+        }
+      />
+      <AdminMetricCard
+        label={t('admin.electricityBalance')}
+        value={moduleBalanceCard.value}
+        secondary={moduleBalanceCard.secondary}
+        alert={moduleBalanceCard.alert}
+      />
+    </div>
+  );
+
+  if (panel === 'module') {
+    return (
+      <div className="space-y-4">
+        {moduleCards}
+        <AdminUtilityFinanceWorkplace
+          service="electricity"
+          supabase={supabase}
+          properties={sorted}
+          canOperate={canFinance}
+          focusPropertyId=""
+          onPropertyChange={(id) => {
+            setPropertyId(id);
+            onPropertyChange?.(id);
+          }}
+          onModuleTotals={setModuleTotals}
+          extraCardActions={
+            <p className="mt-3 text-sm text-secondary">{t('admin.utilFinElChargesHint')}</p>
+          }
+        />
+      </div>
+    );
+  }
 
   if (panel === 'finance') {
     return (
@@ -311,45 +388,7 @@ export function AdminElectricityFinance({
         {!embedded && (
           <AdminPageHeader title={t('admin.electricityFinance')} secondary={t('admin.utilFinRegisterLead')} />
         )}
-        {!embedded ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <AdminMetricCard
-              label={t('admin.electricityMode')}
-              value={modeLabel ?? '—'}
-            />
-            <AdminMetricCard
-              label={t('admin.utilRegTariffsDayNight')}
-              value={
-                listLoading
-                  ? t('common.loading')
-                  : tariff
-                    ? `${t('account.elDay')}: ${formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)}`
-                    : '—'
-              }
-              secondary={
-                tariff
-                  ? `${t('account.elNight')}: ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)}`
-                  : t('admin.noTariff')
-              }
-            />
-            <AdminMetricCard
-              label={t('admin.electricityBalance')}
-              value={
-                propertyId === ''
-                  ? '—'
-                  : propLoading
-                    ? t('common.loading')
-                    : formatEur(Math.abs(balance.balance_eur), locale)
-              }
-              secondary={
-                propertyId === ''
-                  ? t('admin.pickProperty')
-                  : `${statusLabel} · ${t('admin.utilRegBalanceSelectedApt')}`
-              }
-              alert={propertyId !== '' && tone === 'debt'}
-            />
-          </div>
-        ) : null}
+        {!embedded ? moduleCards : null}
         <AdminUtilityFinanceWorkplace
           service="electricity"
           supabase={supabase}
@@ -360,6 +399,7 @@ export function AdminElectricityFinance({
             setPropertyId(id);
             onPropertyChange?.(id);
           }}
+          onModuleTotals={setModuleTotals}
           extraCardActions={
             <p className="mt-3 text-sm text-secondary">{t('admin.utilFinElChargesHint')}</p>
           }
@@ -369,46 +409,7 @@ export function AdminElectricityFinance({
   }
 
   if (panel === 'overview') {
-    return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <AdminMetricCard
-          label={t('admin.electricityMode')}
-          value={modeLabel ?? '—'}
-          secondary={modeLabel ? t('admin.utilRegModeHint') : undefined}
-        />
-        <AdminMetricCard
-          label={t('admin.utilRegTariffsDayNight')}
-          value={
-            listLoading
-              ? t('common.loading')
-              : tariff
-                ? `${t('account.elDay')}: ${formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)}`
-                : '—'
-          }
-          secondary={
-            tariff
-              ? `${t('account.elNight')}: ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)} · ${t('admin.tariffManageInCore')}`
-              : t('admin.noTariff')
-          }
-        />
-        <AdminMetricCard
-          label={t('admin.electricityBalance')}
-          value={
-            propertyId === ''
-              ? '—'
-              : propLoading
-                ? t('common.loading')
-                : formatEur(Math.abs(balance.balance_eur), locale)
-          }
-          secondary={
-            propertyId === ''
-              ? t('admin.pickProperty')
-              : `${statusLabel} · ${t('admin.utilRegBalanceSelectedApt')}`
-          }
-          alert={propertyId !== '' && tone === 'debt'}
-        />
-      </div>
-    );
+    return moduleCards;
   }
 
   return (

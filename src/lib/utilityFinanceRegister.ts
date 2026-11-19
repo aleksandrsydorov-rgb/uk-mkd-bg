@@ -42,6 +42,28 @@ export type UtilityFinanceRegisterRow = {
   status: 'debt' | 'credit' | 'settled';
 };
 
+/** Module-wide rollup of register rows (same ledger formula as per-apartment get_*_balance). */
+export type UtilityModuleTotals = {
+  chargedEur: number;
+  paidEur: number;
+  balanceEur: number;
+  propertyCount: number;
+};
+
+export function sumModuleTotalsFromRegisterRows(
+  rows: UtilityFinanceRegisterRow[],
+): UtilityModuleTotals {
+  let chargedEur = 0;
+  let paidEur = 0;
+  let balanceEur = 0;
+  for (const row of rows) {
+    chargedEur += Number(row.chargedEur) || 0;
+    paidEur += Number(row.paidEur) || 0;
+    balanceEur += Number(row.balanceEur) || 0;
+  }
+  return { chargedEur, paidEur, balanceEur, propertyCount: rows.length };
+}
+
 export function ledgerTableForService(service: UtilityFinanceService): string {
   if (service === 'water') return 'water_ledger';
   if (service === 'electricity') return 'electricity_ledger';

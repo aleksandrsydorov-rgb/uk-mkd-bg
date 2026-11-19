@@ -4722,54 +4722,38 @@ function AdminPortal() {
             />
 
             {elTab === 'overview' ? (
-              <div className="space-y-4">
-                {showElectricityFinance ? (
-                  <AdminElectricityFinance
-                    supabase={supabase}
-                    properties={properties}
-                    staffRole={staffRole}
-                    embedded
-                    panel="overview"
-                    modeLabel={elModeLabel}
-                    focusPropertyId={selectedElId ? Number(selectedElId) : ''}
-                    onPropertyChange={(id) => {
-                      if (id !== '') setElMeterPropertyId(String(id));
-                    }}
-                    onOpenTab={(next) => {
-                      if (next === 'finance' || next === 'tariff') return;
-                      openUtilityTab('электроэнергия', next);
-                    }}
+              showElectricityFinance ? (
+                <AdminElectricityFinance
+                  supabase={supabase}
+                  properties={properties}
+                  staffRole={staffRole}
+                  embedded
+                  panel="module"
+                  modeLabel={elModeLabel}
+                  focusPropertyId=""
+                  onPropertyChange={(id) => {
+                    setElMeterPropertyId(id === '' || id == null ? '' : String(id));
+                  }}
+                  onOpenTab={(next) => {
+                    if (next === 'finance' || next === 'tariff') return;
+                    openUtilityTab('электроэнергия', next);
+                  }}
+                />
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
+                  <AdminMetricCard
+                    label={t('admin.utilRegTariffsDayNight')}
+                    value="—"
+                    secondary={t('admin.noTariff')}
                   />
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
-                    <AdminMetricCard
-                      label={t('admin.utilRegTariffsDayNight')}
-                      value="—"
-                      secondary={t('admin.noTariff')}
-                    />
-                    <AdminMetricCard
-                      label={t('admin.electricityBalance')}
-                      value="—"
-                      secondary={t('admin.waterNoAccess')}
-                    />
-                  </div>
-                )}
-                {showElectricityFinance ? (
-                  <AdminElectricityFinance
-                    supabase={supabase}
-                    properties={properties}
-                    staffRole={staffRole}
-                    embedded
-                    panel="finance"
-                    // Register must stay on the list; do not seed the apartment picker focus.
-                    focusPropertyId=""
-                    onPropertyChange={(id) => {
-                      setElMeterPropertyId(id === '' || id == null ? '' : String(id));
-                    }}
+                  <AdminMetricCard
+                    label={t('admin.electricityBalance')}
+                    value="—"
+                    secondary={t('admin.waterNoAccess')}
                   />
-                ) : null}
-              </div>
+                </div>
+              )
             ) : null}
 
             {elTab === 'meter' && (() => {

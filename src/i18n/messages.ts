@@ -3568,6 +3568,10 @@ export const ru = {
     utilRegModeHint: 'Переключение режима — в блоке выше.',
     utilRegRegisterHint: 'Нажмите строку или номер апартамента, чтобы открыть карточку.',
     utilRegBalanceSelectedApt: 'по выбранному апартаменту',
+    utilRegBalanceComplex: 'итог по комплексу',
+    utilRegBalanceComplexLoading: 'Считаем итог по реестру…',
+    utilRegBalanceComplexUnavailable:
+      'Общий баланс модуля недоступен: нет fund-totals RPC; итог показывается из ledger-реестра на экране с реестром.',
     utilRegFilterSearch: 'Поиск',
     utilRegFilterSection: 'Секция',
     utilRegFilterPeriod: 'Расчётный период',
@@ -9485,6 +9489,10 @@ export const en: Messages = {
     utilRegModeHint: 'Switch mode in the block above.',
     utilRegRegisterHint: 'Click a row or apartment number to open the card.',
     utilRegBalanceSelectedApt: 'for the selected apartment',
+    utilRegBalanceComplex: 'complex total',
+    utilRegBalanceComplexLoading: 'Calculating register total…',
+    utilRegBalanceComplexUnavailable:
+      'Module-wide balance unavailable: no fund-totals RPC; the total comes from the ledger register on the register screen.',
     utilRegFilterSearch: 'Search',
     utilRegFilterSection: 'Section',
     utilRegFilterPeriod: 'Billing period',
@@ -15411,6 +15419,10 @@ export const bg: Messages = {
     utilRegModeHint: 'Превключването на режима е в блока по-горе.',
     utilRegRegisterHint: 'Кликнете ред или номер на апартамент, за да отворите картата.',
     utilRegBalanceSelectedApt: 'за избрания апартамент',
+    utilRegBalanceComplex: 'общо за комплекса',
+    utilRegBalanceComplexLoading: 'Изчисляваме общо по регистъра…',
+    utilRegBalanceComplexUnavailable:
+      'Общото салдо на модула не е налично: няма fund-totals RPC; общото идва от ledger-регистъра на екрана с регистър.',
     utilRegFilterSearch: 'Търсене',
     utilRegFilterSection: 'Секция',
     utilRegFilterPeriod: 'Отчетен период',

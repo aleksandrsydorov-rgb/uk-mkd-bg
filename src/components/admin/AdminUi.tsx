@@ -259,7 +259,14 @@ export function AdminSectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-export const ADMIN_UTILITY_TABS = ['overview', 'meter', 'readings', 'tariff', 'finance'] as const;
+export const ADMIN_UTILITY_TABS = [
+  'overview',
+  'meter',
+  'readings',
+  'history',
+  'tariff',
+  'finance',
+] as const;
 export type AdminUtilityTab = (typeof ADMIN_UTILITY_TABS)[number];
 
 export function parseAdminUtilityTab(

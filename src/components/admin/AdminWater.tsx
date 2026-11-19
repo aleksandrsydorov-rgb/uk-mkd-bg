@@ -122,14 +122,16 @@ export function AdminWater({
   const waterTabs = useMemo(() => {
     const items: { id: AdminUtilityTab; label: string }[] = [
       { id: 'overview', label: t('admin.utilTabOverview') },
-      { id: 'meter', label: t('admin.utilTabMeter') },
-      { id: 'readings', label: t('admin.utilTabReadings') },
+      { id: 'meter', label: t('admin.waterTabMeters') },
+      { id: 'readings', label: t('admin.waterTabReadings') },
+      { id: 'history', label: t('admin.waterTabHistory') },
     ];
-    // finance stays URL-routable from Финансы nav; not shown in metering chrome.
+    // finance stays URL-routable from Финансы nav; not shown in the four-tab chrome.
     if (canFinance) items.push({ id: 'finance', label: t('admin.utilTabFinance') });
     return items;
   }, [t, canFinance]);
   const allowedWaterTabs = useMemo(() => waterTabs.map((item) => item.id), [waterTabs]);
+  const PANEL_TAB_IDS: readonly AdminUtilityTab[] = ['overview', 'meter', 'readings', 'history'];
 
   const sorted = useMemo(
     () =>
@@ -195,7 +197,7 @@ export function AdminWater({
   const panelTabs = useMemo(
     () =>
       waterTabs
-        .filter((item) => item.id === 'overview' || item.id === 'meter' || item.id === 'readings')
+        .filter((item) => (PANEL_TAB_IDS as readonly string[]).includes(item.id))
         .map((item) => {
           const params =
             typeof window !== 'undefined'
@@ -238,7 +240,7 @@ export function AdminWater({
 
   useEffect(() => {
     // Overview/finance show the complex register — do not auto-pick an apartment.
-    // Meter/readings still need a property for the existing detail panels.
+    // Meter / readings / history still need a property for the existing detail panels.
     if (activeTab === 'finance' || activeTab === 'overview') return;
     if (propertyId === '' && sorted[0]) selectProperty(sorted[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once when list arrives
@@ -672,7 +674,8 @@ export function AdminWater({
     waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
   const onOverview = activeTab === 'overview';
-  const onMeterOrReadings = activeTab === 'meter' || activeTab === 'readings';
+  const onApartmentScoped =
+    activeTab === 'meter' || activeTab === 'readings' || activeTab === 'history';
 
   function waterTariffHref() {
     // Normalize via URLSearchParams so Cyrillic section values are not double-encoded in `return`.
@@ -819,7 +822,7 @@ export function AdminWater({
         </>
       ) : null}
 
-      {onMeterOrReadings ? (
+      {onApartmentScoped ? (
         <AdminCard>
           <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
           <ApartmentCombobox
@@ -987,106 +990,112 @@ export function AdminWater({
       </div>
       )}
 
-      {activeTab === 'readings' && canSubmit && (
-        <div className={adminCardClass + ' p-4 md:p-5'}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilSubmitTitle')}</p>
-          <form onSubmit={handleSubmitReading} className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input
-              className={fieldClass}
-              type="number"
-              min="0"
-              step="0.1"
-              placeholder={t('account.utilCurrentM3')}
-              value={submitValue}
-              onChange={(e) => setSubmitValue(e.target.value)}
-              required
-            />
-            <input
-              className={fieldClass}
-              type="date"
-              max={todayIsoDate()}
-              value={submitDate}
-              onChange={(e) => setSubmitDate(e.target.value)}
-              required
-            />
-            <button
-              type="submit"
-              disabled={submitBusy || !activeMeter}
-              className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              {submitBusy ? t('account.utilSubmitting') : t('account.utilSubmit')}
-            </button>
-          </form>
-        </div>
-      )}
-
-      {activeTab === 'readings' && (
-      <div className={adminCardClass + ' space-y-4 p-4 md:p-5'}>
-        {correctTarget &&
-          canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
-            <AdminMeterCorrectionPanel
-              originalSummary={
-                <p>
-                  {t('admin.meterCorrectionOriginal', {
-                    current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
-                    consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
-                  })}
-                </p>
-              }
-              valueFields={
-                <label className="block text-secondary">
-                  {t('admin.meterCorrectionNewValue')}
-                  <input
-                    className={`mt-1 block w-full ${fieldClass}`}
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    value={correctValue}
-                    onChange={(e) => setCorrectValue(e.target.value)}
-                    disabled={correctBusy}
-                    required
-                  />
-                </label>
-              }
-              reason={correctReason}
-              onReasonChange={setCorrectReason}
-              confirmed={correctConfirm}
-              onConfirmedChange={setCorrectConfirm}
-              hasCharge={correctHasCharge}
-              estimatedDeltaEur={correctDelta}
-              busy={correctBusy}
-              onSubmit={() => void handleCorrectReading()}
-              onCancel={closeWaterCorrection}
-            />
-          )}
-        <MeterReadingHistory
-          utility="water"
-          entries={historyEntries}
-          title={t('admin.readingHistory')}
-          emptyTitle={t('admin.noReadings')}
-          rowActions={(entry) => {
-            const row = readings.find((r) => String(r.id) === entry.actionKey);
-            if (!row) return null;
-            const isLatestCorrectable =
-              lastReading?.id === row.id && row.status === 'active';
-            const rowHasCharge = waterReadingHasCharge(row);
-            const showCorrect =
-              isLatestCorrectable &&
-              canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
-            if (!showCorrect) return null;
-            return (
+      {activeTab === 'readings' ? (
+        canSubmit ? (
+          <div className={adminCardClass + ' p-4 md:p-5'}>
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+              {t('account.utilSubmitTitle')}
+            </p>
+            <form onSubmit={handleSubmitReading} className="mt-4 grid gap-3 sm:grid-cols-3">
+              <input
+                className={fieldClass}
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder={t('account.utilCurrentM3')}
+                value={submitValue}
+                onChange={(e) => setSubmitValue(e.target.value)}
+                required
+              />
+              <input
+                className={fieldClass}
+                type="date"
+                max={todayIsoDate()}
+                value={submitDate}
+                onChange={(e) => setSubmitDate(e.target.value)}
+                required
+              />
               <button
-                type="button"
-                className="text-sm text-accent hover:underline"
-                onClick={() => openWaterCorrection(row)}
+                type="submit"
+                disabled={submitBusy || !activeMeter}
+                className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
               >
-                {t('admin.meterCorrectionAction')}
+                {submitBusy ? t('account.utilSubmitting') : t('account.utilSubmit')}
               </button>
-            );
-          }}
-        />
-      </div>
-      )}
+            </form>
+          </div>
+        ) : (
+          <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
+        )
+      ) : null}
+
+      {activeTab === 'history' ? (
+        <div className={adminCardClass + ' space-y-4 p-4 md:p-5'}>
+          {correctTarget &&
+            canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
+              <AdminMeterCorrectionPanel
+                originalSummary={
+                  <p>
+                    {t('admin.meterCorrectionOriginal', {
+                      current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
+                      consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
+                    })}
+                  </p>
+                }
+                valueFields={
+                  <label className="block text-secondary">
+                    {t('admin.meterCorrectionNewValue')}
+                    <input
+                      className={`mt-1 block w-full ${fieldClass}`}
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={correctValue}
+                      onChange={(e) => setCorrectValue(e.target.value)}
+                      disabled={correctBusy}
+                      required
+                    />
+                  </label>
+                }
+                reason={correctReason}
+                onReasonChange={setCorrectReason}
+                confirmed={correctConfirm}
+                onConfirmedChange={setCorrectConfirm}
+                hasCharge={correctHasCharge}
+                estimatedDeltaEur={correctDelta}
+                busy={correctBusy}
+                onSubmit={() => void handleCorrectReading()}
+                onCancel={closeWaterCorrection}
+              />
+            )}
+          <MeterReadingHistory
+            utility="water"
+            entries={historyEntries}
+            title={t('admin.readingHistory')}
+            emptyTitle={t('admin.noReadings')}
+            rowActions={(entry) => {
+              const row = readings.find((r) => String(r.id) === entry.actionKey);
+              if (!row) return null;
+              const isLatestCorrectable =
+                lastReading?.id === row.id && row.status === 'active';
+              const rowHasCharge = waterReadingHasCharge(row);
+              const showCorrect =
+                isLatestCorrectable &&
+                canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
+              if (!showCorrect) return null;
+              return (
+                <button
+                  type="button"
+                  className="text-sm text-accent hover:underline"
+                  onClick={() => openWaterCorrection(row)}
+                >
+                  {t('admin.meterCorrectionAction')}
+                </button>
+              );
+            }}
+          />
+        </div>
+      ) : null}
 
     </div>
   );

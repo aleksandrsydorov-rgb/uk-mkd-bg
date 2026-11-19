@@ -391,6 +391,7 @@ export function AdminEmailSettings({
       </AdminCard>
 
       <AdminCard>
+        <p className="mb-3 text-sm text-secondary">{t('admin.notifyAfterRegistrationHint')}</p>
         <NotificationPreferencesPanel
           supabase={supabase}
           t={t}

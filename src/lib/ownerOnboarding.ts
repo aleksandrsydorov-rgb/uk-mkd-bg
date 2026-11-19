@@ -90,3 +90,14 @@ export function ownerEntryPath(status: OwnerFirstLoginStatus | null, next: strin
 export function onboardingPath(next: string) {
   return `/account/onboarding?next=${encodeURIComponent(next || '/account')}`;
 }
+
+/** Stamp ordinary-notification eligibility after cabinet-ready first registration. */
+export async function markOwnerRegistrationComplete(supabase: SupabaseClient): Promise<void> {
+  try {
+    await supabase.rpc('email_core_mark_registration_complete' as never, {
+      p_email: null,
+    } as never);
+  } catch {
+    /* migration may be pending on older stands */
+  }
+}

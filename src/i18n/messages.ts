@@ -3010,6 +3010,8 @@ export const ru = {
     emailTestQueued: 'Тестовое письмо поставлено в очередь. Отправка ещё может быть выключена.',
     emailTestBlocked: 'Письмо не поставлено в очередь ({status}). Проверьте готовность почтовой системы.',
     emailTestInvalid: 'Укажите корректный email получателя.',
+    notifyAfterRegistrationHint:
+      'Уведомления начнут поступать после регистрации пользователя.',
     emailStatusNotConfigured: 'Не настроено',
     emailStatusDomainPending: 'Ожидается проверка домена',
     emailStatusReady: 'Готово к отправке',
@@ -8762,6 +8764,8 @@ export const en: Messages = {
     emailTestQueued: 'Test email queued. Sending may still be turned off.',
     emailTestBlocked: 'The email was not queued ({status}). Check that the mail system is ready.',
     emailTestInvalid: 'Enter a valid recipient email.',
+    notifyAfterRegistrationHint:
+      'Notifications start after the user completes registration.',
     emailStatusNotConfigured: 'Not configured',
     emailStatusDomainPending: 'Domain verification pending',
     emailStatusReady: 'Ready to send',
@@ -14526,6 +14530,8 @@ export const bg: Messages = {
     emailTestQueued: 'Тестовото писмо е в опашката. Изпращането може още да е изключено.',
     emailTestBlocked: 'Писмото не е поставено в опашката ({status}). Проверете готовността на пощенската система.',
     emailTestInvalid: 'Въведете валиден имейл на получателя.',
+    notifyAfterRegistrationHint:
+      'Известията започват след регистрация на потребителя.',
     emailStatusNotConfigured: 'Не е конфигурирано',
     emailStatusDomainPending: 'Очаква се проверка на домейна',
     emailStatusReady: 'Готово за изпращане',

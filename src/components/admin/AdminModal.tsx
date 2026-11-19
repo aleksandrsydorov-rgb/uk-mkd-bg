@@ -14,6 +14,7 @@ import {
   adminModalPanelClass,
   adminBtnSecondaryClass,
 } from '@/components/admin/AdminUi';
+import { WorkplaceCardShell } from '@/components/ui/WorkplaceCardShell';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -34,8 +35,13 @@ type AdminModalProps = {
   footer?: ReactNode;
   /** Sticky strip under the title (e.g. in-modal tabs). */
   subheader?: ReactNode;
-  /** Wider panel for previews (default max-w-lg). 2xl ≈ 1152px. */
-  size?: 'md' | 'lg' | 'xl' | '2xl';
+  /**
+   * Panel size. Use `workplace` for large stable workplace cards (shared shell).
+   * Keep md/lg/xl for compact dialogs; 2xl only when workplace geometry is not desired.
+   */
+  size?: 'md' | 'lg' | 'xl' | '2xl' | 'workplace';
+  /** Stable entity key for workplace shell (avoids remount flicker across content swaps). */
+  entityKey?: string | number;
   /** Optional element to restore focus to after close. */
   returnFocusRef?: React.RefObject<HTMLElement | null> | React.MutableRefObject<HTMLElement | null>;
   /** Called instead of onClose when Escape / overlay / X — parent may confirm. */
@@ -43,14 +49,69 @@ type AdminModalProps = {
   closeLabel?: string;
 };
 
-const sizeClass: Record<NonNullable<AdminModalProps['size']>, string> = {
+const sizeClass: Record<Exclude<NonNullable<AdminModalProps['size']>, 'workplace'>, string> = {
   md: 'max-w-lg',
   lg: 'max-w-3xl',
   xl: 'max-w-5xl',
-  '2xl': 'max-w-6xl',
+  '2xl': 'max-w-6xl md:w-[min(70vw,64rem)]',
 };
 
+/** Compact / confirm-style dialogs. Large workplace surfaces use WorkplaceCardShell. */
 export function AdminModal({
+  open,
+  title,
+  titleMeta,
+  headerActions,
+  onClose,
+  children,
+  footer,
+  subheader,
+  size = 'md',
+  entityKey,
+  returnFocusRef,
+  onRequestClose,
+  closeLabel = '×',
+}: AdminModalProps) {
+  if (size === 'workplace') {
+    return (
+      <WorkplaceCardShell
+        open={open}
+        title={title}
+        titleMeta={titleMeta}
+        headerActions={headerActions}
+        subheader={subheader}
+        footer={footer}
+        onClose={onClose}
+        onRequestClose={onRequestClose}
+        closeLabel={closeLabel}
+        returnFocusRef={returnFocusRef}
+        entityKey={entityKey}
+      >
+        {children}
+      </WorkplaceCardShell>
+    );
+  }
+
+  return (
+    <CompactAdminModal
+      open={open}
+      title={title}
+      titleMeta={titleMeta}
+      headerActions={headerActions}
+      onClose={onClose}
+      footer={footer}
+      subheader={subheader}
+      size={size}
+      returnFocusRef={returnFocusRef}
+      onRequestClose={onRequestClose}
+      closeLabel={closeLabel}
+    >
+      {children}
+    </CompactAdminModal>
+  );
+}
+
+function CompactAdminModal({
   open,
   title,
   titleMeta,
@@ -63,7 +124,9 @@ export function AdminModal({
   returnFocusRef,
   onRequestClose,
   closeLabel = '×',
-}: AdminModalProps) {
+}: Omit<AdminModalProps, 'size' | 'entityKey'> & {
+  size: Exclude<NonNullable<AdminModalProps['size']>, 'workplace'>;
+}) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);

@@ -279,6 +279,58 @@ export async function runOutboxWorker(opts: {
         templateKey: row.template_key,
         payload,
       });
+    const allowBeforeRegistration =
+      row.module_key === 'pb1_invite' ||
+      row.module_key === 'user_activation' ||
+      row.module_key === 'email_test' ||
+      row.module_key === 'auth' ||
+      getEmailEvent(eventKey)?.importance === 'security_mandatory';
+
+    if (!allowBeforeRegistration) {
+      try {
+        const { data: ready } = await opts.supabase.rpc(
+          'email_core_recipient_registration_ready' as never,
+          { p_to_email: row.to_email } as never,
+        );
+        if (ready !== true) {
+          await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
+            p_outbox_id: row.id,
+            p_reason: 'blocked_not_registered',
+          } as never);
+          cancelled += 1;
+          continue;
+        }
+        // Do not send events that originated before registration completed.
+        const { data: profileRows } = await opts.supabase
+          .from('user_activation_profiles' as never)
+          .select('app_registration_completed_at')
+          .eq('email', String(row.to_email).trim().toLowerCase())
+          .maybeSingle();
+        const completedAt = (profileRows as { app_registration_completed_at?: string | null } | null)
+          ?.app_registration_completed_at;
+        if (
+          completedAt &&
+          row.created_at &&
+          new Date(row.created_at).getTime() < new Date(completedAt).getTime()
+        ) {
+          await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
+            p_outbox_id: row.id,
+            p_reason: 'blocked_pre_registration_event',
+          } as never);
+          cancelled += 1;
+          continue;
+        }
+      } catch {
+        /* missing RPC/migration — fail closed for ordinary mail */
+        await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
+          p_outbox_id: row.id,
+          p_reason: 'blocked_not_registered',
+        } as never);
+        cancelled += 1;
+        continue;
+      }
+    }
+
     if (eventKey && getEmailEvent(eventKey)?.importance !== 'security_mandatory') {
       try {
         const snap = await fetchPolicySnapshotForRecipient(opts.supabase, {

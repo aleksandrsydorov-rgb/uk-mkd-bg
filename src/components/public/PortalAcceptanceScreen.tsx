@@ -142,6 +142,12 @@ export function PortalAcceptanceScreen() {
       setError(t('legal.acceptFailed'));
       return;
     }
+    try {
+      const { markOwnerRegistrationComplete } = await import('@/lib/ownerOnboarding');
+      await markOwnerRegistrationComplete(supabase);
+    } catch {
+      /* non-blocking */
+    }
     router.replace(next);
   }
 

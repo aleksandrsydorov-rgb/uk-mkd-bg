@@ -20,6 +20,8 @@ import { normalizePriority, priorityClass } from '@/lib/requests';
 import { BrandMark } from '@/components/BrandMark';
 import { AppFilePicker, formatAcceptHint } from '@/components/ui/AppFilePicker';
 import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
+import { SectionPanelTabs } from '@/components/ui/SectionPanelTabs';
+import { WorkplaceCardShell } from '@/components/ui/WorkplaceCardShell';
 import { resolveAccess } from '@/lib/access';
 import { normalizeEmail } from '@/lib/email';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -6648,6 +6650,8 @@ function ApartmentDetailModal({
   const [localError, setLocalError] = useState<string | null>(null);
 
   const formsDirty = isGuestFormDirty(guestForm) || isPetFormDirty(petForm);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const tabScrollRef = useRef<Partial<Record<ApartmentCardTab, number>>>({});
 
   useEffect(() => {
     onDirtyChange?.(formsDirty);
@@ -6663,7 +6667,7 @@ function ApartmentDetailModal({
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [formsDirty]);
 
-  // Reset workplace state when switching apartments so data/forms never leak across cards.
+  // Reset forms ONLY when the apartment entity changes — never on cardTab URL sync.
   useEffect(() => {
     setActiveTab(parseApartmentCardTab(initialTab));
     setLocalError(null);
@@ -6671,8 +6675,15 @@ function ApartmentDetailModal({
     setGuestForm({ ...EMPTY_GUEST_FORM });
     setWaterTariffPrice(null);
     setElectricityTariff(null);
+    tabScrollRef.current = {};
     onDirtyChange?.(false);
-  }, [property.id, initialTab, onDirtyChange]);
+  }, [property.id]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: tab URL must not wipe forms
+
+  // External cardTab changes (deep link / Back-Forward) update the tab without remounting the shell.
+  useEffect(() => {
+    const parsed = parseApartmentCardTab(initialTab);
+    setActiveTab((prev) => (prev === parsed ? prev : parsed));
+  }, [initialTab]);
 
   async function confirmDiscardForms(): Promise<boolean> {
     if (!formsDirty) return true;
@@ -6689,10 +6700,18 @@ function ApartmentDetailModal({
     if (tab === activeTab) return;
     const ok = await confirmDiscardForms();
     if (!ok) return;
+    if (contentScrollRef.current) {
+      tabScrollRef.current[activeTab] = contentScrollRef.current.scrollTop;
+    }
     setGuestForm({ ...EMPTY_GUEST_FORM });
     setPetForm({ ...EMPTY_PET_FORM });
     setActiveTab(tab);
     onTabChange?.(tab);
+    requestAnimationFrame(() => {
+      if (contentScrollRef.current) {
+        contentScrollRef.current.scrollTop = tabScrollRef.current[tab] ?? 0;
+      }
+    });
   }
 
   const annualFee = annualSupportFee(property.area_sqm, supportRate);
@@ -6834,65 +6853,93 @@ function ApartmentDetailModal({
     await onChanged();
   }
 
+  const ownerLine =
+    (property.owner_name ?? '').trim() || (property.owner_email ?? '').trim() || '—';
+
   return (
-    <div className={adminModalOverlayClass} onClick={onClose}>
+    <>
       {dialog}
-      <div className={`${adminModalPanelClass} max-w-4xl`}
-        onClick={(e) => e.stopPropagation()}>
-        {/* ШАПКА */}
-        <div className={adminModalHeaderClass}>
-          <div className="min-w-0">
-            <h3 className="break-words text-lg font-semibold text-foreground">
-              {identityTitle}
-            </h3>
-            <p className="mt-0.5 truncate text-sm text-secondary">
-              {(property.owner_name ?? '').trim() || (property.owner_email ?? '').trim() || '—'}
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span>{property.area_sqm ?? '—'} {t('common.sqm')} · {property.floor ?? '—'} {t('common.floor')}</span>
-              {property.archived_at ? (
-                <StatusBadge label={t('admin.aptArchivedBadge')} tone="warning" />
-              ) : null}
-              <StatusBadge
-                label={labelOccupancy(property.occupancy_status, t)}
-                tone={property.occupancy_status === 'standby' ? 'warning' : 'info'}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={onOpenChat} className={adminBtnSecondaryClass}>
-              {t('admin.tabChat')}{unreadChats > 0 ? ` (${unreadChats})` : ''}
-            </button>
-            <button type="button" onClick={onEdit} className={adminBtnSecondaryClass}>{t('admin.aptEdit')}</button>
-            {onDelete ? (
-              <button type="button" onClick={onDelete} className={adminBtnDangerClass}>{t('admin.aptDelete')}</button>
+      <WorkplaceCardShell
+        open
+        entityKey={property.id}
+        bodyRef={contentScrollRef}
+        title={identityTitle}
+        closeLabel={t('common.close')}
+        onClose={onClose}
+        onRequestClose={onClose}
+        titleMeta={
+          <>
+            <span className="truncate text-sm text-secondary">{ownerLine}</span>
+            <span>
+              {property.area_sqm ?? '—'} {t('common.sqm')} · {property.floor ?? '—'} {t('common.floor')}
+            </span>
+            {property.archived_at ? (
+              <StatusBadge label={t('admin.aptArchivedBadge')} tone="warning" />
             ) : null}
-            <button type="button" onClick={onClose} className="px-2 text-xl text-secondary hover:text-foreground">✕</button>
-          </div>
-        </div>
-
-        {localError ? (
-          <div className="border-b border-danger/25 bg-danger-bg px-4 py-2 text-sm text-danger">{localError}</div>
-        ) : null}
-
-        <div className="shrink-0 px-4 py-2">
-          <AdminTabBar
+            <StatusBadge
+              label={labelOccupancy(property.occupancy_status, t)}
+              tone={property.occupancy_status === 'standby' ? 'warning' : 'info'}
+            />
+          </>
+        }
+        headerActions={
+          <>
+            <button type="button" onClick={onOpenChat} className={adminBtnSecondaryClass}>
+              {t('admin.tabChat')}
+              {unreadChats > 0 ? ` (${unreadChats})` : ''}
+            </button>
+            <button type="button" onClick={onEdit} className={adminBtnSecondaryClass}>
+              {t('admin.aptEdit')}
+            </button>
+            {onDelete ? (
+              <button type="button" onClick={onDelete} className={adminBtnDangerClass}>
+                {t('admin.aptDelete')}
+              </button>
+            ) : null}
+          </>
+        }
+        subheader={
+          <SectionPanelTabs
             aria-label={identityTitle}
-            active={activeTab}
-            onChange={(id) => { void selectTab(parseApartmentCardTab(id)); }}
-            tabs={[
+            value={activeTab}
+            onChange={(id) => {
+              void selectTab(parseApartmentCardTab(id));
+            }}
+            items={[
               { id: 'инфо', label: t('admin.tabObject') },
-              { id: 'жильцы', label: t('admin.tabStay'), count: (guests.length + pets.length) || undefined },
+              {
+                id: 'жильцы',
+                label: t('admin.tabStay'),
+                count: guests.length + pets.length || undefined,
+              },
               { id: 'финансы', label: t('admin.tabFinance') },
-              { id: 'счётчики', label: t('admin.tabMeters'), count: meterReadings.length || undefined },
-              { id: 'заявки', label: t('admin.tabRequests'), count: requests.length || undefined },
-              { id: 'чат', label: t('admin.tabChat'), count: chatMessages.length || undefined },
+              {
+                id: 'счётчики',
+                label: t('admin.tabMeters'),
+                count: meterReadings.length || undefined,
+              },
+              {
+                id: 'заявки',
+                label: t('admin.tabRequests'),
+                count: requests.length || undefined,
+              },
+              {
+                id: 'чат',
+                label: t('admin.tabChat'),
+                count: chatMessages.length || undefined,
+              },
             ]}
           />
-        </div>
+        }
+      >
+        {localError ? (
+          <div className="mb-3 rounded-lg border border-danger/25 bg-danger-bg px-3 py-2 text-sm text-danger">
+            {localError}
+          </div>
+        ) : null}
 
-        {/* КОНТЕНТ ВКЛАДОК */}
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* Tab panels — shell body scrolls; do not remount shell when activeTab changes */}
+        <div>
           {/* ИНФО */}
           {activeTab === 'инфо' && (
             <div className={`${adminInfoGridClass} text-sm`}>
@@ -7096,6 +7143,7 @@ function ApartmentDetailModal({
                     value={guestForm.first_name}
                     onChange={(e) => setGuestForm({ ...guestForm, first_name: e.target.value })}
                     required
+                    data-testid="apartment-guest-first-name"
                   />
                   <input
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
@@ -7103,6 +7151,7 @@ function ApartmentDetailModal({
                     value={guestForm.last_name}
                     onChange={(e) => setGuestForm({ ...guestForm, last_name: e.target.value })}
                     required
+                    data-testid="apartment-guest-last-name"
                   />
                   <input
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
@@ -7254,7 +7303,7 @@ function ApartmentDetailModal({
 
           {/* ЧАТ */}
           {activeTab === 'чат' && (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            <div className="space-y-2">
               {chatMessages.length === 0 ? (
                 <AdminEmptyState title={t('admin.noChatRows')} />
               ) : (
@@ -7288,7 +7337,7 @@ function ApartmentDetailModal({
                         <div className="text-[10px] text-muted mt-1">
                           {formatOwnerDateTime(m.created_at, locale)}
                           {isResident && isNewOwnerMessage(m, chatMessages, chatSeenAt) && (
-                            <span className="ml-2 text-danger">● не прочитано</span>
+                            <span className="ml-2 text-danger">● {t('admin.unread')}</span>
                           )}
                         </div>
                       </div>
@@ -7299,8 +7348,8 @@ function ApartmentDetailModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </WorkplaceCardShell>
+    </>
   );
 }
 

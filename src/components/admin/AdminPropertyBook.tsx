@@ -1660,7 +1660,8 @@ export function AdminPropertyBook({
               rows.find((r) => r.property_id === selectedId)?.apartment_number,
           ),
         })}
-        size="2xl"
+        size="workplace"
+        entityKey={selectedId ?? undefined}
         closeLabel={t('common.close')}
         returnFocusRef={rowFocusRef}
         onRequestClose={requestCloseCard}

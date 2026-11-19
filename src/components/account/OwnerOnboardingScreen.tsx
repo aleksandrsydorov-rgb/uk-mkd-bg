@@ -12,6 +12,7 @@ import { signOutFully } from '@/lib/authSession';
 import { acceptPath } from '@/lib/portalLegal/acceptance';
 import {
   loadOwnerFirstLoginStatus,
+  markOwnerRegistrationComplete,
   type OwnerOnboardingProperty,
 } from '@/lib/ownerOnboarding';
 
@@ -187,6 +188,9 @@ export function OwnerOnboardingScreen() {
       if (status?.must_accept_terms) {
         router.replace(acceptPath(next));
         return;
+      }
+      if (status?.cabinet_ready) {
+        await markOwnerRegistrationComplete(supabase);
       }
       router.replace(next);
     } catch (err: unknown) {

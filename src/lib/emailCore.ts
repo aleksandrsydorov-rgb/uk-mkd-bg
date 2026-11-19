@@ -776,6 +776,44 @@ export async function enqueueTransactionalEmail(
     }
   }
 
+  const allowBeforeRegistration =
+    consumer.module === 'pb1_invite' ||
+    consumer.module === 'user_activation' ||
+    consumer.module === 'email_test' ||
+    catalog?.importance === 'security_mandatory';
+
+  if (!allowBeforeRegistration && !args.skipPolicyCheck) {
+    try {
+      const { data: ready } = await supabase.rpc(
+        'email_core_recipient_registration_ready' as never,
+        { p_to_email: toEmail } as never,
+      );
+      if (ready !== true) {
+        return {
+          ok: true,
+          duplicate: false,
+          outbox_id: null,
+          status: 'cancelled',
+          fallback_status: 'blocked_not_registered',
+          queued: false,
+          sent: false,
+          honesty: moduleFallbackStatus(consumer.module, false),
+        };
+      }
+    } catch {
+      return {
+        ok: true,
+        duplicate: false,
+        outbox_id: null,
+        status: 'cancelled',
+        fallback_status: 'blocked_not_registered',
+        queued: false,
+        sent: false,
+        honesty: moduleFallbackStatus(consumer.module, false),
+      };
+    }
+  }
+
   const { data, error } = await supabase.rpc('email_core_enqueue', {
     p_idempotency_key: key,
     p_module_key: consumer.module,

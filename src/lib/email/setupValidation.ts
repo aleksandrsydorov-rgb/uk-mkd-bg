@@ -68,7 +68,8 @@ export function validateEmailSetupDraft(
     errors.push('reply_to_invalid');
   }
 
-  if (locale !== 'bg' && locale !== 'ru' && locale !== 'en') {
+  // Outbound mail is Bulgarian-only; non-bg values from legacy drafts are ignored (not errors).
+  if (locale && locale !== 'bg' && locale !== 'ru' && locale !== 'en') {
     errors.push('locale_invalid');
   }
 

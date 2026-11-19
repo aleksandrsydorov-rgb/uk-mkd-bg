@@ -10,7 +10,7 @@ import {
   adminBtnSecondaryClass,
   adminFieldClass,
 } from '@/components/admin/AdminUi';
-import type { EmailTemplateLocale } from '@/lib/emailCore';
+import { EMAIL_OUTBOUND_LOCALE } from '@/lib/emailCore';
 
 type TemplateListItem = {
   template_key: string;
@@ -33,15 +33,12 @@ type Props = {
   onDirtyChange: (dirty: boolean) => void;
 };
 
-const LOCALES: EmailTemplateLocale[] = ['bg', 'ru', 'en'];
-
 export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }: Props) {
   const { t, locale } = useI18n();
   const [catalog, setCatalog] = useState<TemplateListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [templateKey, setTemplateKey] = useState('');
-  const [tplLocale, setTplLocale] = useState<EmailTemplateLocale>('bg');
   const [isCustom, setIsCustom] = useState(false);
   const [parts, setParts] = useState<Parts | null>(null);
   const [savedParts, setSavedParts] = useState<Parts | null>(null);
@@ -77,7 +74,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
   }, []);
 
   const loadOne = useCallback(
-    async (key: string, loc: EmailTemplateLocale) => {
+    async (key: string) => {
       if (!key) return;
       setError(null);
       setPreviewHtml(null);
@@ -85,7 +82,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
       setBanner(null);
       try {
         const res = await fetch(
-          `/api/email/templates?template_key=${encodeURIComponent(key)}&locale=${loc}`
+          `/api/email/templates?template_key=${encodeURIComponent(key)}&locale=${EMAIL_OUTBOUND_LOCALE}`
         );
         const json = (await res.json()) as {
           ok?: boolean;
@@ -119,8 +116,8 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
 
   useEffect(() => {
     if (!templateKey) return;
-    void loadOne(templateKey, tplLocale);
-  }, [templateKey, tplLocale, loadOne]);
+    void loadOne(templateKey);
+  }, [templateKey, loadOne]);
 
   const markField = useCallback(
     (field: keyof Parts, value: string) => {
@@ -175,7 +172,12 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
       const res = await fetch('/api/email/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', template_key: templateKey, locale: tplLocale, ...parts }),
+        body: JSON.stringify({
+          action: 'save',
+          template_key: templateKey,
+          locale: EMAIL_OUTBOUND_LOCALE,
+          ...parts,
+        }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string; unknown_variables?: string[] };
       if (!res.ok || !json.ok) {
@@ -209,14 +211,14 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
         body: JSON.stringify({
           action: 'restore',
           template_key: templateKey,
-          locale: tplLocale,
+          locale: EMAIL_OUTBOUND_LOCALE,
         }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) throw new Error(json.error ?? 'restore_failed');
       setBanner(t('admin.tplRestored'));
       onDirtyChange(false);
-      await loadOne(templateKey, tplLocale);
+      await loadOne(templateKey);
       await loadCatalog();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'restore_failed');
@@ -235,7 +237,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
         body: JSON.stringify({
           action: 'preview',
           template_key: templateKey,
-          locale: tplLocale,
+          locale: EMAIL_OUTBOUND_LOCALE,
           ...parts,
         }),
       });
@@ -274,13 +276,6 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
     }
   };
 
-  const requestLocaleChange = (next: EmailTemplateLocale) => {
-    if (next === tplLocale) return;
-    if (dirty && !window.confirm(t('common.discardChangesBody'))) return;
-    onDirtyChange(false);
-    setTplLocale(next);
-  };
-
   const requestTemplateChange = (next: string) => {
     if (next === templateKey) return;
     if (dirty && !window.confirm(t('common.discardChangesBody'))) return;
@@ -299,42 +294,27 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
           {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
           {banner ? <AdminInlineAlert tone="success">{banner}</AdminInlineAlert> : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 block text-[var(--admin-muted)]">{t('admin.tplSelectType')}</span>
-              <select
-                className={adminFieldClass}
-                value={templateKey}
-                disabled={!canManage && catalog.length === 0}
-                onChange={(e) => requestTemplateChange(e.target.value)}
-              >
-                {catalog.map((c) => {
-                  const label = t(c.label_key);
-                  const title = label === c.label_key ? c.template_key : label;
-                  return (
-                    <option key={c.template_key} value={c.template_key}>
-                      {title}
-                      {c.is_custom ? ` · ${t('admin.tplBadgeCustom')}` : ''}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-[var(--admin-muted)]">{t('admin.tplSelectLocale')}</span>
-              <select
-                className={adminFieldClass}
-                value={tplLocale}
-                onChange={(e) => requestLocaleChange(e.target.value as EmailTemplateLocale)}
-              >
-                {LOCALES.map((loc) => (
-                  <option key={loc} value={loc}>
-                    {loc.toUpperCase()}
+          <label className="block text-sm sm:max-w-md">
+            <span className="mb-1 block text-[var(--admin-muted)]">{t('admin.tplSelectType')}</span>
+            <select
+              className={adminFieldClass}
+              value={templateKey}
+              disabled={!canManage && catalog.length === 0}
+              onChange={(e) => requestTemplateChange(e.target.value)}
+            >
+              {catalog.map((c) => {
+                const label = t(c.label_key);
+                const title = label === c.label_key ? c.template_key : label;
+                return (
+                  <option key={c.template_key} value={c.template_key}>
+                    {title}
+                    {c.is_custom ? ` · ${t('admin.tplBadgeCustom')}` : ''}
                   </option>
-                ))}
-              </select>
-            </label>
-          </div>
+                );
+              })}
+            </select>
+          </label>
+          <p className="text-xs text-[var(--admin-muted)]">{t('admin.tplOutboundLocaleNote')}</p>
 
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="rounded border border-[var(--admin-border)] px-2 py-0.5">

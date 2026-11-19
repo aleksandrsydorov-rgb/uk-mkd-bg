@@ -21,7 +21,6 @@ import {
   type EmailConnectionStatus,
   type EmailDiagnosticRow,
   type EmailQueueSummary,
-  type EmailTemplateLocale,
 } from '@/lib/emailCore';
 import { isMissingRpcError } from '@/lib/ownershipChange';
 import { NotificationPreferencesPanel } from '@/components/notifications/NotificationPreferencesPanel';
@@ -224,7 +223,6 @@ export function AdminEmailSettings({
       }
       const result = await enqueueAllowlistedTestEmail(supabase, {
         toEmail: to,
-        locale: (settings?.template_locale ?? 'bg') as EmailTemplateLocale,
         note: 'admin_ui_controlled_test',
       });
       await load();

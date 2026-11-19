@@ -44,7 +44,22 @@ Signature scheme: https://lettermint.co/docs/platform/webhooks/signing
 
 | Message | Path |
 |--------|------|
-| Property Book invites, UA reminders, ownership notices, meetings, fees, meters, controlled test | Email Core → Lettermint/Resend adapter |
+| Property Book invites, UA reminders, ownership notices, meetings, fees, meters, controlled test | Email Core → Lettermint/Resend adapter (**Bulgarian only**) |
 | First-admin invite, password reset, signup OTP / magic link | **Supabase Auth SMTP** (Dashboard / GoTrue) — separate |
 
 Auth is **not** switched by saving a Project API token in complex settings.
+
+### Auth email language (not controlled by this app)
+
+Supabase Auth / GoTrue templates are **outside Email Core**. AMADEUS 11 requires Bulgarian for those too, but they must be set in Auth config / Dashboard — this app does not rewrite them when saving complex mail settings.
+
+Required ops changes (not applied automatically here):
+
+1. Customize GoTrue / Auth email templates to Bulgarian:
+   - invite
+   - confirmation / signup
+   - recovery / magic link
+   - email change
+   - (optional) password changed notification
+2. Local `supabase/config.toml` currently leaves `[auth.email.template.*]` commented (English GoTrue defaults) and does not ship Bulgarian HTML under `supabase/templates/`.
+3. Hosted / VPS Auth: set the same Bulgarian subjects and bodies in the Auth mailer templates (or mount Bulgarian `content_path` files) — do **not** assume Email Core Bulgarian policy covers Auth mail.

@@ -43,7 +43,6 @@ import {
   type ComplexEmailSettings,
   type EmailConnectionStatus,
   type EmailHistoryRow,
-  type EmailTemplateLocale,
 } from '@/lib/emailCore';
 import { isMissingRpcError } from '@/lib/ownershipChange';
 import { LayoutDashboard, Settings2, History, FileText } from 'lucide-react';
@@ -251,7 +250,6 @@ function NotificationsOverview({
   const [projectToken, setProjectToken] = useState('');
   const [complexName, setComplexName] = useState('AMADEUS 11');
   const [replyTo, setReplyTo] = useState('');
-  const [templateLocale, setTemplateLocale] = useState<EmailTemplateLocale>('bg');
   const [testRecipient, setTestRecipient] = useState('');
 
   const load = useCallback(async () => {
@@ -262,7 +260,6 @@ function NotificationsOverview({
       setSettings(s);
       setSenderEmail(s.sender_email ?? '');
       setReplyTo(s.reply_to_email ?? '');
-      setTemplateLocale(s.template_locale ?? 'bg');
       setProjectToken('');
       setMissing(false);
       const connected = s.has_provider_token || s.email_enabled;
@@ -339,7 +336,6 @@ function NotificationsOverview({
         try {
           await updateEmailSettings(supabase, {
             reply_to_email: replyTo.trim() || null,
-            template_locale: templateLocale,
           });
         } catch {
           /* advanced is best-effort; connection save is primary */
@@ -403,7 +399,6 @@ function NotificationsOverview({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to_email: to,
-          locale: settings?.template_locale ?? 'bg',
         }),
       });
       const body = (await res.json()) as {
@@ -610,19 +605,7 @@ function NotificationsOverview({
                         autoComplete="off"
                       />
                     </label>
-                    <label className="block space-y-1">
-                      <span className="text-xs text-muted">{t('admin.emailLocale')}</span>
-                      <select
-                        className={adminFieldClass}
-                        value={templateLocale}
-                        disabled={!canManage || saving}
-                        onChange={(e) => setTemplateLocale(e.target.value as EmailTemplateLocale)}
-                      >
-                        <option value="bg">{t('admin.emailLocaleBg')}</option>
-                        <option value="ru">{t('admin.emailLocaleRu')}</option>
-                        <option value="en">{t('admin.emailLocaleEn')}</option>
-                      </select>
-                    </label>
+                    <p className="text-xs text-muted">{t('admin.tplOutboundLocaleNote')}</p>
                   </div>
                 </details>
 

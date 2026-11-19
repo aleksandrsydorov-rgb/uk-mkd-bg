@@ -35,9 +35,13 @@ export type RenderTransactionalResult = {
 };
 
 function normalizeLocale(locale: Locale): EmailTemplateLocale {
-  return ['bg', 'ru', 'en'].includes(String(locale))
-    ? (locale as EmailTemplateLocale)
-    : 'bg';
+  // Outbound mail is Bulgarian-only; unknown / empty → bg (never invent a RU/EN fallback).
+  const raw = String(locale ?? '')
+    .trim()
+    .toLowerCase()
+    .slice(0, 2);
+  if (raw === 'bg' || raw === 'ru' || raw === 'en') return raw as EmailTemplateLocale;
+  return 'bg';
 }
 
 /** Built-in RU/BG/EN parts with {{variables}} — basis for editor defaults. */

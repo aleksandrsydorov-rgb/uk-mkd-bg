@@ -85,6 +85,12 @@ export type EmailDeliveryStatus =
 
 export type EmailTemplateLocale = 'bg' | 'ru' | 'en';
 
+/**
+ * AMADEUS 11 outbound mail is Bulgarian-only.
+ * UI chrome may stay RU/BG/EN; recipient prefs and complex template_locale are ignored for send.
+ */
+export const EMAIL_OUTBOUND_LOCALE: EmailTemplateLocale = 'bg';
+
 export type EmailConnectionStatus =
   | 'not_configured'
   | 'enabled_untested'
@@ -203,16 +209,15 @@ export function buildIdempotencyKey(parts: Array<string | number | null | undefi
     .join(':');
 }
 
-/** Prefer recipient language; fall back to installation default (bg). */
+/**
+ * Outbound email language for AMADEUS 11 — always Bulgarian.
+ * Arguments are accepted for call-site compatibility and intentionally ignored.
+ */
 export function resolveEmailLocale(
-  preferred?: string | null,
-  installationDefault?: string | null
+  _preferred?: string | null,
+  _installationDefault?: string | null
 ): EmailTemplateLocale {
-  const cand = String(preferred ?? '').trim().toLowerCase().slice(0, 2);
-  if (cand === 'bg' || cand === 'ru' || cand === 'en') return cand;
-  const def = String(installationDefault ?? '').trim().toLowerCase().slice(0, 2);
-  if (def === 'bg' || def === 'ru' || def === 'en') return def;
-  return 'bg';
+  return EMAIL_OUTBOUND_LOCALE;
 }
 
 /** Provider errors that must not be retried blindly. */
@@ -853,7 +858,7 @@ export async function enqueueTransactionalEmail(
             p_event_key: eventKey,
             p_module_key: consumer.module,
             p_template_key: args.templateKey,
-            p_locale: args.locale ?? 'bg',
+            p_locale: EMAIL_OUTBOUND_LOCALE,
             p_payload: payload as Json,
             p_idempotency_key: key,
           } as never
@@ -920,7 +925,8 @@ export async function enqueueTransactionalEmail(
     p_module_key: consumer.module,
     p_template_key: args.templateKey,
     p_to_email: toEmail,
-    p_locale: args.locale ?? null,
+    // Always store Bulgarian — ignore caller/UI/profile/template_locale.
+    p_locale: EMAIL_OUTBOUND_LOCALE,
     p_subject: args.subject ?? null,
     p_payload: payload as Json,
   });
@@ -998,7 +1004,7 @@ export async function enqueueAllowlistedTestEmail(
     consumer: 'emailTest',
     toEmail: to,
     templateKey: 'email_test',
-    locale: args.locale,
+    locale: EMAIL_OUTBOUND_LOCALE,
     context: { toEmail: to, nonce },
     payload: {
       note: args.note ?? 'controlled_test',

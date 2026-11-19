@@ -2934,11 +2934,13 @@ export const ru = {
     notifyTabHistory: 'История отправок',
     tplTitle: 'Шаблоны писем',
     tplLead:
-      'Готовые шаблоны RU/BG/EN для всех типов уведомлений. Можно изменить тему и текст для комплекса — без HTML и без перезапуска.',
+      'Исходящие письма комплекса только на болгарском. Редактируется болгарская версия темы и текста — без HTML и без перезапуска.',
     tplApplyMoment:
-      'Шаблон применяется в момент отправки. Уже поставленные в очередь письма не переписываются задним числом. Сохранение шаблона само письма не отправляет.',
+      'Шаблон применяется в момент отправки (всегда на болгарском). Уже отправленная история не меняется; очередь и повторы пересобираются по болгарскому шаблону. Сохранение шаблона само письма не отправляет.',
     tplSelectType: 'Тип уведомления',
     tplSelectLocale: 'Язык шаблона',
+    tplOutboundLocaleNote:
+      'Все исходящие письма отправляются только на болгарском. Язык интерфейса и старые настройки языка писем не влияют.',
     tplBadgeBuiltin: 'Стандартный',
     tplBadgeCustom: 'Изменённый',
     tplUnsaved: 'Есть несохранённые изменения',
@@ -8810,11 +8812,13 @@ export const en: Messages = {
     notifyTabHistory: 'Send history',
     tplTitle: 'Email templates',
     tplLead:
-      'Ready RU/BG/EN templates for every notification type. Edit subject and body for this complex — no HTML required, no restart.',
+      'Complex outbound mail is Bulgarian only. Edit the Bulgarian subject and body — no HTML required, no restart.',
     tplApplyMoment:
-      'Templates are applied at send time. Queued messages are not rewritten retroactively. Saving a template does not send mail.',
+      'Templates are applied at send time (always Bulgarian). Sent history is not changed; the queue and retries rebuild from the Bulgarian template. Saving a template does not send mail.',
     tplSelectType: 'Notification type',
     tplSelectLocale: 'Template language',
+    tplOutboundLocaleNote:
+      'All outbound mail is sent in Bulgarian only. UI language and older mail-language settings have no effect.',
     tplBadgeBuiltin: 'Default',
     tplBadgeCustom: 'Customized',
     tplUnsaved: 'Unsaved changes',
@@ -14697,11 +14701,13 @@ export const bg: Messages = {
     notifyTabHistory: 'История на изпращания',
     tplTitle: 'Шаблони за писма',
     tplLead:
-      'Готови шаблони RU/BG/EN за всички типове известия. Можете да промените тема и текст за комплекса — без HTML и без рестарт.',
+      'Изходящите писма на комплекса са само на български. Редактира се българската тема и текст — без HTML и без рестарт.',
     tplApplyMoment:
-      'Шаблонът се прилага в момента на изпращане. Вече опашката не се пренаписва. Запазването на шаблон само по себе си не изпраща писма.',
+      'Шаблонът се прилага в момента на изпращане (винаги на български). Вече изпратената история не се променя; опашката и повторите се сглобяват по българския шаблон. Запазването на шаблон само по себе си не изпраща писма.',
     tplSelectType: 'Тип известие',
     tplSelectLocale: 'Език на шаблона',
+    tplOutboundLocaleNote:
+      'Всички изходящи писма се изпращат само на български. Езикът на интерфейса и старите настройки за език на писма не влияят.',
     tplBadgeBuiltin: 'Стандартен',
     tplBadgeCustom: 'Променен',
     tplUnsaved: 'Има незапазени промени',

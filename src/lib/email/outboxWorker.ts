@@ -7,6 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import {
+  EMAIL_OUTBOUND_LOCALE,
   hasActiveMailCredential,
   hasLettermintProjectToken,
   isEmailSendingEnvEnabled,
@@ -502,7 +503,7 @@ export async function runOutboxWorker(opts: {
             p_event_key: eventKey,
             p_module_key: row.module_key,
             p_template_key: row.template_key,
-            p_locale: row.locale,
+            p_locale: EMAIL_OUTBOUND_LOCALE,
             p_payload: payload,
             p_idempotency_key: `digest-move:${row.idempotency_key}`,
           } as never);
@@ -551,13 +552,14 @@ export async function runOutboxWorker(opts: {
       continue;
     }
 
-    // Template applied at send time (current builtin + complex override).
-    // Saving a template does not rewrite already-queued outbox rows.
+    // Template applied at send time (Bulgarian builtin + complex BG override).
+    // Queued rows may still store an older locale/subject — ignore them for render.
+    // Sent history rows are never rewritten.
     let override: EmailTemplateOverride | null = null;
     try {
       const ovRes = await opts.supabase.rpc('email_core_get_template_override' as never, {
         p_template_key: row.template_key,
-        p_locale: ['bg', 'ru', 'en'].includes(row.locale) ? row.locale : 'bg',
+        p_locale: EMAIL_OUTBOUND_LOCALE,
       } as never);
       if (ovRes.data && typeof ovRes.data === 'object') {
         override = ovRes.data as EmailTemplateOverride;
@@ -568,9 +570,9 @@ export async function runOutboxWorker(opts: {
 
     const rendered = renderTransactionalEmail({
       templateKey: row.template_key,
-      locale: row.locale,
-      // Prefer live template subject when an override exists; else keep enqueue subject.
-      subject: override?.subject ? null : row.subject,
+      locale: EMAIL_OUTBOUND_LOCALE,
+      // Always use live Bulgarian template subject — never reuse a prior-language enqueue subject.
+      subject: null,
       payload: row.payload,
       complexName: senderName || null,
       override,

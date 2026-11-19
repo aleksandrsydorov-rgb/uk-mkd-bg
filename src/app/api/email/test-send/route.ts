@@ -212,15 +212,11 @@ export async function POST(request: Request) {
     }
   }
 
-  // Language = complex email template_locale from the admin form (not the UI chrome language).
-  const locale =
-    body.locale === 'ru' || body.locale === 'en' || body.locale === 'bg' ? body.locale : 'bg';
-
+  // AMADEUS 11: outbound mail is always Bulgarian (ignore body.locale / UI / settings).
   let enqueue;
   try {
     enqueue = await enqueueAllowlistedTestEmail(supabase, {
       toEmail,
-      locale,
       note: 'admin_ui_connection_probe',
       skipPolicyCheck: true,
     });

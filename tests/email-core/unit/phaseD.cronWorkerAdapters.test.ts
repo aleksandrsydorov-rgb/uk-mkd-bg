@@ -16,20 +16,19 @@ import { emailCoreNotifyMeeting } from '@/lib/emailCoreAdapters';
 import { renderTransactionalEmail } from '@/lib/email/templates';
 
 describe('Email Core Phase D · locale', () => {
-  it('resolves recipient preferred locale then installation default', () => {
-    expect(resolveEmailLocale('ru', 'bg')).toBe('ru');
-    expect(resolveEmailLocale(null, 'en')).toBe('en');
-    expect(resolveEmailLocale('xx', 'bg')).toBe('bg');
+  it('forces Bulgarian for outbound regardless of preferred / installation locale', () => {
+    expect(resolveEmailLocale('ru', 'bg')).toBe('bg');
+    expect(resolveEmailLocale(null, 'en')).toBe('bg');
+    expect(resolveEmailLocale('xx', 'en')).toBe('bg');
     expect(resolveEmailLocale(undefined, undefined)).toBe('bg');
+    expect(resolveEmailLocale('en', 'ru')).toBe('bg');
   });
 
-  it('renders BG / RU / EN subjects for email_test', () => {
+  it('email_test Bulgarian subject is used for outbound (builtin packs may still exist for other locales)', () => {
     expect(renderTransactionalEmail({ templateKey: 'email_test', locale: 'bg' }).subject).toMatch(
       /тестов/i
     );
-    expect(renderTransactionalEmail({ templateKey: 'email_test', locale: 'ru' }).subject).toMatch(
-      /тестов/i
-    );
+    // Legacy packs remain in source for reference, but outbound policy uses bg only.
     expect(renderTransactionalEmail({ templateKey: 'email_test', locale: 'en' }).subject).toMatch(
       /test message/i
     );

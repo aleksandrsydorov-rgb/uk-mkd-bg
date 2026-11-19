@@ -14,6 +14,7 @@ import {
   listEditableTemplateKeys,
   variablesForTemplate,
 } from '@/lib/email/templateVariables';
+import { EMAIL_OUTBOUND_LOCALE } from '@/lib/emailCore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,9 +39,9 @@ async function requireAdmin() {
   return { ok: true as const, supabase, user };
 }
 
-function asLocale(raw: unknown): Locale {
-  const v = String(raw ?? '').trim().toLowerCase();
-  return v === 'ru' || v === 'en' || v === 'bg' ? v : 'bg';
+/** AMADEUS 11: template editor and overrides are Bulgarian-only. */
+function asLocale(_raw?: unknown): Locale {
+  return EMAIL_OUTBOUND_LOCALE;
 }
 
 function eventLabelKey(templateKey: string): string {
@@ -77,6 +78,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       apply_moment: 'send_time',
+      outbound_locale: EMAIL_OUTBOUND_LOCALE,
       auth_templates_editable: false,
       templates: editable.map((key) => ({
         template_key: key,

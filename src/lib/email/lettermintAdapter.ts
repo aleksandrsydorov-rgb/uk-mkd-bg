@@ -141,7 +141,7 @@ export function createLettermintAdapter(opts: {
           status: res.status,
         };
       }
-      return { ok: true, providerMessageId: messageId };
+      return { ok: true, providerMessageId: messageId, status: res.status };
     },
   };
 }

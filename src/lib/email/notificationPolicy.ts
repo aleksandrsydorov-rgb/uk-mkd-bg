@@ -149,12 +149,14 @@ export function evaluateNotificationPolicy(input: PolicyEvalInput): PolicyDecisi
     }
 
     if (mode === 'IMPORTANT_ONLY' && ev.importance === 'informational') {
-      return {
-        allow: false,
-        channel: 'none',
-        reason: 'personal_important_only',
-        suppressed: true,
-      };
+      if (!(input.isAdminControlledTest && ev.eventKey === 'email_test')) {
+        return {
+          allow: false,
+          channel: 'none',
+          reason: 'personal_important_only',
+          suppressed: true,
+        };
+      }
     }
 
     if (mode === 'CUSTOM') {

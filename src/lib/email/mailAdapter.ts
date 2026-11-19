@@ -59,19 +59,39 @@ export async function createMailAdapterForWorker(opts: {
 
   if (provider === 'lettermint') {
     let apiKey = '';
+    let decryptFailed = false;
     try {
       const tokenRes = await opts.supabase.rpc(
         'email_core_worker_get_provider_token_ciphertext' as never
       );
       const cipher = tokenRes.data as unknown;
       if (!tokenRes.error && typeof cipher === 'string' && cipher.trim()) {
-        apiKey = decryptProviderToken(cipher, env);
+        try {
+          apiKey = decryptProviderToken(cipher, env);
+        } catch {
+          // Ciphertext present but EMAIL_SETTINGS_ENCRYPTION_KEY does not match
+          // the key used at save time — do not treat as "no token configured".
+          decryptFailed = true;
+          apiKey = '';
+        }
       }
     } catch {
       apiKey = '';
     }
     if (!apiKey) {
       apiKey = (env.LETTERMINT_PROJECT_TOKEN ?? '').trim();
+    }
+    if (!apiKey && decryptFailed) {
+      return {
+        name: 'lettermint' as const,
+        async send(): Promise<MailSendResult> {
+          return {
+            ok: false,
+            errorCode: 'token_decrypt_failed',
+            responseClass: 'rejected',
+          };
+        },
+      };
     }
     return createLettermintAdapter({ apiKey, http: opts.http });
   }

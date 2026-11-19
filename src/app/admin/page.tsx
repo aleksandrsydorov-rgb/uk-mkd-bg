@@ -1613,7 +1613,7 @@ function AdminPortal() {
     if (!allowed || !authReady || sectionQuery !== 'уведомления') return;
     const raw = searchParams.get('tab');
     if (!raw) return;
-    if ((['overview', 'settings', 'history'] as string[]).includes(raw)) return;
+    if ((['overview', 'settings', 'templates', 'history'] as string[]).includes(raw)) return;
     openSectionTab('уведомления', 'overview');
   }, [allowed, authReady, openSectionTab, searchParams, sectionQuery]);
 

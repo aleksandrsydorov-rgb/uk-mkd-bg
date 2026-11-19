@@ -14,7 +14,7 @@ export type MailSendInput = {
 };
 
 export type MailSendResult =
-  | { ok: true; providerMessageId: string }
+  | { ok: true; providerMessageId: string; status?: number }
   | {
       ok: false;
       errorCode: string;

@@ -44,9 +44,10 @@ import {
   type EmailTemplateLocale,
 } from '@/lib/emailCore';
 import { isMissingRpcError } from '@/lib/ownershipChange';
-import { LayoutDashboard, Settings2, History } from 'lucide-react';
+import { LayoutDashboard, Settings2, History, FileText } from 'lucide-react';
+import { NotificationsTemplatesPanel } from '@/components/admin/NotificationsTemplatesPanel';
 
-export const NOTIFICATIONS_TABS = ['overview', 'settings', 'history'] as const;
+export const NOTIFICATIONS_TABS = ['overview', 'settings', 'templates', 'history'] as const;
 export type NotificationsTabId = (typeof NOTIFICATIONS_TABS)[number];
 
 export function parseNotificationsTab(raw: string | null | undefined): NotificationsTabId {
@@ -162,6 +163,12 @@ export function AdminNotificationsWorkplace({
         href: `/admin?section=${encodeURIComponent('уведомления')}&tab=settings`,
       },
       {
+        id: 'templates' as const,
+        label: t('admin.notifyTabTemplates'),
+        icon: FileText,
+        href: `/admin?section=${encodeURIComponent('уведомления')}&tab=templates`,
+      },
+      {
         id: 'history' as const,
         label: t('admin.notifyTabHistory'),
         icon: History,
@@ -192,6 +199,13 @@ export function AdminNotificationsWorkplace({
       {activeTab === 'settings' ? (
         <NotificationsSettings
           supabase={supabase}
+          canManage={canManage}
+          dirty={policyDirty}
+          onDirtyChange={markDirty}
+        />
+      ) : null}
+      {activeTab === 'templates' ? (
+        <NotificationsTemplatesPanel
           canManage={canManage}
           dirty={policyDirty}
           onDirtyChange={markDirty}

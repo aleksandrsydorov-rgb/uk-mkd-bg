@@ -975,7 +975,13 @@ export function honestyFromEnqueue(
 /** Queue a single allowlisted test message (no send until host+DB gates allow). */
 export async function enqueueAllowlistedTestEmail(
   supabase: Sb,
-  args: { toEmail: string; locale?: EmailTemplateLocale | null; note?: string | null }
+  args: {
+    toEmail: string;
+    locale?: EmailTemplateLocale | null;
+    note?: string | null;
+    /** Admin connection probe: skip personal/complex category prefs (not registration for ordinary mail). */
+    skipPolicyCheck?: boolean;
+  }
 ): Promise<EmailEnqueueResult & { honesty: ModuleHonestyStatus }> {
   const to = normalizeEmail(args.toEmail);
   const nonce = `${Date.now()}`;
@@ -988,6 +994,8 @@ export async function enqueueAllowlistedTestEmail(
     payload: {
       note: args.note ?? 'controlled_test',
       queued_at: new Date().toISOString(),
+      admin_connection_probe: args.skipPolicyCheck === true,
     },
+    skipPolicyCheck: args.skipPolicyCheck === true,
   });
 }

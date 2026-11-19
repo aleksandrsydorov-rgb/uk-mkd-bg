@@ -16,7 +16,11 @@ import {
 } from '@/lib/emailCore';
 import { createMailAdapterForWorker } from '@/lib/email/mailAdapter';
 import type { MailAdapter } from '@/lib/email/mailSend';
-import { renderTransactionalEmail } from '@/lib/email/templates';
+import {
+  renderTransactionalEmail,
+  validateRenderedTemplate,
+  type EmailTemplateOverride,
+} from '@/lib/email/templates';
 import { isNonPublicInviteUrl } from '@/lib/publicAppUrl';
 import {
   getEmailEvent,
@@ -37,6 +41,19 @@ export type WorkerRunResult = {
   retried: number;
   cancelled?: number;
   reviewed?: number;
+  /** Outbox ids this run claimed (safe diagnostics). */
+  claimed_ids?: number[];
+  /** Last provider attempt diagnostics (no tokens/bodies). */
+  last_send?: {
+    outbox_id: number;
+    module_key: string;
+    blocked_stage?: string;
+    provider?: string;
+    http_status?: number | null;
+    error_code?: string | null;
+    provider_message_id?: string | null;
+    ok?: boolean;
+  };
 };
 
 type EnvProbe = Record<string, string | undefined>;
@@ -121,8 +138,13 @@ export async function runOutboxWorker(opts: {
   adapter?: MailAdapter;
   http?: { fetch: typeof fetch };
   limit?: number;
+  /** When set, claim only these outbox ids (admin connection probe). Skips digest flush. */
+  outboxIds?: number[];
 }): Promise<WorkerRunResult> {
   const env = opts.env ?? (process.env as EnvProbe);
+  const targetedIds = (opts.outboxIds ?? [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0);
 
   // Fast host kill-switch before any RPC.
   if (!isEmailSendingEnvEnabled(env)) {
@@ -134,6 +156,11 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage: 'host_sending_disabled',
+      },
     };
   }
 
@@ -149,6 +176,11 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage: 'worker_context_failed',
+      },
     };
   }
 
@@ -166,6 +198,11 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage: gate.reason ?? 'worker_gate',
+      },
     };
   }
 
@@ -178,6 +215,11 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage: 'db_not_ready',
+      },
     };
   }
 
@@ -192,16 +234,24 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage: 'sender_missing',
+      },
     };
   }
 
   // Flush prior-day digests into outbox (canonical worker — no separate scheduler).
-  try {
-    await opts.supabase.rpc('email_core_digest_flush_ready' as never, {
-      p_before_day: null,
-    } as never);
-  } catch {
-    /* migration may be absent */
+  // Targeted admin probes must not flush digests into the same run.
+  if (targetedIds.length === 0) {
+    try {
+      await opts.supabase.rpc('email_core_digest_flush_ready' as never, {
+        p_before_day: null,
+      } as never);
+    } catch {
+      /* migration may be absent */
+    }
   }
 
   const limit = Math.min(
@@ -209,10 +259,21 @@ export async function runOutboxWorker(opts: {
     EMAIL_WORKER_MAX_BATCH
   );
 
-  const { data: batchRaw, error: claimErr } = await opts.supabase.rpc(
-    'email_core_claim_outbox_batch',
-    { p_limit: limit }
-  );
+  let batchRaw: unknown;
+  let claimErr: { message: string } | null = null;
+  if (targetedIds.length > 0) {
+    const claimed = await opts.supabase.rpc('email_core_claim_outbox_ids' as never, {
+      p_ids: targetedIds,
+    } as never);
+    batchRaw = claimed.data;
+    claimErr = claimed.error;
+  } else {
+    const claimed = await opts.supabase.rpc('email_core_claim_outbox_batch', {
+      p_limit: limit,
+    });
+    batchRaw = claimed.data;
+    claimErr = claimed.error;
+  }
   if (claimErr) {
     return {
       ok: false,
@@ -222,6 +283,12 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage: 'claim_failed',
+        error_code: claimErr.message.slice(0, 160),
+      },
     };
   }
 
@@ -235,6 +302,13 @@ export async function runOutboxWorker(opts: {
       sent: 0,
       failed: 0,
       retried: 0,
+      claimed_ids: [],
+      last_send: {
+        outbox_id: targetedIds[0] ?? 0,
+        module_key: 'email_test',
+        blocked_stage:
+          targetedIds.length > 0 ? 'claim_missed_target' : 'empty_batch',
+      },
     };
   }
 
@@ -252,6 +326,7 @@ export async function runOutboxWorker(opts: {
   let retried = 0;
   let cancelled = 0;
   let reviewed = 0;
+  let lastSend: WorkerRunResult['last_send'];
 
   for (const row of rows) {
     const payload = asRecord(row.payload);
@@ -271,6 +346,13 @@ export async function runOutboxWorker(opts: {
       // Force terminal via permanent code (migration) or local cancel fallback.
       cancelled += 1;
       failed += 1;
+      lastSend = {
+        outbox_id: row.id,
+        module_key: row.module_key,
+        blocked_stage: 'invalid_invite_link',
+        error_code: 'invalid_invite_link',
+        ok: false,
+      };
       continue;
     }
 
@@ -282,10 +364,13 @@ export async function runOutboxWorker(opts: {
         templateKey: row.template_key,
         payload,
       });
+    // Admin connection probe (email_test): explicit recipient, no registration /
+    // personal category barrier. Ordinary modules still fail closed.
+    const isAdminConnectionProbe = row.module_key === 'email_test';
     const allowBeforeRegistration =
+      isAdminConnectionProbe ||
       row.module_key === 'pb1_invite' ||
       row.module_key === 'user_activation' ||
-      row.module_key === 'email_test' ||
       row.module_key === 'auth' ||
       getEmailEvent(eventKey)?.importance === 'security_mandatory';
 
@@ -301,6 +386,13 @@ export async function runOutboxWorker(opts: {
             p_reason: 'blocked_not_registered',
           } as never);
           cancelled += 1;
+          lastSend = {
+            outbox_id: row.id,
+            module_key: row.module_key,
+            blocked_stage: 'blocked_not_registered',
+            error_code: 'blocked_not_registered',
+            ok: false,
+          };
           continue;
         }
         // Do not send events that originated before registration completed.
@@ -329,6 +421,13 @@ export async function runOutboxWorker(opts: {
             p_reason: 'blocked_unknown_event_time',
           } as never);
           cancelled += 1;
+          lastSend = {
+            outbox_id: row.id,
+            module_key: row.module_key,
+            blocked_stage: 'blocked_unknown_event_time',
+            error_code: 'blocked_unknown_event_time',
+            ok: false,
+          };
           continue;
         }
         if (completedAt && eventOccurredMs < new Date(completedAt).getTime()) {
@@ -337,6 +436,13 @@ export async function runOutboxWorker(opts: {
             p_reason: 'blocked_pre_registration_event',
           } as never);
           cancelled += 1;
+          lastSend = {
+            outbox_id: row.id,
+            module_key: row.module_key,
+            blocked_stage: 'blocked_pre_registration_event',
+            error_code: 'blocked_pre_registration_event',
+            ok: false,
+          };
           continue;
         }
       } catch {
@@ -346,11 +452,23 @@ export async function runOutboxWorker(opts: {
           p_reason: 'blocked_not_registered',
         } as never);
         cancelled += 1;
+        lastSend = {
+          outbox_id: row.id,
+          module_key: row.module_key,
+          blocked_stage: 'blocked_not_registered',
+          error_code: 'blocked_not_registered',
+          ok: false,
+        };
         continue;
       }
     }
 
-    if (eventKey && getEmailEvent(eventKey)?.importance !== 'security_mandatory') {
+    // Admin connection probe skips personal/complex notification categories.
+    if (
+      !isAdminConnectionProbe &&
+      eventKey &&
+      getEmailEvent(eventKey)?.importance !== 'security_mandatory'
+    ) {
       try {
         const snap = await fetchPolicySnapshotForRecipient(opts.supabase, {
           toEmail: row.to_email,
@@ -360,7 +478,7 @@ export async function runOutboxWorker(opts: {
           complex: snap.complex,
           personal: snap.personal,
           phase: 'dispatch',
-          isAdminControlledTest: row.module_key === 'email_test',
+          isAdminControlledTest: false,
         });
         if (!decision.allow) {
           await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
@@ -368,6 +486,13 @@ export async function runOutboxWorker(opts: {
             p_reason: decision.reason,
           } as never);
           cancelled += 1;
+          lastSend = {
+            outbox_id: row.id,
+            module_key: row.module_key,
+            blocked_stage: decision.reason,
+            error_code: decision.reason,
+            ok: false,
+          };
           continue;
         }
         if (decision.channel === 'digest') {
@@ -386,6 +511,13 @@ export async function runOutboxWorker(opts: {
             p_reason: 'moved_to_digest',
           } as never);
           cancelled += 1;
+          lastSend = {
+            outbox_id: row.id,
+            module_key: row.module_key,
+            blocked_stage: 'moved_to_digest',
+            error_code: 'moved_to_digest',
+            ok: false,
+          };
           continue;
         }
       } catch {
@@ -410,16 +542,58 @@ export async function runOutboxWorker(opts: {
         /* The claim row stays sending until reclaim applies the same hold. */
       }
       reviewed += 1;
+      lastSend = {
+        outbox_id: row.id,
+        module_key: row.module_key,
+        blocked_stage: 'idempotency_window_review',
+        ok: false,
+      };
       continue;
+    }
+
+    // Template applied at send time (current builtin + complex override).
+    // Saving a template does not rewrite already-queued outbox rows.
+    let override: EmailTemplateOverride | null = null;
+    try {
+      const ovRes = await opts.supabase.rpc('email_core_get_template_override' as never, {
+        p_template_key: row.template_key,
+        p_locale: ['bg', 'ru', 'en'].includes(row.locale) ? row.locale : 'bg',
+      } as never);
+      if (ovRes.data && typeof ovRes.data === 'object') {
+        override = ovRes.data as EmailTemplateOverride;
+      }
+    } catch {
+      override = null;
     }
 
     const rendered = renderTransactionalEmail({
       templateKey: row.template_key,
       locale: row.locale,
-      subject: row.subject,
+      // Prefer live template subject when an override exists; else keep enqueue subject.
+      subject: override?.subject ? null : row.subject,
       payload: row.payload,
       complexName: senderName || null,
+      override,
     });
+    const renderCheck = validateRenderedTemplate(rendered);
+    if (!renderCheck.ok) {
+      await opts.supabase.rpc('email_core_complete_outbox_send', {
+        p_outbox_id: row.id,
+        p_ok: false,
+        p_provider_message_id: null,
+        p_error_code: `permanent:${renderCheck.reason ?? 'template_render_invalid'}`,
+        p_provider_response_class: 'rejected',
+      });
+      failed += 1;
+      lastSend = {
+        outbox_id: row.id,
+        module_key: row.module_key,
+        blocked_stage: renderCheck.reason ?? 'template_render_invalid',
+        error_code: renderCheck.reason ?? 'template_render_invalid',
+        ok: false,
+      };
+      continue;
+    }
 
     const result = await adapter.send({
       to: row.to_email,
@@ -447,6 +621,14 @@ export async function runOutboxWorker(opts: {
         }
       }
       sent += 1;
+      lastSend = {
+        outbox_id: row.id,
+        module_key: row.module_key,
+        provider: adapter.name,
+        http_status: result.status ?? null,
+        provider_message_id: result.providerMessageId,
+        ok: true,
+      };
     } else {
       const permanent = isPermanentProviderFailure(result.errorCode, result.responseClass);
       const errorCode = permanent
@@ -467,6 +649,15 @@ export async function runOutboxWorker(opts: {
           : '';
       if (status === 'failed' || permanent) failed += 1;
       else retried += 1;
+      lastSend = {
+        outbox_id: row.id,
+        module_key: row.module_key,
+        provider: adapter.name,
+        http_status: result.status ?? null,
+        error_code: errorCode,
+        ok: false,
+        blocked_stage: 'provider_rejected',
+      };
     }
   }
 
@@ -479,6 +670,8 @@ export async function runOutboxWorker(opts: {
     retried,
     cancelled,
     reviewed,
+    claimed_ids: rows.map((r) => Number(r.id)),
+    last_send: lastSend,
   };
 }
 

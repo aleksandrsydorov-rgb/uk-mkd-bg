@@ -49,10 +49,14 @@ import {
   type AdminUtilityTab,
 } from '@/components/admin/AdminUi';
 import { SectionPanelTabs } from '@/components/ui/SectionPanelTabs';
+import { WorkplaceCardShell } from '@/components/ui/WorkplaceCardShell';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
+import { AdminWaterMetersRegister } from '@/components/admin/AdminWaterMetersRegister';
 import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
+import type { WaterMeterRegisterRow } from '@/lib/waterMetersRegister';
+import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
 import {
   emptyReceiptPayFields,
@@ -190,6 +194,14 @@ export function AdminWater({
   const [correctBusy, setCorrectBusy] = useState(false);
   const [localTab, setLocalTab] = useState<AdminUtilityTab>('overview');
   const [moduleTotals, setModuleTotals] = useState<UtilityModuleTotals | null>(null);
+  const [detailMeterId, setDetailMeterId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = new URLSearchParams(window.location.search).get('meter');
+    return raw && raw.trim() ? raw.trim() : null;
+  });
+  const metersListScrollRef = useRef<HTMLDivElement | null>(null);
+  const metersListScrollTopRef = useRef(0);
+  const meterReturnFocusRef = useRef<HTMLElement | null>(null);
   const activeTab = onTabChange
     ? parseAdminUtilityTab(tab, allowedWaterTabs)
     : parseAdminUtilityTab(localTab, allowedWaterTabs);
@@ -239,9 +251,15 @@ export function AdminWater({
   const correctKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
-    // Overview/finance show the complex register — do not auto-pick an apartment.
-    // Meter / readings / history still need a property for the existing detail panels.
-    if (activeTab === 'finance' || activeTab === 'overview') return;
+    // Overview / finance / meters list — no auto apartment.
+    // Readings / history still need a property for the existing detail panels.
+    if (
+      activeTab === 'finance' ||
+      activeTab === 'overview' ||
+      activeTab === 'meter'
+    ) {
+      return;
+    }
     if (propertyId === '' && sorted[0]) selectProperty(sorted[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once when list arrives
   }, [propertyId, sorted, activeTab]);
@@ -256,13 +274,83 @@ export function AdminWater({
   }, [onTabChange, tab, allowedWaterTabs, localTab, staffRole]);
 
   function selectTab(next: AdminUtilityTab) {
+    if (next !== 'meter' && detailMeterId) {
+      closeMeterDetail({ keepScroll: false });
+    }
     if (onTabChange) onTabChange(next);
     else setLocalTab(next);
   }
 
+  function writeMeterDetailToUrl(meterId: string | null, property: number | '') {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('section', 'вода');
+    params.set('tab', 'meter');
+    if (meterId) params.set('meter', meterId);
+    else params.delete('meter');
+    if (property === '' || property == null) params.delete('property');
+    else params.set('property', String(property));
+    const qs = params.toString();
+    const url = qs ? `${pathname}?${qs}` : pathname;
+    window.history.replaceState(window.history.state, '', url);
+  }
+
+  function openMeterDetail(row: WaterMeterRegisterRow, rowEl: HTMLElement | null) {
+    metersListScrollTopRef.current = metersListScrollRef.current?.scrollTop ?? window.scrollY;
+    meterReturnFocusRef.current = rowEl;
+    setShowAssign(false);
+    setShowReplace(false);
+    setSuccess(null);
+    setError(null);
+    selectProperty(row.propertyId);
+    setDetailMeterId(row.meterId);
+    writeMeterDetailToUrl(row.meterId, row.propertyId);
+  }
+
+  function closeMeterDetail(opts?: { keepScroll?: boolean }) {
+    setDetailMeterId(null);
+    setShowAssign(false);
+    setShowReplace(false);
+    writeMeterDetailToUrl(null, '');
+    onPropertyChange?.('');
+    setPropertyId('');
+    const keepScroll = opts?.keepScroll !== false;
+    if (keepScroll) {
+      requestAnimationFrame(() => {
+        if (metersListScrollRef.current) {
+          metersListScrollRef.current.scrollTop = metersListScrollTopRef.current;
+        } else {
+          window.scrollTo({ top: metersListScrollTopRef.current });
+        }
+      });
+    }
+  }
+
+  // Deep-link: ?tab=meter&meter=<id>&property=<pid>
+  useEffect(() => {
+    if (activeTab !== 'meter') return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const mid = (params.get('meter') ?? '').trim();
+    if (!mid) {
+      if (detailMeterId) setDetailMeterId(null);
+      return;
+    }
+    if (detailMeterId !== mid) setDetailMeterId(mid);
+    const pidRaw = Number(params.get('property') ?? '');
+    if (Number.isFinite(pidRaw) && pidRaw > 0 && propertyId !== pidRaw) {
+      selectProperty(pidRaw);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- URL seed for meter detail
+  }, [activeTab]);
+
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
+  const detailMeter =
+    detailMeterId != null
+      ? meters.find((m) => m.id === detailMeterId) ?? activeMeter
+      : activeMeter;
   const lastReading = lastActiveReading(
-    activeMeter ? readings.filter((r) => r.meter_id === activeMeter.id) : readings,
+    detailMeter ? readings.filter((r) => r.meter_id === detailMeter.id) : readings,
   );
   const historyEntries = useMemo(() => {
     const meterNumbers = new Map(meters.map((m) => [m.id, m.meter_number]));
@@ -674,8 +762,22 @@ export function AdminWater({
     waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
   const onOverview = activeTab === 'overview';
-  const onApartmentScoped =
-    activeTab === 'meter' || activeTab === 'readings' || activeTab === 'history';
+  const onApartmentScoped = activeTab === 'readings' || activeTab === 'history';
+  const detailOpen = activeTab === 'meter' && Boolean(detailMeterId);
+  const detailProperty = sorted.find((p) => p.id === propertyId) ?? null;
+  const detailTitle = detailMeter
+    ? `${t('admin.meterNumber')}: ${detailMeter.meter_number?.trim() ? detailMeter.meter_number : '—'}`
+    : t('admin.waterTabMeters');
+  const detailTitleMeta = detailProperty
+    ? formatPropertyIdentity(
+        {
+          apartment_number: detailProperty.apartment_number,
+          section_code: detailProperty.section_code,
+          block_code: detailProperty.block_code,
+        },
+        t,
+      )
+    : null;
 
   function waterTariffHref() {
     // Normalize via URLSearchParams so Cyrillic section values are not double-encoded in `return`.
@@ -839,18 +941,39 @@ export function AdminWater({
         </AdminCard>
       ) : null}
 
-      {activeTab === 'meter' && (
-      <div className={adminCardClass + ' p-4 md:p-5'}>
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.waterStatus')}</p>
-        {needsInitialOpening ? (
-          <AdminInlineAlert tone="warning">
-            {t('admin.openingStatus_needs_initial_readings')}
-          </AdminInlineAlert>
-        ) : null}
-        {meterLoading ? (
-          <p className="mt-3 text-sm text-muted">{t('common.loading')}</p>
-        ) : !activeMeter ? (
-          <div className="mt-3">
+      {activeTab === 'meter' ? (
+        <AdminWaterMetersRegister
+          supabase={supabase}
+          properties={sorted}
+          canOperate={canSee}
+          focusMeterId={detailMeterId}
+          listScrollRef={metersListScrollRef}
+          onOpenMeter={openMeterDetail}
+        />
+      ) : null}
+
+      <WorkplaceCardShell
+        open={detailOpen}
+        entityKey={detailMeterId ?? 'meter'}
+        title={detailTitle}
+        titleMeta={detailTitleMeta}
+        closeLabel={t('admin.waterMetersDetailClose')}
+        onClose={() => closeMeterDetail()}
+        onRequestClose={() => closeMeterDetail()}
+        returnFocusRef={meterReturnFocusRef}
+      >
+        <div className="space-y-4">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+            {t('admin.waterStatus')}
+          </p>
+          {needsInitialOpening ? (
+            <AdminInlineAlert tone="warning">
+              {t('admin.openingStatus_needs_initial_readings')}
+            </AdminInlineAlert>
+          ) : null}
+          {meterLoading ? (
+            <p className="text-sm text-muted">{t('common.loading')}</p>
+          ) : !detailMeter ? (
             <AdminEmptyState
               title={
                 needsInitialOpening
@@ -858,137 +981,223 @@ export function AdminWater({
                   : t('admin.noWaterMeter')
               }
             />
-          </div>
-        ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.meterNumber')}</div>
-              <div className="mt-0.5 font-semibold tabular-nums">{activeMeter.meter_number}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.installedAt')}</div>
-              <div className="mt-0.5 tabular-nums">{formatOwnerDate(activeMeter.installed_at)}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.initialReading')}</div>
-              <div className="mt-0.5 tabular-nums">{formatM3(Number(activeMeter.initial_reading), locale)}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.lastReading')}</div>
-              <div className="mt-0.5 tabular-nums">
-                {lastReading ? formatM3(Number(lastReading.current_value), locale) : '—'}
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.meterNumber')}</div>
+                <div className="mt-0.5 font-semibold">
+                  {detailMeter.meter_number?.trim() ? detailMeter.meter_number : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.installedAt')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {detailMeter.installed_at ? formatOwnerDate(detailMeter.installed_at) : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.initialReading')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {formatM3(Number(detailMeter.initial_reading), locale)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.lastReading')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {lastReading ? formatM3(Number(lastReading.current_value), locale) : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.prev')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {lastReading
+                    ? formatM3(Number(lastReading.previous_value), locale)
+                    : formatM3(Number(detailMeter.initial_reading), locale)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.lastReadingDate')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {lastReading?.reading_date ? formatOwnerDate(lastReading.reading_date) : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.currentTariff')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {tariff
+                    ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / m³`
+                    : t('admin.noTariff')}
+                </div>
               </div>
             </div>
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.prev')}</div>
-              <div className="mt-0.5 tabular-nums">
-                {lastReading
-                  ? formatM3(Number(lastReading.previous_value), locale)
-                  : formatM3(Number(activeMeter.initial_reading), locale)}
+          )}
+
+          {canMeter ? (
+            <div className="flex flex-wrap gap-2">
+              {!detailMeter ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAssign((v) => !v);
+                    setShowReplace(false);
+                  }}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
+                >
+                  {t('admin.assignMeter')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReplace((v) => !v);
+                    setShowAssign(false);
+                  }}
+                  className="rounded-xl border border-border px-4 py-2 text-sm text-secondary hover:bg-hover"
+                >
+                  {t('admin.replaceMeter')}
+                </button>
+              )}
+            </div>
+          ) : null}
+
+          {canMeter && showAssign ? (
+            <form onSubmit={handleAssign} className="grid gap-3 sm:grid-cols-3">
+              <input
+                className={fieldClass}
+                placeholder={t('admin.meterNumber')}
+                value={meterNumber}
+                onChange={(e) => setMeterNumber(e.target.value)}
+                required
+              />
+              <input
+                className={fieldClass}
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder={t('admin.initialReading')}
+                value={initialReading}
+                onChange={(e) => setInitialReading(e.target.value)}
+                required
+              />
+              <input
+                className={fieldClass}
+                type="date"
+                max={todayIsoDate()}
+                value={installedAt}
+                onChange={(e) => setInstalledAt(e.target.value)}
+                required
+              />
+              <div className="flex gap-2 sm:col-span-3">
+                <button
+                  type="submit"
+                  disabled={meterBusy}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {meterBusy ? t('common.saving') : t('common.save')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAssign(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm text-secondary hover:bg-hover"
+                >
+                  {t('common.cancel')}
+                </button>
               </div>
-            </div>
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.lastReadingDate')}</div>
-              <div className="mt-0.5 tabular-nums">{formatOwnerDate(lastReading?.reading_date)}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-muted">{t('admin.currentTariff')}</div>
-              <div className="mt-0.5 tabular-nums">
-                {tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / m³` : t('admin.noTariff')}
+            </form>
+          ) : null}
+
+          {canMeter && showReplace && detailMeter ? (
+            <form onSubmit={handleReplace} className="grid gap-3 sm:grid-cols-2">
+              <input
+                className={fieldClass}
+                placeholder={t('admin.newMeterNumber')}
+                value={replaceNumber}
+                onChange={(e) => setReplaceNumber(e.target.value)}
+                required
+              />
+              <input
+                className={fieldClass}
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder={t('admin.initialReading')}
+                value={replaceInitial}
+                onChange={(e) => setReplaceInitial(e.target.value)}
+                required
+              />
+              <input
+                className={fieldClass}
+                type="date"
+                max={todayIsoDate()}
+                value={replaceDate}
+                onChange={(e) => setReplaceDate(e.target.value)}
+                required
+              />
+              <input
+                className={fieldClass}
+                placeholder={t('admin.replaceReason')}
+                value={replaceReason}
+                onChange={(e) => setReplaceReason(e.target.value)}
+                required
+              />
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={meterBusy}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {meterBusy ? t('common.saving') : t('common.save')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowReplace(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm text-secondary hover:bg-hover"
+                >
+                  {t('common.cancel')}
+                </button>
               </div>
-            </div>
-          </div>
-        )}
+            </form>
+          ) : null}
 
-        {canMeter && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {!activeMeter && (
-              <button
-                type="button"
-                onClick={() => { setShowAssign((v) => !v); setShowReplace(false); }}
-                className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
-              >
-                {t('admin.assignMeter')}
-              </button>
-            )}
-            {activeMeter && (
-              <button
-                type="button"
-                onClick={() => { setShowReplace((v) => !v); setShowAssign(false); }}
-                className="rounded-xl border border-border px-4 py-2 text-sm text-secondary hover:bg-hover"
-              >
-                {t('admin.replaceMeter')}
-              </button>
-            )}
-          </div>
-        )}
-
-        {canMeter && showAssign && (
-          <form onSubmit={handleAssign} className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input className={fieldClass} placeholder={t('admin.meterNumber')} value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)} required />
-            <input className={fieldClass} type="number" min="0" step="0.1" placeholder={t('admin.initialReading')} value={initialReading} onChange={(e) => setInitialReading(e.target.value)} required />
-            <input className={fieldClass} type="date" max={todayIsoDate()} value={installedAt} onChange={(e) => setInstalledAt(e.target.value)} required />
-            <div className="flex gap-2 sm:col-span-3">
-              <button type="submit" disabled={meterBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
-                {meterBusy ? t('common.saving') : t('common.save')}
-              </button>
-              <button type="button" onClick={() => setShowAssign(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-secondary hover:bg-hover">
-                {t('common.cancel')}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {canMeter && showReplace && activeMeter && (
-          <form onSubmit={handleReplace} className="mt-4 grid gap-3 sm:grid-cols-2">
-            <input className={fieldClass} placeholder={t('admin.newMeterNumber')} value={replaceNumber} onChange={(e) => setReplaceNumber(e.target.value)} required />
-            <input className={fieldClass} type="number" min="0" step="0.1" placeholder={t('admin.initialReading')} value={replaceInitial} onChange={(e) => setReplaceInitial(e.target.value)} required />
-            <input className={fieldClass} type="date" max={todayIsoDate()} value={replaceDate} onChange={(e) => setReplaceDate(e.target.value)} required />
-            <input className={fieldClass} placeholder={t('admin.replaceReason')} value={replaceReason} onChange={(e) => setReplaceReason(e.target.value)} required />
-            <div className="flex gap-2 sm:col-span-2">
-              <button type="submit" disabled={meterBusy} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
-                {meterBusy ? t('common.saving') : t('common.save')}
-              </button>
-              <button type="button" onClick={() => setShowReplace(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-secondary hover:bg-hover">
-                {t('common.cancel')}
-              </button>
-            </div>
-          </form>
-        )}
-
-        <p className="mt-5 text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('admin.utilMeterHistory')}</p>
-        {retiredMeters.length === 0 ? (
-          <div className="mt-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+            {t('admin.utilMeterHistory')}
+          </p>
+          {retiredMeters.length === 0 ? (
             <AdminEmptyState title={t('admin.utilNoMeterHistory')} />
-          </div>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[28rem] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted">
-                  <th className="py-2 pr-3">{t('admin.meterNumber')}</th>
-                  <th className="py-2 pr-3">{t('admin.installedAt')}</th>
-                  <th className="py-2 pr-3">{t('admin.initialReading')}</th>
-                  <th className="py-2 pr-3">{t('admin.date')}</th>
-                  <th className="py-2 pr-3">{t('admin.note')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {retiredMeters.map((row) => (
-                  <tr key={row.id} className="border-t border-border">
-                    <td className="py-2 pr-3 tabular-nums">{row.meter_number}</td>
-                    <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.installed_at)}</td>
-                    <td className="py-2 pr-3 tabular-nums">{formatM3(Number(row.initial_reading), locale)}</td>
-                    <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.retired_at)}</td>
-                    <td className="py-2 pr-3 text-secondary">{row.replacement_reason ?? '—'}</td>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[28rem] text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted">
+                    <th className="py-2 pr-3">{t('admin.meterNumber')}</th>
+                    <th className="py-2 pr-3">{t('admin.installedAt')}</th>
+                    <th className="py-2 pr-3">{t('admin.initialReading')}</th>
+                    <th className="py-2 pr-3">{t('admin.date')}</th>
+                    <th className="py-2 pr-3">{t('admin.note')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      )}
+                </thead>
+                <tbody>
+                  {retiredMeters.map((row) => (
+                    <tr key={row.id} className="border-t border-border">
+                      <td className="py-2 pr-3">{row.meter_number?.trim() ? row.meter_number : '—'}</td>
+                      <td className="py-2 pr-3 tabular-nums">
+                        {row.installed_at ? formatOwnerDate(row.installed_at) : '—'}
+                      </td>
+                      <td className="py-2 pr-3 tabular-nums">
+                        {formatM3(Number(row.initial_reading), locale)}
+                      </td>
+                      <td className="py-2 pr-3 tabular-nums">
+                        {row.retired_at ? formatOwnerDate(row.retired_at) : '—'}
+                      </td>
+                      <td className="py-2 pr-3 text-secondary">{row.replacement_reason ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </WorkplaceCardShell>
 
       {activeTab === 'readings' ? (
         canSubmit ? (

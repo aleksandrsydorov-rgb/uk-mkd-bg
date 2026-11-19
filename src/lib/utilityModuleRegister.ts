@@ -63,7 +63,7 @@ function sectionPrimaryRank(raw: string): number {
   return 1000 + (ch.codePointAt(0) ?? 0);
 }
 
-function compareSectionCodes(a: string, b: string): number {
+export function compareSectionCodes(a: string, b: string): number {
   const as = String(a ?? '').trim();
   const bs = String(b ?? '').trim();
   const byRank = sectionPrimaryRank(as) - sectionPrimaryRank(bs);
@@ -71,7 +71,7 @@ function compareSectionCodes(a: string, b: string): number {
   return sectionCollator.compare(as, bs);
 }
 
-function compareSectionThenBlockThenApartment(
+export function compareSectionThenBlockThenApartment(
   a: UtilityFinanceRegisterRow & { sectionCode?: string; blockCode?: string },
   b: UtilityFinanceRegisterRow & { sectionCode?: string; blockCode?: string },
 ): number {

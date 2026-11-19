@@ -791,8 +791,8 @@ export function AdminUtilityFinanceWorkplace({
             <table className="w-full min-w-[64rem] text-sm">
               <thead>
                 <tr className={adminTableHeadRowClass}>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColApt')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColPrevM3')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColCurrM3')}</th>
@@ -805,10 +805,10 @@ export function AdminUtilityFinanceWorkplace({
               <tbody>
                 {visibleWater.map((row) => (
                   <tr key={row.propertyId} {...rowClickProps(row.propertyId)}>
+                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
                     <td className={adminTableCellClass}>
                       {formatSectionBlock(row.sectionCode, row.blockCode)}
                     </td>
-                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
                     <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
                     <td className={`${adminTableCellClass} tabular-nums`}>
                       {row.previousM3 == null ? '—' : formatM3(row.previousM3, locale)}

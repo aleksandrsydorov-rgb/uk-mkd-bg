@@ -88,6 +88,9 @@ export function emailHistorySkipReasonKey(
   if (err === 'blocked_not_ready' || err.startsWith('blocked_')) {
     return 'admin.emailHistSkipNotReady';
   }
+  if (err === 'cleared_before_controlled_test') {
+    return 'admin.emailHistSkipOther';
+  }
   return 'admin.emailHistSkipOther';
 }
 

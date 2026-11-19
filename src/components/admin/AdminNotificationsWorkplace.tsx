@@ -35,7 +35,6 @@ import {
   type NotifySettingsGroupId,
 } from '@/lib/email/historyStatus';
 import {
-  enqueueAllowlistedTestEmail,
   fetchEmailSettings,
   listEmailHistory,
   updateEmailSettings,
@@ -226,6 +225,7 @@ function NotificationsOverview({
   const [settings, setSettings] = useState<ComplexEmailSettings | null>(null);
   const [hostSendingEnabled, setHostSendingEnabled] = useState<boolean | null>(null);
   const [encryptionConfigured, setEncryptionConfigured] = useState<boolean | null>(null);
+  const [sendBlockReason, setSendBlockReason] = useState<string | null>(null);
   const [recent, setRecent] = useState<EmailHistoryRow[]>([]);
   const [editing, setEditing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -235,6 +235,7 @@ function NotificationsOverview({
   const [complexName, setComplexName] = useState('AMADEUS 11');
   const [replyTo, setReplyTo] = useState('');
   const [templateLocale, setTemplateLocale] = useState<EmailTemplateLocale>('bg');
+  const [testRecipient, setTestRecipient] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,6 +263,7 @@ function NotificationsOverview({
         const health = (await healthRes.json()) as {
           host_sending_enabled?: unknown;
           encryption_configured?: unknown;
+          send_block_reason?: unknown;
         };
         setHostSendingEnabled(
           typeof health.host_sending_enabled === 'boolean' ? health.host_sending_enabled : null
@@ -269,9 +271,13 @@ function NotificationsOverview({
         setEncryptionConfigured(
           typeof health.encryption_configured === 'boolean' ? health.encryption_configured : null
         );
+        setSendBlockReason(
+          typeof health.send_block_reason === 'string' ? health.send_block_reason : null
+        );
       } catch {
         setHostSendingEnabled(null);
         setEncryptionConfigured(null);
+        setSendBlockReason(null);
       }
       try {
         const page = await listEmailHistory(supabase, { limit: 5, offset: 0 });
@@ -359,24 +365,51 @@ function NotificationsOverview({
     setError(null);
     setSuccess(null);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const to = String(user?.email ?? '').trim();
+      const to = testRecipient.trim();
       if (!to || !to.includes('@')) {
-        setError(t('admin.emailTestNoAdminEmail'));
+        setError(t('admin.emailTestRecipientRequired'));
         return;
       }
-      const result = await enqueueAllowlistedTestEmail(supabase, {
-        toEmail: to,
-        locale: (settings?.template_locale ?? 'bg') as EmailTemplateLocale,
-        note: 'admin_ui_controlled_test',
+      const res = await fetch('/api/email/test-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to_email: to,
+          locale: settings?.template_locale ?? 'bg',
+        }),
       });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        reason?: string;
+        honesty?: string;
+        connection_verified?: boolean;
+        worker?: { reason?: string | null; sent?: number; skipped?: boolean };
+      };
       await load();
-      if (result.queued || result.honesty === 'QUEUED') {
-        setSuccess(t('admin.emailTestQueued'));
+      if (!res.ok || !body.ok) {
+        if (body.error === 'host_sending_disabled') setError(t('admin.emailHostGateBlocked'));
+        else if (body.error === 'encryption_key_not_configured')
+          setError(t('admin.emailEncryptionMissing'));
+        else if (body.error === 'invalid_recipient') setError(t('admin.emailTestRecipientRequired'));
+        else if (body.error === 'complex_sending_disabled')
+          setError(t('admin.emailComplexSendingOff'));
+        else if (body.error === 'worker_not_ready') {
+          const reason = String(body.reason ?? body.worker?.reason ?? '');
+          if (reason.includes('LETTERMINT')) setError(t('admin.emailWorkerTokenMissing'));
+          else if (reason.includes('EMAIL_SENDING')) setError(t('admin.emailHostGateBlocked'));
+          else setError(t('admin.emailWorkerUnavailable'));
+        } else if (body.honesty === 'QUEUED' || body.error === 'enqueue_blocked') {
+          setError(t('admin.emailTestAwaitingNotVerified'));
+        } else {
+          setError(t('admin.errGeneric'));
+        }
+        return;
+      }
+      if (body.connection_verified || body.honesty === 'ACCEPTED') {
+        setSuccess(t('admin.emailTestAcceptedByService'));
       } else {
-        setSuccess(t('admin.emailTestBlocked', { status: t('admin.emailHonestyNotReady') }));
+        setError(t('admin.emailTestAwaitingNotVerified'));
       }
     } catch (err) {
       setError(toUserFacingMessage(err, t, { fallback: t('admin.errGeneric') }));
@@ -440,11 +473,15 @@ function NotificationsOverview({
                     ? t('admin.emailKeyStored')
                     : t('admin.emailKeyMissing')}
                 </li>
-                {hostSendingEnabled === false ? (
+                {hostSendingEnabled === false || sendBlockReason === 'host_sending_disabled' ? (
                   <li className="text-danger">{t('admin.emailHostGateHint')}</li>
                 ) : null}
-                {encryptionConfigured === false ? (
+                {encryptionConfigured === false ||
+                sendBlockReason === 'encryption_key_not_configured' ? (
                   <li className="text-danger">{t('admin.emailEncryptionMissing')}</li>
+                ) : null}
+                {hostSendingEnabled === true && settings.email_enabled !== true ? (
+                  <li className="text-danger">{t('admin.emailComplexSendingOff')}</li>
                 ) : null}
               </ul>
             </div>
@@ -549,29 +586,50 @@ function NotificationsOverview({
                 <p className="text-xs text-muted">{t('admin.emailSaveDoesNotSend')}</p>
               </form>
             ) : (
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <AdminPrimaryButton
-                  type="button"
-                  disabled={!canManage || queuingTest || !settings.email_enabled}
-                  onClick={() => void onQueueTest()}
-                >
-                  {queuingTest ? t('admin.emailTestQueuing') : t('admin.emailTestSendAdmin')}
-                </AdminPrimaryButton>
-                <button
-                  type="button"
-                  className={adminBtnSecondaryClass}
-                  disabled={!canManage}
-                  onClick={() => setEditing(true)}
-                >
-                  {t('admin.emailEditConnection')}
-                </button>
-                <AdminDangerButton
-                  type="button"
-                  disabled={!canManage || saving || !settings.email_enabled}
-                  onClick={() => void saveConnection(false)}
-                >
-                  {t('admin.emailDisableSending')}
-                </AdminDangerButton>
+              <div className="space-y-3">
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted">{t('admin.emailTestRecipient')}</span>
+                  <input
+                    className={adminFieldClass}
+                    type="email"
+                    value={testRecipient}
+                    disabled={!canManage || queuingTest}
+                    onChange={(e) => setTestRecipient(e.target.value)}
+                    placeholder={t('admin.emailTestRecipientPlaceholder')}
+                    autoComplete="off"
+                  />
+                  <span className="block text-xs text-muted">{t('admin.emailTestRecipientHint')}</span>
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <AdminPrimaryButton
+                    type="button"
+                    disabled={
+                      !canManage ||
+                      queuingTest ||
+                      !settings.email_enabled ||
+                      hostSendingEnabled === false ||
+                      !testRecipient.trim().includes('@')
+                    }
+                    onClick={() => void onQueueTest()}
+                  >
+                    {queuingTest ? t('admin.emailTestQueuing') : t('admin.emailTestSendAdmin')}
+                  </AdminPrimaryButton>
+                  <button
+                    type="button"
+                    className={adminBtnSecondaryClass}
+                    disabled={!canManage}
+                    onClick={() => setEditing(true)}
+                  >
+                    {t('admin.emailEditConnection')}
+                  </button>
+                  <AdminDangerButton
+                    type="button"
+                    disabled={!canManage || saving || !settings.email_enabled}
+                    onClick={() => void saveConnection(false)}
+                  >
+                    {t('admin.emailDisableSending')}
+                  </AdminDangerButton>
+                </div>
               </div>
             )}
           </div>

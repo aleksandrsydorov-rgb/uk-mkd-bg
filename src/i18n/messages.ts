@@ -2988,6 +2988,18 @@ export const ru = {
     emailSaveEnable: 'Сохранить и включить',
     emailDisableSending: 'Отключить отправку',
     emailTestSendAdmin: 'Отправить тестовое письмо',
+    emailTestRecipient: 'Адрес для тестового письма',
+    emailTestRecipientPlaceholder: 'name@example.com',
+    emailTestRecipientHint:
+      'Укажите реальный адрес получателя. Аккаунт администратора не меняется.',
+    emailTestRecipientRequired: 'Укажите корректный email получателя теста.',
+    emailTestAcceptedByService:
+      'Почтовый сервис принял тестовое письмо. Это ещё не подтверждение доставки.',
+    emailTestAwaitingNotVerified:
+      'Письмо ещё ожидает отправки — это не считается успешной проверкой подключения.',
+    emailComplexSendingOff: 'Отправка в настройках комплекса выключена.',
+    emailWorkerUnavailable: 'Обработчик очереди писем сейчас недоступен.',
+    emailWorkerTokenMissing: 'Ключ почтового сервиса недоступен обработчику.',
     emailSaveDoesNotSend: 'Сохранение само по себе письмо не отправляет.',
     emailSavedEnabled: 'Настройки сохранены. Отправка включена.',
     emailSavedEnabledToken: 'Ключ сохранён. Отправка включена.',
@@ -8797,6 +8809,18 @@ export const en: Messages = {
     emailSaveEnable: 'Save and enable',
     emailDisableSending: 'Disable sending',
     emailTestSendAdmin: 'Send test email',
+    emailTestRecipient: 'Test email recipient',
+    emailTestRecipientPlaceholder: 'name@example.com',
+    emailTestRecipientHint:
+      'Enter a real recipient address. The administrator account is not changed.',
+    emailTestRecipientRequired: 'Enter a valid test recipient email.',
+    emailTestAcceptedByService:
+      'The mail service accepted the test message. This is not delivery confirmation.',
+    emailTestAwaitingNotVerified:
+      'The message is still awaiting send — that is not a successful connection check.',
+    emailComplexSendingOff: 'Sending is turned off in complex settings.',
+    emailWorkerUnavailable: 'The email queue worker is unavailable right now.',
+    emailWorkerTokenMissing: 'The mail service key is unavailable to the worker.',
     emailSaveDoesNotSend: 'Saving does not send a message by itself.',
     emailSavedEnabled: 'Settings saved. Sending is enabled.',
     emailSavedEnabledToken: 'Key stored. Sending is enabled.',
@@ -14618,6 +14642,18 @@ export const bg: Messages = {
     emailSaveEnable: 'Запази и включи',
     emailDisableSending: 'Изключи изпращането',
     emailTestSendAdmin: 'Изпрати тестово писмо',
+    emailTestRecipient: 'Адрес за тестово писмо',
+    emailTestRecipientPlaceholder: 'name@example.com',
+    emailTestRecipientHint:
+      'Посочете реален адрес на получателя. Акаунтът на администратора не се променя.',
+    emailTestRecipientRequired: 'Посочете валиден имейл на получателя за теста.',
+    emailTestAcceptedByService:
+      'Пощенската услуга прие тестовото писмо. Това не е потвърждение за доставка.',
+    emailTestAwaitingNotVerified:
+      'Писмото още очаква изпращане — това не е успешна проверка на връзката.',
+    emailComplexSendingOff: 'Изпращането в настройките на комплекса е изключено.',
+    emailWorkerUnavailable: 'Обработчикът на опашката с писма е недостъпен.',
+    emailWorkerTokenMissing: 'Ключът на пощенската услуга е недостъпен за обработчика.',
     emailSaveDoesNotSend: 'Самото запазване не изпраща писмо.',
     emailSavedEnabled: 'Настройките са запазени. Изпращането е включено.',
     emailSavedEnabledToken: 'Ключът е записан. Изпращането е включено.',

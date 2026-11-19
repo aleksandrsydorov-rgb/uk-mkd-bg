@@ -145,8 +145,20 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  const hostSending = isEmailSendingEnvEnabled();
+  const encryptionConfigured = isEmailSettingsEncryptionConfigured();
+  const workerSecretConfigured = Boolean((process.env.EMAIL_WORKER_SECRET ?? '').trim());
+  const mailProvider = (process.env.EMAIL_MAIL_PROVIDER ?? '').trim().toLowerCase();
   return NextResponse.json({
-    host_sending_enabled: isEmailSendingEnvEnabled(),
-    encryption_configured: isEmailSettingsEncryptionConfigured(),
+    host_sending_enabled: hostSending,
+    encryption_configured: encryptionConfigured,
+    worker_secret_configured: workerSecretConfigured,
+    mail_provider_env: mailProvider === 'lettermint' || mailProvider === 'resend' ? mailProvider : null,
+    // Never expose secrets. Concrete block reasons for the admin UI:
+    send_block_reason: !hostSending
+      ? 'host_sending_disabled'
+      : !encryptionConfigured
+        ? 'encryption_key_not_configured'
+        : null,
   });
 }

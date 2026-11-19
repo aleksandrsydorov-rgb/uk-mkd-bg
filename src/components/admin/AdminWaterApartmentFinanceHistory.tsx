@@ -166,6 +166,7 @@ export function AdminWaterApartmentFinanceHistory({
                           onFillUk={onFillUk}
                           downloadOnly
                           hideStatus
+                          hideDocLabel
                           onReceiptLoaded={(r) => {
                             setReceiptByLedger((prev) =>
                               prev[row.id] === r ? prev : { ...prev, [row.id]: r },

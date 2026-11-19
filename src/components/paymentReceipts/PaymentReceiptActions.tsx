@@ -51,8 +51,10 @@ export function PaymentReceiptActions({
   onReceiptChange,
   onFillUk,
   compact,
-  /** History «Document» column: keep name + actions, hide receipt-ready status badge. */
+  /** History «Document» column: hide receipt-ready status badge. */
   hideStatus = false,
+  /** Document column: icons only — series/number stay inside the PDF, not in the cell. */
+  hideDocLabel = false,
 }: {
   supabase: SupabaseClient;
   receipt: PaymentReceiptRow | null;
@@ -60,6 +62,7 @@ export function PaymentReceiptActions({
   onFillUk?: () => void;
   compact?: boolean;
   hideStatus?: boolean;
+  hideDocLabel?: boolean;
 }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
@@ -203,14 +206,28 @@ export function PaymentReceiptActions({
               ? t('receipt.forming')
               : t('receipt.statusPending');
 
+  const showHeader = !hideDocLabel || !hideStatus;
+
   return (
-    <div className={compact ? 'space-y-2' : 'mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3'}>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium text-foreground">
-          {t('receipt.docLabel', { label: formatReceiptSeriesNumber(receipt) })}
-        </span>
-        {!hideStatus ? <span className="text-xs text-muted">{statusLabel}</span> : null}
-      </div>
+    <div
+      className={
+        hideDocLabel && compact
+          ? 'space-y-0'
+          : compact
+            ? 'space-y-2'
+            : 'mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3'
+      }
+    >
+      {showHeader ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {!hideDocLabel ? (
+            <span className="font-medium text-foreground">
+              {t('receipt.docLabel', { label: formatReceiptSeriesNumber(receipt) })}
+            </span>
+          ) : null}
+          {!hideStatus ? <span className="text-xs text-muted">{statusLabel}</span> : null}
+        </div>
+      ) : null}
 
       {needsUk ? (
         <div className="space-y-1 text-sm text-secondary">

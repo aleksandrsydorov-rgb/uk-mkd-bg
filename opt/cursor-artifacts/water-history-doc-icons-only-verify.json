@@ -1,0 +1,27 @@
+[
+  {
+    "check": "receipt icons in document column",
+    "ok": true,
+    "iconCount": 1
+  },
+  {
+    "check": "no visible series label «Квитанция ·»",
+    "ok": true
+  },
+  {
+    "check": "download + print icons",
+    "ok": true
+  },
+  {
+    "check": "tooltip still works",
+    "ok": true
+  },
+  {
+    "check": "screenshot",
+    "ok": true
+  },
+  {
+    "check": "finance history passes hideDocLabel",
+    "ok": true
+  }
+]

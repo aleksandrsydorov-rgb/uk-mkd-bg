@@ -24,13 +24,13 @@ import {
   type WaterReadingRegisterFilters,
   type WaterReadingRegisterRow,
 } from '@/lib/waterReadingsRegister';
-import type { MeterReadingStatusCode } from '@/lib/meterReadingHistory';
 import {
   AdminEmptyState,
   AdminInlineAlert,
   AdminPrimaryButton,
   AdminSecondaryButton,
   AdminTableShell,
+  adminBtnSecondaryClass,
   adminFieldClass,
   adminTableCellClass,
   adminTableHeadRowClass,
@@ -44,14 +44,6 @@ type PropertyOption = {
   block_code?: string | null;
   owner_name?: string | null;
 };
-
-function statusLabel(code: MeterReadingStatusCode | null, t: (k: string) => string): string {
-  if (code === 'opening') return t('admin.meterHistStatusOpening');
-  if (code === 'pending_review') return t('admin.meterHistStatusPending');
-  if (code === 'accepted') return t('admin.meterHistStatusAccepted');
-  if (code === 'rejected') return t('admin.meterHistStatusRejected');
-  return '—';
-}
 
 function formatVolume(v: number | null, locale: string): string {
   if (v == null) return '—';
@@ -68,6 +60,7 @@ export function AdminWaterReadingsRegister({
   focusMeterId,
   onOpenReading,
   onOpenSubmit,
+  onSubmitReading,
   listScrollRef,
 }: {
   supabase: SupabaseClient<Database>;
@@ -79,6 +72,7 @@ export function AdminWaterReadingsRegister({
   focusMeterId?: string | null;
   onOpenReading: (row: WaterReadingRegisterRow, rowEl: HTMLElement | null) => void;
   onOpenSubmit: () => void;
+  onSubmitReading: (row: WaterReadingRegisterRow, rowEl: HTMLElement | null) => void;
   listScrollRef?: React.MutableRefObject<HTMLDivElement | null>;
 }) {
   const { t, locale } = useI18n();
@@ -322,7 +316,11 @@ export function AdminWaterReadingsRegister({
                   <th className={adminTableCellClass}>{t('admin.utilRegColCurrM3')}</th>
                   <th className={adminTableCellClass}>{t('admin.waterReadingsColDate')}</th>
                   <th className={adminTableCellClass}>{t('admin.waterReadingsColWho')}</th>
-                  <th className={adminTableCellClass}>{t('admin.waterReadingsColStatus')}</th>
+                  {canSubmit ? (
+                    <th className={adminTableCellClass}>
+                      <span className="sr-only">{t('admin.waterReadingsSubmit')}</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -377,7 +375,21 @@ export function AdminWaterReadingsRegister({
                       <td className={adminTableCellClass}>
                         {row.submittedByEmail?.trim() ? row.submittedByEmail : '—'}
                       </td>
-                      <td className={adminTableCellClass}>{statusLabel(row.statusCode, t)}</td>
+                      {canSubmit ? (
+                        <td className={`${adminTableCellClass} whitespace-nowrap`}>
+                          <button
+                            type="button"
+                            className={`${adminBtnSecondaryClass} px-2.5 py-1.5 text-xs`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSubmitReading(row, e.currentTarget);
+                            }}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            {t('admin.waterReadingsSubmit')}
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -388,35 +400,48 @@ export function AdminWaterReadingsRegister({
           <ul className="space-y-2 md:hidden">
             {visible.map((row) => (
               <li key={row.meterId ?? `apt-${row.propertyId}`}>
-                <button
-                  type="button"
-                  data-meter-id={row.meterId ?? ''}
-                  data-property-id={row.propertyId}
-                  className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-left hover:bg-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                  onClick={(e) => onOpenReading(row, e.currentTarget)}
-                >
-                  <p className="text-sm font-medium text-foreground">
-                    {formatPropertyIdentity(
-                      {
-                        apartment_number: row.apartmentNumber || null,
-                        section_code: row.sectionCode || null,
-                        block_code: row.blockCode || null,
-                      },
-                      t,
-                    )}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {formatSectionBlock(row.sectionCode, row.blockCode)} ·{' '}
-                    {row.meterNumber.trim() ? row.meterNumber : '—'}
-                  </p>
-                  <p className="mt-1 text-sm tabular-nums text-foreground">
-                    {formatVolume(row.previousValue, locale)} → {formatVolume(row.currentValue, locale)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-secondary">
-                    {row.readingDate ? formatOwnerDate(row.readingDate) : '—'} ·{' '}
-                    {statusLabel(row.statusCode, t)}
-                  </p>
-                </button>
+                <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+                  <button
+                    type="button"
+                    data-meter-id={row.meterId ?? ''}
+                    data-property-id={row.propertyId}
+                    className="w-full text-left hover:bg-hover/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                    onClick={(e) => onOpenReading(row, e.currentTarget)}
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      {formatPropertyIdentity(
+                        {
+                          apartment_number: row.apartmentNumber || null,
+                          section_code: row.sectionCode || null,
+                          block_code: row.blockCode || null,
+                        },
+                        t,
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {formatSectionBlock(row.sectionCode, row.blockCode)} ·{' '}
+                      {row.meterNumber.trim() ? row.meterNumber : '—'}
+                    </p>
+                    <p className="mt-1 text-sm tabular-nums text-foreground">
+                      {formatVolume(row.previousValue, locale)} → {formatVolume(row.currentValue, locale)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-secondary">
+                      {row.readingDate ? formatOwnerDate(row.readingDate) : '—'}
+                    </p>
+                  </button>
+                  {canSubmit ? (
+                    <button
+                      type="button"
+                      className={`mt-2 w-full ${adminBtnSecondaryClass} px-2.5 py-1.5 text-xs`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSubmitReading(row, e.currentTarget);
+                      }}
+                    >
+                      {t('admin.waterReadingsSubmit')}
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

@@ -57,6 +57,8 @@ import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrecti
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
 import { AdminWaterMetersRegister } from '@/components/admin/AdminWaterMetersRegister';
 import { AdminWaterReadingsRegister } from '@/components/admin/AdminWaterReadingsRegister';
+import { AdminWaterReadingSubmitForm } from '@/components/admin/AdminWaterReadingSubmitForm';
+import { AdminModal } from '@/components/admin/AdminModal';
 import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import type { WaterMeterRegisterRow } from '@/lib/waterMetersRegister';
 import type { WaterReadingRegisterRow } from '@/lib/waterReadingsRegister';
@@ -243,6 +245,7 @@ export function AdminWater({
     return raw && raw.trim() ? raw.trim() : null;
   });
   const [submitMeterId, setSubmitMeterId] = useState('');
+  const [rowSubmit, setRowSubmit] = useState<WaterReadingRegisterRow | null>(null);
   const [readingsRefreshSignal, setReadingsRefreshSignal] = useState(0);
   const metersListScrollRef = useRef<HTMLDivElement | null>(null);
   const metersListScrollTopRef = useRef(0);
@@ -460,6 +463,7 @@ export function AdminWater({
     setDetailReadingId(null);
     setDetailReadingMeterId(null);
     setSubmitMeterId('');
+    setRowSubmit(null);
     closeWaterCorrection();
     writeReadingsShellToUrl({ shell: 'none', property: '' });
     onPropertyChange?.('');
@@ -481,6 +485,7 @@ export function AdminWater({
     readingsListScrollTopRef.current = readingsListScrollRef.current?.scrollTop ?? window.scrollY;
     readingsReturnFocusRef.current = null;
     closeWaterCorrection();
+    setRowSubmit(null);
     setSubmitValue('');
     setSubmitDate(todayIsoDate());
     setSubmitMeterId('');
@@ -493,10 +498,49 @@ export function AdminWater({
     writeReadingsShellToUrl({ shell: 'submit', property: '' });
   }
 
+  function openReadingsSubmitFromRow(row: WaterReadingRegisterRow, rowEl: HTMLElement | null) {
+    readingsListScrollTopRef.current = readingsListScrollRef.current?.scrollTop ?? window.scrollY;
+    readingsReturnFocusRef.current = rowEl;
+    closeWaterCorrection();
+    setDetailReadingId(null);
+    setDetailReadingMeterId(null);
+    setReadingsShell('none');
+    writeReadingsShellToUrl({ shell: 'none', property: row.propertyId });
+    setSubmitValue('');
+    setSubmitDate(todayIsoDate());
+    setSubmitMeterId(row.meterId ?? '');
+    setSuccess(null);
+    setError(null);
+    selectProperty(row.propertyId);
+    setRowSubmit(row);
+  }
+
+  async function closeRowSubmit(opts?: { force?: boolean }) {
+    if (
+      !opts?.force &&
+      (submitValue.trim() !== '' || submitDate !== todayIsoDate())
+    ) {
+      const ok = await confirm({
+        title: t('common.discardChangesTitle'),
+        description: t('common.discardChangesBody'),
+        confirmLabel: t('common.leaveWithoutSaving'),
+        cancelLabel: t('common.continueEditing'),
+        tone: 'danger',
+      });
+      if (!ok) return false;
+    }
+    setRowSubmit(null);
+    setSubmitValue('');
+    setSubmitMeterId('');
+    setSubmitDate(todayIsoDate());
+    return true;
+  }
+
   function openReadingDetail(row: WaterReadingRegisterRow, rowEl: HTMLElement | null) {
     readingsListScrollTopRef.current = readingsListScrollRef.current?.scrollTop ?? window.scrollY;
     readingsReturnFocusRef.current = rowEl;
     closeWaterCorrection();
+    void closeRowSubmit({ force: true });
     setSuccess(null);
     setError(null);
     selectProperty(row.propertyId);
@@ -865,7 +909,26 @@ export function AdminWater({
 
   async function handleSubmitReading(e: React.FormEvent) {
     e.preventDefault();
-    if (propertyId === '' || !canSubmit) return;
+    if (propertyId === '' || !canSubmit || submitBusy || meterLoading) return;
+    const activeCount = propertyActiveMeters.length;
+    if (activeCount === 0) {
+      setError(t('admin.waterReadingsNoMeterExplain'));
+      return;
+    }
+    if (activeCount !== 1) {
+      // submit_water_reading has no p_meter_id; multi-row SELECT INTO would fail or be ambiguous.
+      setError(t('admin.waterReadingsMultiMeterBlock'));
+      return;
+    }
+    // Row popup: never send when the clicked meter is not the sole active meter.
+    if (
+      rowSubmit?.meterId &&
+      propertyActiveMeters[0] &&
+      propertyActiveMeters[0].id !== rowSubmit.meterId
+    ) {
+      setError(t('admin.waterReadingsMultiMeterBlock'));
+      return;
+    }
     const parsed = parseWaterVolume(String(submitValue));
     if (!Number.isFinite(parsed) || parsed < 0) {
       setError(t('account.utilNeedNumber'));
@@ -907,9 +970,35 @@ export function AdminWater({
       .catch(() => undefined);
     await loadPropertyWater();
     setReadingsRefreshSignal((n) => n + 1);
-    if (readingsShell === 'submit') {
+    if (rowSubmit) {
+      await closeRowSubmit({ force: true });
+    } else if (readingsShell === 'submit') {
       await closeReadingsShell({ force: true, keepScroll: true });
     }
+  }
+
+  function goToMetersForSubmitProperty() {
+    const pid = propertyId === '' ? rowSubmit?.propertyId : propertyId;
+    const ctx = rowSubmit;
+    void closeRowSubmit({ force: true });
+    if (readingsShell === 'submit') void closeReadingsShell({ force: true, keepScroll: false });
+    if (pid == null || pid === '') {
+      void selectTab('meter');
+      return;
+    }
+    void selectTab('meter');
+    openMeterDetail(
+      {
+        meterId: null,
+        propertyId: Number(pid),
+        apartmentNumber: ctx?.apartmentNumber ?? '',
+        sectionCode: ctx?.sectionCode ?? '',
+        blockCode: ctx?.blockCode ?? '',
+        meterNumber: '',
+        installedAt: null,
+      },
+      null,
+    );
   }
 
   function openWaterCorrection(row: WaterReading) {
@@ -1455,6 +1544,7 @@ export function AdminWater({
           listScrollRef={readingsListScrollRef}
           onOpenReading={openReadingDetail}
           onOpenSubmit={openReadingsSubmit}
+          onSubmitReading={openReadingsSubmitFromRow}
         />
       ) : null}
 
@@ -1486,93 +1576,101 @@ export function AdminWater({
         returnFocusRef={readingsReturnFocusRef}
       >
         {canSubmit ? (
-          <form onSubmit={handleSubmitReading} className="space-y-4">
-            <label className="block text-xs text-muted">
-              {t('admin.pickProperty')}
-              <ApartmentCombobox
-                className="mt-1"
-                properties={sorted}
-                value={propertyId}
-                onChange={(id) => {
-                  selectProperty(id);
-                  setSubmitMeterId('');
-                  setSuccess(null);
-                  setError(null);
-                }}
-              />
-            </label>
-            {propertyId !== '' && propertyActiveMeters.length > 1 ? (
-              <>
-                <label className="block text-xs text-muted">
-                  {t('admin.waterReadingsPickMeter')}
-                  <select
-                    className={`mt-1 block w-full ${fieldClass}`}
-                    value={submitMeterId}
-                    onChange={(e) => setSubmitMeterId(e.target.value)}
-                  >
-                    <option value="">{t('admin.sfFilterAll')}</option>
-                    {propertyActiveMeters.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.meter_number?.trim() ? m.meter_number : m.id.slice(0, 8)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <AdminInlineAlert tone="warning">
-                  {t('admin.waterReadingsMultiMeterLimit')}
-                </AdminInlineAlert>
-              </>
-            ) : propertyId !== '' && propertyActiveMeters.length === 1 ? (
-              <p className="text-sm text-secondary">
-                {t('admin.meterNumber')}:{' '}
-                <span className="font-medium text-foreground">
-                  {propertyActiveMeters[0]?.meter_number?.trim()
-                    ? propertyActiveMeters[0].meter_number
-                    : '—'}
-                </span>
-              </p>
-            ) : null}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs text-muted">
-                {t('account.utilCurrentM3')}
-                <input
-                  className={`mt-1 block w-full ${fieldClass}`}
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={submitValue}
-                  onChange={(e) => setSubmitValue(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="block text-xs text-muted">
-                {t('admin.date')}
-                <input
-                  className={`mt-1 block w-full ${fieldClass}`}
-                  type="date"
-                  max={todayIsoDate()}
-                  value={submitDate}
-                  onChange={(e) => setSubmitDate(e.target.value)}
-                  required
-                />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <AdminPrimaryButton
-                type="submit"
-                disabled={submitBusy || propertyId === '' || !activeMeter}
-              >
-                {submitBusy ? t('account.utilSubmitting') : t('account.utilSubmit')}
-              </AdminPrimaryButton>
-              <AdminSecondaryButton type="button" onClick={() => void closeReadingsShell()}>
-                {t('common.cancel')}
-              </AdminSecondaryButton>
-            </div>
-          </form>
+          <AdminWaterReadingSubmitForm
+            mode="picker"
+            properties={sorted}
+            propertyId={propertyId}
+            onPropertyChange={(id) => {
+              selectProperty(id);
+              setSubmitMeterId('');
+              setSuccess(null);
+              setError(null);
+            }}
+            meters={propertyActiveMeters.map((m) => ({
+              id: m.id,
+              meter_number: m.meter_number,
+            }))}
+            selectedMeterId={submitMeterId}
+            onMeterChange={setSubmitMeterId}
+            lastKnownValue={
+              lastReading != null && Number.isFinite(Number(lastReading.current_value))
+                ? Number(lastReading.current_value)
+                : null
+            }
+            submitValue={submitValue}
+            onSubmitValueChange={setSubmitValue}
+            submitDate={submitDate}
+            onSubmitDateChange={setSubmitDate}
+            busy={submitBusy}
+            metersLoading={propertyId !== '' && meterLoading}
+            canSubmit={canSubmit}
+            onSubmit={(e) => void handleSubmitReading(e)}
+            onCancel={() => void closeReadingsShell()}
+            onGoToMeters={goToMetersForSubmitProperty}
+          />
         ) : (
           <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
         )}
       </WorkplaceCardShell>
+
+      <AdminModal
+        open={rowSubmit != null}
+        size="lg"
+        title={t('admin.waterReadingsFormTitle')}
+        titleMeta={
+          rowSubmit
+            ? formatPropertyIdentity(
+                {
+                  apartment_number: rowSubmit.apartmentNumber || null,
+                  section_code: rowSubmit.sectionCode || null,
+                  block_code: rowSubmit.blockCode || null,
+                },
+                t,
+              )
+            : null
+        }
+        closeLabel={t('common.close')}
+        onClose={() => void closeRowSubmit()}
+        onRequestClose={() => void closeRowSubmit()}
+        returnFocusRef={readingsReturnFocusRef}
+        entityKey={rowSubmit ? `row-submit-${rowSubmit.propertyId}-${rowSubmit.meterId ?? 'none'}` : 'row-submit'}
+      >
+        {canSubmit && rowSubmit ? (
+          <div className="space-y-3">
+            {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
+            {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
+            <AdminWaterReadingSubmitForm
+              mode="locked"
+              properties={sorted}
+              propertyId={propertyId}
+              onPropertyChange={() => undefined}
+              meters={
+                meterLoading && rowSubmit.meterId
+                  ? [{ id: rowSubmit.meterId, meter_number: rowSubmit.meterNumber || null }]
+                  : propertyActiveMeters.map((m) => ({
+                      id: m.id,
+                      meter_number: m.meter_number,
+                    }))
+              }
+              selectedMeterId={submitMeterId || rowSubmit.meterId || ''}
+              onMeterChange={setSubmitMeterId}
+              lastKnownValue={rowSubmit.currentValue}
+              submitValue={submitValue}
+              onSubmitValueChange={setSubmitValue}
+              submitDate={submitDate}
+              onSubmitDateChange={setSubmitDate}
+              busy={submitBusy}
+              metersLoading={meterLoading}
+              canSubmit={canSubmit}
+              onSubmit={(e) => void handleSubmitReading(e)}
+              onCancel={() => void closeRowSubmit()}
+              onGoToMeters={goToMetersForSubmitProperty}
+            />
+          </div>
+        ) : (
+          <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
+        )}
+      </AdminModal>
 
       <WorkplaceCardShell
         open={readingsDetailOpen}

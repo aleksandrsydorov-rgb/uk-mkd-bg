@@ -3559,17 +3559,23 @@ export const ru = {
     waterReadingsSearch: 'Поиск',
     waterReadingsSearchPh: 'Апартамент, владелец или номер счётчика',
     waterReadingsEmpty: 'Нет водомеров для отображения',
-    waterReadingsSubmit: 'Внести показания',
+    waterReadingsSubmit: 'Передать показания',
     waterReadingsColDate: 'Дата показания',
     waterReadingsColWho: 'Кто внёс',
     waterReadingsColStatus: 'Статус',
     waterReadingsRangeHint:
       'Диапазон дат меняет, какое последнее показание показывается для каждого прибора. Приборы без показаний в диапазоне остаются в списке.',
-    waterReadingsFormTitle: 'Внести показания',
+    waterReadingsFormTitle: 'Передать показания',
     waterReadingsDetailTitle: 'Показание',
     waterReadingsNoReading: 'По этому прибору нет показаний в выбранном диапазоне.',
     waterReadingsMultiMeterLimit:
       'Отправка идёт через существующий submit_water_reading по апартаменту: сервер ожидает один активный водомер. Выбор прибора в форме не передаётся в API.',
+    waterReadingsMultiMeterBlock:
+      'В апартаменте несколько активных водомеров. Текущий API submit_water_reading принимает только апартамент (без номера прибора) и не может однозначно записать показание. Отправка заблокирована.',
+    waterReadingsNoMeterExplain:
+      'У апартамента нет текущего водомера. Сначала назначьте прибор на вкладке «Счётчики».',
+    waterReadingsGoToMeters: 'К счётчикам апартамента',
+    waterReadingsLastKnown: 'Последнее известное показание',
     waterReadingsPickMeter: 'Прибор',
     utilTabTariff: 'Тариф',
     utilTabFinance: 'Финансы',
@@ -9524,17 +9530,23 @@ export const en: Messages = {
     waterReadingsSearch: 'Search',
     waterReadingsSearchPh: 'Apartment, owner or meter number',
     waterReadingsEmpty: 'No water meters to show',
-    waterReadingsSubmit: 'Enter reading',
+    waterReadingsSubmit: 'Submit reading',
     waterReadingsColDate: 'Reading date',
     waterReadingsColWho: 'Entered by',
     waterReadingsColStatus: 'Status',
     waterReadingsRangeHint:
       'The date range chooses which latest reading is shown per meter. Meters with no reading in range stay listed.',
-    waterReadingsFormTitle: 'Enter reading',
+    waterReadingsFormTitle: 'Submit reading',
     waterReadingsDetailTitle: 'Reading',
     waterReadingsNoReading: 'No reading for this meter in the selected range.',
     waterReadingsMultiMeterLimit:
       'Submit still uses existing submit_water_reading by apartment: the server expects one active water meter. Meter choice in the form is not sent to the API.',
+    waterReadingsMultiMeterBlock:
+      'This apartment has several active water meters. Current submit_water_reading accepts only the apartment (no meter id) and cannot target one device. Submit is blocked.',
+    waterReadingsNoMeterExplain:
+      'This apartment has no current water meter. Assign a device on the Meters tab first.',
+    waterReadingsGoToMeters: 'Go to apartment meters',
+    waterReadingsLastKnown: 'Last known reading',
     waterReadingsPickMeter: 'Meter',
     utilTabTariff: 'Tariff',
     utilTabFinance: 'Finance',
@@ -15498,17 +15510,23 @@ export const bg: Messages = {
     waterReadingsSearch: 'Търсене',
     waterReadingsSearchPh: 'Апартамент, собственик или номер на водомера',
     waterReadingsEmpty: 'Няма водомери за показване',
-    waterReadingsSubmit: 'Въведи показание',
+    waterReadingsSubmit: 'Предай показания',
     waterReadingsColDate: 'Дата на показание',
     waterReadingsColWho: 'Въвел',
     waterReadingsColStatus: 'Статус',
     waterReadingsRangeHint:
       'Диапазонът от дати избира кое последно показание се показва за всеки уред. Уреди без показание в диапазона остават в списъка.',
-    waterReadingsFormTitle: 'Въведи показание',
+    waterReadingsFormTitle: 'Предай показания',
     waterReadingsDetailTitle: 'Показание',
     waterReadingsNoReading: 'Няма показание за този уред в избрания диапазон.',
     waterReadingsMultiMeterLimit:
       'Изпращането минава през съществуващия submit_water_reading по апартамент: сървърът очаква един активен водомер. Изборът на уред във формата не се подава към API.',
+    waterReadingsMultiMeterBlock:
+      'В апартамента има няколко активни водомера. Текущият submit_water_reading приема само апартамент (без id на уред) и не може да адресира конкретен уред. Изпращането е блокирано.',
+    waterReadingsNoMeterExplain:
+      'Апартаментът няма текущ водомер. Първо назначете уред в раздела „Уреди“.',
+    waterReadingsGoToMeters: 'Към уредите на апартамента',
+    waterReadingsLastKnown: 'Последно известно показание',
     waterReadingsPickMeter: 'Уред',
     utilTabTariff: 'Тарифа',
     utilTabFinance: 'Финанси',

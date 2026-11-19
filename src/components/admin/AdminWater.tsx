@@ -638,9 +638,56 @@ export function AdminWater({
         </AdminCard>
       );
     }
+    const financeTone = balanceTone(balance.balance_eur);
+    const financeStatus =
+      financeTone === 'debt'
+        ? t('admin.balDebt')
+        : financeTone === 'over'
+          ? t('admin.balOver')
+          : t('admin.balSettled');
+    const financeModeLabel =
+      waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
     return (
       <div className="space-y-4">
         <AdminPageHeader title={t('admin.water')} secondary={t('admin.utilFinRegisterLead')} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <AdminMetricCard label={t('admin.waterMode')} value={financeModeLabel} />
+          <AdminMetricCard
+            label={t('admin.currentTariff')}
+            value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
+            secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
+          />
+          <AdminMetricCard
+            label={t('admin.waterBalance')}
+            value={formatEur(Math.abs(balance.balance_eur), locale)}
+            secondary={`${financeStatus} · ${t('admin.utilRegBalanceSelectedApt')}`}
+            alert={financeTone === 'debt'}
+          />
+        </div>
+        {canChangeWaterMode ? (
+          <AdminCard>
+            <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.waterMode')}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([
+                ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
+                ['staff_only', t('admin.elModeStaffOnly')],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={`fin-mode-${id}`}
+                  type="button"
+                  onClick={() => onSaveWaterMode?.(id)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    waterMode === id
+                      ? 'border-accent/25 bg-accent-bg text-accent'
+                      : 'border-border text-secondary hover:bg-hover'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </AdminCard>
+        ) : null}
         <AdminUtilityFinanceWorkplace
           service="water"
           supabase={supabase}
@@ -708,39 +755,45 @@ export function AdminWater({
       <AdminTabBar tabs={meteringTabs} active={activeTab} onChange={(id) => selectTab(id as AdminUtilityTab)} />
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <AdminMetricCard
-            label={t('admin.waterMode')}
-            value={waterModeLabel}
-            secondary={
-              canChangeWaterMode ? t('admin.utilRegModeHint') : undefined
-            }
-          />
-          <AdminMetricCard
-            label={t('admin.currentTariff')}
-            value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
-            secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
-          />
-          <AdminMetricCard
-            label={t('admin.waterBalance')}
-            value={
-              canFinance
-                ? formatEur(Math.abs(balance.balance_eur), locale)
-                : '—'
-            }
-            secondary={canFinance ? statusLabel : t('admin.waterNoAccess')}
-            alert={canFinance && tone === 'debt'}
-            onClick={
-              canFinance
-                ? () => {
-                    const params = new URLSearchParams(window.location.search);
-                    params.set('section', 'вода');
-                    params.set('tab', 'finance');
-                    window.location.assign(`/admin?${params.toString()}`);
-                  }
-                : undefined
-            }
-          />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <AdminMetricCard
+              label={t('admin.waterMode')}
+              value={waterModeLabel}
+              secondary={
+                canChangeWaterMode ? t('admin.utilRegModeHint') : undefined
+              }
+            />
+            <AdminMetricCard
+              label={t('admin.currentTariff')}
+              value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
+              secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
+            />
+            <AdminMetricCard
+              label={t('admin.waterBalance')}
+              value={
+                canFinance
+                  ? formatEur(Math.abs(balance.balance_eur), locale)
+                  : '—'
+              }
+              secondary={
+                canFinance
+                  ? `${statusLabel} · ${t('admin.utilRegBalanceSelectedApt')}`
+                  : t('admin.waterNoAccess')
+              }
+              alert={canFinance && tone === 'debt'}
+            />
+          </div>
+          {canFinance ? (
+            <AdminUtilityFinanceWorkplace
+              service="water"
+              supabase={supabase}
+              properties={sorted}
+              canOperate={canFinance}
+              focusPropertyId={focusPropertyId}
+              onPropertyChange={selectProperty}
+            />
+          ) : null}
         </div>
       )}
 

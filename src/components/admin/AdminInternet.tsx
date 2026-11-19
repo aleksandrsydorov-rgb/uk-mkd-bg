@@ -436,7 +436,7 @@ export function AdminInternet({
     return (
       <div className="space-y-4">
         {dialog}
-        <AdminPageHeader title={t('admin.internet')} secondary={t('admin.utilFinRegisterLead')} />
+        <AdminPageHeader title={t('admin.internet')} secondary={t('admin.internetLead')} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <AdminMetricCard
             label={t('admin.utilRegInternetTariff')}
@@ -488,6 +488,21 @@ export function AdminInternet({
             }
           />
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="text-sm font-medium text-accent hover:underline"
+            onClick={() => {
+              const params = new URLSearchParams(window.location.search);
+              params.set('section', 'интернет');
+              params.set('tab', 'operations');
+              window.location.assign(`/admin?${params.toString()}`);
+            }}
+          >
+            {t('admin.internetMovesTitle')} →
+          </button>
+          <p className="text-sm text-secondary">{t('admin.utilFinInternetOpsHint')}</p>
+        </div>
         <AdminUtilityFinanceWorkplace
           service="internet"
           supabase={supabase}
@@ -495,9 +510,6 @@ export function AdminInternet({
           canOperate={canSee}
           focusPropertyId={propertyId}
           onPropertyChange={(id) => setPropertyId(id)}
-          extraCardActions={
-            <p className="mt-3 text-sm text-secondary">{t('admin.utilFinInternetOpsHint')}</p>
-          }
         />
       </div>
     );

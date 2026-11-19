@@ -311,6 +311,45 @@ export function AdminElectricityFinance({
         {!embedded && (
           <AdminPageHeader title={t('admin.electricityFinance')} secondary={t('admin.utilFinRegisterLead')} />
         )}
+        {!embedded ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <AdminMetricCard
+              label={t('admin.electricityMode')}
+              value={modeLabel ?? '—'}
+            />
+            <AdminMetricCard
+              label={t('admin.utilRegTariffsDayNight')}
+              value={
+                listLoading
+                  ? t('common.loading')
+                  : tariff
+                    ? `${t('account.elDay')}: ${formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)}`
+                    : '—'
+              }
+              secondary={
+                tariff
+                  ? `${t('account.elNight')}: ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)}`
+                  : t('admin.noTariff')
+              }
+            />
+            <AdminMetricCard
+              label={t('admin.electricityBalance')}
+              value={
+                propertyId === ''
+                  ? '—'
+                  : propLoading
+                    ? t('common.loading')
+                    : formatEur(Math.abs(balance.balance_eur), locale)
+              }
+              secondary={
+                propertyId === ''
+                  ? t('admin.pickProperty')
+                  : `${statusLabel} · ${t('admin.utilRegBalanceSelectedApt')}`
+              }
+              alert={propertyId !== '' && tone === 'debt'}
+            />
+          </div>
+        ) : null}
         <AdminUtilityFinanceWorkplace
           service="electricity"
           supabase={supabase}
@@ -361,18 +400,12 @@ export function AdminElectricityFinance({
                 ? t('common.loading')
                 : formatEur(Math.abs(balance.balance_eur), locale)
           }
-          secondary={propertyId === '' ? t('admin.pickProperty') : statusLabel}
-          alert={propertyId !== '' && tone === 'debt'}
-          onClick={
-            canFinance
-              ? () => {
-                  const params = new URLSearchParams(window.location.search);
-                  params.set('section', 'электроэнергия');
-                  params.set('tab', 'finance');
-                  window.location.assign(`/admin?${params.toString()}`);
-                }
-              : undefined
+          secondary={
+            propertyId === ''
+              ? t('admin.pickProperty')
+              : `${statusLabel} · ${t('admin.utilRegBalanceSelectedApt')}`
           }
+          alert={propertyId !== '' && tone === 'debt'}
         />
       </div>
     );

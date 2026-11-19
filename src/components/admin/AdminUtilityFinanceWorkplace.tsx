@@ -638,131 +638,138 @@ export function AdminUtilityFinanceWorkplace({
     };
 
     const filterBar = (
-      <div className="flex flex-wrap items-end gap-2 rounded-[14px] border border-border bg-surface px-3 py-2">
-        <label className="text-xs text-secondary">
-          {t('admin.utilRegFilterSearch')}
-          <input
-            value={filters.query}
-            onChange={(e) => {
-              userFilterEditRef.current = true;
-              setFilters((f) => ({ ...f, query: e.target.value }));
-            }}
-            placeholder={t('admin.sfFilterAptPh')}
-            className={`mt-1 block w-44 ${fieldClass}`}
-          />
-        </label>
-        <label className="text-xs text-secondary">
-          {t('admin.utilRegFilterSection')}
-          <select
-            value={filters.section}
-            onChange={(e) => {
-              userFilterEditRef.current = true;
-              setFilters((f) => ({ ...f, section: e.target.value }));
-            }}
-            className={`mt-1 block w-36 ${fieldClass}`}
-          >
-            <option value="">{t('admin.sfFilterAll')}</option>
-            {sectionOptions.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        {service === 'internet' ? (
-          <label className="text-xs text-secondary">
-            {t('admin.utilRegFilterConnection')}
-            <select
-              value={filters.connection}
+      <div className="space-y-2 rounded-[14px] border border-border bg-surface-secondary/40 px-3 py-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs font-medium text-secondary">
+            {t('admin.utilRegFilterSearch')}
+            <input
+              value={filters.query}
               onChange={(e) => {
                 userFilterEditRef.current = true;
-                setFilters((f) => ({ ...f, connection: e.target.value }));
+                setFilters((f) => ({ ...f, query: e.target.value }));
+              }}
+              placeholder={t('admin.sfFilterAptPh')}
+              className={`mt-1 block w-48 ${fieldClass}`}
+            />
+          </label>
+          <label className="text-xs font-medium text-secondary">
+            {t('admin.utilRegFilterSection')}
+            <select
+              value={filters.section}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({ ...f, section: e.target.value }));
+              }}
+              className={`mt-1 block w-36 ${fieldClass}`}
+            >
+              <option value="">{t('admin.sfFilterAll')}</option>
+              {sectionOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          {service === 'internet' ? (
+            <label className="text-xs font-medium text-secondary">
+              {t('admin.utilRegFilterConnection')}
+              <select
+                value={filters.connection}
+                onChange={(e) => {
+                  userFilterEditRef.current = true;
+                  setFilters((f) => ({ ...f, connection: e.target.value }));
+                }}
+                className={`mt-1 block w-44 ${fieldClass}`}
+              >
+                <option value="">{t('admin.sfFilterAll')}</option>
+                <option value="active">{t('admin.internetStatusActive')}</option>
+                <option value="inactive">{t('admin.internetStatusInactive')}</option>
+                <option value="pending_enable">{t('admin.internetPendingEnable')}</option>
+                <option value="pending_disable">{t('admin.internetPendingDisable')}</option>
+                <option value="none">{t('admin.internetStatusNone')}</option>
+              </select>
+            </label>
+          ) : (
+            <label className="text-xs font-medium text-secondary">
+              {t('admin.utilRegFilterPeriodReadings')}
+              <input
+                type="month"
+                value={filters.periodYm}
+                onChange={(e) => {
+                  userFilterEditRef.current = true;
+                  setFilters((f) => ({ ...f, periodYm: e.target.value }));
+                }}
+                className={`mt-1 block w-40 ${fieldClass}`}
+              />
+            </label>
+          )}
+          <label className="text-xs font-medium text-secondary">
+            {t('admin.utilRegFilterBalance')}
+            <select
+              value={filters.status}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({
+                  ...f,
+                  status: e.target.value as UtilityModuleRegisterFilters['status'],
+                }));
+              }}
+              className={`mt-1 block w-40 ${fieldClass}`}
+            >
+              <option value="all">{t('admin.sfFilterAll')}</option>
+              <option value="debt">{t('admin.balDebt')}</option>
+              <option value="credit">{t('admin.balOver')}</option>
+              <option value="settled">{t('admin.balSettled')}</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-secondary">
+            {t('admin.utilRegFilterSort')}
+            <select
+              value={filters.sort}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({
+                  ...f,
+                  sort: e.target.value as UtilityModuleRegisterFilters['sort'],
+                }));
               }}
               className={`mt-1 block w-44 ${fieldClass}`}
             >
-              <option value="">{t('admin.sfFilterAll')}</option>
-              <option value="active">{t('admin.internetStatusActive')}</option>
-              <option value="inactive">{t('admin.internetStatusInactive')}</option>
-              <option value="pending_enable">{t('admin.internetPendingEnable')}</option>
-              <option value="pending_disable">{t('admin.internetPendingDisable')}</option>
-              <option value="none">{t('admin.internetStatusNone')}</option>
+              <option value="apartment">{t('admin.utilRegSortApt')}</option>
+              <option value="section">{t('admin.utilRegSortSection')}</option>
+              <option value="balance_desc">{t('admin.utilRegSortBalanceDesc')}</option>
+              <option value="balance_asc">{t('admin.utilRegSortBalanceAsc')}</option>
             </select>
           </label>
-        ) : (
-          <label className="text-xs text-secondary">
-            {t('admin.utilRegFilterPeriod')}
-            <input
-              type="month"
-              value={filters.periodYm}
-              onChange={(e) => {
-                userFilterEditRef.current = true;
-                setFilters((f) => ({ ...f, periodYm: e.target.value }));
-              }}
-              className={`mt-1 block w-40 ${fieldClass}`}
-            />
-          </label>
-        )}
-        <label className="text-xs text-secondary">
-          {t('admin.utilRegFilterBalance')}
-          <select
-            value={filters.status}
-            onChange={(e) => {
+          <AdminSecondaryButton
+            type="button"
+            disabled={!filtersActive}
+            onClick={() => {
               userFilterEditRef.current = true;
-              setFilters((f) => ({
-                ...f,
-                status: e.target.value as UtilityModuleRegisterFilters['status'],
-              }));
+              setFilters(EMPTY_UTILITY_MODULE_FILTERS);
             }}
-            className={`mt-1 block w-40 ${fieldClass}`}
           >
-            <option value="all">{t('admin.sfFilterAll')}</option>
-            <option value="debt">{t('admin.balDebt')}</option>
-            <option value="credit">{t('admin.balOver')}</option>
-            <option value="settled">{t('admin.balSettled')}</option>
-          </select>
-        </label>
-        <label className="text-xs text-secondary">
-          {t('admin.utilRegFilterSort')}
-          <select
-            value={filters.sort}
-            onChange={(e) => {
-              userFilterEditRef.current = true;
-              setFilters((f) => ({
-                ...f,
-                sort: e.target.value as UtilityModuleRegisterFilters['sort'],
-              }));
-            }}
-            className={`mt-1 block w-40 ${fieldClass}`}
-          >
-            <option value="apartment">{t('admin.utilRegSortApt')}</option>
-            <option value="section">{t('admin.utilRegSortSection')}</option>
-            <option value="balance_desc">{t('admin.utilRegSortBalanceDesc')}</option>
-            <option value="balance_asc">{t('admin.utilRegSortBalanceAsc')}</option>
-          </select>
-        </label>
-        <AdminSecondaryButton
-          type="button"
-          disabled={!filtersActive}
-          onClick={() => {
-            userFilterEditRef.current = true;
-            setFilters(EMPTY_UTILITY_MODULE_FILTERS);
-          }}
-        >
-          {t('admin.sfFilterReset')}
-        </AdminSecondaryButton>
-        <p className="ml-auto text-xs text-muted">
-          {t('admin.utilFinRegisterCount', { n: String(visibleCount) })}
-        </p>
+            {t('admin.sfFilterReset')}
+          </AdminSecondaryButton>
+        </div>
+        {service !== 'internet' ? (
+          <p className="text-[11px] text-muted">{t('admin.utilRegPeriodScopeHint')}</p>
+        ) : null}
       </div>
     );
 
     return (
       <div className="space-y-4">
-        <div className={cardClass}>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
-            {t(registerTitleKey(service))}
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              {t(registerTitleKey(service))}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">{t('admin.utilRegRegisterHint')}</p>
+          </div>
+          <p className="text-xs tabular-nums text-muted">
+            {t('admin.utilFinRegisterCount', { n: String(visibleCount) })}
           </p>
-          <p className="mt-2 text-sm text-secondary">{t('admin.utilFinRegisterLead')}</p>
         </div>
         {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
         {filterBar}
@@ -783,9 +790,9 @@ export function AdminUtilityFinanceWorkplace({
                   <th className={adminTableCellClass}>{t('admin.utilRegColPrevM3')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColCurrM3')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColConsM3')}</th>
-                  <th className={adminTableCellClass}>{t('admin.charged')}</th>
-                  <th className={adminTableCellClass}>{t('admin.paid')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilFinColBalance')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColCharged')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColPaid')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColBalanceEur')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -833,9 +840,9 @@ export function AdminUtilityFinanceWorkplace({
                   <th className={adminTableCellClass}>{t('admin.utilRegColPrevNight')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColCurrNight')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColConsNight')}</th>
-                  <th className={adminTableCellClass}>{t('admin.charged')}</th>
-                  <th className={adminTableCellClass}>{t('admin.paid')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilFinColBalance')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColCharged')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColPaid')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColBalanceEur')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -888,9 +895,9 @@ export function AdminUtilityFinanceWorkplace({
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColConnection')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColTariff')}</th>
-                  <th className={adminTableCellClass}>{t('admin.charged')}</th>
-                  <th className={adminTableCellClass}>{t('admin.paid')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilFinColBalance')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColCharged')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColPaid')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColBalanceEur')}</th>
                 </tr>
               </thead>
               <tbody>

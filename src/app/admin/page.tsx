@@ -4721,36 +4721,54 @@ function AdminPortal() {
               onChange={(id) => openUtilityTab('электроэнергия', id as AdminUtilityTab)}
             />
 
-            {elTab === 'overview' && showElectricityFinance ? (
-              <AdminElectricityFinance
-                supabase={supabase}
-                properties={properties}
-                staffRole={staffRole}
-                embedded
-                panel="overview"
-                modeLabel={elModeLabel}
-                focusPropertyId={selectedElId ? Number(selectedElId) : ''}
-                onPropertyChange={(id) => {
-                  if (id !== '') setElMeterPropertyId(String(id));
-                }}
-                onOpenTab={(next) => {
-                  if (next === 'finance' || next === 'tariff') return;
-                  openUtilityTab('электроэнергия', next);
-                }}
-              />
-            ) : elTab === 'overview' ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
-                <AdminMetricCard
-                  label={t('admin.utilRegTariffsDayNight')}
-                  value="—"
-                  secondary={t('admin.noTariff')}
-                />
-                <AdminMetricCard
-                  label={t('admin.electricityBalance')}
-                  value="—"
-                  secondary={t('admin.waterNoAccess')}
-                />
+            {elTab === 'overview' ? (
+              <div className="space-y-4">
+                {showElectricityFinance ? (
+                  <AdminElectricityFinance
+                    supabase={supabase}
+                    properties={properties}
+                    staffRole={staffRole}
+                    embedded
+                    panel="overview"
+                    modeLabel={elModeLabel}
+                    focusPropertyId={selectedElId ? Number(selectedElId) : ''}
+                    onPropertyChange={(id) => {
+                      if (id !== '') setElMeterPropertyId(String(id));
+                    }}
+                    onOpenTab={(next) => {
+                      if (next === 'finance' || next === 'tariff') return;
+                      openUtilityTab('электроэнергия', next);
+                    }}
+                  />
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
+                    <AdminMetricCard
+                      label={t('admin.utilRegTariffsDayNight')}
+                      value="—"
+                      secondary={t('admin.noTariff')}
+                    />
+                    <AdminMetricCard
+                      label={t('admin.electricityBalance')}
+                      value="—"
+                      secondary={t('admin.waterNoAccess')}
+                    />
+                  </div>
+                )}
+                {showElectricityFinance ? (
+                  <AdminElectricityFinance
+                    supabase={supabase}
+                    properties={properties}
+                    staffRole={staffRole}
+                    embedded
+                    panel="finance"
+                    // Register must stay on the list; do not seed the apartment picker focus.
+                    focusPropertyId=""
+                    onPropertyChange={(id) => {
+                      setElMeterPropertyId(id === '' || id == null ? '' : String(id));
+                    }}
+                  />
+                ) : null}
               </div>
             ) : null}
 
@@ -6256,12 +6274,15 @@ function AdminPortal() {
         type="button"
         onClick={() => {
           if (key === 'вода' || key === 'электроэнергия') {
+            // Utilities and Finance both land on the redesigned workplace:
+            // overview = cards + register; finance = same register with finance chrome.
             const defaultTab = groupId === 'finance' ? 'finance' : 'overview';
             openUtilityTab(key, defaultTab);
             return;
           }
           if (key === 'интернет') {
-            openSectionTab('интернет', groupId === 'finance' ? 'finance' : 'operations');
+            // Redesigned register is the finance panel; keep operations reachable via tab=operations.
+            openSectionTab('интернет', 'finance');
             return;
           }
           navigateAdminSection(key);

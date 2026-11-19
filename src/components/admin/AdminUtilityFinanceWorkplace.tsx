@@ -135,20 +135,34 @@ function connectionStatusLabel(status: string, t: (k: string) => string) {
   return status;
 }
 
-function readUtilityFiltersFromSearch(search: string): UtilityModuleRegisterFilters {
+/** URL filter namespaces keep Финансы and Коммунальные screens independent. */
+export type UtilityFinanceUrlFilterNs = 'uf' | 'ff';
+
+function filterQueryParam(ns: UtilityFinanceUrlFilterNs): string {
+  return ns === 'ff' ? 'ffQ' : 'q';
+}
+
+function filterParam(ns: UtilityFinanceUrlFilterNs, key: string): string {
+  return `${ns}${key}`;
+}
+
+export function readUtilityFiltersFromSearch(
+  search: string,
+  ns: UtilityFinanceUrlFilterNs = 'uf',
+): UtilityModuleRegisterFilters {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
-  const query = (params.get('q') ?? '').trim();
-  const statusRaw = params.get('ufStatus') ?? 'all';
+  const query = (params.get(filterQueryParam(ns)) ?? '').trim();
+  const statusRaw = params.get(filterParam(ns, 'Status')) ?? 'all';
   const status: UtilityModuleRegisterFilters['status'] =
     statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
-  const section = (params.get('ufSection') ?? '').trim();
-  const periodYm = (params.get('ufPeriod') ?? '').trim();
+  const section = (params.get(filterParam(ns, 'Section')) ?? '').trim();
+  const periodYm = (params.get(filterParam(ns, 'Period')) ?? '').trim();
   const clamped = clampWaterPeriodRange(
-    (params.get('ufFrom') ?? '').trim(),
-    (params.get('ufTo') ?? '').trim(),
+    (params.get(filterParam(ns, 'From')) ?? '').trim(),
+    (params.get(filterParam(ns, 'To')) ?? '').trim(),
   );
-  const connection = (params.get('ufConn') ?? '').trim();
-  const sort = parseUtilityRegisterSort(params.get('ufSort'));
+  const connection = (params.get(filterParam(ns, 'Conn')) ?? '').trim();
+  const sort = parseUtilityRegisterSort(params.get(filterParam(ns, 'Sort')));
   return {
     query,
     status,
@@ -186,6 +200,7 @@ export function AdminUtilityFinanceWorkplace({
   showDebtorsSignal = 0,
   ledgerKinds,
   listPaymentAction = false,
+  urlFilterNs = 'uf',
 }: {
   service: UtilityFinanceService;
   supabase: SupabaseClient<Database>;
@@ -201,8 +216,13 @@ export function AdminUtilityFinanceWorkplace({
   showDebtorsSignal?: number;
   /** When set, ops history shows only these ledger kinds (e.g. payment / payment_reversal). */
   ledgerKinds?: readonly string[];
-  /** Water Payments tab: per-row «Register payment» opens the existing pay form in a modal. */
+  /** Water Payments / Finance: per-row «Register payment» opens the existing pay form in a modal. */
   listPaymentAction?: boolean;
+  /**
+   * URL filter namespace for this surface.
+   * `uf` = Коммунальные → Вода (overview/payments); `ff` = Финансы → Вода.
+   */
+  urlFilterNs?: UtilityFinanceUrlFilterNs;
 }) {
   const { t, locale } = useI18n();
   const { confirm, dialog: confirmDialog } = useAppConfirm(t('common.close'));
@@ -212,9 +232,11 @@ export function AdminUtilityFinanceWorkplace({
   );
   const [payPopupId, setPayPopupId] = useState<number | ''>('');
   const payReturnFocusRef = useRef<HTMLElement | null>(null);
+  const urlFilterNsRef = useRef(urlFilterNs);
+  urlFilterNsRef.current = urlFilterNs;
   const [filters, setFilters] = useState<UtilityModuleRegisterFilters>(() => {
     if (typeof window === 'undefined') return EMPTY_UTILITY_MODULE_FILTERS;
-    return readUtilityFiltersFromSearch(window.location.search);
+    return readUtilityFiltersFromSearch(window.location.search, urlFilterNs);
   });
   /** Only push filter edits to the URL — never wipe return/deep-link q on remount. */
   const userFilterEditRef = useRef(false);
@@ -222,7 +244,7 @@ export function AdminUtilityFinanceWorkplace({
   filtersRef.current = filters;
 
   function readUtilityFiltersFromLocation(): UtilityModuleRegisterFilters {
-    return readUtilityFiltersFromSearch(window.location.search);
+    return readUtilityFiltersFromSearch(window.location.search, urlFilterNsRef.current);
   }
 
   // Re-hydrate after apartment-card «return» / Back-Forward without wiping typed filters.
@@ -250,32 +272,34 @@ export function AdminUtilityFinanceWorkplace({
 
   useEffect(() => {
     if (!userFilterEditRef.current || typeof window === 'undefined') return;
-    if (view !== 'register') return;
+    if (view !== 'register' && !listPaymentAction) return;
+    const ns = urlFilterNs;
+    const qKey = filterQueryParam(ns);
     const params = new URLSearchParams(window.location.search);
     const nextQ = filters.query.trim();
     const nextStatus = filters.status;
-    if (nextQ) params.set('q', nextQ);
-    else params.delete('q');
-    if (nextStatus !== 'all') params.set('ufStatus', nextStatus);
-    else params.delete('ufStatus');
-    if (filters.section) params.set('ufSection', filters.section);
-    else params.delete('ufSection');
+    if (nextQ) params.set(qKey, nextQ);
+    else params.delete(qKey);
+    if (nextStatus !== 'all') params.set(filterParam(ns, 'Status'), nextStatus);
+    else params.delete(filterParam(ns, 'Status'));
+    if (filters.section) params.set(filterParam(ns, 'Section'), filters.section);
+    else params.delete(filterParam(ns, 'Section'));
     if (service === 'water') {
-      params.delete('ufPeriod');
-      if (filters.periodFrom) params.set('ufFrom', filters.periodFrom);
-      else params.delete('ufFrom');
-      if (filters.periodTo) params.set('ufTo', filters.periodTo);
-      else params.delete('ufTo');
+      params.delete(filterParam(ns, 'Period'));
+      if (filters.periodFrom) params.set(filterParam(ns, 'From'), filters.periodFrom);
+      else params.delete(filterParam(ns, 'From'));
+      if (filters.periodTo) params.set(filterParam(ns, 'To'), filters.periodTo);
+      else params.delete(filterParam(ns, 'To'));
     } else {
-      params.delete('ufFrom');
-      params.delete('ufTo');
-      if (filters.periodYm) params.set('ufPeriod', filters.periodYm);
-      else params.delete('ufPeriod');
+      params.delete(filterParam(ns, 'From'));
+      params.delete(filterParam(ns, 'To'));
+      if (filters.periodYm) params.set(filterParam(ns, 'Period'), filters.periodYm);
+      else params.delete(filterParam(ns, 'Period'));
     }
-    if (filters.connection) params.set('ufConn', filters.connection);
-    else params.delete('ufConn');
-    if (filters.sort !== 'section_apartment') params.set('ufSort', filters.sort);
-    else params.delete('ufSort');
+    if (filters.connection) params.set(filterParam(ns, 'Conn'), filters.connection);
+    else params.delete(filterParam(ns, 'Conn'));
+    if (filters.sort !== 'section_apartment') params.set(filterParam(ns, 'Sort'), filters.sort);
+    else params.delete(filterParam(ns, 'Sort'));
     const qs = params.toString();
     const currentQs = window.location.search.replace(/^\?/, '');
     if (qs === currentQs) {
@@ -296,6 +320,8 @@ export function AdminUtilityFinanceWorkplace({
     filters.sort,
     service,
     view,
+    listPaymentAction,
+    urlFilterNs,
   ]);
   const [registerRows, setRegisterRows] = useState<UtilityFinanceRegisterRow[]>([]);
   const [waterRows, setWaterRows] = useState<WaterRegisterRow[]>([]);

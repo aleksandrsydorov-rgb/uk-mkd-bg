@@ -1335,6 +1335,8 @@ export function AdminWater({
   }
 
   if (activeTab === 'finance') {
+    // Финансы → Вода: same payments register as Коммунальные → Вода → Оплаты,
+    // without the five-tab water chrome (independent nav + ff* filter URL ns).
     if (!canFinance) {
       return (
         <AdminCard>
@@ -1344,7 +1346,6 @@ export function AdminWater({
     }
     return (
       <div className="space-y-3">
-        {renderOverviewCards()}
         <AdminUtilityFinanceWorkplace
           service="water"
           supabase={supabase}
@@ -1353,7 +1354,9 @@ export function AdminWater({
           focusPropertyId={focusPropertyId ?? ''}
           onPropertyChange={selectProperty}
           onModuleTotals={setModuleTotals}
-          showDebtorsSignal={showDebtorsSignal}
+          ledgerKinds={['payment', 'payment_reversal']}
+          listPaymentAction
+          urlFilterNs="ff"
         />
       </div>
     );
@@ -1678,6 +1681,7 @@ export function AdminWater({
             onModuleTotals={setModuleTotals}
             ledgerKinds={['payment', 'payment_reversal']}
             listPaymentAction
+            urlFilterNs="uf"
           />
         ) : (
           <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>

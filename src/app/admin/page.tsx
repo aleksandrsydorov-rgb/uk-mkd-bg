@@ -6287,8 +6287,8 @@ function AdminPortal() {
         type="button"
         onClick={() => {
           if (key === 'вода' || key === 'электроэнергия') {
-            // Utilities and Finance both land on the redesigned workplace:
-            // overview = cards + register; finance = same register with finance chrome.
+            // Utilities → overview (five tabs). Finance → Вода = payments register
+            // (tab=finance keeps Финансы nav active; no utilities chrome).
             const defaultTab = groupId === 'finance' ? 'finance' : 'overview';
             openUtilityTab(key, defaultTab);
             return;

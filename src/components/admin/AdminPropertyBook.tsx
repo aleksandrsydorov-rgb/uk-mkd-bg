@@ -1393,7 +1393,8 @@ export function AdminPropertyBook({
       <AdminModal
         open={importOpen}
         title={t('admin.bookImport')}
-        size="xl"
+        size="workplace"
+        entityKey="book-import"
         closeLabel={t('common.close')}
         returnFocusRef={importBtnRef}
         onRequestClose={requestCloseImport}

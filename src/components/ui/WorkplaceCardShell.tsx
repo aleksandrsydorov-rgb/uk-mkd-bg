@@ -3,10 +3,12 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
   type MouseEvent as ReactMouseEvent,
+  type CSSProperties,
 } from 'react';
 import {
   adminBtnSecondaryClass,
@@ -45,9 +47,30 @@ export type WorkplaceCardShellProps = {
   className?: string;
 };
 
+type WorkAreaBox = {
+  left: number;
+  width: number;
+};
+
+function readWorkAreaBox(): WorkAreaBox {
+  if (typeof window === 'undefined') return { left: 0, width: 1024 };
+  const vw = window.innerWidth;
+  // Mobile: sidebar is an overlay and must not shrink the card.
+  if (window.matchMedia('(max-width: 767px)').matches) {
+    return { left: 0, width: vw };
+  }
+  const el = document.querySelector<HTMLElement>('[data-workplace-work-area="true"]');
+  if (!el) return { left: 0, width: vw };
+  const rect = el.getBoundingClientRect();
+  const left = Math.max(0, Math.round(rect.left));
+  const width = Math.max(240, Math.round(rect.width));
+  return { left, width };
+}
+
 /**
  * Large workplace card — fixed shell size, internal scroll only.
- * Desktop ≈ 70% width × 82% height, centered. Tablet/phone use near-full viewport with safe-area.
+ * Desktop ≈ 70% of the *work area* (right of sidebar) × 82% height, centered in that area.
+ * Full-viewport dimming stays independent of the centering frame.
  * Tab/content swaps must not change shell geometry or replay open animation.
  */
 export function WorkplaceCardShell({
@@ -71,9 +94,50 @@ export function WorkplaceCardShell({
   const bodyRefInner = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const [layerZ, setLayerZ] = useState(BASE_Z);
+  const [workArea, setWorkArea] = useState<WorkAreaBox>({ left: 0, width: 1024 });
   const requestClose = onRequestClose ?? onClose;
   const requestCloseRef = useRef(requestClose);
   requestCloseRef.current = requestClose;
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setWorkArea(readWorkAreaBox()));
+    };
+    update();
+
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    const workEl = document.querySelector<HTMLElement>('[data-workplace-work-area="true"]');
+    const sideEl = document.querySelector<HTMLElement>('[data-workplace-sidebar="true"]');
+    if (ro) {
+      if (workEl) ro.observe(workEl);
+      if (sideEl) ro.observe(sideEl);
+      ro.observe(document.documentElement);
+    }
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onMq = () => update();
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onMq);
+    else mq.addListener(onMq);
+    // Sidebar expand/collapse animates width ~300ms — sample during transition.
+    const onTransition = (e: TransitionEvent) => {
+      if (e.propertyName === 'width' || e.propertyName === 'transform') update();
+    };
+    document.addEventListener('transitionend', onTransition, true);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+      if (typeof mq.removeEventListener === 'function') mq.removeEventListener('change', onMq);
+      else mq.removeListener(onMq);
+      document.removeEventListener('transitionend', onTransition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,73 +225,88 @@ export function WorkplaceCardShell({
     if (e.target === e.currentTarget) requestCloseRef.current();
   }
 
+  const frameStyle: CSSProperties = {
+    left: workArea.left,
+    width: workArea.width,
+  };
+
   return (
     <div
-      className="fixed inset-0 flex items-stretch justify-stretch bg-[rgba(20,25,30,0.28)] p-0 sm:items-center sm:justify-center sm:p-3 md:p-5"
+      className="fixed inset-0 bg-[rgba(20,25,30,0.28)]"
       style={{ zIndex: layerZ }}
-      onClick={onOverlayClick}
       role="presentation"
       data-workplace-overlay="true"
+      onClick={onOverlayClick}
     >
+      {/* Centering frame tracks the real work area (right of desktop sidebar). */}
       <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        data-workplace-shell="true"
-        data-entity-key={entityKey != null ? String(entityKey) : undefined}
-        className={[
-          'flex w-full flex-col overflow-hidden border border-border bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.12)]',
-          // Phone: full viewport + safe area. Tablet/desktop: stable fraction of viewport.
-          'h-[100dvh] max-h-[100dvh] rounded-none',
-          'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
-          'sm:h-[min(90dvh,calc(100dvh-1.5rem))] sm:max-h-[min(90dvh,calc(100dvh-1.5rem))] sm:w-[min(94vw,56rem)] sm:rounded-2xl',
-          'md:h-[min(82dvh,calc(100dvh-2.5rem))] md:max-h-[min(82dvh,calc(100dvh-2.5rem))] md:w-[min(70vw,64rem)]',
-          className,
-        ].join(' ')}
-        onClick={(e) => e.stopPropagation()}
+        className="absolute inset-y-0 flex items-stretch justify-stretch p-0 sm:items-center sm:justify-center sm:p-3 md:p-5"
+        style={frameStyle}
+        data-workplace-center-frame="true"
+        data-work-area-left={workArea.left}
+        data-work-area-width={workArea.width}
+        onClick={onOverlayClick}
       >
-        <div className={adminModalHeaderClass}>
-          <div className="min-w-0">
-            <h2 id={titleId} className="break-words text-base font-semibold text-foreground md:text-lg">
-              {title}
-            </h2>
-            {titleMeta ? (
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">{titleMeta}</div>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {headerActions}
-            <button
-              type="button"
-              className={`${adminBtnSecondaryClass} shrink-0 px-2.5 py-1.5`}
-              onClick={() => requestCloseRef.current()}
-              aria-label={closeLabel}
-              data-workplace-close="true"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-        {subheader ? (
-          <div className="shrink-0 border-b border-border px-4 pb-3 pt-1 md:px-5">{subheader}</div>
-        ) : null}
         <div
-          ref={(node) => {
-            bodyRefInner.current = node;
-            if (bodyRefProp) bodyRefProp.current = node;
-          }}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-5"
-          data-workplace-body="true"
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          data-workplace-shell="true"
+          data-entity-key={entityKey != null ? String(entityKey) : undefined}
+          className={[
+            'flex w-full flex-col overflow-hidden border border-border bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.12)]',
+            // Width is % of the work-area frame (not full viewport), so expanded sidebar does not pin the card.
+            'h-[100dvh] max-h-[100dvh] rounded-none',
+            'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
+            'sm:h-[min(90dvh,calc(100dvh-1.5rem))] sm:max-h-[min(90dvh,calc(100dvh-1.5rem))] sm:w-[min(94%,56rem)] sm:rounded-2xl',
+            'md:h-[min(82dvh,calc(100dvh-2.5rem))] md:max-h-[min(82dvh,calc(100dvh-2.5rem))] md:w-[min(70%,64rem)]',
+            className,
+          ].join(' ')}
+          onClick={(e) => e.stopPropagation()}
         >
-          {children}
-        </div>
-        {footer ? (
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 md:px-5">
-            {footer}
+          <div className={adminModalHeaderClass}>
+            <div className="min-w-0">
+              <h2 id={titleId} className="break-words text-base font-semibold text-foreground md:text-lg">
+                {title}
+              </h2>
+              {titleMeta ? (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">{titleMeta}</div>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {headerActions}
+              <button
+                type="button"
+                className={`${adminBtnSecondaryClass} shrink-0 px-2.5 py-1.5`}
+                onClick={() => requestCloseRef.current()}
+                aria-label={closeLabel}
+                data-workplace-close="true"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-        ) : null}
+          {subheader ? (
+            <div className="shrink-0 border-b border-border px-4 pb-3 pt-1 md:px-5">{subheader}</div>
+          ) : null}
+          <div
+            ref={(node) => {
+              bodyRefInner.current = node;
+              if (bodyRefProp) bodyRefProp.current = node;
+            }}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-5"
+            data-workplace-body="true"
+          >
+            {children}
+          </div>
+          {footer ? (
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 md:px-5">
+              {footer}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

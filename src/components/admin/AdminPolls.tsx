@@ -45,6 +45,7 @@ import {
   uploadPrivateFile,
 } from '@/lib/privateMedia';
 import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
+import { AdminModal } from '@/components/admin/AdminModal';
 import {
   AdminEmptyState,
   AdminPageHeader,
@@ -53,14 +54,10 @@ import {
   AdminTableShell,
   StatusBadge,
   adminBtnDangerClass,
-  adminBtnSecondaryClass,
   adminBtnTertiaryClass,
   adminCardClass,
   adminFieldClass,
   adminFormPanelClass,
-  adminModalHeaderClass,
-  adminModalOverlayClass,
-  adminModalPanelClass,
   adminTableCellClass,
   adminTableHeadRowClass,
   adminTableRowClass,
@@ -571,127 +568,122 @@ export function AdminPolls({
         </div>
       )}
 
-      {selected ? (
-        <div className={adminModalOverlayClass} onClick={() => setDetailId(null)}>
-          <div
-            className={`${adminModalPanelClass} max-w-2xl`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={adminModalHeaderClass}>
-              <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-foreground">{selected.title}</h3>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  <StatusBadge label={labelPollCategory(selected.category, t)} />
-                  <StatusBadge
-                    label={labelPollStatus(selected.status, t)}
-                    tone={selected.status === 'открыт' ? 'info' : 'neutral'}
-                  />
-                  <StatusBadge
-                    label={labelPollDecision(detailDecision, t)}
-                    tone={pollDecisionTone(detailDecision)}
-                  />
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {formatOwnerDate(selected.voting_starts, locale)} –{' '}
-                  {formatOwnerDate(selected.deadline, locale)}
-                </p>
-              </div>
+      <AdminModal
+        open={Boolean(selected)}
+        size="workplace"
+        entityKey={selected?.id}
+        title={selected?.title ?? t('admin.polls')}
+        closeLabel={t('common.close')}
+        onClose={() => setDetailId(null)}
+        onRequestClose={() => setDetailId(null)}
+        titleMeta={
+          selected ? (
+            <>
+              <StatusBadge label={labelPollCategory(selected.category, t)} />
+              <StatusBadge
+                label={labelPollStatus(selected.status, t)}
+                tone={selected.status === 'открыт' ? 'info' : 'neutral'}
+              />
+              <StatusBadge
+                label={labelPollDecision(detailDecision, t)}
+                tone={pollDecisionTone(detailDecision)}
+              />
+              <span>
+                {formatOwnerDate(selected.voting_starts, locale)} –{' '}
+                {formatOwnerDate(selected.deadline, locale)}
+              </span>
+            </>
+          ) : null
+        }
+        footer={
+          selected && canManage ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onDelete(selected.id)}
+              className={adminBtnDangerClass}
+            >
+              {t('common.delete')}
+            </button>
+          ) : null
+        }
+      >
+        {selected ? (
+          <div className="space-y-4">
+            <PollDetails
+              poll={selected}
+              options={detailOptions}
+              votes={detailVotes}
+              properties={areaProps}
+            />
+            <PollOptionBars
+              poll={selected}
+              options={detailOptions}
+              votes={detailVotes}
+              properties={areaProps}
+              alwaysShowStats
+            />
+            <div className="flex flex-wrap gap-2">
+              {canManage ? (
+                <AdminSecondaryButton
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onToggle(selected)}
+                >
+                  {selected.status === 'открыт' ? t('admin.pollClose') : t('admin.pollReopen')}
+                </AdminSecondaryButton>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setDetailId(null)}
-                className={adminBtnSecondaryClass}
+                onClick={() => setShowHistory((v) => !v)}
+                className={adminBtnTertiaryClass}
               >
-                {t('common.close')}
+                {showHistory
+                  ? t('admin.pollHideHistory')
+                  : t('admin.pollHistory', { n: detailHistory.length })}
               </button>
             </div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              <PollDetails
-                poll={selected}
-                options={detailOptions}
-                votes={detailVotes}
-                properties={areaProps}
-              />
-              <PollOptionBars
-                poll={selected}
-                options={detailOptions}
-                votes={detailVotes}
-                properties={areaProps}
-                alwaysShowStats
-              />
-              <div className="flex flex-wrap gap-2">
-                {canManage ? (
-                  <AdminSecondaryButton
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void onToggle(selected)}
-                  >
-                    {selected.status === 'открыт' ? t('admin.pollClose') : t('admin.pollReopen')}
-                  </AdminSecondaryButton>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setShowHistory((v) => !v)}
-                  className={adminBtnTertiaryClass}
-                >
-                  {showHistory
-                    ? t('admin.pollHideHistory')
-                    : t('admin.pollHistory', { n: detailHistory.length })}
-                </button>
-              </div>
-              {showHistory ? (
-                detailHistory.length === 0 ? (
-                  <AdminEmptyState title={t('admin.pollNoHistory')} />
-                ) : (
-                  <AdminTableShell>
-                    <table className="w-full min-w-[520px] text-xs">
-                      <thead>
-                        <tr className={adminTableHeadRowClass}>
-                          <th className={adminTableCellClass}>{t('admin.pollWhen')}</th>
-                          <th className={adminTableCellClass}>{t('admin.aptLabel')}</th>
-                          <th className={adminTableCellClass}>{t('admin.pollVote')}</th>
-                          <th className={`${adminTableCellClass} text-right`}>
-                            {t('admin.pollWeight')}
-                          </th>
+            {showHistory ? (
+              detailHistory.length === 0 ? (
+                <AdminEmptyState title={t('admin.pollNoHistory')} />
+              ) : (
+                <AdminTableShell>
+                  <table className="w-full min-w-[520px] text-xs">
+                    <thead>
+                      <tr className={adminTableHeadRowClass}>
+                        <th className={adminTableCellClass}>{t('admin.pollWhen')}</th>
+                        <th className={adminTableCellClass}>{t('admin.aptLabel')}</th>
+                        <th className={adminTableCellClass}>{t('admin.pollVote')}</th>
+                        <th className={`${adminTableCellClass} text-right`}>
+                          {t('admin.pollWeight')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailHistory.map((h) => (
+                        <tr key={h.id} className={adminTableRowClass}>
+                          <td className={adminTableCellClass}>
+                            {formatOwnerDateTime(h.created_at, locale)}
+                          </td>
+                          <td className={adminTableCellClass}>
+                            {aptById.get(h.property_id) ?? h.property_id}
+                          </td>
+                          <td className={adminTableCellClass}>
+                            {detailOptions.find((o) => o.id === h.option_id)?.label ?? h.option_id}
+                          </td>
+                          <td className={`${adminTableCellClass} text-right`}>
+                            {formatM3(Number(h.weight ?? 0), locale)}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {detailHistory.map((h) => (
-                          <tr key={h.id} className={adminTableRowClass}>
-                            <td className={adminTableCellClass}>
-                              {formatOwnerDateTime(h.created_at, locale)}
-                            </td>
-                            <td className={adminTableCellClass}>
-                              {aptById.get(h.property_id) ?? h.property_id}
-                            </td>
-                            <td className={adminTableCellClass}>
-                              {detailOptions.find((o) => o.id === h.option_id)?.label ?? h.option_id}
-                            </td>
-                            <td className={`${adminTableCellClass} text-right`}>
-                              {formatM3(Number(h.weight ?? 0), locale)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </AdminTableShell>
-                )
-              ) : null}
-              {canManage ? (
-                <div className="border-t border-border pt-3">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void onDelete(selected.id)}
-                    className={adminBtnDangerClass}
-                  >
-                    {t('common.delete')}
-                  </button>
-                </div>
-              ) : null}
-            </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </AdminTableShell>
+              )
+            ) : null}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </AdminModal>
     </div>
   );
 }

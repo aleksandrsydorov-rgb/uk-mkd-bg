@@ -52,6 +52,9 @@ type OutboxRow = {
   payload: Record<string, unknown> | null;
   attempts: number;
   event_key?: string | null;
+  /** Source business-event time; prefer over created_at for pre-registration stale cancel. */
+  event_occurred_at?: string | null;
+  created_at?: string | null;
   first_attempt_at?: string | null;
   uncertain_attempt?: boolean;
   provider_message_id?: string | null;
@@ -301,6 +304,7 @@ export async function runOutboxWorker(opts: {
           continue;
         }
         // Do not send events that originated before registration completed.
+        // Prefer source event time over queue created_at (re-queue after registration).
         const { data: profileRows } = await opts.supabase
           .from('user_activation_profiles' as never)
           .select('app_registration_completed_at')
@@ -308,10 +312,19 @@ export async function runOutboxWorker(opts: {
           .maybeSingle();
         const completedAt = (profileRows as { app_registration_completed_at?: string | null } | null)
           ?.app_registration_completed_at;
+        const eventOccurredRaw =
+          (row as { event_occurred_at?: string | null }).event_occurred_at ??
+          payload.event_occurred_at ??
+          payload.occurred_at ??
+          payload.event_at ??
+          payload.event_time ??
+          payload.source_event_at ??
+          row.created_at;
+        const eventOccurredMs = eventOccurredRaw ? new Date(String(eventOccurredRaw)).getTime() : NaN;
         if (
           completedAt &&
-          row.created_at &&
-          new Date(row.created_at).getTime() < new Date(completedAt).getTime()
+          Number.isFinite(eventOccurredMs) &&
+          eventOccurredMs < new Date(completedAt).getTime()
         ) {
           await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
             p_outbox_id: row.id,

@@ -3080,6 +3080,8 @@ export default function AccountPage() {
         />
       )}
       <aside
+        data-workplace-sidebar="true"
+        data-sidebar-open={sidebarOpen ? 'true' : 'false'}
         className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-border bg-surface transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
           sidebarOpen
             ? 'translate-x-0 md:w-64'
@@ -3189,7 +3191,9 @@ export default function AccountPage() {
       </aside>
 
       {/* ===== ОСНОВНОЙ КОНТЕНТ ===== */}
-      <main className={`min-w-0 flex-1 ${
+      <main
+        data-workplace-work-area="true"
+        className={`min-w-0 flex-1 ${
         inMgmtChat
           ? 'flex h-dvh flex-col overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'

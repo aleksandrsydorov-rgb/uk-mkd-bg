@@ -6370,7 +6370,10 @@ function AdminPortal() {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-border bg-surface transition-[transform,width] duration-300 md:pointer-events-auto md:static md:h-auto md:flex-shrink-0 ${
+      <aside
+        data-workplace-sidebar="true"
+        data-sidebar-open={sidebarOpen ? 'true' : 'false'}
+        className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-border bg-surface transition-[transform,width] duration-300 md:pointer-events-auto md:static md:h-auto md:flex-shrink-0 ${
         sidebarOpen
           ? 'translate-x-0 md:w-64 md:min-w-64 md:max-w-64'
           : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:min-w-16 md:max-w-16 md:translate-x-0'
@@ -6479,7 +6482,9 @@ function AdminPortal() {
         </div>
       </aside>
 
-      <main className={`min-w-0 flex-1 ${
+      <main
+        data-workplace-work-area="true"
+        className={`min-w-0 flex-1 ${
         activeMenu === 'чат'
           ? 'overflow-hidden pb-0'
           : 'overflow-y-auto pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0'

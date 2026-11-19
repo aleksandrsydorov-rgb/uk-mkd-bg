@@ -39,8 +39,9 @@ import {
   indexInternetSubs,
   listSectionsFromProperties,
   parseUtilityRegisterSort,
+  clampWaterPeriodRange,
   pickLatestElectricitySnaps,
-  pickLatestWaterSnaps,
+  pickWaterSnapsForDateRange,
   sortUtilityModuleRows,
   utilityModuleFiltersActive,
   type ElectricityRegisterRow,
@@ -125,6 +126,45 @@ function connectionStatusLabel(status: string, t: (k: string) => string) {
   return status;
 }
 
+function readUtilityFiltersFromSearch(search: string): UtilityModuleRegisterFilters {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const query = (params.get('q') ?? '').trim();
+  const statusRaw = params.get('ufStatus') ?? 'all';
+  const status: UtilityModuleRegisterFilters['status'] =
+    statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
+  const section = (params.get('ufSection') ?? '').trim();
+  const periodYm = (params.get('ufPeriod') ?? '').trim();
+  const clamped = clampWaterPeriodRange(
+    (params.get('ufFrom') ?? '').trim(),
+    (params.get('ufTo') ?? '').trim(),
+  );
+  const connection = (params.get('ufConn') ?? '').trim();
+  const sort = parseUtilityRegisterSort(params.get('ufSort'));
+  return {
+    query,
+    status,
+    section,
+    periodYm,
+    periodFrom: clamped.periodFrom,
+    periodTo: clamped.periodTo,
+    connection,
+    sort,
+  };
+}
+
+function utilityFiltersEqual(a: UtilityModuleRegisterFilters, b: UtilityModuleRegisterFilters): boolean {
+  return (
+    a.query === b.query &&
+    a.status === b.status &&
+    a.section === b.section &&
+    a.periodYm === b.periodYm &&
+    a.periodFrom === b.periodFrom &&
+    a.periodTo === b.periodTo &&
+    a.connection === b.connection &&
+    a.sort === b.sort
+  );
+}
+
 export function AdminUtilityFinanceWorkplace({
   service,
   supabase,
@@ -153,16 +193,7 @@ export function AdminUtilityFinanceWorkplace({
   );
   const [filters, setFilters] = useState<UtilityModuleRegisterFilters>(() => {
     if (typeof window === 'undefined') return EMPTY_UTILITY_MODULE_FILTERS;
-    const params = new URLSearchParams(window.location.search);
-    const query = (params.get('q') ?? '').trim();
-    const statusRaw = params.get('ufStatus') ?? 'all';
-    const status: UtilityModuleRegisterFilters['status'] =
-      statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
-    const section = (params.get('ufSection') ?? '').trim();
-    const periodYm = (params.get('ufPeriod') ?? '').trim();
-    const connection = (params.get('ufConn') ?? '').trim();
-    const sort = parseUtilityRegisterSort(params.get('ufSort'));
-    return { query, status, section, periodYm, connection, sort };
+    return readUtilityFiltersFromSearch(window.location.search);
   });
   /** Only push filter edits to the URL — never wipe return/deep-link q on remount. */
   const userFilterEditRef = useRef(false);
@@ -170,16 +201,7 @@ export function AdminUtilityFinanceWorkplace({
   filtersRef.current = filters;
 
   function readUtilityFiltersFromLocation(): UtilityModuleRegisterFilters {
-    const params = new URLSearchParams(window.location.search);
-    const query = (params.get('q') ?? '').trim();
-    const statusRaw = params.get('ufStatus') ?? 'all';
-    const status: UtilityModuleRegisterFilters['status'] =
-      statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
-    const section = (params.get('ufSection') ?? '').trim();
-    const periodYm = (params.get('ufPeriod') ?? '').trim();
-    const connection = (params.get('ufConn') ?? '').trim();
-    const sort = parseUtilityRegisterSort(params.get('ufSort'));
-    return { query, status, section, periodYm, connection, sort };
+    return readUtilityFiltersFromSearch(window.location.search);
   }
 
   // Re-hydrate after apartment-card «return» / Back-Forward without wiping typed filters.
@@ -188,42 +210,15 @@ export function AdminUtilityFinanceWorkplace({
     const syncFromUrl = () => {
       if (userFilterEditRef.current) return;
       const next = readUtilityFiltersFromLocation();
-      setFilters((prev) =>
-        prev.query === next.query &&
-        prev.status === next.status &&
-        prev.section === next.section &&
-        prev.periodYm === next.periodYm &&
-        prev.connection === next.connection &&
-        prev.sort === next.sort
-          ? prev
-          : next,
-      );
+      setFilters((prev) => (utilityFiltersEqual(prev, next) ? prev : next));
     };
     window.addEventListener('popstate', syncFromUrl);
     const poll = window.setInterval(() => {
       if (userFilterEditRef.current) return;
       const next = readUtilityFiltersFromLocation();
       const cur = filtersRef.current;
-      if (
-        cur.query === next.query &&
-        cur.status === next.status &&
-        cur.section === next.section &&
-        cur.periodYm === next.periodYm &&
-        cur.connection === next.connection &&
-        cur.sort === next.sort
-      ) {
-        return;
-      }
-      if (
-        !next.query &&
-        next.status === 'all' &&
-        !next.section &&
-        !next.periodYm &&
-        !next.connection &&
-        next.sort === 'section_apartment'
-      ) {
-        return;
-      }
+      if (utilityFiltersEqual(cur, next)) return;
+      if (!utilityModuleFiltersActive(next) && next.sort === 'section_apartment') return;
       setFilters(next);
     }, 400);
     return () => {
@@ -244,8 +239,18 @@ export function AdminUtilityFinanceWorkplace({
     else params.delete('ufStatus');
     if (filters.section) params.set('ufSection', filters.section);
     else params.delete('ufSection');
-    if (filters.periodYm) params.set('ufPeriod', filters.periodYm);
-    else params.delete('ufPeriod');
+    if (service === 'water') {
+      params.delete('ufPeriod');
+      if (filters.periodFrom) params.set('ufFrom', filters.periodFrom);
+      else params.delete('ufFrom');
+      if (filters.periodTo) params.set('ufTo', filters.periodTo);
+      else params.delete('ufTo');
+    } else {
+      params.delete('ufFrom');
+      params.delete('ufTo');
+      if (filters.periodYm) params.set('ufPeriod', filters.periodYm);
+      else params.delete('ufPeriod');
+    }
     if (filters.connection) params.set('ufConn', filters.connection);
     else params.delete('ufConn');
     if (filters.sort !== 'section_apartment') params.set('ufSort', filters.sort);
@@ -264,8 +269,11 @@ export function AdminUtilityFinanceWorkplace({
     filters.status,
     filters.section,
     filters.periodYm,
+    filters.periodFrom,
+    filters.periodTo,
     filters.connection,
     filters.sort,
+    service,
     view,
   ]);
   const [registerRows, setRegisterRows] = useState<UtilityFinanceRegisterRow[]>([]);
@@ -312,7 +320,7 @@ export function AdminUtilityFinanceWorkplace({
     setRegisterLoading(true);
     setError(null);
     const table = ledgerTableForService(service);
-    const periodYm = filtersRef.current.periodYm;
+    const { periodYm, periodFrom, periodTo } = filtersRef.current;
 
     const ledgerPromise = supabase
       .from(table as 'water_ledger')
@@ -323,7 +331,7 @@ export function AdminUtilityFinanceWorkplace({
         ? supabase
             .from('water_readings')
             .select(
-              'property_id, previous_value, current_value, consumption_m3, reading_date, reversed_at, status',
+              'property_id, previous_value, current_value, consumption_m3, reading_date, created_at, reversed_at, status',
             )
             .order('reading_date', { ascending: false })
             .limit(5000)
@@ -362,9 +370,10 @@ export function AdminUtilityFinanceWorkplace({
       if (er.error && !isMissingRelation(er.error, 'water_readings')) {
         setError(toUserFacingMessage(er.error, t, { context: 'load', fallback: t('common.errLoad') }));
       }
-      const snaps = pickLatestWaterSnaps(
-        (Array.isArray(er.data) ? er.data : []) as Parameters<typeof pickLatestWaterSnaps>[0],
-        periodYm,
+      const snaps = pickWaterSnapsForDateRange(
+        (Array.isArray(er.data) ? er.data : []) as Parameters<typeof pickWaterSnapsForDateRange>[0],
+        periodFrom,
+        periodTo,
       );
       setWaterRows(buildWaterRegisterRows(base, properties, snaps));
       setElectricityRows([]);
@@ -467,7 +476,7 @@ export function AdminUtilityFinanceWorkplace({
 
   useEffect(() => {
     void loadRegister();
-  }, [loadRegister, filters.periodYm]);
+  }, [loadRegister, filters.periodYm, filters.periodFrom, filters.periodTo]);
 
   useEffect(() => {
     if (view === 'card' && propertyId !== '') void loadCard();
@@ -683,6 +692,42 @@ export function AdminUtilityFinanceWorkplace({
                 <option value="none">{t('admin.internetStatusNone')}</option>
               </select>
             </label>
+          ) : service === 'water' ? (
+            <>
+              <label className="text-xs font-medium text-secondary">
+                {t('admin.utilRegDateFrom')}
+                <input
+                  type="date"
+                  value={filters.periodFrom}
+                  onChange={(e) => {
+                    userFilterEditRef.current = true;
+                    const nextFrom = e.target.value;
+                    setFilters((f) => {
+                      const clamped = clampWaterPeriodRange(nextFrom, f.periodTo);
+                      return { ...f, periodFrom: clamped.periodFrom, periodTo: clamped.periodTo };
+                    });
+                  }}
+                  className={`mt-1 block w-40 ${fieldClass}`}
+                />
+              </label>
+              <label className="text-xs font-medium text-secondary">
+                {t('admin.utilRegDateTo')}
+                <input
+                  type="date"
+                  value={filters.periodTo}
+                  min={filters.periodFrom || undefined}
+                  onChange={(e) => {
+                    userFilterEditRef.current = true;
+                    const nextTo = e.target.value;
+                    setFilters((f) => {
+                      const clamped = clampWaterPeriodRange(f.periodFrom, nextTo);
+                      return { ...f, periodFrom: clamped.periodFrom, periodTo: clamped.periodTo };
+                    });
+                  }}
+                  className={`mt-1 block w-40 ${fieldClass}`}
+                />
+              </label>
+            </>
           ) : (
             <label className="text-xs font-medium text-secondary">
               {t('admin.utilRegFilterPeriodReadings')}
@@ -747,7 +792,9 @@ export function AdminUtilityFinanceWorkplace({
             {t('admin.sfFilterReset')}
           </AdminSecondaryButton>
         </div>
-        {service !== 'internet' ? (
+        {service === 'water' ? (
+          <p className="text-[11px] text-muted">{t('admin.utilRegWaterDateRangeHint')}</p>
+        ) : service === 'electricity' ? (
           <p className="text-[11px] text-muted">{t('admin.utilRegPeriodScopeHint')}</p>
         ) : null}
       </div>

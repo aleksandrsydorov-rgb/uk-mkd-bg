@@ -3578,8 +3578,12 @@ export const ru = {
     utilRegFilterSection: 'Секция',
     utilRegFilterPeriod: 'Расчётный период',
     utilRegFilterPeriodReadings: 'Период показаний',
+    utilRegDateFrom: 'С',
+    utilRegDateTo: 'По',
     utilRegPeriodScopeHint:
       'Период меняет только колонки показаний и расхода. Начислено / оплачено / баланс — итоги за всё время.',
+    utilRegWaterDateRangeHint:
+      'Диапазон дат меняет только колонки показаний и расхода: начальные — последнее действительное показание до «С», конечные — последнее внутри «С»–«По», расход — по сохранённым показаниям (с учётом приборов, замен и корректировок). Начислено / оплачено / баланс — итоги за всё время.',
     utilRegFilterConnection: 'Статус подключения',
     utilRegFilterBalance: 'Финансовый баланс',
     utilRegFilterSort: 'Сортировка',
@@ -9505,8 +9509,12 @@ export const en: Messages = {
     utilRegFilterSection: 'Section',
     utilRegFilterPeriod: 'Billing period',
     utilRegFilterPeriodReadings: 'Reading period',
+    utilRegDateFrom: 'From',
+    utilRegDateTo: 'To',
     utilRegPeriodScopeHint:
       'Period changes reading and consumption columns only. Charged / paid / balance are all-time totals.',
+    utilRegWaterDateRangeHint:
+      'The date range changes reading and consumption columns only: opening = last valid reading before From, closing = last valid reading in From–To, consumption = sum of stored readings (meters, replacements, corrections). Charged / paid / balance are all-time totals.',
     utilRegFilterConnection: 'Connection status',
     utilRegFilterBalance: 'Financial balance',
     utilRegFilterSort: 'Sort',
@@ -15441,8 +15449,12 @@ export const bg: Messages = {
     utilRegFilterSection: 'Секция',
     utilRegFilterPeriod: 'Отчетен период',
     utilRegFilterPeriodReadings: 'Период на показанията',
+    utilRegDateFrom: 'От',
+    utilRegDateTo: 'До',
     utilRegPeriodScopeHint:
       'Периодът променя само колоните за показания и разход. Начислено / платено / салдо са общи за всички периоди.',
+    utilRegWaterDateRangeHint:
+      'Диапазонът от дати променя само колоните за показания и разход: начални — последното валидно показание преди „От“, крайни — последното в „От“–„До“, разход — по записаните показания (уреди, смени и корекции). Начислено / платено / салдо са общи за всички периоди.',
     utilRegFilterConnection: 'Статус на връзката',
     utilRegFilterBalance: 'Финансово салдо',
     utilRegFilterSort: 'Сортиране',

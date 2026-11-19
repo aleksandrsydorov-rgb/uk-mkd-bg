@@ -17,7 +17,12 @@ export type UtilityModuleRegisterFilters = {
   query: string;
   status: UtilityFinanceStatusFilter;
   section: string; // '' = all
-  periodYm: string; // '' = latest overall; 'YYYY-MM' filters reading snapshot only
+  /** Electricity month filter: '' = latest overall; 'YYYY-MM' filters reading snapshot only. */
+  periodYm: string;
+  /** Water reading range start (YYYY-MM-DD, inclusive). Empty = unbounded / no range filter. */
+  periodFrom: string;
+  /** Water reading range end (YYYY-MM-DD, inclusive). Empty = unbounded / no range filter. */
+  periodTo: string;
   connection: string; // '' = all; internet connection status
   sort: UtilityRegisterSort;
 };
@@ -27,6 +32,8 @@ export const EMPTY_UTILITY_MODULE_FILTERS: UtilityModuleRegisterFilters = {
   status: 'all',
   section: '',
   periodYm: '',
+  periodFrom: '',
+  periodTo: '',
   connection: '',
   sort: 'section_apartment',
 };
@@ -131,24 +138,54 @@ export function readingInPeriod(readingDate: string | null | undefined, periodYm
   return String(readingDate).slice(0, 7) === periodYm;
 }
 
+/** Calendar day YYYY-MM-DD from a date / timestamptz string (complex TZ stores date columns as dates). */
+export function calendarReadingDate(readingDate: string | null | undefined): string {
+  return String(readingDate ?? '').trim().slice(0, 10);
+}
+
+export function isActiveWaterReading(r: {
+  reversed_at?: string | null;
+  status?: string | null;
+}): boolean {
+  if (r.reversed_at) return false;
+  if (String(r.status ?? '').toLowerCase() === 'reversed') return false;
+  return true;
+}
+
+/** Ensure end date is never earlier than start (inclusive range). */
+export function clampWaterPeriodRange(periodFrom: string, periodTo: string): {
+  periodFrom: string;
+  periodTo: string;
+} {
+  const from = calendarReadingDate(periodFrom);
+  const to = calendarReadingDate(periodTo);
+  if (from && to && to < from) return { periodFrom: from, periodTo: from };
+  return { periodFrom: from, periodTo: to };
+}
+
+type WaterReadingRow = {
+  property_id: number;
+  previous_value: number | string | null;
+  current_value: number | string | null;
+  consumption_m3: number | string | null;
+  reading_date: string;
+  created_at?: string | null;
+  reversed_at?: string | null;
+  status?: string | null;
+};
+
+function compareWaterReadingNewestFirst(a: WaterReadingRow, b: WaterReadingRow): number {
+  const byDate = calendarReadingDate(b.reading_date).localeCompare(calendarReadingDate(a.reading_date));
+  if (byDate !== 0) return byDate;
+  return String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''));
+}
+
 /** Latest water reading per property (optionally within YYYY-MM). */
-export function pickLatestWaterSnaps(
-  rows: Array<{
-    property_id: number;
-    previous_value: number | string | null;
-    current_value: number | string | null;
-    consumption_m3: number | string | null;
-    reading_date: string;
-    reversed_at?: string | null;
-    status?: string | null;
-  }>,
-  periodYm = '',
-): Map<number, WaterReadingSnap> {
+export function pickLatestWaterSnaps(rows: WaterReadingRow[], periodYm = ''): Map<number, WaterReadingSnap> {
   const map = new Map<number, WaterReadingSnap>();
-  const sorted = [...rows].sort((a, b) => String(b.reading_date).localeCompare(String(a.reading_date)));
+  const sorted = [...rows].sort(compareWaterReadingNewestFirst);
   for (const r of sorted) {
-    if (r.reversed_at) continue;
-    if (String(r.status ?? '').toLowerCase() === 'reversed') continue;
+    if (!isActiveWaterReading(r)) continue;
     if (!readingInPeriod(r.reading_date, periodYm)) continue;
     const pid = Number(r.property_id);
     if (!Number.isFinite(pid) || map.has(pid)) continue;
@@ -158,6 +195,78 @@ export function pickLatestWaterSnaps(
       currentValue: numOrNull(r.current_value),
       consumptionM3: numOrNull(r.consumption_m3),
       readingDate: r.reading_date ?? null,
+    });
+  }
+  return map;
+}
+
+/**
+ * Water register snaps for an inclusive calendar date range (complex local dates).
+ * — previous = current_value of the latest active reading strictly before `periodFrom`
+ * — current = current_value of the latest active reading inside [from, to]
+ * — consumption = sum of stored consumption_m3 for active readings inside the range
+ *   (existing per-reading mechanism; covers replacements / corrections already posted)
+ * Missing pieces stay null (UI shows «—»); no invented zeros or interpolation.
+ * When both bounds are empty, falls back to latest overall.
+ */
+export function pickWaterSnapsForDateRange(
+  rows: WaterReadingRow[],
+  periodFrom = '',
+  periodTo = '',
+): Map<number, WaterReadingSnap> {
+  const { periodFrom: from, periodTo: to } = clampWaterPeriodRange(periodFrom, periodTo);
+  if (!from && !to) return pickLatestWaterSnaps(rows, '');
+
+  const byProperty = new Map<number, WaterReadingRow[]>();
+  for (const r of rows) {
+    if (!isActiveWaterReading(r)) continue;
+    const pid = Number(r.property_id);
+    if (!Number.isFinite(pid)) continue;
+    const list = byProperty.get(pid);
+    if (list) list.push(r);
+    else byProperty.set(pid, [r]);
+  }
+
+  const map = new Map<number, WaterReadingSnap>();
+  for (const [pid, list] of byProperty) {
+    const sorted = [...list].sort(compareWaterReadingNewestFirst);
+    const inRange: WaterReadingRow[] = [];
+    const before: WaterReadingRow[] = [];
+    for (const r of sorted) {
+      const d = calendarReadingDate(r.reading_date);
+      if (!d) continue;
+      if (from && d < from) {
+        before.push(r);
+        continue;
+      }
+      if (to && d > to) continue;
+      inRange.push(r);
+    }
+
+    const endReading = inRange[0] ?? null;
+    const baseline = from ? (before[0] ?? null) : null;
+
+    let consumptionM3: number | null = null;
+    if (inRange.length > 0) {
+      let sum = 0;
+      let complete = true;
+      for (const r of inRange) {
+        const c = numOrNull(r.consumption_m3);
+        if (c == null) {
+          complete = false;
+          break;
+        }
+        sum += c;
+      }
+      consumptionM3 = complete ? sum : null;
+    }
+
+    map.set(pid, {
+      propertyId: pid,
+      previousValue: baseline ? numOrNull(baseline.current_value) : null,
+      currentValue: endReading ? numOrNull(endReading.current_value) : null,
+      consumptionM3,
+      readingDate: endReading?.reading_date ?? null,
     });
   }
   return map;
@@ -343,6 +452,8 @@ export function utilityModuleFiltersActive(f: UtilityModuleRegisterFilters): boo
     Boolean(String(f.query ?? '').trim()) ||
     Boolean(f.section) ||
     Boolean(f.periodYm) ||
+    Boolean(f.periodFrom) ||
+    Boolean(f.periodTo) ||
     Boolean(f.connection) ||
     f.sort !== 'section_apartment'
   );

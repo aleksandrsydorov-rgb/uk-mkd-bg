@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { Download, Eye, Printer } from 'lucide-react';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
   ensurePaymentReceiptPdf,
@@ -12,6 +13,7 @@ import {
   receiptBlockingMissingFields,
 } from '@/lib/paymentReceipts/receiptFormat';
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
+import { IconButton } from '@/components/ui/IconButton';
 
 const UK_FIELD_LABEL_KEYS: Record<string, string> = {
   mgmt_legal_name: 'receipt.missingUkLegalName',
@@ -230,56 +232,55 @@ export function PaymentReceiptActions({
         <p className="text-sm text-danger">{t('receipt.paySavedPdfFailed')}</p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {!needsUk ? (
-          <>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void openPdf()}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-hover disabled:opacity-50"
-            >
-              {busy ? t('receipt.forming') : t('receipt.open')}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void downloadPdf()}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-hover disabled:opacity-50"
-            >
-              {t('receipt.download')}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void printPdf()}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-hover disabled:opacity-50"
-            >
-              {t('receipt.print')}
-            </button>
-          </>
-        ) : null}
-        {canRetryOpen && !voided ? (
-          <button
-            type="button"
+      {!needsUk ? (
+        <div
+          className="flex flex-wrap items-center gap-0.5"
+          role="group"
+          aria-label={t('receipt.docLabel', { label: formatReceiptSeriesNumber(receipt) })}
+        >
+          <IconButton
+            icon={Eye}
+            label={busy ? t('receipt.forming') : t('receipt.open')}
+            busy={busy}
             disabled={busy}
             onClick={() => void openPdf()}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-hover disabled:opacity-50"
-          >
-            {t('receipt.retryOpen')}
-          </button>
-        ) : null}
-        {(failed || needsUk || receipt.status === 'pending_pdf') && !voided ? (
-          <button
-            type="button"
+          />
+          <IconButton
+            icon={Download}
+            label={t('receipt.download')}
+            busy={busy}
             disabled={busy}
-            onClick={() => void retryPdf()}
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {t('receipt.retry')}
-          </button>
-        ) : null}
-      </div>
+            onClick={() => void downloadPdf()}
+          />
+          <IconButton
+            icon={Printer}
+            label={t('receipt.print')}
+            busy={busy}
+            disabled={busy}
+            onClick={() => void printPdf()}
+          />
+        </div>
+      ) : null}
+      {canRetryOpen && !voided ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void openPdf()}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-hover disabled:opacity-50"
+        >
+          {t('receipt.retryOpen')}
+        </button>
+      ) : null}
+      {(failed || needsUk || receipt.status === 'pending_pdf') && !voided ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void retryPdf()}
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+        >
+          {t('receipt.retry')}
+        </button>
+      ) : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
     </div>
   );

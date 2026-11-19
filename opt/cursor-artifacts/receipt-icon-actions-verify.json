@@ -1,0 +1,60 @@
+[
+  {
+    "check": "IconButton+Tooltip modules exist",
+    "ok": true
+  },
+  {
+    "check": "PaymentReceiptActions uses Eye/Download/Printer + IconButton",
+    "ok": true
+  },
+  {
+    "check": "PaymentReceiptActions does not use native title=",
+    "ok": true
+  },
+  {
+    "check": "history finance without receipt shows no open icon",
+    "ok": true
+  },
+  {
+    "check": "live receipt with icons found in data",
+    "ok": true,
+    "detail": "icons from PaymentReceiptActions"
+  },
+  {
+    "check": "open/download/print aria-labels present",
+    "ok": true
+  },
+  {
+    "check": "hit area ≥ 44×44",
+    "ok": true,
+    "x": 868.546875,
+    "y": 442,
+    "width": 44,
+    "height": 44
+  },
+  {
+    "check": "tooltip on hover (portal)",
+    "ok": true,
+    "tipText": "Открыть квитанцию"
+  },
+  {
+    "check": "tooltip on focus",
+    "ok": true
+  },
+  {
+    "check": "no native HTML title on open button",
+    "ok": true
+  },
+  {
+    "check": "mobile hit area ≥ 44×44",
+    "ok": true,
+    "x": 389.34375,
+    "y": 490.84375,
+    "width": 44,
+    "height": 44
+  },
+  {
+    "check": "RU/EN/BG receipt action labels",
+    "ok": true
+  }
+]

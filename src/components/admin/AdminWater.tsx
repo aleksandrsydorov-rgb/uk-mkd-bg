@@ -62,6 +62,11 @@ import {
   readWaterHistoryFiltersFromSearch,
 } from '@/components/admin/AdminWaterHistoryRegister';
 import { AdminWaterApartmentFinanceHistory } from '@/components/admin/AdminWaterApartmentFinanceHistory';
+import {
+  HistoryJournalFilterBar,
+  HistoryJournalKindFilter,
+  type WaterFinanceKindFilter,
+} from '@/components/admin/HistoryJournalFilterBar';
 import { AdminModal } from '@/components/admin/AdminModal';
 import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import type { WaterMeterRegisterRow } from '@/lib/waterMetersRegister';
@@ -262,6 +267,7 @@ export function AdminWater({
   const [historyInnerTab, setHistoryInnerTab] = useState<'readings' | 'finance'>('readings');
   const [historyPeriodFrom, setHistoryPeriodFrom] = useState('');
   const [historyPeriodTo, setHistoryPeriodTo] = useState('');
+  const [historyKindFilter, setHistoryKindFilter] = useState<WaterFinanceKindFilter>('all');
   const metersListScrollRef = useRef<HTMLDivElement | null>(null);
   const metersListScrollTopRef = useRef(0);
   const meterReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -596,6 +602,7 @@ export function AdminWater({
     setSuccess(null);
     setError(null);
     setHistoryInnerTab('readings');
+    setHistoryKindFilter('all');
     // Drop previous apartment payload immediately so the shell never flashes old rows.
     if (propertyId !== row.propertyId) {
       setMeters([]);
@@ -657,6 +664,7 @@ export function AdminWater({
     }
     closeWaterCorrection();
     setHistoryInnerTab('readings');
+    setHistoryKindFilter('all');
     setHistoryShellPropertyId(null);
     writeHistoryShellToUrl('');
     onPropertyChange?.('');
@@ -1979,7 +1987,37 @@ export function AdminWater({
           />
         }
       >
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-col gap-3">
+          <HistoryJournalFilterBar
+            periodFrom={historyPeriodFrom}
+            periodTo={historyPeriodTo}
+            onPeriodFromChange={setHistoryPeriodFrom}
+            onPeriodToChange={setHistoryPeriodTo}
+            onClear={() => {
+              setHistoryPeriodFrom('');
+              setHistoryPeriodTo('');
+              setHistoryKindFilter('all');
+            }}
+            clearActive={Boolean(
+              historyPeriodFrom ||
+                historyPeriodTo ||
+                (historyInnerTab === 'finance' && historyKindFilter !== 'all'),
+            )}
+            extra={
+              historyInnerTab === 'finance' ? (
+                <HistoryJournalKindFilter
+                  value={historyKindFilter}
+                  onChange={setHistoryKindFilter}
+                />
+              ) : null
+            }
+            hint={
+              historyInnerTab === 'finance' ? (
+                <p>{t('admin.waterHistoryFinanceLead')}</p>
+              ) : null
+            }
+          />
+
           {historyInnerTab === 'readings' ? (
             meterLoading ? (
               <p className="text-sm text-muted">{t('common.loading')}</p>
@@ -2027,10 +2065,11 @@ export function AdminWater({
                 <MeterReadingHistory
                   utility="water"
                   entries={historyEntries}
-                  title={t('admin.waterHistoryTabReadings')}
                   emptyTitle={t('admin.noReadings')}
                   periodFrom={historyPeriodFrom}
                   periodTo={historyPeriodTo}
+                  embedded
+                  adminTable
                   rowActions={(entry) => {
                     const row = readings.find((r) => String(r.id) === entry.actionKey);
                     if (!row) return null;
@@ -2059,6 +2098,9 @@ export function AdminWater({
               key={historyShellPropertyId}
               supabase={supabase}
               propertyId={historyShellPropertyId}
+              periodFrom={historyPeriodFrom}
+              periodTo={historyPeriodTo}
+              kindFilter={historyKindFilter}
             />
           ) : null}
         </div>

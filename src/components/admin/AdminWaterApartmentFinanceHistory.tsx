@@ -17,13 +17,13 @@ import {
   AdminEmptyState,
   AdminInlineAlert,
   AdminTableShell,
-  adminFieldClass,
   adminTableCellClass,
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
 import { LedgerPaymentReceiptCell } from '@/components/paymentReceipts/LedgerPaymentReceiptCell';
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
+import type { WaterFinanceKindFilter } from '@/components/admin/HistoryJournalFilterBar';
 
 type LedgerRow = {
   id: string;
@@ -34,7 +34,7 @@ type LedgerRow = {
   reading_id: string | null;
 };
 
-export type WaterFinanceKindFilter = 'all' | 'charges' | 'payments';
+export type { WaterFinanceKindFilter };
 
 function isChargeKind(kind: string) {
   return kind === 'charge' || kind === 'adjustment_debit' || kind === 'adjustment_credit';
@@ -58,25 +58,28 @@ function receiptLooksMultiService(receipt: PaymentReceiptRow | null): boolean {
 }
 
 /**
- * Water ledger journal for one apartment — used inside History popup finance tab.
- * Amounts come from water_ledger (already the water share of any multi-service cash).
+ * Water ledger journal for one apartment — table only when embedded in history shell
+ * (filters live in shared HistoryJournalFilterBar).
  */
 export function AdminWaterApartmentFinanceHistory({
   supabase,
   propertyId,
   onFillUk,
+  periodFrom = '',
+  periodTo = '',
+  kindFilter = 'all',
 }: {
   supabase: SupabaseClient<Database>;
   propertyId: number;
   onFillUk?: () => void;
+  periodFrom?: string;
+  periodTo?: string;
+  kindFilter?: WaterFinanceKindFilter;
 }) {
   const { t, locale } = useI18n();
   const [rows, setRows] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [periodFrom, setPeriodFrom] = useState('');
-  const [periodTo, setPeriodTo] = useState('');
-  const [kindFilter, setKindFilter] = useState<WaterFinanceKindFilter>('all');
   const [receiptByLedger, setReceiptByLedger] = useState<Record<string, PaymentReceiptRow | null>>({});
 
   const load = useCallback(async () => {
@@ -112,57 +115,7 @@ export function AdminWaterApartmentFinanceHistory({
   }, [rows, periodFrom, periodTo, kindFilter]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block text-xs text-muted">
-          {t('admin.meterHistPeriodFrom')}
-          <input
-            type="date"
-            className={`mt-1 block ${adminFieldClass}`}
-            value={periodFrom}
-            max={periodTo || undefined}
-            onChange={(e) => setPeriodFrom(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs text-muted">
-          {t('admin.meterHistPeriodTo')}
-          <input
-            type="date"
-            className={`mt-1 block ${adminFieldClass}`}
-            value={periodTo}
-            min={periodFrom || undefined}
-            onChange={(e) => setPeriodTo(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs text-muted">
-          {t('admin.waterHistoryFinanceKindFilter')}
-          <select
-            className={`mt-1 block ${adminFieldClass}`}
-            value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value as WaterFinanceKindFilter)}
-          >
-            <option value="all">{t('admin.sfFilterAll')}</option>
-            <option value="charges">{t('admin.waterHistoryFinanceCharges')}</option>
-            <option value="payments">{t('admin.waterHistoryFinancePayments')}</option>
-          </select>
-        </label>
-        {(periodFrom || periodTo || kindFilter !== 'all') && (
-          <button
-            type="button"
-            className="text-sm text-accent hover:underline"
-            onClick={() => {
-              setPeriodFrom('');
-              setPeriodTo('');
-              setKindFilter('all');
-            }}
-          >
-            {t('admin.meterHistPeriodClear')}
-          </button>
-        )}
-      </div>
-
-      <p className="text-xs text-muted">{t('admin.waterHistoryFinanceLead')}</p>
-
+    <div className="space-y-3">
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
 
       {loading ? (

@@ -1,0 +1,105 @@
+[
+  {
+    "check": "readings has 2 date fields",
+    "ok": true,
+    "from": {
+      "x": 469,
+      "y": 264,
+      "w": 130,
+      "h": 40
+    },
+    "to": {
+      "x": 611,
+      "y": 264,
+      "w": 130,
+      "h": 40
+    },
+    "tableTop": 365,
+    "tableLeft": 470,
+    "dateCount": 2,
+    "upperTitleCount": 0,
+    "kindSelect": false,
+    "text": "Апартамент №1 · Секция A\n✕\nИстория показаний\nФинансовая история\nС даты\nПо дату\nДАТА\tНОМЕР СЧЁТЧИКА\tПОКАЗАНИЕ\tРАСХОД\tИСТОЧНИК\tСТАТУС\tФОТО\tПРИЧИНА\t\n15.01.2026\tW-A1-1\t10,0 м³\t—\tНачальные данные\tНачальное"
+  },
+  {
+    "check": "finance has 2 date fields",
+    "ok": true,
+    "from": {
+      "x": 469,
+      "y": 264,
+      "w": 130,
+      "h": 40
+    },
+    "to": {
+      "x": 611,
+      "y": 264,
+      "w": 130,
+      "h": 40
+    },
+    "tableTop": 365,
+    "tableLeft": 470,
+    "dateCount": 2,
+    "upperTitleCount": 0,
+    "kindSelect": true,
+    "text": "Апартамент №1 · Секция A\n✕\nИстория показаний\nФинансовая история\nС даты\nПо дату\nТип операции\nВсе\nНачисления\nОплаты\n\nНачисления и оплаты за воду. Квитанции доступны для операций с оформленным документом"
+  },
+  {
+    "check": "finance has kind select",
+    "ok": true
+  },
+  {
+    "check": "readings has no kind select",
+    "ok": true
+  },
+  {
+    "check": "from-date same x/y (±2px)",
+    "ok": true,
+    "dx": 0,
+    "dy": 0,
+    "readings": {
+      "x": 469,
+      "y": 264,
+      "w": 130,
+      "h": 40
+    },
+    "finance": {
+      "x": 469,
+      "y": 264,
+      "w": 130,
+      "h": 40
+    }
+  },
+  {
+    "check": "from-date same size (±2px)",
+    "ok": true,
+    "dw": 0,
+    "dh": 0
+  },
+  {
+    "check": "to-date same x/y (±2px)",
+    "ok": true,
+    "tdx": 0,
+    "tdy": 0
+  },
+  {
+    "check": "table top/left aligned (±4px)",
+    "ok": true,
+    "tableDy": 0,
+    "tableDx": 0,
+    "readingsTop": 365,
+    "financeTop": 365
+  },
+  {
+    "check": "no duplicate uppercase readings title",
+    "ok": true,
+    "count": 0
+  },
+  {
+    "check": "mobile screenshots saved",
+    "ok": true
+  },
+  {
+    "check": "shared HistoryJournalFilterBar exists",
+    "ok": true
+  }
+]

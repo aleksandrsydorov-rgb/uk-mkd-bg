@@ -123,6 +123,7 @@ export function AdminInternet({
   const [fundCharged, setFundCharged] = useState<number | null>(null);
   const [fundPaid, setFundPaid] = useState<number | null>(null);
   const [fundBalance, setFundBalance] = useState<number | null>(null);
+  const [internetTariffLabel, setInternetTariffLabel] = useState<string | null>(null);
   const [moves, setMoves] = useState<InternetWorkOrderRow[]>([]);
   const [movesLoading, setMovesLoading] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
@@ -152,9 +153,10 @@ export function AdminInternet({
     if (!canSee) return;
     setFundLoading(true);
     setMovesLoading(true);
-    const [totalsRes, movesRes] = await Promise.all([
+    const [totalsRes, movesRes, tariffRes] = await Promise.all([
       supabase.rpc('get_internet_fund_totals'),
       supabase.rpc('list_internet_work_orders'),
+      supabase.rpc('get_applicable_internet_tariff' as never),
     ]);
     setFundLoading(false);
     setMovesLoading(false);
@@ -180,7 +182,21 @@ export function AdminInternet({
     } else {
       setMoves((movesRes.data as InternetWorkOrderRow[] | null) ?? []);
     }
-  }, [canSee, supabase, t]);
+    if (!tariffRes.error) {
+      const tariffRow = firstRow(tariffRes.data as Record<string, unknown>[] | null);
+      const ratesRaw = tariffRow?.rates;
+      const rates =
+        ratesRaw && typeof ratesRaw === 'object' && !Array.isArray(ratesRaw)
+          ? (ratesRaw as Record<string, unknown>)
+          : null;
+      const price = rates?.package_30 ?? rates?.month ?? null;
+      setInternetTariffLabel(
+        price != null && Number.isFinite(Number(price)) ? formatEur(Number(price), locale) : null,
+      );
+    } else {
+      setInternetTariffLabel(null);
+    }
+  }, [canSee, locale, supabase, t]);
 
   const loadProperty = useCallback(async () => {
     if (!canSee || propertyId === '') {
@@ -410,10 +426,68 @@ export function AdminInternet({
   }
 
   if (panel === 'finance') {
+    const fundToneFinance = balanceTone(fundBalance ?? 0);
+    const fundStatusFinance =
+      fundToneFinance === 'debt'
+        ? t('admin.balDebt')
+        : fundToneFinance === 'over'
+          ? t('admin.balOver')
+          : t('admin.balSettled');
     return (
       <div className="space-y-4">
         {dialog}
         <AdminPageHeader title={t('admin.internet')} secondary={t('admin.utilFinRegisterLead')} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <AdminMetricCard
+            label={t('admin.utilRegInternetTariff')}
+            value={
+              fundLoading
+                ? t('common.loading')
+                : internetTariffLabel ?? '—'
+            }
+            secondary={internetTariffLabel ? t('admin.tariffManageInCore') : t('admin.noTariff')}
+          />
+          <AdminMetricCard
+            label={t('admin.utilRegInternetConnected')}
+            value={
+              fundLoading || activeCount == null ? t('common.loading') : String(activeCount)
+            }
+          />
+          <AdminMetricCard
+            label={t('admin.utilRegInternetBalance')}
+            value={
+              fundLoading || fundBalance == null
+                ? t('common.loading')
+                : formatEur(Math.abs(fundBalance), locale)
+            }
+            secondary={fundStatusFinance}
+            alert={fundToneFinance === 'debt'}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <AdminMetricCard
+            label={t('admin.internetActive')}
+            value={fundLoading || activeCount == null ? t('common.loading') : String(activeCount)}
+          />
+          <AdminMetricCard
+            label={t('admin.internetInactive')}
+            value={
+              fundLoading || inactiveCount == null ? t('common.loading') : String(inactiveCount)
+            }
+          />
+          <AdminMetricCard
+            label={t('admin.internetPendingEnable')}
+            value={
+              fundLoading || pendingEnable == null ? t('common.loading') : String(pendingEnable)
+            }
+          />
+          <AdminMetricCard
+            label={t('admin.internetPendingDisable')}
+            value={
+              fundLoading || pendingDisable == null ? t('common.loading') : String(pendingDisable)
+            }
+          />
+        </div>
         <AdminUtilityFinanceWorkplace
           service="internet"
           supabase={supabase}

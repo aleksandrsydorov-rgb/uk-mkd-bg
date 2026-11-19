@@ -708,33 +708,39 @@ export function AdminWater({
       <AdminTabBar tabs={meteringTabs} active={activeTab} onChange={(id) => selectTab(id as AdminUtilityTab)} />
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <AdminMetricCard label={t('admin.waterMode')} value={waterModeLabel} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <AdminMetricCard
-            label={t('admin.utilTabMeter')}
-            value={activeMeter ? activeMeter.meter_number : '—'}
-            secondary={activeMeter ? undefined : t('admin.noWaterMeter')}
-            onClick={() => selectTab('meter')}
-          />
-          <AdminMetricCard
-            label={t('admin.lastReading')}
-            value={lastReading ? formatM3(Number(lastReading.current_value), locale) : '—'}
-            secondary={lastReading ? formatOwnerDate(lastReading.reading_date) : t('admin.noReadings')}
-            onClick={() => selectTab('readings')}
+            label={t('admin.waterMode')}
+            value={waterModeLabel}
+            secondary={
+              canChangeWaterMode ? t('admin.utilRegModeHint') : undefined
+            }
           />
           <AdminMetricCard
             label={t('admin.currentTariff')}
-            value={tariff ? formatEur(Number(tariff.price_eur_per_m3), locale) : '—'}
+            value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
             secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
           />
-          {canFinance && (
-            <AdminMetricCard
-              label={t('admin.waterBalance')}
-              value={formatEur(Math.abs(balance.balance_eur), locale)}
-              secondary={statusLabel}
-              alert={tone === 'debt'}
-            />
-          )}
+          <AdminMetricCard
+            label={t('admin.waterBalance')}
+            value={
+              canFinance
+                ? formatEur(Math.abs(balance.balance_eur), locale)
+                : '—'
+            }
+            secondary={canFinance ? statusLabel : t('admin.waterNoAccess')}
+            alert={canFinance && tone === 'debt'}
+            onClick={
+              canFinance
+                ? () => {
+                    const params = new URLSearchParams(window.location.search);
+                    params.set('section', 'вода');
+                    params.set('tab', 'finance');
+                    window.location.assign(`/admin?${params.toString()}`);
+                  }
+                : undefined
+            }
+          />
         </div>
       )}
 

@@ -253,7 +253,6 @@ import {
   canManageElectricityMeter,
   canCorrectElectricityReading,
   activeElectricityMeter,
-  electricityActiveMeterReadings,
   electricityPairIsActive,
   estimateElectricityCorrectionDeltaEur,
   latestCorrectableElectricityPair,
@@ -4643,7 +4642,6 @@ function AdminPortal() {
         const elHistoryEntries = buildElectricityHistoryEntries(visibleElPairs, {
           pendingDayReadingIds: elPendingIds,
         });
-        const elSnapshot = electricityActiveMeterReadings(elPairs, activeEl);
         const retiredEl = selectedElMeters.filter((m) => m.retired_at);
         const elCorrectable = latestCorrectableElectricityPair(elPairs, activeEl);
         const elCorrectTarget =
@@ -4723,28 +4721,38 @@ function AdminPortal() {
               onChange={(id) => openUtilityTab('электроэнергия', id as AdminUtilityTab)}
             />
 
-            {elTab === 'overview' && (
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {elTab === 'overview' && showElectricityFinance ? (
+              <AdminElectricityFinance
+                supabase={supabase}
+                properties={properties}
+                staffRole={staffRole}
+                embedded
+                panel="overview"
+                modeLabel={elModeLabel}
+                focusPropertyId={selectedElId ? Number(selectedElId) : ''}
+                onPropertyChange={(id) => {
+                  if (id !== '') setElMeterPropertyId(String(id));
+                }}
+                onOpenTab={(next) => {
+                  if (next === 'finance' || next === 'tariff') return;
+                  openUtilityTab('электроэнергия', next);
+                }}
+              />
+            ) : elTab === 'overview' ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
                 <AdminMetricCard
-                  label={t('admin.utilTabMeter')}
-                  value={activeEl ? displayElectricityMeterNumber(activeEl.meter_number) : '—'}
-                  secondary={activeEl ? undefined : t('admin.noElectricityMeter')}
-                  onClick={() => openUtilityTab('электроэнергия', 'meter')}
+                  label={t('admin.utilRegTariffsDayNight')}
+                  value="—"
+                  secondary={t('admin.noTariff')}
                 />
                 <AdminMetricCard
-                  label={t('admin.elLastDay')}
-                  value={elSnapshot.currentDay != null ? formatKwh(elSnapshot.currentDay, locale) : '—'}
-                  secondary={elSnapshot.readingDate ? formatOwnerDate(elSnapshot.readingDate) : t('admin.noReadings')}
-                  onClick={() => openUtilityTab('электроэнергия', 'readings')}
-                />
-                <AdminMetricCard
-                  label={t('admin.elLastNight')}
-                  value={elSnapshot.currentNight != null ? formatKwh(elSnapshot.currentNight, locale) : '—'}
-                  onClick={() => openUtilityTab('электроэнергия', 'readings')}
+                  label={t('admin.electricityBalance')}
+                  value="—"
+                  secondary={t('admin.waterNoAccess')}
                 />
               </div>
-            )}
+            ) : null}
 
             {elTab === 'meter' && (() => {
               const canElMeter = canManageElectricityMeter(staffRole, staffActive);
@@ -5034,23 +5042,6 @@ function AdminPortal() {
               </div>
             )}
 
-            {showElectricityFinance && elTab === 'overview' ? (
-              <AdminElectricityFinance
-                supabase={supabase}
-                properties={properties}
-                staffRole={staffRole}
-                embedded
-                panel="overview"
-                focusPropertyId={selectedElId ? Number(selectedElId) : ''}
-                onPropertyChange={(id) => {
-                  if (id !== '') setElMeterPropertyId(String(id));
-                }}
-                onOpenTab={(next) => {
-                  if (next === 'finance' || next === 'tariff') return;
-                  openUtilityTab('электроэнергия', next);
-                }}
-              />
-            ) : null}
           </div>
         );
       }

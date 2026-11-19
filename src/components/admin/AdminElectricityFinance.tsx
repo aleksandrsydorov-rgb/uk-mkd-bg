@@ -55,6 +55,8 @@ import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 type PropertyOption = {
   id: number;
   apartment_number: string | number | null;
+  section_code?: string | null;
+  block_code?: string | null;
   owner_name: string | null;
 };
 
@@ -79,6 +81,7 @@ export function AdminElectricityFinance({
   focusPropertyId,
   onPropertyChange,
   onOpenTab,
+  modeLabel,
 }: {
   supabase: SupabaseClient<Database>;
   properties: PropertyOption[];
@@ -88,6 +91,8 @@ export function AdminElectricityFinance({
   focusPropertyId?: number | '';
   onPropertyChange?: (id: number | '') => void;
   onOpenTab?: (tab: AdminUtilityTab) => void;
+  /** When set, overview shows the three-card strip including mode. */
+  modeLabel?: string;
 }) {
   const { t, locale } = useI18n();
   const canSee = canSeeElectricityFinance(staffRole);
@@ -326,27 +331,48 @@ export function AdminElectricityFinance({
 
   if (panel === 'overview') {
     return (
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <AdminMetricCard
-          label={t('admin.utilTabTariff')}
+          label={t('admin.electricityMode')}
+          value={modeLabel ?? '—'}
+          secondary={modeLabel ? t('admin.utilRegModeHint') : undefined}
+        />
+        <AdminMetricCard
+          label={t('admin.utilRegTariffsDayNight')}
           value={
             listLoading
               ? t('common.loading')
               : tariff
-                ? formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)
+                ? `${t('account.elDay')}: ${formatElectricityTariff(Number(tariff.day_price_eur_per_kwh), locale)}`
                 : '—'
           }
           secondary={
             tariff
-              ? `${t('account.elNight')} ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)} · ${t('admin.tariffManageInCore')}`
+              ? `${t('account.elNight')}: ${formatElectricityTariff(Number(tariff.night_price_eur_per_kwh), locale)} · ${t('admin.tariffManageInCore')}`
               : t('admin.noTariff')
           }
         />
         <AdminMetricCard
           label={t('admin.electricityBalance')}
-          value={propLoading ? t('common.loading') : formatEur(Math.abs(balance.balance_eur), locale)}
-          secondary={statusLabel}
-          alert={tone === 'debt'}
+          value={
+            propertyId === ''
+              ? '—'
+              : propLoading
+                ? t('common.loading')
+                : formatEur(Math.abs(balance.balance_eur), locale)
+          }
+          secondary={propertyId === '' ? t('admin.pickProperty') : statusLabel}
+          alert={propertyId !== '' && tone === 'debt'}
+          onClick={
+            canFinance
+              ? () => {
+                  const params = new URLSearchParams(window.location.search);
+                  params.set('section', 'электроэнергия');
+                  params.set('tab', 'finance');
+                  window.location.assign(`/admin?${params.toString()}`);
+                }
+              : undefined
+          }
         />
       </div>
     );

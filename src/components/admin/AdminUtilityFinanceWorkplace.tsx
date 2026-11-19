@@ -11,25 +11,40 @@ import {
   balanceTone,
   emptyBalance,
   formatEur,
+  formatKwh,
+  formatM3,
   type UtilityBalance,
 } from '@/lib/utilities';
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import {
-  EMPTY_UTILITY_FINANCE_FILTERS,
   aggregateUtilityBalances,
   balanceRpcForService,
   buildUtilityFinanceRegisterRows,
-  filterUtilityFinanceRegisterRows,
   ledgerTableForService,
   paymentRpcForService,
   receiptModuleForService,
-  sortUtilityFinanceRegisterRows,
-  utilityFinanceFiltersActive,
-  type UtilityFinanceRegisterFilters,
   type UtilityFinanceRegisterRow,
   type UtilityFinanceService,
   type UtilityLedgerAggRow,
 } from '@/lib/utilityFinanceRegister';
+import {
+  EMPTY_UTILITY_MODULE_FILTERS,
+  buildElectricityRegisterRows,
+  buildInternetRegisterRows,
+  buildWaterRegisterRows,
+  filterUtilityModuleRows,
+  formatSectionBlock,
+  indexInternetSubs,
+  listSectionsFromProperties,
+  pickLatestElectricitySnaps,
+  pickLatestWaterSnaps,
+  sortUtilityModuleRows,
+  utilityModuleFiltersActive,
+  type ElectricityRegisterRow,
+  type InternetRegisterRow,
+  type UtilityModuleRegisterFilters,
+  type WaterRegisterRow,
+} from '@/lib/utilityModuleRegister';
 import {
   AdminEmptyState,
   AdminInlineAlert,
@@ -37,7 +52,6 @@ import {
   AdminPrimaryButton,
   AdminSecondaryButton,
   AdminTableShell,
-  StatusBadge,
   adminCardClass,
   adminFieldClass,
   adminTableCellClass,
@@ -84,22 +98,28 @@ function firstRow<T>(data: T[] | T | null | undefined): T | null {
   return Array.isArray(data) ? (data[0] ?? null) : data;
 }
 
-function statusLabel(status: UtilityFinanceRegisterRow['status'], t: (k: string) => string) {
-  if (status === 'debt') return t('admin.balDebt');
-  if (status === 'credit') return t('admin.balOver');
-  return t('admin.balSettled');
-}
-
-function statusTone(status: UtilityFinanceRegisterRow['status']): 'danger' | 'success' | 'neutral' {
-  if (status === 'debt') return 'danger';
-  if (status === 'credit') return 'success';
-  return 'neutral';
-}
-
 function serviceTitleKey(service: UtilityFinanceService) {
   if (service === 'water') return 'admin.water';
   if (service === 'electricity') return 'admin.electricityFinance';
   return 'admin.internet';
+}
+
+function registerTitleKey(service: UtilityFinanceService) {
+  if (service === 'water') return 'admin.utilRegWaterTitle';
+  if (service === 'electricity') return 'admin.utilRegElectricityTitle';
+  return 'admin.utilRegInternetTitle';
+}
+
+function connectionStatusLabel(status: string, t: (k: string) => string) {
+  const s = String(status ?? '').toLowerCase();
+  if (s === 'active') return t('admin.internetStatusActive');
+  if (s === 'inactive' || s === 'disabled' || s === 'disconnected') {
+    return t('admin.internetStatusInactive');
+  }
+  if (s === 'pending_enable' || s === 'pending_on') return t('admin.internetPendingEnable');
+  if (s === 'pending_disable' || s === 'pending_off') return t('admin.internetPendingDisable');
+  if (s === 'none' || !s) return t('admin.internetStatusNone');
+  return status;
 }
 
 export function AdminUtilityFinanceWorkplace({
@@ -125,27 +145,49 @@ export function AdminUtilityFinanceWorkplace({
   const [propertyId, setPropertyId] = useState<number | ''>(
     focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : '',
   );
-  const [filters, setFilters] = useState<UtilityFinanceRegisterFilters>(() => {
-    if (typeof window === 'undefined') return EMPTY_UTILITY_FINANCE_FILTERS;
+  const [filters, setFilters] = useState<UtilityModuleRegisterFilters>(() => {
+    if (typeof window === 'undefined') return EMPTY_UTILITY_MODULE_FILTERS;
     const params = new URLSearchParams(window.location.search);
     const query = (params.get('q') ?? '').trim();
     const statusRaw = params.get('ufStatus') ?? 'all';
-    const status: UtilityFinanceRegisterFilters['status'] =
+    const status: UtilityModuleRegisterFilters['status'] =
       statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
-    return { query, status };
+    const section = (params.get('ufSection') ?? '').trim();
+    const periodYm = (params.get('ufPeriod') ?? '').trim();
+    const connection = (params.get('ufConn') ?? '').trim();
+    const sortRaw = params.get('ufSort') ?? 'apartment';
+    const sort: UtilityModuleRegisterFilters['sort'] =
+      sortRaw === 'balance_desc' ||
+      sortRaw === 'balance_asc' ||
+      sortRaw === 'section' ||
+      sortRaw === 'apartment'
+        ? sortRaw
+        : 'apartment';
+    return { query, status, section, periodYm, connection, sort };
   });
   /** Only push filter edits to the URL — never wipe return/deep-link q on remount. */
   const userFilterEditRef = useRef(false);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
-  function readUtilityFiltersFromLocation(): UtilityFinanceRegisterFilters {
+  function readUtilityFiltersFromLocation(): UtilityModuleRegisterFilters {
     const params = new URLSearchParams(window.location.search);
     const query = (params.get('q') ?? '').trim();
     const statusRaw = params.get('ufStatus') ?? 'all';
-    const status: UtilityFinanceRegisterFilters['status'] =
+    const status: UtilityModuleRegisterFilters['status'] =
       statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
-    return { query, status };
+    const section = (params.get('ufSection') ?? '').trim();
+    const periodYm = (params.get('ufPeriod') ?? '').trim();
+    const connection = (params.get('ufConn') ?? '').trim();
+    const sortRaw = params.get('ufSort') ?? 'apartment';
+    const sort: UtilityModuleRegisterFilters['sort'] =
+      sortRaw === 'balance_desc' ||
+      sortRaw === 'balance_asc' ||
+      sortRaw === 'section' ||
+      sortRaw === 'apartment'
+        ? sortRaw
+        : 'apartment';
+    return { query, status, section, periodYm, connection, sort };
   }
 
   // Re-hydrate after apartment-card «return» / Back-Forward without wiping typed filters.
@@ -154,15 +196,42 @@ export function AdminUtilityFinanceWorkplace({
     const syncFromUrl = () => {
       if (userFilterEditRef.current) return;
       const next = readUtilityFiltersFromLocation();
-      setFilters((prev) => (prev.query === next.query && prev.status === next.status ? prev : next));
+      setFilters((prev) =>
+        prev.query === next.query &&
+        prev.status === next.status &&
+        prev.section === next.section &&
+        prev.periodYm === next.periodYm &&
+        prev.connection === next.connection &&
+        prev.sort === next.sort
+          ? prev
+          : next,
+      );
     };
     window.addEventListener('popstate', syncFromUrl);
     const poll = window.setInterval(() => {
       if (userFilterEditRef.current) return;
       const next = readUtilityFiltersFromLocation();
       const cur = filtersRef.current;
-      if (cur.query === next.query && cur.status === next.status) return;
-      if (!next.query && next.status === 'all') return;
+      if (
+        cur.query === next.query &&
+        cur.status === next.status &&
+        cur.section === next.section &&
+        cur.periodYm === next.periodYm &&
+        cur.connection === next.connection &&
+        cur.sort === next.sort
+      ) {
+        return;
+      }
+      if (
+        !next.query &&
+        next.status === 'all' &&
+        !next.section &&
+        !next.periodYm &&
+        !next.connection &&
+        next.sort === 'apartment'
+      ) {
+        return;
+      }
       setFilters(next);
     }, 400);
     return () => {
@@ -181,6 +250,14 @@ export function AdminUtilityFinanceWorkplace({
     else params.delete('q');
     if (nextStatus !== 'all') params.set('ufStatus', nextStatus);
     else params.delete('ufStatus');
+    if (filters.section) params.set('ufSection', filters.section);
+    else params.delete('ufSection');
+    if (filters.periodYm) params.set('ufPeriod', filters.periodYm);
+    else params.delete('ufPeriod');
+    if (filters.connection) params.set('ufConn', filters.connection);
+    else params.delete('ufConn');
+    if (filters.sort !== 'apartment') params.set('ufSort', filters.sort);
+    else params.delete('ufSort');
     const qs = params.toString();
     const currentQs = window.location.search.replace(/^\?/, '');
     if (qs === currentQs) {
@@ -190,8 +267,20 @@ export function AdminUtilityFinanceWorkplace({
     const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(window.history.state, '', url);
     userFilterEditRef.current = false;
-  }, [filters.query, filters.status, view]);
+  }, [
+    filters.query,
+    filters.status,
+    filters.section,
+    filters.periodYm,
+    filters.connection,
+    filters.sort,
+    view,
+  ]);
   const [registerRows, setRegisterRows] = useState<UtilityFinanceRegisterRow[]>([]);
+  const [waterRows, setWaterRows] = useState<WaterRegisterRow[]>([]);
+  const [electricityRows, setElectricityRows] = useState<ElectricityRegisterRow[]>([]);
+  const [internetRows, setInternetRows] = useState<InternetRegisterRow[]>([]);
+  const [internetTariffLabel, setInternetTariffLabel] = useState<string | null>(null);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [balance, setBalance] = useState<UtilityBalance>(emptyBalance());
@@ -231,18 +320,115 @@ export function AdminUtilityFinanceWorkplace({
     setRegisterLoading(true);
     setError(null);
     const table = ledgerTableForService(service);
-    const { data, error: qErr } = await supabase
+    const periodYm = filtersRef.current.periodYm;
+
+    const ledgerPromise = supabase
       .from(table as 'water_ledger')
       .select('property_id, kind, amount_eur');
+
+    const enrichPromise =
+      service === 'water'
+        ? supabase
+            .from('water_readings')
+            .select(
+              'property_id, previous_value, current_value, consumption_m3, reading_date, reversed_at, status',
+            )
+            .order('reading_date', { ascending: false })
+            .limit(5000)
+        : service === 'electricity'
+          ? supabase
+              .from('electricity_charges')
+              .select(
+                'property_id, previous_day, current_day, consumption_day, previous_night, current_night, consumption_night, reading_date',
+              )
+              .order('reading_date', { ascending: false })
+              .limit(5000)
+          : Promise.all([
+              supabase.from('internet_subscriptions').select('property_id, status'),
+              supabase.rpc('get_applicable_internet_tariff' as never),
+            ]);
+
+    const [ledgerRes, enrichRes] = await Promise.all([ledgerPromise, enrichPromise]);
     setRegisterLoading(false);
-    if (qErr && !isMissingRelation(qErr, table)) {
-      setError(toUserFacingMessage(qErr, t, { context: 'load', fallback: t('common.errLoad') }));
+
+    if (ledgerRes.error && !isMissingRelation(ledgerRes.error, table)) {
+      setError(toUserFacingMessage(ledgerRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
       setRegisterRows(buildUtilityFinanceRegisterRows(properties, new Map()));
+      setWaterRows([]);
+      setElectricityRows([]);
+      setInternetRows([]);
       return;
     }
-    const balances = aggregateUtilityBalances((data ?? []) as UtilityLedgerAggRow[]);
-    setRegisterRows(buildUtilityFinanceRegisterRows(properties, balances));
-  }, [canOperate, properties, service, supabase, t]);
+    const balances = aggregateUtilityBalances((ledgerRes.data ?? []) as UtilityLedgerAggRow[]);
+    const base = buildUtilityFinanceRegisterRows(properties, balances);
+    setRegisterRows(base);
+
+    if (service === 'water') {
+      const er = enrichRes as { data: unknown; error: { message?: string } | null };
+      if (er.error && !isMissingRelation(er.error, 'water_readings')) {
+        setError(toUserFacingMessage(er.error, t, { context: 'load', fallback: t('common.errLoad') }));
+      }
+      const snaps = pickLatestWaterSnaps(
+        (Array.isArray(er.data) ? er.data : []) as Parameters<typeof pickLatestWaterSnaps>[0],
+        periodYm,
+      );
+      setWaterRows(buildWaterRegisterRows(base, properties, snaps));
+      setElectricityRows([]);
+      setInternetRows([]);
+      return;
+    }
+
+    if (service === 'electricity') {
+      const er = enrichRes as { data: unknown; error: { message?: string } | null };
+      if (er.error && !isMissingRelation(er.error, 'electricity_charges')) {
+        setError(toUserFacingMessage(er.error, t, { context: 'load', fallback: t('common.errLoad') }));
+      }
+      const snaps = pickLatestElectricitySnaps(
+        (Array.isArray(er.data) ? er.data : []) as Parameters<typeof pickLatestElectricitySnaps>[0],
+        periodYm,
+      );
+      setElectricityRows(buildElectricityRegisterRows(base, properties, snaps));
+      setWaterRows([]);
+      setInternetRows([]);
+      return;
+    }
+
+    const [subRes, tariffRes] = enrichRes as [
+      { data: unknown; error: { message?: string } | null },
+      { data: unknown; error: { message?: string } | null },
+    ];
+    if (subRes.error && !isMissingRelation(subRes.error, 'internet_subscriptions')) {
+      setError(toUserFacingMessage(subRes.error, t, { context: 'load', fallback: t('common.errLoad') }));
+    }
+    const subs = indexInternetSubs(
+      (Array.isArray(subRes.data) ? subRes.data : []) as Array<{ property_id: number; status: string }>,
+    );
+    let tariffLabel: string | null = null;
+    const tariffRow = Array.isArray(tariffRes.data)
+      ? (tariffRes.data[0] as Record<string, unknown> | undefined)
+      : (tariffRes.data as Record<string, unknown> | null);
+    if (tariffRow) {
+      const ratesRaw = tariffRow.rates;
+      const rates =
+        ratesRaw && typeof ratesRaw === 'object' && !Array.isArray(ratesRaw)
+          ? (ratesRaw as Record<string, unknown>)
+          : null;
+      const price =
+        rates?.package_30 ??
+        rates?.month ??
+        tariffRow.price_eur_per_month ??
+        tariffRow.price_eur ??
+        tariffRow.monthly_price_eur ??
+        null;
+      if (price != null && Number.isFinite(Number(price))) {
+        tariffLabel = formatEur(Number(price), locale);
+      }
+    }
+    setInternetTariffLabel(tariffLabel);
+    setInternetRows(buildInternetRegisterRows(base, properties, subs, tariffLabel));
+    setWaterRows([]);
+    setElectricityRows([]);
+  }, [canOperate, locale, properties, service, supabase, t]);
 
   const loadCard = useCallback(async () => {
     if (!canOperate || propertyId === '') return;
@@ -287,17 +473,36 @@ export function AdminUtilityFinanceWorkplace({
 
   useEffect(() => {
     void loadRegister();
-  }, [loadRegister]);
+  }, [loadRegister, filters.periodYm]);
 
   useEffect(() => {
     if (view === 'card' && propertyId !== '') void loadCard();
   }, [view, propertyId, loadCard]);
 
-  const visibleRows = useMemo(
-    () => sortUtilityFinanceRegisterRows(filterUtilityFinanceRegisterRows(registerRows, filters)),
-    [registerRows, filters],
+  const sectionOptions = useMemo(() => listSectionsFromProperties(properties), [properties]);
+
+  const visibleWater = useMemo(
+    () => sortUtilityModuleRows(filterUtilityModuleRows(waterRows, filters), filters.sort),
+    [waterRows, filters],
   );
-  const filtersActive = utilityFinanceFiltersActive(filters);
+  const visibleElectricity = useMemo(
+    () => sortUtilityModuleRows(filterUtilityModuleRows(electricityRows, filters), filters.sort),
+    [electricityRows, filters],
+  );
+  const visibleInternet = useMemo(() => {
+    const base = filterUtilityModuleRows(internetRows, filters).filter((row) => {
+      if (!filters.connection) return true;
+      return String(row.connectionStatus).toLowerCase() === filters.connection.toLowerCase();
+    });
+    return sortUtilityModuleRows(base, filters.sort);
+  }, [internetRows, filters]);
+  const visibleCount =
+    service === 'water'
+      ? visibleWater.length
+      : service === 'electricity'
+        ? visibleElectricity.length
+        : visibleInternet.length;
+  const filtersActive = utilityModuleFiltersActive(filters);
 
   const tone = balanceTone(balance.balance_eur);
   const cardStatus =
@@ -402,128 +607,314 @@ export function AdminUtilityFinanceWorkplace({
   }
 
   if (view === 'register') {
+    const rowClickProps = (propertyId: number) => ({
+      tabIndex: 0 as const,
+      role: 'button' as const,
+      'aria-label': t('admin.utilFinOpenCard'),
+      className: `${adminTableRowClass} cursor-pointer hover:bg-hover/70 focus-visible:bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40`,
+      onClick: () => openCard(propertyId),
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        openCard(propertyId);
+      },
+    });
+
+    const balanceClass = (status: UtilityFinanceRegisterRow['status']) =>
+      `${adminTableCellClass} tabular-nums ${
+        status === 'debt' ? 'text-danger' : status === 'credit' ? 'text-success' : ''
+      }`;
+
+    const aptCell = (propertyId: number, apartmentNumber: string | number) => {
+      const prop = properties.find((p) => p.id === propertyId);
+      return prop ? (
+        <PropertyIdentityLink
+          property={prop}
+          module={service === 'water' ? 'water' : service === 'electricity' ? 'electricity' : 'internet'}
+        />
+      ) : (
+        `№ ${apartmentNumber}`
+      );
+    };
+
+    const filterBar = (
+      <div className="flex flex-wrap items-end gap-2 rounded-[14px] border border-border bg-surface px-3 py-2">
+        <label className="text-xs text-secondary">
+          {t('admin.utilRegFilterSearch')}
+          <input
+            value={filters.query}
+            onChange={(e) => {
+              userFilterEditRef.current = true;
+              setFilters((f) => ({ ...f, query: e.target.value }));
+            }}
+            placeholder={t('admin.sfFilterAptPh')}
+            className={`mt-1 block w-44 ${fieldClass}`}
+          />
+        </label>
+        <label className="text-xs text-secondary">
+          {t('admin.utilRegFilterSection')}
+          <select
+            value={filters.section}
+            onChange={(e) => {
+              userFilterEditRef.current = true;
+              setFilters((f) => ({ ...f, section: e.target.value }));
+            }}
+            className={`mt-1 block w-36 ${fieldClass}`}
+          >
+            <option value="">{t('admin.sfFilterAll')}</option>
+            {sectionOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        {service === 'internet' ? (
+          <label className="text-xs text-secondary">
+            {t('admin.utilRegFilterConnection')}
+            <select
+              value={filters.connection}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({ ...f, connection: e.target.value }));
+              }}
+              className={`mt-1 block w-44 ${fieldClass}`}
+            >
+              <option value="">{t('admin.sfFilterAll')}</option>
+              <option value="active">{t('admin.internetStatusActive')}</option>
+              <option value="inactive">{t('admin.internetStatusInactive')}</option>
+              <option value="pending_enable">{t('admin.internetPendingEnable')}</option>
+              <option value="pending_disable">{t('admin.internetPendingDisable')}</option>
+              <option value="none">{t('admin.internetStatusNone')}</option>
+            </select>
+          </label>
+        ) : (
+          <label className="text-xs text-secondary">
+            {t('admin.utilRegFilterPeriod')}
+            <input
+              type="month"
+              value={filters.periodYm}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({ ...f, periodYm: e.target.value }));
+              }}
+              className={`mt-1 block w-40 ${fieldClass}`}
+            />
+          </label>
+        )}
+        <label className="text-xs text-secondary">
+          {t('admin.utilRegFilterBalance')}
+          <select
+            value={filters.status}
+            onChange={(e) => {
+              userFilterEditRef.current = true;
+              setFilters((f) => ({
+                ...f,
+                status: e.target.value as UtilityModuleRegisterFilters['status'],
+              }));
+            }}
+            className={`mt-1 block w-40 ${fieldClass}`}
+          >
+            <option value="all">{t('admin.sfFilterAll')}</option>
+            <option value="debt">{t('admin.balDebt')}</option>
+            <option value="credit">{t('admin.balOver')}</option>
+            <option value="settled">{t('admin.balSettled')}</option>
+          </select>
+        </label>
+        <label className="text-xs text-secondary">
+          {t('admin.utilRegFilterSort')}
+          <select
+            value={filters.sort}
+            onChange={(e) => {
+              userFilterEditRef.current = true;
+              setFilters((f) => ({
+                ...f,
+                sort: e.target.value as UtilityModuleRegisterFilters['sort'],
+              }));
+            }}
+            className={`mt-1 block w-40 ${fieldClass}`}
+          >
+            <option value="apartment">{t('admin.utilRegSortApt')}</option>
+            <option value="section">{t('admin.utilRegSortSection')}</option>
+            <option value="balance_desc">{t('admin.utilRegSortBalanceDesc')}</option>
+            <option value="balance_asc">{t('admin.utilRegSortBalanceAsc')}</option>
+          </select>
+        </label>
+        <AdminSecondaryButton
+          type="button"
+          disabled={!filtersActive}
+          onClick={() => {
+            userFilterEditRef.current = true;
+            setFilters(EMPTY_UTILITY_MODULE_FILTERS);
+          }}
+        >
+          {t('admin.sfFilterReset')}
+        </AdminSecondaryButton>
+        <p className="ml-auto text-xs text-muted">
+          {t('admin.utilFinRegisterCount', { n: String(visibleCount) })}
+        </p>
+      </div>
+    );
+
     return (
       <div className="space-y-4">
         <div className={cardClass}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
-            {t('admin.utilFinRegisterTitle')}
+            {t(registerTitleKey(service))}
           </p>
           <p className="mt-2 text-sm text-secondary">{t('admin.utilFinRegisterLead')}</p>
         </div>
         {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
-        <div className="flex flex-wrap items-end gap-2 rounded-[14px] border border-border bg-surface px-3 py-2">
-          <label className="text-xs text-secondary">
-            {t('admin.sfFilterApt')}
-            <input
-              value={filters.query}
-              onChange={(e) => {
-                userFilterEditRef.current = true;
-                setFilters((f) => ({ ...f, query: e.target.value }));
-              }}
-              placeholder={t('admin.sfFilterAptPh')}
-              className={`mt-1 block w-44 ${fieldClass}`}
-            />
-          </label>
-          <label className="text-xs text-secondary">
-            {t('admin.sfFilterStatus')}
-            <select
-              value={filters.status}
-              onChange={(e) => {
-                userFilterEditRef.current = true;
-                setFilters((f) => ({
-                  ...f,
-                  status: e.target.value as UtilityFinanceRegisterFilters['status'],
-                }));
-              }}
-              className={`mt-1 block w-40 ${fieldClass}`}
-            >
-              <option value="all">{t('admin.sfFilterAll')}</option>
-              <option value="debt">{t('admin.balDebt')}</option>
-              <option value="credit">{t('admin.balOver')}</option>
-              <option value="settled">{t('admin.balSettled')}</option>
-            </select>
-          </label>
-          <AdminSecondaryButton
-            type="button"
-            disabled={!filtersActive}
-            onClick={() => {
-              userFilterEditRef.current = true;
-              setFilters(EMPTY_UTILITY_FINANCE_FILTERS);
-            }}
-          >
-            {t('admin.sfFilterReset')}
-          </AdminSecondaryButton>
-          <p className="ml-auto text-xs text-muted">
-            {t('admin.utilFinRegisterCount', { n: String(visibleRows.length) })}
-          </p>
-        </div>
+        {filterBar}
         {registerLoading ? (
           <p className="text-sm text-muted">{t('common.loading')}</p>
         ) : properties.length === 0 ? (
           <AdminEmptyState title={t('admin.utilFinEmpty')} />
-        ) : visibleRows.length === 0 ? (
+        ) : visibleCount === 0 ? (
           <AdminEmptyState title={t('admin.utilFinEmptyFilter')} />
-        ) : (
+        ) : service === 'water' ? (
           <AdminTableShell>
-            <table className="w-full min-w-[40rem] text-sm">
+            <table className="w-full min-w-[64rem] text-sm">
               <thead>
                 <tr className={adminTableHeadRowClass}>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
                   <th className={adminTableCellClass}>{t('form.colApt')}</th>
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColPrevM3')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColCurrM3')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColConsM3')}</th>
                   <th className={adminTableCellClass}>{t('admin.charged')}</th>
                   <th className={adminTableCellClass}>{t('admin.paid')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilFinColBalance')}</th>
-                  <th className={adminTableCellClass}>{t('admin.status')}</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((row) => (
-                  <tr
-                    key={row.propertyId}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={t('admin.utilFinOpenCard')}
-                    className={`${adminTableRowClass} cursor-pointer hover:bg-hover/70 focus-visible:bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40`}
-                    onClick={() => openCard(row.propertyId)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter' && e.key !== ' ') return;
-                      e.preventDefault();
-                      openCard(row.propertyId);
-                    }}
-                  >
+                {visibleWater.map((row) => (
+                  <tr key={row.propertyId} {...rowClickProps(row.propertyId)}>
                     <td className={adminTableCellClass}>
-                      {(() => {
-                        const prop = properties.find((p) => p.id === row.propertyId);
-                        return prop ? (
-                          <PropertyIdentityLink
-                            property={prop}
-                            module={service === 'water' ? 'water' : service === 'electricity' ? 'electricity' : 'internet'}
-                          />
-                        ) : (
-                          `№ ${row.apartmentNumber}`
-                        );
-                      })()}
+                      {formatSectionBlock(row.sectionCode, row.blockCode)}
                     </td>
+                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
                     <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.previousM3 == null ? '—' : formatM3(row.previousM3, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.currentM3 == null ? '—' : formatM3(row.currentM3, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.consumptionM3 == null ? '—' : formatM3(row.consumptionM3, locale)}
+                    </td>
                     <td className={`${adminTableCellClass} tabular-nums`}>
                       {formatEur(row.chargedEur, locale)}
                     </td>
                     <td className={`${adminTableCellClass} tabular-nums`}>
                       {formatEur(row.paidEur, locale)}
                     </td>
-                    <td
-                      className={`${adminTableCellClass} tabular-nums ${
-                        row.status === 'debt'
-                          ? 'text-danger'
-                          : row.status === 'credit'
-                            ? 'text-success'
-                            : ''
-                      }`}
-                    >
+                    <td className={balanceClass(row.status)}>
                       {formatEur(Math.abs(row.balanceEur), locale)}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableShell>
+        ) : service === 'electricity' ? (
+          <AdminTableShell>
+            <table className="w-full min-w-[78rem] text-sm">
+              <thead>
+                <tr className={adminTableHeadRowClass}>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
+                  <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                  <th className={adminTableCellClass}>{t('form.colOwner')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColPrevDay')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColCurrDay')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColConsDay')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColPrevNight')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColCurrNight')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColConsNight')}</th>
+                  <th className={adminTableCellClass}>{t('admin.charged')}</th>
+                  <th className={adminTableCellClass}>{t('admin.paid')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilFinColBalance')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleElectricity.map((row) => (
+                  <tr key={row.propertyId} {...rowClickProps(row.propertyId)}>
                     <td className={adminTableCellClass}>
-                      <StatusBadge label={statusLabel(row.status, t)} tone={statusTone(row.status)} />
+                      {formatSectionBlock(row.sectionCode, row.blockCode)}
+                    </td>
+                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
+                    <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.previousDay == null ? '—' : formatKwh(row.previousDay, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.currentDay == null ? '—' : formatKwh(row.currentDay, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.consumptionDay == null ? '—' : formatKwh(row.consumptionDay, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.previousNight == null ? '—' : formatKwh(row.previousNight, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.currentNight == null ? '—' : formatKwh(row.currentNight, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.consumptionNight == null ? '—' : formatKwh(row.consumptionNight, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {formatEur(row.chargedEur, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {formatEur(row.paidEur, locale)}
+                    </td>
+                    <td className={balanceClass(row.status)}>
+                      {formatEur(Math.abs(row.balanceEur), locale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableShell>
+        ) : (
+          <AdminTableShell>
+            <table className="w-full min-w-[56rem] text-sm">
+              <thead>
+                <tr className={adminTableHeadRowClass}>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
+                  <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                  <th className={adminTableCellClass}>{t('form.colOwner')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColConnection')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColTariff')}</th>
+                  <th className={adminTableCellClass}>{t('admin.charged')}</th>
+                  <th className={adminTableCellClass}>{t('admin.paid')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilFinColBalance')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleInternet.map((row) => (
+                  <tr key={row.propertyId} {...rowClickProps(row.propertyId)}>
+                    <td className={adminTableCellClass}>
+                      {formatSectionBlock(row.sectionCode, row.blockCode)}
+                    </td>
+                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
+                    <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
+                    <td className={adminTableCellClass}>
+                      {connectionStatusLabel(row.connectionStatus, t)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {row.tariffLabel ?? internetTariffLabel ?? '—'}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {formatEur(row.chargedEur, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} tabular-nums`}>
+                      {formatEur(row.paidEur, locale)}
+                    </td>
+                    <td className={balanceClass(row.status)}>
+                      {formatEur(Math.abs(row.balanceEur), locale)}
                     </td>
                   </tr>
                 ))}

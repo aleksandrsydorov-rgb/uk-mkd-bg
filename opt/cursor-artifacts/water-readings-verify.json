@@ -1,0 +1,87 @@
+[
+  {
+    "check": "login",
+    "ok": true,
+    "passwordUsed": "AcceptNotify"
+  },
+  {
+    "check": "register title visible",
+    "ok": true
+  },
+  {
+    "check": "submit button",
+    "ok": true
+  },
+  {
+    "check": "search filter",
+    "ok": true
+  },
+  {
+    "check": "date inputs >=2",
+    "ok": true,
+    "count": 2
+  },
+  {
+    "check": "desktop table",
+    "ok": true
+  },
+  {
+    "check": "rows present",
+    "ok": true,
+    "count": 80
+  },
+  {
+    "check": "section tabs include readings",
+    "ok": true,
+    "tabs": [
+      "Обзор",
+      "Счётчики",
+      "Показания",
+      "История"
+    ]
+  },
+  {
+    "check": "no forced apt picker on list",
+    "ok": true
+  },
+  {
+    "check": "submit shell URL wrForm",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=readings&wrForm=1"
+  },
+  {
+    "check": "closed submit shell",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=readings"
+  },
+  {
+    "check": "detail URL wrReading|wrMeter",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=readings&property=5&wrReading=0968f0d3-3514-44e2-a359-0e310ae42c91&wrMeter=6c1720ea-f1a6-448c-a3ff-aba0057c82ab"
+  },
+  {
+    "check": "section options",
+    "ok": true,
+    "opts": [
+      "Все",
+      "A",
+      "Б",
+      "В"
+    ]
+  },
+  {
+    "check": "wrSection in URL",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=readings&wrSection=A"
+  },
+  {
+    "check": "filters survive reload",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=readings&wrSection=A"
+  },
+  {
+    "check": "mobile list cards",
+    "ok": true,
+    "count": 85
+  }
+]

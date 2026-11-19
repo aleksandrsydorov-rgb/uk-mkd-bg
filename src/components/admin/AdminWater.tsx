@@ -42,6 +42,8 @@ import {
   AdminCard,
   AdminMetricCard,
   AdminEmptyState,
+  AdminPrimaryButton,
+  AdminSecondaryButton,
   adminCardClass,
   adminFieldClass,
   AdminInlineAlert,
@@ -54,10 +56,14 @@ import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
 import { AdminWaterMetersRegister } from '@/components/admin/AdminWaterMetersRegister';
+import { AdminWaterReadingsRegister } from '@/components/admin/AdminWaterReadingsRegister';
 import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import type { WaterMeterRegisterRow } from '@/lib/waterMetersRegister';
+import type { WaterReadingRegisterRow } from '@/lib/waterReadingsRegister';
+import { presentMeterReadingStatus } from '@/lib/meterReadingHistory';
 import { formatPropertyIdentity } from '@/lib/propertyIdentity';
 import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 import {
   emptyReceiptPayFields,
   PaymentReceiptPayFields,
@@ -118,6 +124,7 @@ export function AdminWater({
 }) {
   const { t, locale } = useI18n();
   const pathname = usePathname() || '/admin';
+  const { confirm, dialog: confirmDialog } = useAppConfirm(t('common.close'));
   const [showDebtorsSignal, setShowDebtorsSignal] = useState(0);
   const canSee = canSeeWaterAdmin(staffRole);
   const canMeter = canAssignWaterMeter(staffRole);
@@ -146,7 +153,7 @@ export function AdminWater({
   );
 
   const [propertyId, setPropertyId] = useState<number | ''>(
-    focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : sorted[0]?.id ?? '',
+    focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : '',
   );
   useEffect(() => {
     if (focusPropertyId == null || focusPropertyId === '') return;
@@ -199,9 +206,31 @@ export function AdminWater({
     const raw = new URLSearchParams(window.location.search).get('meter');
     return raw && raw.trim() ? raw.trim() : null;
   });
+  const [readingsShell, setReadingsShell] = useState<'none' | 'submit' | 'detail'>(() => {
+    if (typeof window === 'undefined') return 'none';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('wrForm') === '1') return 'submit';
+    if ((params.get('wrReading') ?? '').trim() || (params.get('wrMeter') ?? '').trim()) return 'detail';
+    return 'none';
+  });
+  const [detailReadingId, setDetailReadingId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = new URLSearchParams(window.location.search).get('wrReading');
+    return raw && raw.trim() ? raw.trim() : null;
+  });
+  const [detailReadingMeterId, setDetailReadingMeterId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const raw = new URLSearchParams(window.location.search).get('wrMeter');
+    return raw && raw.trim() ? raw.trim() : null;
+  });
+  const [submitMeterId, setSubmitMeterId] = useState('');
+  const [readingsRefreshSignal, setReadingsRefreshSignal] = useState(0);
   const metersListScrollRef = useRef<HTMLDivElement | null>(null);
   const metersListScrollTopRef = useRef(0);
   const meterReturnFocusRef = useRef<HTMLElement | null>(null);
+  const readingsListScrollRef = useRef<HTMLDivElement | null>(null);
+  const readingsListScrollTopRef = useRef(0);
+  const readingsReturnFocusRef = useRef<HTMLElement | null>(null);
   const activeTab = onTabChange
     ? parseAdminUtilityTab(tab, allowedWaterTabs)
     : parseAdminUtilityTab(localTab, allowedWaterTabs);
@@ -251,12 +280,13 @@ export function AdminWater({
   const correctKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
-    // Overview / finance / meters list — no auto apartment.
-    // Readings / history still need a property for the existing detail panels.
+    // Overview / finance / meters / readings register — no auto apartment.
+    // History still needs a property for the existing journal panel.
     if (
       activeTab === 'finance' ||
       activeTab === 'overview' ||
-      activeTab === 'meter'
+      activeTab === 'meter' ||
+      activeTab === 'readings'
     ) {
       return;
     }
@@ -273,9 +303,13 @@ export function AdminWater({
     if (tab && !allowedWaterTabs.includes(tab as AdminUtilityTab)) onTabChange('overview');
   }, [onTabChange, tab, allowedWaterTabs, localTab, staffRole]);
 
-  function selectTab(next: AdminUtilityTab) {
+  async function selectTab(next: AdminUtilityTab) {
     if (next !== 'meter' && detailMeterId) {
       closeMeterDetail({ keepScroll: false });
+    }
+    if (next !== 'readings' && readingsShell !== 'none') {
+      const ok = await closeReadingsShell({ keepScroll: false });
+      if (!ok) return;
     }
     if (onTabChange) onTabChange(next);
     else setLocalTab(next);
@@ -344,10 +378,145 @@ export function AdminWater({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- URL seed for meter detail
   }, [activeTab]);
 
+  function writeReadingsShellToUrl(opts: {
+    shell: 'none' | 'submit' | 'detail';
+    readingId?: string | null;
+    meterId?: string | null;
+    property?: number | '';
+  }) {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('section', 'вода');
+    params.set('tab', 'readings');
+    if (opts.shell === 'submit') params.set('wrForm', '1');
+    else params.delete('wrForm');
+    if (opts.shell === 'detail' && opts.readingId) params.set('wrReading', opts.readingId);
+    else params.delete('wrReading');
+    if (opts.shell === 'detail' && opts.meterId) params.set('wrMeter', opts.meterId);
+    else params.delete('wrMeter');
+    if (opts.property === '' || opts.property == null) params.delete('property');
+    else params.set('property', String(opts.property));
+    const qs = params.toString();
+    const url = qs ? `${pathname}?${qs}` : pathname;
+    window.history.replaceState(window.history.state, '', url);
+  }
+
+  function readingsFormDirty() {
+    if (readingsShell === 'submit') {
+      return (
+        submitValue.trim() !== '' ||
+        propertyId !== '' ||
+        Boolean(submitMeterId) ||
+        submitDate !== todayIsoDate()
+      );
+    }
+    if (readingsShell === 'detail' && correctReadingId) {
+      return correctReason.trim() !== '' || correctConfirm || correctValue.trim() !== '';
+    }
+    return false;
+  }
+
+  async function closeReadingsShell(opts?: { keepScroll?: boolean; force?: boolean }) {
+    if (!opts?.force && readingsFormDirty()) {
+      const ok = await confirm({
+        title: t('common.discardChangesTitle'),
+        description: t('common.discardChangesBody'),
+        confirmLabel: t('common.leaveWithoutSaving'),
+        cancelLabel: t('common.continueEditing'),
+        tone: 'danger',
+      });
+      if (!ok) return false;
+    }
+    setReadingsShell('none');
+    setDetailReadingId(null);
+    setDetailReadingMeterId(null);
+    setSubmitMeterId('');
+    closeWaterCorrection();
+    writeReadingsShellToUrl({ shell: 'none', property: '' });
+    onPropertyChange?.('');
+    setPropertyId('');
+    const keepScroll = opts?.keepScroll !== false;
+    if (keepScroll) {
+      requestAnimationFrame(() => {
+        if (readingsListScrollRef.current) {
+          readingsListScrollRef.current.scrollTop = readingsListScrollTopRef.current;
+        } else {
+          window.scrollTo({ top: readingsListScrollTopRef.current });
+        }
+      });
+    }
+    return true;
+  }
+
+  function openReadingsSubmit() {
+    readingsListScrollTopRef.current = readingsListScrollRef.current?.scrollTop ?? window.scrollY;
+    readingsReturnFocusRef.current = null;
+    closeWaterCorrection();
+    setSubmitValue('');
+    setSubmitDate(todayIsoDate());
+    setSubmitMeterId('');
+    setDetailReadingId(null);
+    setDetailReadingMeterId(null);
+    setSuccess(null);
+    setError(null);
+    selectProperty('');
+    setReadingsShell('submit');
+    writeReadingsShellToUrl({ shell: 'submit', property: '' });
+  }
+
+  function openReadingDetail(row: WaterReadingRegisterRow, rowEl: HTMLElement | null) {
+    readingsListScrollTopRef.current = readingsListScrollRef.current?.scrollTop ?? window.scrollY;
+    readingsReturnFocusRef.current = rowEl;
+    closeWaterCorrection();
+    setSuccess(null);
+    setError(null);
+    selectProperty(row.propertyId);
+    setDetailReadingId(row.readingId);
+    setDetailReadingMeterId(row.meterId);
+    setReadingsShell('detail');
+    writeReadingsShellToUrl({
+      shell: 'detail',
+      readingId: row.readingId,
+      meterId: row.meterId,
+      property: row.propertyId,
+    });
+  }
+
+  // Deep-link: ?tab=readings&wrForm=1 | wrReading= | wrMeter=
+  useEffect(() => {
+    if (activeTab !== 'readings') return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('wrForm') === '1') {
+      if (readingsShell !== 'submit') setReadingsShell('submit');
+      return;
+    }
+    const rid = (params.get('wrReading') ?? '').trim();
+    const mid = (params.get('wrMeter') ?? '').trim();
+    if (rid || mid) {
+      if (readingsShell !== 'detail') setReadingsShell('detail');
+      if (rid && detailReadingId !== rid) setDetailReadingId(rid);
+      if (mid && detailReadingMeterId !== mid) setDetailReadingMeterId(mid);
+      const pidRaw = Number(params.get('property') ?? '');
+      if (Number.isFinite(pidRaw) && pidRaw > 0 && propertyId !== pidRaw) {
+        selectProperty(pidRaw);
+      }
+      return;
+    }
+    if (readingsShell !== 'none') {
+      setReadingsShell('none');
+      setDetailReadingId(null);
+      setDetailReadingMeterId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- URL seed for readings shells
+  }, [activeTab]);
+
   const activeMeter = meters.find((m) => !m.retired_at) ?? null;
+  const propertyActiveMeters = meters.filter((m) => !m.retired_at);
+  const shellMeterId = detailMeterId ?? detailReadingMeterId;
   const detailMeter =
-    detailMeterId != null
-      ? meters.find((m) => m.id === detailMeterId) ?? activeMeter
+    shellMeterId != null
+      ? meters.find((m) => m.id === shellMeterId) ?? activeMeter
       : activeMeter;
   const lastReading = lastActiveReading(
     detailMeter ? readings.filter((r) => r.meter_id === detailMeter.id) : readings,
@@ -687,6 +856,7 @@ export function AdminWater({
     }
     submitKeyRef.current = crypto.randomUUID();
     setSubmitValue('');
+    setSubmitMeterId('');
     flash(t('account.utilSubmitOk'));
     void import('@/lib/email/eventProducers')
       .then(({ notifyPropertyOwnersEvent }) =>
@@ -699,6 +869,10 @@ export function AdminWater({
       )
       .catch(() => undefined);
     await loadPropertyWater();
+    setReadingsRefreshSignal((n) => n + 1);
+    if (readingsShell === 'submit') {
+      await closeReadingsShell({ force: true, keepScroll: true });
+    }
   }
 
   function openWaterCorrection(row: WaterReading) {
@@ -756,14 +930,17 @@ export function AdminWater({
     closeWaterCorrection();
     flash(t('admin.meterCorrectionOk'));
     await loadPropertyWater();
+    setReadingsRefreshSignal((n) => n + 1);
   }
 
   const waterModeLabel =
     waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
   const onOverview = activeTab === 'overview';
-  const onApartmentScoped = activeTab === 'readings' || activeTab === 'history';
+  const onApartmentScoped = activeTab === 'history';
   const detailOpen = activeTab === 'meter' && Boolean(detailMeterId);
+  const readingsSubmitOpen = activeTab === 'readings' && readingsShell === 'submit';
+  const readingsDetailOpen = activeTab === 'readings' && readingsShell === 'detail';
   const detailProperty = sorted.find((p) => p.id === propertyId) ?? null;
   const detailTitle = detailMeter
     ? `${t('admin.meterNumber')}: ${detailMeter.meter_number?.trim() ? detailMeter.meter_number : '—'}`
@@ -778,6 +955,35 @@ export function AdminWater({
         t,
       )
     : null;
+  const detailReadingRow =
+    detailReadingId != null ? readings.find((r) => r.id === detailReadingId) ?? null : null;
+  const detailReadingStatus = detailReadingRow
+    ? presentMeterReadingStatus({
+        readingKind: (detailReadingRow as WaterReading & { reading_kind?: string | null }).reading_kind,
+        rowStatus: detailReadingRow.status,
+      })
+    : null;
+  function readingStatusLabel(code: ReturnType<typeof presentMeterReadingStatus> | null) {
+    if (code === 'opening') return t('admin.meterHistStatusOpening');
+    if (code === 'pending_review') return t('admin.meterHistStatusPending');
+    if (code === 'accepted') return t('admin.meterHistStatusAccepted');
+    if (code === 'rejected') return t('admin.meterHistStatusRejected');
+    return '—';
+  }
+  const readingsDetailTitle = detailReadingRow
+    ? `${t('admin.waterReadingsDetailTitle')} · ${
+        detailMeter?.meter_number?.trim() || detailReadingMeterId || '—'
+      }`
+    : t('admin.waterReadingsDetailTitle');
+  const detailReadingCorrectable =
+    detailReadingRow != null &&
+    lastReading?.id === detailReadingRow.id &&
+    detailReadingRow.status === 'active' &&
+    canCorrectWaterReading(
+      staffRole,
+      staffActive,
+      waterReadingHasCharge(detailReadingRow),
+    );
 
   function waterTariffHref() {
     // Normalize via URLSearchParams so Cyrillic section values are not double-encoded in `return`.
@@ -894,10 +1100,11 @@ export function AdminWater({
 
   return (
     <div className="space-y-3">
+      {confirmDialog}
       <SectionPanelTabs
         aria-label={t('admin.water')}
         value={activeTab}
-        onChange={(id) => selectTab(id as AdminUtilityTab)}
+        onChange={(id) => void selectTab(id as AdminUtilityTab)}
         items={panelTabs}
       />
 
@@ -1200,43 +1407,228 @@ export function AdminWater({
       </WorkplaceCardShell>
 
       {activeTab === 'readings' ? (
-        canSubmit ? (
-          <div className={adminCardClass + ' p-4 md:p-5'}>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
-              {t('account.utilSubmitTitle')}
-            </p>
-            <form onSubmit={handleSubmitReading} className="mt-4 grid gap-3 sm:grid-cols-3">
-              <input
-                className={fieldClass}
-                type="number"
-                min="0"
-                step="0.1"
-                placeholder={t('account.utilCurrentM3')}
-                value={submitValue}
-                onChange={(e) => setSubmitValue(e.target.value)}
-                required
+        <AdminWaterReadingsRegister
+          supabase={supabase}
+          properties={sorted}
+          canOperate={canSee}
+          canSubmit={canSubmit}
+          refreshSignal={readingsRefreshSignal}
+          focusReadingId={detailReadingId}
+          focusMeterId={detailReadingMeterId}
+          listScrollRef={readingsListScrollRef}
+          onOpenReading={openReadingDetail}
+          onOpenSubmit={openReadingsSubmit}
+        />
+      ) : null}
+
+      <WorkplaceCardShell
+        open={readingsSubmitOpen}
+        entityKey="water-reading-submit"
+        title={t('admin.waterReadingsFormTitle')}
+        closeLabel={t('admin.waterMetersDetailClose')}
+        onClose={() => void closeReadingsShell()}
+        onRequestClose={() => void closeReadingsShell()}
+        returnFocusRef={readingsReturnFocusRef}
+      >
+        {canSubmit ? (
+          <form onSubmit={handleSubmitReading} className="space-y-4">
+            <label className="block text-xs text-muted">
+              {t('admin.pickProperty')}
+              <ApartmentCombobox
+                className="mt-1"
+                properties={sorted}
+                value={propertyId}
+                onChange={(id) => {
+                  selectProperty(id);
+                  setSubmitMeterId('');
+                  setSuccess(null);
+                  setError(null);
+                }}
               />
-              <input
-                className={fieldClass}
-                type="date"
-                max={todayIsoDate()}
-                value={submitDate}
-                onChange={(e) => setSubmitDate(e.target.value)}
-                required
-              />
-              <button
+            </label>
+            {propertyId !== '' && propertyActiveMeters.length > 1 ? (
+              <>
+                <label className="block text-xs text-muted">
+                  {t('admin.waterReadingsPickMeter')}
+                  <select
+                    className={`mt-1 block w-full ${fieldClass}`}
+                    value={submitMeterId}
+                    onChange={(e) => setSubmitMeterId(e.target.value)}
+                  >
+                    <option value="">{t('admin.sfFilterAll')}</option>
+                    {propertyActiveMeters.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.meter_number?.trim() ? m.meter_number : m.id.slice(0, 8)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <AdminInlineAlert tone="warning">
+                  {t('admin.waterReadingsMultiMeterLimit')}
+                </AdminInlineAlert>
+              </>
+            ) : propertyId !== '' && propertyActiveMeters.length === 1 ? (
+              <p className="text-sm text-secondary">
+                {t('admin.meterNumber')}:{' '}
+                <span className="font-medium text-foreground">
+                  {propertyActiveMeters[0]?.meter_number?.trim()
+                    ? propertyActiveMeters[0].meter_number
+                    : '—'}
+                </span>
+              </p>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs text-muted">
+                {t('account.utilCurrentM3')}
+                <input
+                  className={`mt-1 block w-full ${fieldClass}`}
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={submitValue}
+                  onChange={(e) => setSubmitValue(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="block text-xs text-muted">
+                {t('admin.date')}
+                <input
+                  className={`mt-1 block w-full ${fieldClass}`}
+                  type="date"
+                  max={todayIsoDate()}
+                  value={submitDate}
+                  onChange={(e) => setSubmitDate(e.target.value)}
+                  required
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <AdminPrimaryButton
                 type="submit"
-                disabled={submitBusy || !activeMeter}
-                className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
+                disabled={submitBusy || propertyId === '' || !activeMeter}
               >
                 {submitBusy ? t('account.utilSubmitting') : t('account.utilSubmit')}
-              </button>
-            </form>
-          </div>
+              </AdminPrimaryButton>
+              <AdminSecondaryButton type="button" onClick={() => void closeReadingsShell()}>
+                {t('common.cancel')}
+              </AdminSecondaryButton>
+            </div>
+          </form>
         ) : (
           <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
-        )
-      ) : null}
+        )}
+      </WorkplaceCardShell>
+
+      <WorkplaceCardShell
+        open={readingsDetailOpen}
+        entityKey={detailReadingId ?? detailReadingMeterId ?? 'reading'}
+        title={readingsDetailTitle}
+        titleMeta={detailTitleMeta}
+        closeLabel={t('admin.waterMetersDetailClose')}
+        onClose={() => void closeReadingsShell()}
+        onRequestClose={() => void closeReadingsShell()}
+        returnFocusRef={readingsReturnFocusRef}
+      >
+        <div className="space-y-4">
+          {meterLoading ? (
+            <p className="text-sm text-muted">{t('common.loading')}</p>
+          ) : !detailReadingRow ? (
+            <AdminEmptyState title={t('admin.waterReadingsNoReading')} />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.meterNumber')}</div>
+                <div className="mt-0.5 font-semibold">
+                  {detailMeter?.meter_number?.trim() ? detailMeter.meter_number : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.prev')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {detailReadingRow.previous_value == null
+                    ? '—'
+                    : formatM3(Number(detailReadingRow.previous_value), locale)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.lastReading')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {detailReadingRow.current_value == null
+                    ? '—'
+                    : formatM3(Number(detailReadingRow.current_value), locale)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.waterReadingsColDate')}</div>
+                <div className="mt-0.5 tabular-nums">
+                  {detailReadingRow.reading_date
+                    ? formatOwnerDate(detailReadingRow.reading_date)
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.waterReadingsColWho')}</div>
+                <div className="mt-0.5">
+                  {detailReadingRow.submitted_by_email?.trim()
+                    ? detailReadingRow.submitted_by_email
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted">{t('admin.waterReadingsColStatus')}</div>
+                <div className="mt-0.5">{readingStatusLabel(detailReadingStatus)}</div>
+              </div>
+            </div>
+          )}
+
+          {detailReadingCorrectable && !correctTarget ? (
+            <AdminSecondaryButton
+              type="button"
+              onClick={() => openWaterCorrection(detailReadingRow!)}
+            >
+              {t('admin.meterCorrectionAction')}
+            </AdminSecondaryButton>
+          ) : null}
+
+          {correctTarget &&
+            canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
+              <AdminMeterCorrectionPanel
+                originalSummary={
+                  <p>
+                    {t('admin.meterCorrectionOriginal', {
+                      current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
+                      consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
+                    })}
+                  </p>
+                }
+                valueFields={
+                  <label className="block text-secondary">
+                    {t('admin.meterCorrectionNewValue')}
+                    <input
+                      className={`mt-1 block w-full ${fieldClass}`}
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={correctValue}
+                      onChange={(e) => setCorrectValue(e.target.value)}
+                      disabled={correctBusy}
+                      required
+                    />
+                  </label>
+                }
+                reason={correctReason}
+                onReasonChange={setCorrectReason}
+                confirmed={correctConfirm}
+                onConfirmedChange={setCorrectConfirm}
+                hasCharge={correctHasCharge}
+                estimatedDeltaEur={correctDelta}
+                busy={correctBusy}
+                onSubmit={() => void handleCorrectReading()}
+                onCancel={closeWaterCorrection}
+              />
+            )}
+        </div>
+      </WorkplaceCardShell>
 
       {activeTab === 'history' ? (
         <div className={adminCardClass + ' space-y-4 p-4 md:p-5'}>

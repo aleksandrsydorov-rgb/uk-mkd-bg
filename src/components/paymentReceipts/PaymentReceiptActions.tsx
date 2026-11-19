@@ -251,7 +251,11 @@ export function PaymentReceiptActions({
 
       {!needsUk ? (
         <div
-          className="flex flex-wrap items-center gap-0.5"
+          className={
+            hideDocLabel
+              ? 'flex flex-nowrap items-center gap-0.5'
+              : 'flex flex-wrap items-center gap-0.5'
+          }
           role="group"
           aria-label={t('receipt.docLabel', { label: formatReceiptSeriesNumber(receipt) })}
         >

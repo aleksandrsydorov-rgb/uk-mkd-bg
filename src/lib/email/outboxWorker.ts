@@ -312,6 +312,8 @@ export async function runOutboxWorker(opts: {
           .maybeSingle();
         const completedAt = (profileRows as { app_registration_completed_at?: string | null } | null)
           ?.app_registration_completed_at;
+        // Prefer immutable column; then payload. Do NOT invent "now" from a fresh
+        // re-queue — missing time fails closed for ordinary mail.
         const eventOccurredRaw =
           (row as { event_occurred_at?: string | null }).event_occurred_at ??
           payload.event_occurred_at ??
@@ -319,13 +321,17 @@ export async function runOutboxWorker(opts: {
           payload.event_at ??
           payload.event_time ??
           payload.source_event_at ??
-          row.created_at;
+          null;
         const eventOccurredMs = eventOccurredRaw ? new Date(String(eventOccurredRaw)).getTime() : NaN;
-        if (
-          completedAt &&
-          Number.isFinite(eventOccurredMs) &&
-          eventOccurredMs < new Date(completedAt).getTime()
-        ) {
+        if (!Number.isFinite(eventOccurredMs)) {
+          await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
+            p_outbox_id: row.id,
+            p_reason: 'blocked_unknown_event_time',
+          } as never);
+          cancelled += 1;
+          continue;
+        }
+        if (completedAt && eventOccurredMs < new Date(completedAt).getTime()) {
           await opts.supabase.rpc('email_core_cancel_outbox_policy' as never, {
             p_outbox_id: row.id,
             p_reason: 'blocked_pre_registration_event',

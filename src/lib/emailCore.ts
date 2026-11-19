@@ -689,6 +689,18 @@ export async function enqueueTransactionalEmail(
   if (eventKey) {
     payload.event_key = eventKey;
   }
+  // Stamp source event time once at first enqueue. Callers re-emitting an older
+  // business event must pass event_occurred_at / occurred_at explicitly — retries
+  // of the same outbox row keep the column immutable in the database.
+  if (
+    payload.event_occurred_at == null &&
+    payload.occurred_at == null &&
+    payload.event_at == null &&
+    payload.event_time == null &&
+    payload.source_event_at == null
+  ) {
+    payload.event_occurred_at = new Date().toISOString();
+  }
 
   const catalog = eventKey ? getEmailEvent(eventKey) : undefined;
   if (catalog?.producerStatus === 'needs_decision' && !args.skipPolicyCheck) {

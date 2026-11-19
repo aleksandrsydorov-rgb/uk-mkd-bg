@@ -253,16 +253,66 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# AMADEUS 11 — Auth mail is Bulgarian-only (GoTrue templates; not Email Core outbox).
+# Paths are relative to the project root (parent of supabase/).
+[auth.email.template.invite]
+subject = "AMADEUS 11: покана за профил"
+content_path = "./supabase/templates/invite.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./supabase/templates/password_changed_notification.html"
+[auth.email.template.confirmation]
+subject = "AMADEUS 11: потвърдете имейла"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "AMADEUS 11: възстановяване на парола"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.magic_link]
+subject = "AMADEUS 11: връзка за вход"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "AMADEUS 11: потвърдете новия имейл"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "AMADEUS 11: код за потвърждение {{ .Token }}"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "AMADEUS 11: паролата е променена"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "AMADEUS 11: имейлът е променен"
+content_path = "./supabase/templates/email_changed_notification.html"
+
+[auth.email.notification.phone_changed]
+enabled = true
+subject = "AMADEUS 11: телефонният номер е променен"
+content_path = "./supabase/templates/phone_changed_notification.html"
+
+[auth.email.notification.mfa_factor_enrolled]
+enabled = true
+subject = "AMADEUS 11: добавен е метод за потвърждение"
+content_path = "./supabase/templates/mfa_factor_enrolled_notification.html"
+
+[auth.email.notification.mfa_factor_unenrolled]
+enabled = true
+subject = "AMADEUS 11: премахнат е метод за потвърждение"
+content_path = "./supabase/templates/mfa_factor_unenrolled_notification.html"
+
+[auth.email.notification.identity_linked]
+enabled = true
+subject = "AMADEUS 11: свързан е метод за вход"
+content_path = "./supabase/templates/identity_linked_notification.html"
+
+[auth.email.notification.identity_unlinked]
+enabled = true
+subject = "AMADEUS 11: премахнат е метод за вход"
+content_path = "./supabase/templates/identity_unlinked_notification.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

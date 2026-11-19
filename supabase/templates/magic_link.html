@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="bg">
+  <head>
+    <meta charset="utf-8" />
+    <title>Вход в AMADEUS 11</title>
+  </head>
+  <body style="font-family: Georgia, 'Times New Roman', serif; line-height: 1.55; color: #14202a; max-width: 560px; margin: 0 auto; padding: 24px;">
+    <p style="font-size:15px;">Здравейте,</p>
+    <p style="font-size:15px;">
+      Използвайте връзката по-долу за вход в <strong>AMADEUS 11</strong>
+      ({{ .Email }}). Връзката е еднократна и с ограничен срок.
+    </p>
+    <p style="margin:20px 0;">
+      <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0f3d4c;color:#fff;text-decoration:none;padding:10px 16px;border-radius:999px;font-weight:600;">Влез в кабинета</a>
+    </p>
+    <p style="color:#667085;font-size:12px;word-break:break-all;">{{ .ConfirmationURL }}</p>
+    <p style="color:#667085;font-size:12px;">
+      Еднократен код: <strong>{{ .Token }}</strong>
+    </p>
+    <p style="font-size:15px;">Ако не сте заявили вход, игнорирайте писмото.</p>
+    <p style="color:#667085;font-size:12px;margin-top:28px;">Това е служебно съобщение. Моля, не отговаряйте.</p>
+  </body>
+</html>

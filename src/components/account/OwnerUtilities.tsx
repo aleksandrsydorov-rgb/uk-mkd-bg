@@ -49,17 +49,23 @@ import {
   sumCapitalOpeningCredit,
   sumCapitalOpeningObligation,
 } from '@/lib/capitalRepairUi';
+import {
+  presentLedgerOperationKind,
+  presentLedgerOperationNote,
+} from '@/lib/financeLedgerPresent';
 
 type Variant = 'finance' | 'meters';
 export type FinanceTab = 'support' | 'water' | 'electricity' | 'capital' | 'internet';
 export type MeterTab = 'water' | 'electricity';
 
-function ledgerKindLabel(kind: string, t: (key: 'account.utilCharge' | 'account.utilPayment' | 'account.utilAdjDebit' | 'account.utilAdjCredit') => string) {
+function ledgerKindLabel(kind: string, note: string | null | undefined, t: (key: string) => string) {
+  const presented = presentLedgerOperationKind({ kind, note }, t);
+  if (presented === t('admin.financeOpKindOpeningBalance')) return presented;
   if (kind === 'charge' || kind === 'opening_obligation') return t('account.utilCharge');
   if (kind === 'payment' || kind === 'opening_historical_settlement') return t('account.utilPayment');
   if (kind === 'adjustment_debit') return t('account.utilAdjDebit');
   if (kind === 'adjustment_credit' || kind === 'opening_credit') return t('account.utilAdjCredit');
-  return kind;
+  return presented;
 }
 
 function BalanceBadge({ balance, loading }: { balance: number; loading: boolean }) {
@@ -109,9 +115,15 @@ function LedgerList({
               <span className="min-w-0 text-secondary">
                 {formatOwnerDate(row.created_at, dateLocale)}
                 {' · '}
-                {ledgerKindLabel(row.kind, t)}
+                {ledgerKindLabel(row.kind, row.note, t)}
                 {title ? ` · ${title}` : ''}
-                {row.note ? ` · ${row.note}` : ''}
+                {(() => {
+                  const noteLabel = presentLedgerOperationNote(
+                    { kind: row.kind, note: row.note },
+                    t,
+                  );
+                  return noteLabel && noteLabel !== '—' ? ` · ${noteLabel}` : '';
+                })()}
               </span>
               <span className={row.kind === 'payment' || row.kind === 'opening_historical_settlement' || row.kind === 'adjustment_credit' || row.kind === 'opening_credit' ? 'text-accent' : 'text-warning'}>
                 {formatEur(Number(row.amount_eur))}

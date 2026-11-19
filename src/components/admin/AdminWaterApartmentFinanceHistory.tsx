@@ -4,11 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { labelLedgerKind } from '@/i18n/labels';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import { formatEur } from '@/lib/utilities';
 import { toUserFacingMessage } from '@/lib/userFacingError';
+import {
+  presentLedgerOperationKind,
+  presentLedgerOperationNote,
+  presentLedgerOperationStatus,
+} from '@/lib/financeLedgerPresent';
 import {
   AdminEmptyState,
   AdminInlineAlert,
@@ -50,33 +54,7 @@ function inDateRange(iso: string, from: string, to: string) {
 function receiptLooksMultiService(receipt: PaymentReceiptRow | null): boolean {
   const lines = receipt?.purpose_lines;
   if (!Array.isArray(lines) || lines.length <= 1) return false;
-  const codes = new Set(
-    lines
-      .map((l) => String(l.service_code ?? l.service_label_bg ?? '').trim().toLowerCase())
-      .filter(Boolean),
-  );
-  return codes.size > 1 || lines.length > 1;
-}
-
-function periodFromReceipt(receipt: PaymentReceiptRow | null): string {
-  const lines = receipt?.purpose_lines;
-  if (!Array.isArray(lines)) return '';
-  for (const line of lines) {
-    const p = String(line.period ?? '').trim();
-    if (p) return p;
-  }
-  return '';
-}
-
-/** Hide internal ledger codes (e.g. opening_balance:water) from staff-facing history. */
-function presentLedgerNote(note: string | null, t: (k: string) => string): string {
-  const raw = note?.trim() ?? '';
-  if (!raw) return '—';
-  const lower = raw.toLowerCase();
-  if (lower.startsWith('opening_balance')) return t('admin.waterHistoryFinanceOpeningBalance');
-  // snake_case / code-like tokens are not user-facing copy
-  if (/^[a-z][a-z0-9_]*(:[a-z0-9_]+)?$/i.test(raw) && raw.includes('_')) return '—';
-  return raw;
+  return true;
 }
 
 /**
@@ -193,70 +171,63 @@ export function AdminWaterApartmentFinanceHistory({
         <AdminEmptyState title={t('admin.utilFinNoLedger')} />
       ) : (
         <AdminTableShell>
-          <table className="w-full min-w-[40rem] text-sm">
+          <table className="w-full min-w-[36rem] text-sm">
             <thead>
               <tr className={adminTableHeadRowClass}>
                 <th className={adminTableCellClass}>{t('admin.date')}</th>
                 <th className={adminTableCellClass}>{t('admin.kind')}</th>
-                <th className={adminTableCellClass}>{t('admin.waterHistoryFinancePeriod')}</th>
-                <th className={adminTableCellClass}>{t('admin.note')}</th>
-                <th className={adminTableCellClass}>{t('admin.amount')}</th>
+                <th className={`${adminTableCellClass} text-right`}>{t('admin.amount')}</th>
                 <th className={adminTableCellClass}>{t('admin.status')}</th>
-                <th className={adminTableCellClass}>{t('receipt.open')}</th>
+                <th className={adminTableCellClass}>{t('admin.waterHistoryFinanceDocument')}</th>
+                <th className={adminTableCellClass}>{t('admin.note')}</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((row) => {
+                const present = { kind: row.kind, note: row.note, amountEur: row.amount_eur };
                 const receipt = receiptByLedger[row.id] ?? null;
-                const period = periodFromReceipt(receipt);
                 const multi = receiptLooksMultiService(receipt);
-                const statusLabel =
-                  row.kind === 'payment_reversal'
-                    ? t('admin.kindPaymentReversal')
-                    : receipt?.status === 'voided'
-                      ? t('receipt.statusVoided')
-                      : receipt?.status === 'ready'
-                        ? t('receipt.statusReady')
-                        : receipt?.status === 'failed'
-                          ? t('receipt.statusFailed')
-                          : receipt?.status === 'pending_pdf' || receipt?.status === 'pending_details'
-                            ? t('receipt.statusPending')
-                            : '—';
                 return (
                   <tr key={row.id} className={adminTableRowClass}>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} tabular-nums whitespace-nowrap`}>
                       {formatOwnerDate(row.created_at)}
                     </td>
-                    <td className={adminTableCellClass}>{labelLedgerKind(row.kind, t)}</td>
-                    <td className={`${adminTableCellClass} text-secondary`}>
-                      {period || '—'}
+                    <td className={adminTableCellClass}>
+                      {presentLedgerOperationKind(present, t)}
                     </td>
-                    <td className={`${adminTableCellClass} text-secondary`}>
-                      <div className="space-y-0.5">
-                        <span>{presentLedgerNote(row.note, t)}</span>
+                    <td
+                      className={`${adminTableCellClass} text-right tabular-nums whitespace-nowrap`}
+                    >
+                      {formatEur(Number(row.amount_eur), locale)}
+                    </td>
+                    <td className={adminTableCellClass}>
+                      {presentLedgerOperationStatus(present, t)}
+                    </td>
+                    <td className={`${adminTableCellClass} align-top`}>
+                      <div className="space-y-1">
+                        <LedgerPaymentReceiptCell
+                          supabase={supabase}
+                          module="water"
+                          ledgerId={row.id}
+                          kind={row.kind}
+                          onFillUk={onFillUk}
+                          downloadOnly
+                          hideStatus
+                          onReceiptLoaded={(r) => {
+                            setReceiptByLedger((prev) =>
+                              prev[row.id] === r ? prev : { ...prev, [row.id]: r },
+                            );
+                          }}
+                        />
                         {multi ? (
-                          <p className="text-xs text-muted">{t('admin.waterHistoryFinanceMultiService')}</p>
+                          <p className="text-xs text-muted">
+                            {t('admin.waterHistoryFinanceMultiService')}
+                          </p>
                         ) : null}
                       </div>
                     </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
-                      {formatEur(Number(row.amount_eur), locale)}
-                    </td>
-                    <td className={adminTableCellClass}>{statusLabel}</td>
-                    <td className={`${adminTableCellClass} align-top`}>
-                      <LedgerPaymentReceiptCell
-                        supabase={supabase}
-                        module="water"
-                        ledgerId={row.id}
-                        kind={row.kind}
-                        onFillUk={onFillUk}
-                        downloadOnly
-                        onReceiptLoaded={(r) => {
-                          setReceiptByLedger((prev) =>
-                            prev[row.id] === r ? prev : { ...prev, [row.id]: r },
-                          );
-                        }}
-                      />
+                    <td className={`${adminTableCellClass} text-secondary`}>
+                      {presentLedgerOperationNote(present, t)}
                     </td>
                   </tr>
                 );

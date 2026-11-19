@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { labelLedgerKind } from '@/i18n/labels';
+import { presentLedgerOperationKind, presentLedgerOperationNote } from '@/lib/financeLedgerPresent';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
@@ -581,9 +581,15 @@ export function AdminElectricityFinance({
                   {ledger.map((row) => (
                     <tr key={row.id} className="border-t border-border">
                       <td className="py-2 pr-3 tabular-nums">{formatOwnerDate(row.created_at)}</td>
-                      <td className="py-2 pr-3">{labelLedgerKind(row.kind, t)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatEur(Number(row.amount_eur), locale)}</td>
-                      <td className="py-2 pr-3 text-secondary">{row.note ?? '—'}</td>
+                      <td className="py-2 pr-3">
+                        {presentLedgerOperationKind({ kind: row.kind, note: row.note }, t)}
+                      </td>
+                      <td className="py-2 pr-3 tabular-nums whitespace-nowrap text-right">
+                        {formatEur(Number(row.amount_eur), locale)}
+                      </td>
+                      <td className="py-2 pr-3 text-secondary">
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                       <td className="py-2 pr-3 align-top">
                         <LedgerPaymentReceiptCell
                           supabase={supabase}

@@ -19,6 +19,8 @@ export function LedgerPaymentReceiptCell({
   onFillUk,
   /** History surfaces: only download when a receipt already exists — no «issue» stub. */
   downloadOnly = false,
+  /** Hide receipt readiness badge («Готова») — financial status lives elsewhere. */
+  hideStatus = false,
   onReceiptLoaded,
 }: {
   supabase: SupabaseClient;
@@ -27,6 +29,7 @@ export function LedgerPaymentReceiptCell({
   kind: string;
   onFillUk?: () => void;
   downloadOnly?: boolean;
+  hideStatus?: boolean;
   onReceiptLoaded?: (receipt: PaymentReceiptRow | null) => void;
 }) {
   const { t } = useI18n();
@@ -111,6 +114,7 @@ export function LedgerPaymentReceiptCell({
       }}
       onFillUk={onFillUk}
       compact
+      hideStatus={hideStatus}
     />
   );
 }

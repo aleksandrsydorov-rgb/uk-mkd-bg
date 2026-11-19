@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { presentLedgerOperationNote } from '@/lib/financeLedgerPresent';
 import { formatOwnerDateTime } from '@/lib/ownerFormat';
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import { readBulkAccrualSummary } from '@/lib/bulkAccrual';
@@ -1720,7 +1721,11 @@ export function AdminSupportFeeWorkplace({
                           <div className="text-[10px] text-muted">{t('admin.feeReverseLinked')}</div>
                         ) : null}
                         {row.reversal_reason || row.note ? (
-                          <div className="text-[10px] text-muted">{row.reversal_reason ?? row.note}</div>
+                          <div className="text-[10px] text-muted">
+                            {row.reversal_reason?.trim()
+                              ? row.reversal_reason
+                              : presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                          </div>
                         ) : null}
                       </td>
                       <td className={`${adminTableCellClass} tabular-nums`}>

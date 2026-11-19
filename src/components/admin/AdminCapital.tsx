@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
+import { presentLedgerOperationNote } from '@/lib/financeLedgerPresent';
 import { formatOwnerDate, formatOwnerDateTime } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import { sofiaCurrentYear } from '@/lib/tariffs';
@@ -1434,7 +1435,9 @@ export function AdminCapital({
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatEur(Number(row.amount_eur), locale)}
                       </td>
-                      <td className={`${adminTableCellClass} text-secondary`}>{row.note ?? '—'}</td>
+                      <td className={`${adminTableCellClass} text-secondary`}>
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                       <td className={`${adminTableCellClass} align-top`}>
                         <LedgerPaymentReceiptCell
                           supabase={supabase}
@@ -1578,7 +1581,9 @@ export function AdminCapital({
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatEur(Number(row.amount_eur), locale)}
                       </td>
-                      <td className={`${adminTableCellClass} text-secondary`}>{row.note ?? '—'}</td>
+                      <td className={`${adminTableCellClass} text-secondary`}>
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                       <td
                         className={`${adminTableCellClass} align-top`}
                         onClick={(e) => e.stopPropagation()}
@@ -1917,7 +1922,9 @@ export function AdminCapital({
                           <td className={`${adminTableCellClass} tabular-nums`}>
                             {formatEur(Number(row.amount_eur), locale)}
                           </td>
-                          <td className={`${adminTableCellClass} text-secondary`}>{row.note ?? '—'}</td>
+                          <td className={`${adminTableCellClass} text-secondary`}>
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1961,7 +1968,9 @@ export function AdminCapital({
                         <td className={`${adminTableCellClass} tabular-nums`}>
                           {formatEur(Number(row.amount_eur), locale)}
                         </td>
-                        <td className={`${adminTableCellClass} text-secondary`}>{row.note ?? '—'}</td>
+                        <td className={`${adminTableCellClass} text-secondary`}>
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                         <td className={`${adminTableCellClass} align-top`}>
                           <LedgerPaymentReceiptCell
                             supabase={supabase}
@@ -2056,7 +2065,9 @@ export function AdminCapital({
                         <td className={`${adminTableCellClass} tabular-nums`}>
                           {formatEur(Number(row.amount_eur), locale)}
                         </td>
-                        <td className={`${adminTableCellClass} text-secondary`}>{row.note ?? '—'}</td>
+                        <td className={`${adminTableCellClass} text-secondary`}>
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                         <td className={`${adminTableCellClass} align-top`}>
                           <LedgerPaymentReceiptCell
                             supabase={supabase}

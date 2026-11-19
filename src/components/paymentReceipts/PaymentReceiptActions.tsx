@@ -49,12 +49,15 @@ export function PaymentReceiptActions({
   onReceiptChange,
   onFillUk,
   compact,
+  /** History «Document» column: keep name + actions, hide receipt-ready status badge. */
+  hideStatus = false,
 }: {
   supabase: SupabaseClient;
   receipt: PaymentReceiptRow | null;
   onReceiptChange?: (row: PaymentReceiptRow) => void;
   onFillUk?: () => void;
   compact?: boolean;
+  hideStatus?: boolean;
 }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
@@ -204,7 +207,7 @@ export function PaymentReceiptActions({
         <span className="font-medium text-foreground">
           {t('receipt.docLabel', { label: formatReceiptSeriesNumber(receipt) })}
         </span>
-        <span className="text-xs text-muted">{statusLabel}</span>
+        {!hideStatus ? <span className="text-xs text-muted">{statusLabel}</span> : null}
       </div>
 
       {needsUk ? (

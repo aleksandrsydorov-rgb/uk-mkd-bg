@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/database.types';
 import { useI18n } from '@/i18n/I18nProvider';
-import { labelLedgerKind } from '@/i18n/labels';
+import { presentLedgerOperationKind, presentLedgerOperationNote } from '@/lib/financeLedgerPresent';
 import { formatOwnerDate } from '@/lib/ownerFormat';
 import { isMissingRelation } from '@/lib/polls';
 import {
@@ -1369,11 +1369,15 @@ export function AdminUtilityFinanceWorkplace({
                       <td className={`${adminTableCellClass} tabular-nums`}>
                         {formatOwnerDate(row.created_at)}
                       </td>
-                      <td className={adminTableCellClass}>{labelLedgerKind(row.kind, t)}</td>
-                      <td className={`${adminTableCellClass} tabular-nums`}>
+                      <td className={adminTableCellClass}>
+                        {presentLedgerOperationKind({ kind: row.kind, note: row.note }, t)}
+                      </td>
+                      <td className={`${adminTableCellClass} tabular-nums whitespace-nowrap text-right`}>
                         {formatEur(Number(row.amount_eur), locale)}
                       </td>
-                      <td className={`${adminTableCellClass} text-secondary`}>{row.note ?? '—'}</td>
+                      <td className={`${adminTableCellClass} text-secondary`}>
+                        {presentLedgerOperationNote({ kind: row.kind, note: row.note }, t)}
+                      </td>
                       <td className={`${adminTableCellClass} align-top`}>
                         <LedgerPaymentReceiptCell
                           supabase={supabase}

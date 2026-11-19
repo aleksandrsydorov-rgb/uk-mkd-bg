@@ -1,0 +1,42 @@
+[
+  {
+    "check": "lead text shortened",
+    "ok": true,
+    "snippet": "Апартамент №1 · Секция A ✕ История показаний Финансовая история С даты По дату Тип операции Все Начисления Оплаты Начисления и оплаты за воду. Квитанции доступны для операций с оформленным документом"
+  },
+  {
+    "check": "no Period column header",
+    "ok": true
+  },
+  {
+    "check": "Document column present",
+    "ok": true
+  },
+  {
+    "check": "six-column order cues",
+    "ok": true
+  },
+  {
+    "check": "no raw opening_balance code",
+    "ok": true,
+    "detail": "clean"
+  },
+  {
+    "check": "opening balance human note",
+    "ok": true,
+    "snippet": "Начальный остаток\t50,00 €\t—\t"
+  },
+  {
+    "check": "type is Opening balance not Adjustment",
+    "ok": true
+  },
+  {
+    "check": "no Готова badge as finance/doc status for this apartment",
+    "ok": true
+  },
+  {
+    "check": "screenshot saved",
+    "ok": true,
+    "path": "opt/cursor-artifacts/water-history-finance-table.png"
+  }
+]

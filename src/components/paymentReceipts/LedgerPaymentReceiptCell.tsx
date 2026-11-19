@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useI18n } from '@/i18n/I18nProvider';
 import { PaymentReceiptActions } from '@/components/paymentReceipts/PaymentReceiptActions';
@@ -17,22 +17,40 @@ export function LedgerPaymentReceiptCell({
   ledgerId,
   kind,
   onFillUk,
+  /** History surfaces: only download when a receipt already exists — no «issue» stub. */
+  downloadOnly = false,
+  onReceiptLoaded,
 }: {
   supabase: SupabaseClient;
   module: PaymentReceiptModule;
   ledgerId: string;
   kind: string;
   onFillUk?: () => void;
+  downloadOnly?: boolean;
+  onReceiptLoaded?: (receipt: PaymentReceiptRow | null) => void;
 }) {
   const { t } = useI18n();
   const [receipt, setReceipt] = useState<PaymentReceiptRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const onReceiptLoadedRef = useRef(onReceiptLoaded);
+  onReceiptLoadedRef.current = onReceiptLoaded;
 
   const load = useCallback(async () => {
-    if (kind !== 'payment') return;
+    if (kind !== 'payment') {
+      setLoaded(true);
+      onReceiptLoadedRef.current?.(null);
+      return;
+    }
     const res = await getPaymentReceiptForLedger(supabase, module, ledgerId);
-    if (!res.error) setReceipt(res.receipt);
+    if (!res.error) {
+      setReceipt(res.receipt);
+      onReceiptLoadedRef.current?.(res.receipt);
+    } else {
+      onReceiptLoadedRef.current?.(null);
+    }
+    setLoaded(true);
   }, [supabase, module, ledgerId, kind]);
 
   useEffect(() => {
@@ -42,7 +60,7 @@ export function LedgerPaymentReceiptCell({
   if (kind !== 'payment') return <span className="text-muted">—</span>;
 
   async function issue() {
-    if (busy) return;
+    if (busy || downloadOnly) return;
     setBusy(true);
     setError(null);
     try {
@@ -52,7 +70,10 @@ export function LedgerPaymentReceiptCell({
         return;
       }
       const pdf = await ensurePaymentReceiptPdf(supabase, issued.receiptId);
-      if (pdf.receipt) setReceipt(pdf.receipt);
+      if (pdf.receipt) {
+        setReceipt(pdf.receipt);
+        onReceiptLoaded?.(pdf.receipt);
+      }
       if (pdf.error && pdf.error !== 'uk_details_incomplete') {
         setError(t('receipt.pdfFailed'));
       }
@@ -62,6 +83,9 @@ export function LedgerPaymentReceiptCell({
   }
 
   if (!receipt) {
+    if (downloadOnly) {
+      return <span className="text-muted">{loaded ? '—' : '…'}</span>;
+    }
     return (
       <div className="space-y-1">
         <button
@@ -81,7 +105,10 @@ export function LedgerPaymentReceiptCell({
     <PaymentReceiptActions
       supabase={supabase}
       receipt={receipt}
-      onReceiptChange={setReceipt}
+      onReceiptChange={(row) => {
+        setReceipt(row);
+        onReceiptLoaded?.(row);
+      }}
       onFillUk={onFillUk}
       compact
     />

@@ -1,0 +1,60 @@
+[
+  {
+    "check": "history tab opens list without popup",
+    "ok": true,
+    "overlayOnList": 0,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=history"
+  },
+  {
+    "check": "apartment popup opens on click",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=history&property=5"
+  },
+  {
+    "check": "inner SectionPanelTabs has 2 tabs",
+    "ok": true,
+    "tabCount": 2,
+    "tabLabels": [
+      "История показаний",
+      "Финансовая история"
+    ]
+  },
+  {
+    "check": "popup title is apartment identity (not technical id)",
+    "ok": true,
+    "titleText": "Апартамент №1 · Секция A"
+  },
+  {
+    "check": "readings tab shows journal chrome",
+    "ok": true,
+    "snippet": "Апартамент №1 · Секция A ✕ История показаний Финансовая история ИСТОРИЯ ПОКАЗАНИЙ С даты По дату Дата Номер счётчика Показание Расход Источник Статус Фото Причина 15.01.2026 W-A"
+  },
+  {
+    "check": "switching inner tab keeps shell open",
+    "ok": true
+  },
+  {
+    "check": "finance tab shows filters / ledger chrome",
+    "ok": true,
+    "snippet": "Апартамент №1 · Секция A ✕ История показаний Финансовая история С даты По дату Тип операции Все Начисления Оплаты Начисления и оплаты по воде этого апартамента. Сумма оплаты — доля воды (не весь платёж за несколько услу"
+  },
+  {
+    "check": "no fake issue-receipt stub on finance history",
+    "ok": true,
+    "issueStub": 0
+  },
+  {
+    "check": "close returns to list",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=history",
+    "overlayAfterClose": 0
+  },
+  {
+    "check": "mobile dual-tab popup",
+    "ok": true
+  },
+  {
+    "check": "EN or RU history list reachable",
+    "ok": true
+  }
+]

@@ -69,6 +69,7 @@ export function labelStaffRole(raw: string | null | undefined, t: Translate) {
 export function labelLedgerKind(kind: string | null | undefined, t: Translate) {
   if (kind === 'charge') return t('admin.kindCharge');
   if (kind === 'payment') return t('admin.kindPayment');
+  if (kind === 'payment_reversal') return t('admin.kindPaymentReversal');
   if (kind === 'adjustment_debit') return t('admin.kindAdjDebit');
   if (kind === 'adjustment_credit') return t('admin.kindAdjCredit');
   if (!kind) return '—';

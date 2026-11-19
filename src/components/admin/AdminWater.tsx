@@ -62,6 +62,7 @@ import {
   AdminWaterHistoryRegister,
   readWaterHistoryFiltersFromSearch,
 } from '@/components/admin/AdminWaterHistoryRegister';
+import { AdminWaterApartmentFinanceHistory } from '@/components/admin/AdminWaterApartmentFinanceHistory';
 import { AdminModal } from '@/components/admin/AdminModal';
 import type { UtilityModuleTotals } from '@/lib/utilityFinanceRegister';
 import type { WaterMeterRegisterRow } from '@/lib/waterMetersRegister';
@@ -259,6 +260,7 @@ export function AdminWater({
     const pidRaw = Number(params.get('property') ?? '');
     return Number.isFinite(pidRaw) && pidRaw > 0 ? pidRaw : null;
   });
+  const [historyInnerTab, setHistoryInnerTab] = useState<'readings' | 'finance'>('readings');
   const [historyPeriodFrom, setHistoryPeriodFrom] = useState('');
   const [historyPeriodTo, setHistoryPeriodTo] = useState('');
   const metersListScrollRef = useRef<HTMLDivElement | null>(null);
@@ -594,6 +596,14 @@ export function AdminWater({
     closeWaterCorrection();
     setSuccess(null);
     setError(null);
+    setHistoryInnerTab('readings');
+    // Drop previous apartment payload immediately so the shell never flashes old rows.
+    if (propertyId !== row.propertyId) {
+      setMeters([]);
+      setReadings([]);
+      setLedger([]);
+      setMeterLoading(true);
+    }
     const live =
       typeof window !== 'undefined'
         ? readWaterHistoryFiltersFromSearch(window.location.search)
@@ -603,6 +613,29 @@ export function AdminWater({
     selectProperty(row.propertyId);
     setHistoryShellPropertyId(row.propertyId);
     writeHistoryShellToUrl(row.propertyId);
+  }
+
+  async function switchHistoryInnerTab(next: 'readings' | 'finance') {
+    if (next === historyInnerTab) return;
+    if (next === 'finance' && correctReadingId) {
+      const dirty =
+        correctReason.trim() !== '' ||
+        correctConfirm ||
+        (correctTarget != null &&
+          String(correctValue).trim() !== String(correctTarget.current_value));
+      if (dirty) {
+        const ok = await confirm({
+          title: t('common.discardChangesTitle'),
+          description: t('common.discardChangesBody'),
+          confirmLabel: t('common.leaveWithoutSaving'),
+          cancelLabel: t('common.continueEditing'),
+          tone: 'danger',
+        });
+        if (!ok) return;
+      }
+      closeWaterCorrection();
+    }
+    setHistoryInnerTab(next);
   }
 
   async function closeHistoryShell(opts?: { keepScroll?: boolean; force?: boolean }) {
@@ -624,6 +657,7 @@ export function AdminWater({
       }
     }
     closeWaterCorrection();
+    setHistoryInnerTab('readings');
     setHistoryShellPropertyId(null);
     writeHistoryShellToUrl('');
     onPropertyChange?.('');
@@ -1929,85 +1963,105 @@ export function AdminWater({
       <WorkplaceCardShell
         open={historyDetailOpen}
         entityKey={historyShellPropertyId != null ? `history-${historyShellPropertyId}` : 'history'}
-        title={t('admin.readingHistory')}
-        titleMeta={historyDetailTitle}
+        title={historyDetailTitle}
         closeLabel={t('admin.waterMetersDetailClose')}
         onClose={() => void closeHistoryShell()}
         onRequestClose={() => void closeHistoryShell()}
         returnFocusRef={historyReturnFocusRef}
+        subheader={
+          <SectionPanelTabs
+            aria-label={t('admin.waterHistoryTitle')}
+            value={historyInnerTab}
+            onChange={(id) => void switchHistoryInnerTab(id as 'readings' | 'finance')}
+            items={[
+              { id: 'readings', label: t('admin.waterHistoryTabReadings') },
+              { id: 'finance', label: t('admin.waterHistoryTabFinance') },
+            ]}
+          />
+        }
       >
         <div className="space-y-4">
-          {meterLoading ? (
-            <p className="text-sm text-muted">{t('common.loading')}</p>
-          ) : (
-            <>
-              {correctTarget &&
-                canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
-                  <AdminMeterCorrectionPanel
-                    originalSummary={
-                      <p>
-                        {t('admin.meterCorrectionOriginal', {
-                          current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
-                          consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
-                        })}
-                      </p>
-                    }
-                    valueFields={
-                      <label className="block text-secondary">
-                        {t('admin.meterCorrectionNewValue')}
-                        <input
-                          className={`mt-1 block w-full ${fieldClass}`}
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          value={correctValue}
-                          onChange={(e) => setCorrectValue(e.target.value)}
-                          disabled={correctBusy}
-                          required
-                        />
-                      </label>
-                    }
-                    reason={correctReason}
-                    onReasonChange={setCorrectReason}
-                    confirmed={correctConfirm}
-                    onConfirmedChange={setCorrectConfirm}
-                    hasCharge={correctHasCharge}
-                    estimatedDeltaEur={correctDelta}
-                    busy={correctBusy}
-                    onSubmit={() => void handleCorrectReading()}
-                    onCancel={closeWaterCorrection}
-                  />
-                )}
-              <MeterReadingHistory
-                utility="water"
-                entries={historyEntries}
-                title={t('admin.readingHistory')}
-                emptyTitle={t('admin.noReadings')}
-                periodFrom={historyPeriodFrom}
-                periodTo={historyPeriodTo}
-                rowActions={(entry) => {
-                  const row = readings.find((r) => String(r.id) === entry.actionKey);
-                  if (!row) return null;
-                  const isLatestCorrectable =
-                    lastReading?.id === row.id && row.status === 'active';
-                  const rowHasCharge = waterReadingHasCharge(row);
-                  const showCorrect =
-                    isLatestCorrectable &&
-                    canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
-                  if (!showCorrect) return null;
-                  return (
-                    <button
-                      type="button"
-                      className="text-sm text-accent hover:underline"
-                      onClick={() => openWaterCorrection(row)}
-                    >
-                      {t('admin.meterCorrectionAction')}
-                    </button>
-                  );
-                }}
-              />
-            </>
-          )}
+          {historyInnerTab === 'readings' ? (
+            meterLoading ? (
+              <p className="text-sm text-muted">{t('common.loading')}</p>
+            ) : error && historyShellPropertyId != null && propertyId === historyShellPropertyId ? (
+              <AdminInlineAlert tone="danger">{error}</AdminInlineAlert>
+            ) : (
+              <>
+                {correctTarget &&
+                  canCorrectWaterReading(staffRole, staffActive, correctHasCharge) && (
+                    <AdminMeterCorrectionPanel
+                      originalSummary={
+                        <p>
+                          {t('admin.meterCorrectionOriginal', {
+                            current: `${formatM3(Number(correctTarget.current_value), locale)} ${t('account.m3')}`,
+                            consumption: `${formatM3(Number(correctTarget.consumption_m3), locale)} ${t('account.m3')}`,
+                          })}
+                        </p>
+                      }
+                      valueFields={
+                        <label className="block text-secondary">
+                          {t('admin.meterCorrectionNewValue')}
+                          <input
+                            className={`mt-1 block w-full ${fieldClass}`}
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={correctValue}
+                            onChange={(e) => setCorrectValue(e.target.value)}
+                            disabled={correctBusy}
+                            required
+                          />
+                        </label>
+                      }
+                      reason={correctReason}
+                      onReasonChange={setCorrectReason}
+                      confirmed={correctConfirm}
+                      onConfirmedChange={setCorrectConfirm}
+                      hasCharge={correctHasCharge}
+                      estimatedDeltaEur={correctDelta}
+                      busy={correctBusy}
+                      onSubmit={() => void handleCorrectReading()}
+                      onCancel={closeWaterCorrection}
+                    />
+                  )}
+                <MeterReadingHistory
+                  utility="water"
+                  entries={historyEntries}
+                  title={t('admin.waterHistoryTabReadings')}
+                  emptyTitle={t('admin.noReadings')}
+                  periodFrom={historyPeriodFrom}
+                  periodTo={historyPeriodTo}
+                  rowActions={(entry) => {
+                    const row = readings.find((r) => String(r.id) === entry.actionKey);
+                    if (!row) return null;
+                    const isLatestCorrectable =
+                      lastReading?.id === row.id && row.status === 'active';
+                    const rowHasCharge = waterReadingHasCharge(row);
+                    const showCorrect =
+                      isLatestCorrectable &&
+                      canCorrectWaterReading(staffRole, staffActive, rowHasCharge);
+                    if (!showCorrect) return null;
+                    return (
+                      <button
+                        type="button"
+                        className="text-sm text-accent hover:underline"
+                        onClick={() => openWaterCorrection(row)}
+                      >
+                        {t('admin.meterCorrectionAction')}
+                      </button>
+                    );
+                  }}
+                />
+              </>
+            )
+          ) : historyShellPropertyId != null ? (
+            <AdminWaterApartmentFinanceHistory
+              key={historyShellPropertyId}
+              supabase={supabase}
+              propertyId={historyShellPropertyId}
+            />
+          ) : null}
         </div>
       </WorkplaceCardShell>
 

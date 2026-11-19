@@ -253,7 +253,8 @@ export function PaymentReceiptActions({
         <div
           className={
             hideDocLabel
-              ? 'flex flex-nowrap items-center gap-0.5'
+              ? // Document column: never wrap/shrink the three icon hit-targets.
+                'flex flex-nowrap items-center gap-0.5 [&>span]:shrink-0'
               : 'flex flex-wrap items-center gap-0.5'
           }
           role="group"

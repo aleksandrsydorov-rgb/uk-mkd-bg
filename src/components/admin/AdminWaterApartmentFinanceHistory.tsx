@@ -17,7 +17,6 @@ import {
   AdminEmptyState,
   AdminInlineAlert,
   AdminTableShell,
-  adminTableCellClass,
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
@@ -114,6 +113,12 @@ export function AdminWaterApartmentFinanceHistory({
     });
   }, [rows, periodFrom, periodTo, kindFilter]);
 
+  // Dense cells for this journal only — keep global adminTableCellClass elsewhere.
+  const cell = 'py-1.5 px-2 align-middle';
+  // Compact cols: w-[1%] + nowrap → size to content. Type/Note share the rest.
+  const colCompact = `${cell} w-[1%] whitespace-nowrap`;
+  const colFlex = `${cell} min-w-[7rem]`;
+
   return (
     <div className="space-y-3">
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
@@ -124,15 +129,16 @@ export function AdminWaterApartmentFinanceHistory({
         <AdminEmptyState title={t('admin.utilFinNoLedger')} />
       ) : (
         <AdminTableShell>
-          <table className="w-full min-w-[36rem] text-sm">
+          {/* min-width ≈ 3×44px icons + compact cols; shell already overflow-x-auto */}
+          <table className="w-full min-w-[46rem] table-auto text-sm">
             <thead>
               <tr className={adminTableHeadRowClass}>
-                <th className={adminTableCellClass}>{t('admin.date')}</th>
-                <th className={adminTableCellClass}>{t('admin.kind')}</th>
-                <th className={`${adminTableCellClass} text-right`}>{t('admin.amount')}</th>
-                <th className={adminTableCellClass}>{t('admin.status')}</th>
-                <th className={adminTableCellClass}>{t('admin.waterHistoryFinanceDocument')}</th>
-                <th className={adminTableCellClass}>{t('admin.note')}</th>
+                <th className={colCompact}>{t('admin.date')}</th>
+                <th className={colFlex}>{t('admin.kind')}</th>
+                <th className={`${colCompact} text-right`}>{t('admin.amount')}</th>
+                <th className={colCompact}>{t('admin.status')}</th>
+                <th className={colCompact}>{t('admin.waterHistoryFinanceDocument')}</th>
+                <th className={`${colFlex} w-[40%]`}>{t('admin.note')}</th>
               </tr>
             </thead>
             <tbody>
@@ -142,45 +148,41 @@ export function AdminWaterApartmentFinanceHistory({
                 const multi = receiptLooksMultiService(receipt);
                 return (
                   <tr key={row.id} className={adminTableRowClass}>
-                    <td className={`${adminTableCellClass} tabular-nums whitespace-nowrap`}>
+                    <td className={`${colCompact} tabular-nums`}>
                       {formatOwnerDate(row.created_at)}
                     </td>
-                    <td className={adminTableCellClass}>
-                      {presentLedgerOperationKind(present, t)}
-                    </td>
-                    <td
-                      className={`${adminTableCellClass} text-right tabular-nums whitespace-nowrap`}
-                    >
+                    <td className={colFlex}>{presentLedgerOperationKind(present, t)}</td>
+                    <td className={`${colCompact} text-right tabular-nums`}>
                       {formatEur(Number(row.amount_eur), locale)}
                     </td>
-                    <td className={adminTableCellClass}>
-                      {presentLedgerOperationStatus(present, t)}
-                    </td>
-                    <td className={`${adminTableCellClass} align-top`}>
-                      <div className="space-y-1">
-                        <LedgerPaymentReceiptCell
-                          supabase={supabase}
-                          module="water"
-                          ledgerId={row.id}
-                          kind={row.kind}
-                          onFillUk={onFillUk}
-                          downloadOnly
-                          hideStatus
-                          hideDocLabel
-                          onReceiptLoaded={(r) => {
-                            setReceiptByLedger((prev) =>
-                              prev[row.id] === r ? prev : { ...prev, [row.id]: r },
-                            );
-                          }}
-                        />
+                    <td className={colCompact}>{presentLedgerOperationStatus(present, t)}</td>
+                    <td className={colCompact}>
+                      <div className="inline-flex max-w-none flex-col items-start gap-0.5">
+                        <div className="inline-flex flex-nowrap items-center">
+                          <LedgerPaymentReceiptCell
+                            supabase={supabase}
+                            module="water"
+                            ledgerId={row.id}
+                            kind={row.kind}
+                            onFillUk={onFillUk}
+                            downloadOnly
+                            hideStatus
+                            hideDocLabel
+                            onReceiptLoaded={(r) => {
+                              setReceiptByLedger((prev) =>
+                                prev[row.id] === r ? prev : { ...prev, [row.id]: r },
+                              );
+                            }}
+                          />
+                        </div>
                         {multi ? (
-                          <p className="text-xs text-muted">
+                          <p className="max-w-[12rem] whitespace-normal text-xs leading-snug text-muted">
                             {t('admin.waterHistoryFinanceMultiService')}
                           </p>
                         ) : null}
                       </div>
                     </td>
-                    <td className={`${adminTableCellClass} text-secondary`}>
+                    <td className={`${colFlex} break-words text-secondary`}>
                       {presentLedgerOperationNote(present, t)}
                     </td>
                   </tr>

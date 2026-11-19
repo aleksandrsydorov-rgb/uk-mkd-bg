@@ -1,0 +1,177 @@
+[
+  {
+    "check": "login",
+    "ok": true
+  },
+  {
+    "check": "table rendered",
+    "ok": true,
+    "shellH": 738,
+    "shellW": 801,
+    "ths": [
+      {
+        "text": "Дата",
+        "w": 89
+      },
+      {
+        "text": "Тип",
+        "w": 112
+      },
+      {
+        "text": "Сумма",
+        "w": 66
+      },
+      {
+        "text": "Статус",
+        "w": 81
+      },
+      {
+        "text": "Документ",
+        "w": 152
+      },
+      {
+        "text": "Примечание",
+        "w": 257
+      }
+    ],
+    "icons": {
+      "count": 3,
+      "sameRow": true,
+      "minWidth": 44,
+      "tops": [
+        400,
+        400,
+        400
+      ],
+      "widths": [
+        44,
+        44,
+        44
+      ],
+      "groupWhiteSpace": "nowrap",
+      "flexWrap": "nowrap"
+    },
+    "dateWhiteSpace": "nowrap",
+    "amountWhiteSpace": "nowrap",
+    "noteWidth": 257,
+    "typeWidth": 112,
+    "dateWidth": 89,
+    "statusWidth": 81,
+    "docWidth": 152,
+    "amountWidth": 66,
+    "tableMinWidth": "736px",
+    "scrollParentOverflowX": "auto"
+  },
+  {
+    "check": "date/amount whitespace-nowrap",
+    "ok": true,
+    "date": "nowrap",
+    "amount": "nowrap"
+  },
+  {
+    "check": "compact cols narrower than type/note",
+    "ok": true,
+    "date": 89,
+    "type": 112,
+    "amount": 66,
+    "status": 81,
+    "doc": 152,
+    "note": 257
+  },
+  {
+    "check": "horizontal scroll container present",
+    "ok": true,
+    "overflow": "auto"
+  },
+  {
+    "check": "three document icons same row",
+    "ok": true,
+    "count": 3,
+    "sameRow": true,
+    "minWidth": 44,
+    "tops": [
+      400,
+      400,
+      400
+    ],
+    "widths": [
+      44,
+      44,
+      44
+    ],
+    "groupWhiteSpace": "nowrap",
+    "flexWrap": "nowrap"
+  },
+  {
+    "check": "icon hit area not shrunk",
+    "ok": true,
+    "minWidth": 44
+  },
+  {
+    "check": "flex-nowrap on icon group",
+    "ok": true,
+    "count": 3,
+    "sameRow": true,
+    "minWidth": 44,
+    "tops": [
+      400,
+      400,
+      400
+    ],
+    "widths": [
+      44,
+      44,
+      44
+    ],
+    "groupWhiteSpace": "nowrap",
+    "flexWrap": "nowrap"
+  },
+  {
+    "check": "popup height stable across tabs",
+    "ok": true,
+    "shellH1": 738,
+    "shellH2": 738,
+    "shellH3": 738
+  },
+  {
+    "check": "mobile table has min-width for scroll",
+    "ok": true,
+    "minWidth": "736px"
+  },
+  {
+    "check": "mobile icons same row",
+    "ok": true,
+    "count": 3,
+    "sameRow": true,
+    "minWidth": 44,
+    "tops": [
+      393,
+      393,
+      393
+    ],
+    "widths": [
+      44,
+      44,
+      44
+    ],
+    "groupWhiteSpace": "nowrap",
+    "flexWrap": "nowrap"
+  },
+  {
+    "check": "mobile icon size ok",
+    "ok": true,
+    "minWidth": 44
+  },
+  {
+    "check": "EN headers present",
+    "ok": true,
+    "enHeaders": [
+      "Дата",
+      "Тип",
+      "Сумма",
+      "Статус",
+      "Документ",
+      "Примечание"
+    ]
+  }
+]

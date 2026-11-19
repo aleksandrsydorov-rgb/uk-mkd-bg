@@ -655,7 +655,7 @@ export function AdminUtilityFinanceWorkplace({
                 userFilterEditRef.current = true;
                 setFilters((f) => ({ ...f, query: e.target.value }));
               }}
-              placeholder={t('admin.sfFilterAptPh')}
+              placeholder={t('admin.utilRegSearchAptPh')}
               className={`mt-1 block w-48 ${fieldClass}`}
             />
           </label>
@@ -792,7 +792,7 @@ export function AdminUtilityFinanceWorkplace({
               <thead>
                 <tr className={adminTableHeadRowClass}>
                   <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
-                  <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColApt')}</th>
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColPrevM3')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColCurrM3')}</th>
@@ -839,7 +839,7 @@ export function AdminUtilityFinanceWorkplace({
               <thead>
                 <tr className={adminTableHeadRowClass}>
                   <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
-                  <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColApt')}</th>
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColPrevDay')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColCurrDay')}</th>
@@ -898,7 +898,7 @@ export function AdminUtilityFinanceWorkplace({
               <thead>
                 <tr className={adminTableHeadRowClass}>
                   <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
-                  <th className={adminTableCellClass}>{t('form.colApt')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColApt')}</th>
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColConnection')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColTariff')}</th>

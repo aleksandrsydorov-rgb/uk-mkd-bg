@@ -30,6 +30,7 @@ import {
   NOTIFY_SETTINGS_GROUPS,
   emailHistoryFailureReasonKey,
   emailHistorySkipReasonFromRow,
+  emailHistoryStatusHintKey,
   emailHistoryStatusLabelKey,
   emailHistoryUserStatus,
   type EmailHistoryUserStatus,
@@ -241,6 +242,7 @@ function NotificationsOverview({
   const [hostSendingEnabled, setHostSendingEnabled] = useState<boolean | null>(null);
   const [encryptionConfigured, setEncryptionConfigured] = useState<boolean | null>(null);
   const [sendBlockReason, setSendBlockReason] = useState<string | null>(null);
+  const [deliveryWebhookReachable, setDeliveryWebhookReachable] = useState<boolean | null>(null);
   const [recent, setRecent] = useState<EmailHistoryRow[]>([]);
   const [editing, setEditing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -280,6 +282,7 @@ function NotificationsOverview({
           encryption_configured?: unknown;
           send_block_reason?: unknown;
           token_decrypt_ok?: unknown;
+          delivery_webhook_reachable?: unknown;
         };
         setHostSendingEnabled(
           typeof health.host_sending_enabled === 'boolean' ? health.host_sending_enabled : null
@@ -293,10 +296,16 @@ function NotificationsOverview({
         setSendBlockReason(
           typeof health.send_block_reason === 'string' ? health.send_block_reason : null
         );
+        setDeliveryWebhookReachable(
+          typeof health.delivery_webhook_reachable === 'boolean'
+            ? health.delivery_webhook_reachable
+            : null
+        );
       } catch {
         setHostSendingEnabled(null);
         setEncryptionConfigured(null);
         setSendBlockReason(null);
+        setDeliveryWebhookReachable(null);
       }
       try {
         const page = await listEmailHistory(supabase, { limit: 5, offset: 0 });
@@ -708,6 +717,7 @@ function NotificationsOverview({
                 userStatus: row.user_status,
               });
               const failKey = st === 'failed' ? emailHistoryFailureReasonKey(row.last_error_code) : null;
+              const hintKey = emailHistoryStatusHintKey(st);
               return (
                 <li key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
                   <div className="min-w-0">
@@ -718,6 +728,7 @@ function NotificationsOverview({
                   </div>
                   <div className="text-right text-xs text-secondary">
                     <p>{t(emailHistoryStatusLabelKey(st))}</p>
+                    {hintKey ? <p className="text-muted">{t(hintKey)}</p> : null}
                     {failKey ? <p className="text-muted">{t(failKey)}</p> : null}
                     <p className="text-muted">{formatWhen(row.created_at, locale)}</p>
                   </div>
@@ -727,6 +738,10 @@ function NotificationsOverview({
           </ul>
         )}
       </AdminCard>
+
+      {deliveryWebhookReachable !== true ? (
+        <p className="text-xs text-muted">{t('admin.emailDeliveryWebhookNote')}</p>
+      ) : null}
     </div>
   );
 }
@@ -1026,7 +1041,24 @@ function NotificationsHistory({
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [deliveryWebhookReachable, setDeliveryWebhookReachable] = useState<boolean | null>(null);
   const pageSize = 20;
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const healthRes = await fetch('/api/email/settings');
+        const health = (await healthRes.json()) as { delivery_webhook_reachable?: unknown };
+        setDeliveryWebhookReachable(
+          typeof health.delivery_webhook_reachable === 'boolean'
+            ? health.delivery_webhook_reachable
+            : null
+        );
+      } catch {
+        setDeliveryWebhookReachable(null);
+      }
+    })();
+  }, []);
 
   const load = useCallback(async () => {
     if (!canManage) {
@@ -1205,6 +1237,9 @@ function NotificationsHistory({
                         <td className="py-2 pr-3">{eventSubjectLabel(row, t)}</td>
                         <td className="py-2">
                           <p>{t(emailHistoryStatusLabelKey(st))}</p>
+                          {emailHistoryStatusHintKey(st) ? (
+                            <p className="text-xs text-muted">{t(emailHistoryStatusHintKey(st)!)}</p>
+                          ) : null}
                           {st === 'skipped' && skipKey ? (
                             <p className="text-xs text-muted">{t(skipKey)}</p>
                           ) : null}
@@ -1277,6 +1312,10 @@ function NotificationsHistory({
           </div>
         </div>
       </AdminCard>
+
+      {deliveryWebhookReachable !== true ? (
+        <p className="text-xs text-muted">{t('admin.emailDeliveryWebhookNote')}</p>
+      ) : null}
     </div>
   );
 }

@@ -177,6 +177,18 @@ export async function GET() {
     }
   }
 
+  const siteUrl = String(
+    process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? ''
+  ).trim();
+  const webhookSecretConfigured = Boolean(
+    (process.env.LETTERMINT_WEBHOOK_SECRET ?? '').trim()
+  );
+  // Lettermint cannot POST to loopback; do not pretend delivery events arrive on :3078.
+  const siteIsLoopback =
+    !siteUrl ||
+    /localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]/i.test(siteUrl);
+  const deliveryWebhookReachable = webhookSecretConfigured && !siteIsLoopback;
+
   return NextResponse.json({
     host_sending_enabled: hostSending,
     encryption_configured: encryptionConfigured,
@@ -184,6 +196,8 @@ export async function GET() {
     mail_provider_env: mailProvider === 'lettermint' || mailProvider === 'resend' ? mailProvider : null,
     has_provider_ciphertext: hasCiphertext,
     token_decrypt_ok: tokenDecryptOk,
+    webhook_secret_configured: webhookSecretConfigured,
+    delivery_webhook_reachable: deliveryWebhookReachable,
     // Never expose secrets. Concrete block reasons for the admin UI:
     send_block_reason: !hostSending
       ? 'host_sending_disabled'

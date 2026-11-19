@@ -461,17 +461,17 @@ function resolveBuiltinParts(
   if (key === 'email_test' || key.startsWith('email_test')) {
     return {
       subject: t(locale, {
-        bg: '{{complex}}: тестов имейл',
+        bg: '{{complex}}: тестово писмо',
         ru: '{{complex}}: тестовое письмо',
-        en: '{{complex}}: test email',
+        en: '{{complex}}: test message',
       }),
       greeting: greeting(locale),
       body: t(locale, {
-        bg: 'Това е контролиран тестов имейл от Email Core на {{complex}}. Ако го виждате, доставката през пощенския доставчик работи.',
-        ru: 'Это контролируемое тестовое письмо Email Core комплекса {{complex}}. Если оно дошло, доставка через почтового провайдера работает.',
-        en: 'This is a controlled Email Core test message from {{complex}}. Receiving it means provider delivery works.',
+        bg: 'Това е тестово писмо от {{complex}}. Ако го виждате във входящата кутия, връзката с пощенския доставчик работи.',
+        ru: 'Это тестовое письмо от {{complex}}. Если оно пришло во входящие, подключение к почтовому сервису работает.',
+        en: 'This is a test message from {{complex}}. If it arrived in your inbox, the mail service connection works.',
       }),
-      cta: t(locale, { bg: 'Към админ', ru: 'В админку', en: 'Open admin' }),
+      cta: t(locale, { bg: 'Към кабинета', ru: 'В кабинет', en: 'Open cabinet' }),
       footer: footer(locale),
     };
   }

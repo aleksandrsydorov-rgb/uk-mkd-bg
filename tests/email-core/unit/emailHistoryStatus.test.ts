@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   emailHistoryFailureReasonKey,
+  emailHistoryStatusHintKey,
+  emailHistoryStatusLabelKey,
   emailHistoryUserStatus,
 } from '@/lib/email/historyStatus';
 import { isPermanentProviderFailure } from '@/lib/emailCore';
+import { renderTransactionalEmail } from '@/lib/email/templates';
 
 describe('email history status honesty', () => {
   it('does not show awaiting for queued rows with missing_api_key', () => {
@@ -44,5 +47,30 @@ describe('email history status honesty', () => {
     expect(isPermanentProviderFailure('token_decrypt_failed', 'rejected')).toBe(true);
     expect(isPermanentProviderFailure('timeout', 'error')).toBe(false);
     expect(isPermanentProviderFailure('network_error', 'error')).toBe(false);
+  });
+
+  it('labels accepted as sent with service-accepted hint; delivered only via webhook event', () => {
+    expect(emailHistoryUserStatus({ status: 'sent' })).toBe('accepted');
+    expect(emailHistoryStatusLabelKey('accepted')).toBe('admin.emailHistAccepted');
+    expect(emailHistoryStatusHintKey('accepted')).toBe('admin.emailHistAcceptedHint');
+    expect(emailHistoryUserStatus({ status: 'sent', latestEventType: 'delivered' })).toBe(
+      'delivered'
+    );
+    expect(emailHistoryStatusHintKey('delivered')).toBeNull();
+  });
+
+  it('email_test copy has no E2E / Email Core jargon', () => {
+    for (const locale of ['bg', 'ru', 'en'] as const) {
+      const r = renderTransactionalEmail({
+        templateKey: 'email_test',
+        locale,
+        complexName: 'AMADEUS XI E2E',
+      });
+      expect(r.subject + r.html + r.text).not.toMatch(/Email Core/i);
+      expect(r.html + r.text).not.toMatch(/контролируем/i);
+      expect(r.html + r.text).not.toMatch(/controlled Email Core/i);
+      // Complex name may contain E2E from settings; body jargon must not.
+      expect(r.html).toMatch(/AMADEUS XI E2E/);
+    }
   });
 });

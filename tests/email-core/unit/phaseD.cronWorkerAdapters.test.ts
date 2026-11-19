@@ -31,7 +31,7 @@ describe('Email Core Phase D · locale', () => {
       /тестов/i
     );
     expect(renderTransactionalEmail({ templateKey: 'email_test', locale: 'en' }).subject).toMatch(
-      /test email/i
+      /test message/i
     );
   });
 });

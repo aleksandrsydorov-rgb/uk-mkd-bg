@@ -106,6 +106,14 @@ export function emailHistoryStatusLabelKey(
   }
 }
 
+/** Optional second line under the status (accepted ≠ delivered). */
+export function emailHistoryStatusHintKey(
+  status: EmailHistoryUserStatus
+): 'admin.emailHistAcceptedHint' | null {
+  if (status === 'accepted') return 'admin.emailHistAcceptedHint';
+  return null;
+}
+
 /** Short user-facing skip reason — no raw error codes. */
 export function emailHistorySkipReasonKey(
   lastErrorCode: string | null | undefined

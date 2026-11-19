@@ -64,7 +64,7 @@ describe('Email Core Phase C · templates BG/RU/EN', () => {
       locale: 'en',
       complexName: 'Amadeus 11',
     });
-    expect(testMail.subject).toMatch(/test email/i);
+    expect(testMail.subject).toMatch(/test message/i);
 
     const xfer = renderTransactionalEmail({
       templateKey: 'ownership_change_approved',

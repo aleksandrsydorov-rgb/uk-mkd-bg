@@ -212,6 +212,7 @@ export async function POST(request: Request) {
     }
   }
 
+  // Language = complex email template_locale from the admin form (not the UI chrome language).
   const locale =
     body.locale === 'ru' || body.locale === 'en' || body.locale === 'bg' ? body.locale : 'bg';
 

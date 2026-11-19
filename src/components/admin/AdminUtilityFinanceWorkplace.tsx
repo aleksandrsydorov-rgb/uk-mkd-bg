@@ -40,7 +40,7 @@ import {
   listSectionsFromProperties,
   parseUtilityRegisterSort,
   clampWaterPeriodRange,
-  pickLatestElectricitySnaps,
+  pickElectricitySnapsForDateRange,
   pickWaterSnapsForDateRange,
   sortUtilityModuleRows,
   utilityModuleFiltersActive,
@@ -488,9 +488,10 @@ export function AdminUtilityFinanceWorkplace({
       if (er.error && !isMissingRelation(er.error, 'electricity_charges')) {
         setError(toUserFacingMessage(er.error, t, { context: 'load', fallback: t('common.errLoad') }));
       }
-      const snaps = pickLatestElectricitySnaps(
-        (Array.isArray(er.data) ? er.data : []) as Parameters<typeof pickLatestElectricitySnaps>[0],
-        periodYm,
+      const snaps = pickElectricitySnapsForDateRange(
+        (Array.isArray(er.data) ? er.data : []) as Parameters<typeof pickElectricitySnapsForDateRange>[0],
+        periodFrom,
+        periodTo,
       );
       setElectricityRows(buildElectricityRegisterRows(base, properties, snaps));
       setWaterRows([]);
@@ -802,20 +803,6 @@ export function AdminUtilityFinanceWorkplace({
             </select>
           </label>
         ) : null}
-        {service === 'electricity' ? (
-          <label className={utilityRegisterFilterLabelClass}>
-            {t('admin.utilRegFilterPeriodReadings')}
-            <input
-              type="month"
-              value={filters.periodYm}
-              onChange={(e) => {
-                userFilterEditRef.current = true;
-                setFilters((f) => ({ ...f, periodYm: e.target.value }));
-              }}
-              className={utilityRegisterFilterDateClass}
-            />
-          </label>
-        ) : null}
         <label className={utilityRegisterFilterLabelClass}>
           {t('admin.utilRegFilterBalance')}
           <select
@@ -878,7 +865,7 @@ export function AdminUtilityFinanceWorkplace({
           options: sectionOptions.map((s) => ({ value: s, label: s })),
         }}
         periodFrom={
-          service === 'water'
+          service === 'water' || service === 'electricity'
             ? {
                 value: filters.periodFrom,
                 onChange: (nextFrom) => {
@@ -892,7 +879,7 @@ export function AdminUtilityFinanceWorkplace({
             : undefined
         }
         periodTo={
-          service === 'water'
+          service === 'water' || service === 'electricity'
             ? {
                 value: filters.periodTo,
                 min: filters.periodFrom || undefined,
@@ -920,7 +907,12 @@ export function AdminUtilityFinanceWorkplace({
                 summary: t('admin.utilRegWaterDateRangeHintShort'),
                 detail: t('admin.utilRegWaterDateRangeHint'),
               }
-            : null
+            : service === 'electricity'
+              ? {
+                  summary: t('admin.utilRegElDateRangeHintShort'),
+                  detail: t('admin.utilRegElDateRangeHint'),
+                }
+              : null
         }
       />
     );
@@ -931,7 +923,7 @@ export function AdminUtilityFinanceWorkplace({
         id={service === 'water' ? 'utility-water-register' : undefined}
         className="space-y-4"
       >
-        {service !== 'water' ? (
+        {service === 'internet' ? (
           <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
             <div>
               <h2 className="text-base font-semibold tracking-tight text-foreground">
@@ -1021,55 +1013,75 @@ export function AdminUtilityFinanceWorkplace({
             <table className="w-full min-w-[78rem] text-sm">
               <thead>
                 <tr className={adminTableHeadRowClass}>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColApt')}</th>
+                  <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
                   <th className={adminTableCellClass}>{t('form.colOwner')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColPrevDay')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColCurrDay')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColConsDay')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColPrevNight')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColCurrNight')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColConsNight')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColCharged')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColPaid')}</th>
-                  <th className={adminTableCellClass}>{t('admin.utilRegColBalanceEur')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColPrevDay')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColPrevNight')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColCurrDay')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColCurrNight')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColConsDay')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColConsNight')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColCharged')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColPaid')}</th>
+                  <th className={`${adminTableCellClass} text-right`}>{t('admin.utilRegColBalanceEur')}</th>
+                  {listPaymentAction ? (
+                    <th className={adminTableCellClass}>
+                      <span className="sr-only">{t('admin.recordPayment')}</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {visibleElectricity.map((row) => (
                   <tr key={row.propertyId} {...rowClickProps(row.propertyId)}>
+                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
                     <td className={adminTableCellClass}>
                       {formatSectionBlock(row.sectionCode, row.blockCode)}
                     </td>
-                    <td className={adminTableCellClass}>{aptCell(row.propertyId, row.apartmentNumber)}</td>
                     <td className={adminTableCellClass}>{row.ownerName ?? '—'}</td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} text-right tabular-nums`}>
                       {row.previousDay == null ? '—' : formatKwh(row.previousDay, locale)}
                     </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
-                      {row.currentDay == null ? '—' : formatKwh(row.currentDay, locale)}
-                    </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
-                      {row.consumptionDay == null ? '—' : formatKwh(row.consumptionDay, locale)}
-                    </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} text-right tabular-nums`}>
                       {row.previousNight == null ? '—' : formatKwh(row.previousNight, locale)}
                     </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} text-right tabular-nums`}>
+                      {row.currentDay == null ? '—' : formatKwh(row.currentDay, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} text-right tabular-nums`}>
                       {row.currentNight == null ? '—' : formatKwh(row.currentNight, locale)}
                     </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} text-right tabular-nums`}>
+                      {row.consumptionDay == null ? '—' : formatKwh(row.consumptionDay, locale)}
+                    </td>
+                    <td className={`${adminTableCellClass} text-right tabular-nums`}>
                       {row.consumptionNight == null ? '—' : formatKwh(row.consumptionNight, locale)}
                     </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} text-right tabular-nums whitespace-nowrap`}>
                       {formatEur(row.chargedEur, locale)}
                     </td>
-                    <td className={`${adminTableCellClass} tabular-nums`}>
+                    <td className={`${adminTableCellClass} text-right tabular-nums whitespace-nowrap`}>
                       {formatEur(row.paidEur, locale)}
                     </td>
-                    <td className={balanceClass(row.status)}>
+                    <td className={`${balanceClass(row.status)} text-right whitespace-nowrap`}>
                       {formatEur(Math.abs(row.balanceEur), locale)}
                     </td>
+                    {listPaymentAction ? (
+                      <td className={`${adminTableCellClass} whitespace-nowrap`}>
+                        <button
+                          type="button"
+                          className={`${adminBtnSecondaryClass} px-2.5 py-1.5 text-xs`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPayPopup(row.propertyId, e.currentTarget);
+                          }}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          {t('admin.recordPayment')}
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

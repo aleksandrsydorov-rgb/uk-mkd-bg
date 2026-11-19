@@ -150,7 +150,7 @@ import { StaffInventory } from '@/components/admin/StaffInventory';
 import { AdminBudget } from '@/components/admin/AdminBudget';
 import { AdminPropertyBook } from '@/components/admin/AdminPropertyBook';
 import { AdminDocumentsDecisions } from '@/components/admin/AdminDocumentsDecisions';
-import { AdminElectricityFinance } from '@/components/admin/AdminElectricityFinance';
+import { AdminElectricity } from '@/components/admin/AdminElectricity';
 import { AdminElectricityLegalQueue } from '@/components/admin/AdminElectricityLegalQueue';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { MeterReadingHistory } from '@/components/meters/MeterReadingHistory';
@@ -1604,7 +1604,14 @@ function AdminPortal() {
     if (!allowed || !authReady || !staffRole || sectionQuery !== 'электроэнергия') return;
     const raw = searchParams.get('tab');
     if (!raw) return;
-    const allowedTabs = ['overview', 'meter', 'readings', ...(showElectricityFinance ? ['finance'] : [])];
+    const allowedTabs = [
+      'overview',
+      'meter',
+      'readings',
+      'payments',
+      'history',
+      ...(showElectricityFinance ? ['finance'] : []),
+    ];
     if (allowedTabs.includes(raw)) return;
     openUtilityTab('электроэнергия', 'overview');
   }, [allowed, authReady, openUtilityTab, searchParams, sectionQuery, showElectricityFinance, staffRole]);
@@ -4695,52 +4702,17 @@ function AdminPortal() {
       case 'электроэнергия': {
         const canElSubmit = canSubmitElectricityStaff(staffRole, staffActive);
         const canChangeElMode = canChangeUtilityMode;
-        const elModeLabel =
-          electricityMode === 'staff_only'
-            ? t('admin.elModeStaffOnly')
-            : t('admin.elModeOwnerAndStaff');
-        const elTabItems: { id: AdminUtilityTab; label: string }[] = [
-          { id: 'overview', label: t('admin.utilTabOverview') },
-          { id: 'meter', label: t('admin.utilTabMeter') },
-          { id: 'readings', label: t('admin.utilTabReadings') },
-        ];
-        if (showElectricityFinance) {
-          // Allowed via URL from Финансы nav (tab=finance); hidden from metering chrome.
-          elTabItems.push({ id: 'finance', label: t('admin.utilTabFinance') });
-        }
-        const elTab = parseAdminUtilityTab(
-          sectionQuery === 'счётчики' ? 'meter' : searchParams.get('tab'),
-          elTabItems.map((item) => item.id),
-        );
-        const elMeteringTabs = elTabItems.filter((item) => item.id !== 'finance');
-        if (elTab === 'finance') {
-          return (
-            <div className="space-y-4">
-              <AdminPageHeader
-                title={t('admin.electricityFinance')}
-                secondary={t('admin.utilFinRegisterLead')}
-              />
-              <AdminElectricityFinance
-                supabase={supabase}
-                properties={properties}
-                staffRole={staffRole}
-                embedded
-                panel="finance"
-                focusPropertyId={elMeterPropertyId ? Number(elMeterPropertyId) : ''}
-                onPropertyChange={(id) => {
-                  setElMeterPropertyId(id === '' || id == null ? '' : String(id));
-                }}
-              />
-            </div>
-          );
-        }
-        const selectedElId = elMeterPropertyId || (properties[0] ? String(properties[0].id) : '');
-        const selectedElMeters = electricityMeters.filter((m) => String(m.property_id) === selectedElId);
+        const selectedElId = elMeterPropertyId;
+        const selectedElMeters = selectedElId
+          ? electricityMeters.filter((m) => String(m.property_id) === selectedElId)
+          : [];
         const activeEl = activeElectricityMeter(selectedElMeters);
-        const elPairs = pairElectricityReadings(
-          meterReadings.filter((m) => String(m.property_id) === selectedElId),
-          electricityMeters,
-        );
+        const elPairs = selectedElId
+          ? pairElectricityReadings(
+              meterReadings.filter((m) => String(m.property_id) === selectedElId),
+              electricityMeters,
+            )
+          : [];
         const visibleElPairs = elPendingOnly
           ? elPairs.filter(
               (row) => row.day_reading_id != null && elPendingIds.includes(row.day_reading_id),
@@ -4772,105 +4744,37 @@ function AdminPortal() {
         const canShowElCorrectPanel =
           !!elCorrectTarget &&
           canCorrectElectricityReading(staffRole, staffActive, elCorrectHasCharge);
-        return (
-          <div className="space-y-4">
-            <AdminPageHeader
-              title={t('admin.electricityFinance')}
-              secondary={t('admin.electricityLead')}
-              action={
-                elTab === 'readings' && canElSubmit ? (
-                  <AdminPrimaryButton type="button" onClick={() => setShowMeterForm(true)}>
-                    + {t('account.elSubmit')}
-                  </AdminPrimaryButton>
-                ) : undefined
-              }
+        const elAptPicker = (
+          <div className="rounded-[14px] border border-border bg-background px-4 py-3">
+            <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
+            <ApartmentCombobox
+              className="mt-1 max-w-xl"
+              properties={properties}
+              value={selectedElId ? Number(selectedElId) : ''}
+              onChange={(id) => {
+                setElMeterPropertyId(id === '' ? '' : String(id));
+                setShowElAssign(false);
+                setShowElReplace(false);
+                closeElectricityCorrection();
+              }}
             />
-            <AdminCard>
-              <p className="text-[11px] uppercase tracking-wider text-muted">{t('admin.electricityMode')}</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{elModeLabel}</p>
-              {canChangeElMode && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {([
-                    ['owner_and_staff', t('admin.elModeOwnerAndStaff')],
-                    ['staff_only', t('admin.elModeStaffOnly')],
-                  ] as const).map(([id, label]) => (
-                    <button
-                      key={`el-${id}`}
-                      type="button"
-                      onClick={() => void handleSaveElectricityMode(id)}
-                      className={`rounded-full border px-3 py-1.5 text-sm ${
-                        electricityMode === id
-                          ? 'border-accent/25 bg-accent-bg text-accent'
-                          : 'border-border text-secondary hover:bg-hover'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <label className="mt-4 block text-xs text-muted">{t('admin.pickProperty')}</label>
-              <ApartmentCombobox
-                className="mt-1 max-w-xl"
-                properties={properties}
-                value={selectedElId ? Number(selectedElId) : ''}
-                onChange={(id) => {
-                  setElMeterPropertyId(id === '' ? '' : String(id));
-                  setShowElAssign(false);
-                  setShowElReplace(false);
-                  closeElectricityCorrection();
-                }}
-              />
-            </AdminCard>
+          </div>
+        );
 
-            <AdminTabBar
-              tabs={elMeteringTabs}
-              active={elTab}
-              onChange={(id) => openUtilityTab('электроэнергия', id as AdminUtilityTab)}
-            />
-
-            {elTab === 'overview' ? (
-              showElectricityFinance ? (
-                <AdminElectricityFinance
-                  supabase={supabase}
-                  properties={properties}
-                  staffRole={staffRole}
-                  embedded
-                  panel="module"
-                  modeLabel={elModeLabel}
-                  focusPropertyId=""
-                  onPropertyChange={(id) => {
-                    setElMeterPropertyId(id === '' || id == null ? '' : String(id));
-                  }}
-                  onOpenTab={(next) => {
-                    if (next === 'finance' || next === 'tariff') return;
-                    openUtilityTab('электроэнергия', next);
-                  }}
-                />
-              ) : (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <AdminMetricCard label={t('admin.electricityMode')} value={elModeLabel} />
-                  <AdminMetricCard
-                    label={t('admin.utilRegTariffsDayNight')}
-                    value="—"
-                    secondary={t('admin.noTariff')}
-                  />
-                  <AdminMetricCard
-                    label={t('admin.electricityBalance')}
-                    value="—"
-                    secondary={t('admin.waterNoAccess')}
-                  />
-                </div>
-              )
-            ) : null}
-
-            {elTab === 'meter' && (() => {
+        const meterPanel = !selectedElId ? (
+          <div className="space-y-3">
+            {elAptPicker}
+            <AdminEmptyState title={t('form.pickApt')} />
+          </div>
+        ) : (() => {
               const canElMeter = canManageElectricityMeter(staffRole, staffActive);
               const fieldClass = adminFieldClass;
               const elNeedsInitial =
                 !activeEl ||
                 (activeEl as { opening_confirmed_at?: string | null }).opening_confirmed_at == null;
               return (
+                <div className="space-y-3">
+                {elAptPicker}
                 <div className="rounded-[14px] border border-border bg-background px-4 py-3">
                   <p className="text-[11px] uppercase tracking-wider text-muted">{t('account.elMeter')}</p>
                   {elNeedsInitial ? (
@@ -4999,10 +4903,114 @@ function AdminPortal() {
                     </div>
                   )}
                 </div>
+                </div>
               );
-            })()}
+            })();
 
-            {elTab === 'readings' && showMeterForm && canElSubmit && (
+        const readingsHistoryBlock = (
+          <div className="space-y-3">
+            {canShowElCorrectPanel && elCorrectTarget ? (
+              <AdminMeterCorrectionPanel
+                originalSummary={
+                  <p>
+                    {t('admin.meterCorrectionOriginalEl', {
+                      day: `${formatKwh(Number(elCorrectTarget.day), locale)} ${t('account.kwh')}`,
+                      night: `${formatKwh(Number(elCorrectTarget.night), locale)} ${t('account.kwh')}`,
+                      consDay:
+                        elCorrectTarget.consumptionDay != null
+                          ? `${formatKwh(elCorrectTarget.consumptionDay, locale)} ${t('account.kwh')}`
+                          : '—',
+                      consNight:
+                        elCorrectTarget.consumptionNight != null
+                          ? `${formatKwh(elCorrectTarget.consumptionNight, locale)} ${t('account.kwh')}`
+                          : '—',
+                    })}
+                  </p>
+                }
+                valueFields={
+                  <>
+                    <label className="block text-secondary">
+                      {t('admin.meterCorrectionNewDay')}
+                      <input
+                        className={`mt-1 block w-full ${adminFieldClass}`}
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={elCorrectDay}
+                        onChange={(e) => setElCorrectDay(e.target.value)}
+                        disabled={elCorrectBusy}
+                        required
+                      />
+                    </label>
+                    <label className="block text-secondary">
+                      {t('admin.meterCorrectionNewNight')}
+                      <input
+                        className={`mt-1 block w-full ${adminFieldClass}`}
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={elCorrectNight}
+                        onChange={(e) => setElCorrectNight(e.target.value)}
+                        disabled={elCorrectBusy}
+                        required
+                      />
+                    </label>
+                  </>
+                }
+                reason={elCorrectReason}
+                onReasonChange={setElCorrectReason}
+                confirmed={elCorrectConfirm}
+                onConfirmedChange={setElCorrectConfirm}
+                hasCharge={elCorrectHasCharge}
+                estimatedDeltaEur={elCorrectDelta}
+                busy={elCorrectBusy}
+                onSubmit={() => void handleCorrectElectricityReading()}
+                onCancel={closeElectricityCorrection}
+              />
+            ) : null}
+            <MeterReadingHistory
+              utility="electricity"
+              entries={elHistoryEntries}
+              title={t('admin.readingHistory')}
+              emptyTitle={elPendingOnly ? t('admin.elPendingEmpty') : t('admin.noReadings')}
+              rowActions={(entry) => {
+                const row = visibleElPairs.find((p) => p.key === entry.actionKey);
+                if (!row) return null;
+                const showCorrect =
+                  elCorrectable?.key === row.key &&
+                  electricityPairIsActive(row) &&
+                  canCorrectElectricityReading(staffRole, staffActive, false);
+                if (!showCorrect) return null;
+                return (
+                  <button
+                    type="button"
+                    className="text-sm text-accent hover:underline"
+                    onClick={() => void openElectricityCorrection(row)}
+                  >
+                    {t('admin.meterCorrectionAction')}
+                  </button>
+                );
+              }}
+            />
+          </div>
+        );
+
+        const readingsPanel = !selectedElId ? (
+          <div className="space-y-3">
+            {elAptPicker}
+            <AdminEmptyState title={t('form.pickApt')} />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              {elAptPicker}
+              {canElSubmit ? (
+                <AdminPrimaryButton type="button" onClick={() => setShowMeterForm(true)}>
+                  + {t('account.elSubmit')}
+                </AdminPrimaryButton>
+              ) : null}
+            </div>
+            {showMeterForm && canElSubmit && (
               <form onSubmit={handleSaveMeter}
                 className="mb-6 rounded-[14px] border border-accent/20 bg-surface shadow-card p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-accent">{t('account.meterTabElectricity')}</h3>
@@ -5047,112 +5055,64 @@ function AdminPortal() {
                 </div>
               </form>
             )}
-
-            {elTab === 'readings' && (
-              <AdminElectricityLegalQueue
-                supabase={supabase}
-                staffRole={staffRole}
-                staffActive={staffActive}
-                showFilter
-                filterOn={elPendingOnly}
-                onFilterChange={setElPendingOnly}
-                onPendingIds={setElPendingIds}
-                onChanged={() => void loadAll()}
-              />
-            )}
-            {elTab === 'readings' && elReadingNotice ? (
-              <p className="text-sm text-accent">{elReadingNotice}</p>
-            ) : null}
-
-            {elTab === 'readings' && (
-              <div className="space-y-3">
-                {canShowElCorrectPanel && elCorrectTarget ? (
-                  <AdminMeterCorrectionPanel
-                    originalSummary={
-                      <p>
-                        {t('admin.meterCorrectionOriginalEl', {
-                          day: `${formatKwh(Number(elCorrectTarget.day), locale)} ${t('account.kwh')}`,
-                          night: `${formatKwh(Number(elCorrectTarget.night), locale)} ${t('account.kwh')}`,
-                          consDay:
-                            elCorrectTarget.consumptionDay != null
-                              ? `${formatKwh(elCorrectTarget.consumptionDay, locale)} ${t('account.kwh')}`
-                              : '—',
-                          consNight:
-                            elCorrectTarget.consumptionNight != null
-                              ? `${formatKwh(elCorrectTarget.consumptionNight, locale)} ${t('account.kwh')}`
-                              : '—',
-                        })}
-                      </p>
-                    }
-                    valueFields={
-                      <>
-                        <label className="block text-secondary">
-                          {t('admin.meterCorrectionNewDay')}
-                          <input
-                            className={`mt-1 block w-full ${adminFieldClass}`}
-                            type="number"
-                            min="0"
-                            step="0.001"
-                            value={elCorrectDay}
-                            onChange={(e) => setElCorrectDay(e.target.value)}
-                            disabled={elCorrectBusy}
-                            required
-                          />
-                        </label>
-                        <label className="block text-secondary">
-                          {t('admin.meterCorrectionNewNight')}
-                          <input
-                            className={`mt-1 block w-full ${adminFieldClass}`}
-                            type="number"
-                            min="0"
-                            step="0.001"
-                            value={elCorrectNight}
-                            onChange={(e) => setElCorrectNight(e.target.value)}
-                            disabled={elCorrectBusy}
-                            required
-                          />
-                        </label>
-                      </>
-                    }
-                    reason={elCorrectReason}
-                    onReasonChange={setElCorrectReason}
-                    confirmed={elCorrectConfirm}
-                    onConfirmedChange={setElCorrectConfirm}
-                    hasCharge={elCorrectHasCharge}
-                    estimatedDeltaEur={elCorrectDelta}
-                    busy={elCorrectBusy}
-                    onSubmit={() => void handleCorrectElectricityReading()}
-                    onCancel={closeElectricityCorrection}
-                  />
-                ) : null}
-                <MeterReadingHistory
-                  utility="electricity"
-                  entries={elHistoryEntries}
-                  title={t('admin.readingHistory')}
-                  emptyTitle={elPendingOnly ? t('admin.elPendingEmpty') : t('admin.noReadings')}
-                  rowActions={(entry) => {
-                    const row = visibleElPairs.find((p) => p.key === entry.actionKey);
-                    if (!row) return null;
-                    const showCorrect =
-                      elCorrectable?.key === row.key &&
-                      electricityPairIsActive(row) &&
-                      canCorrectElectricityReading(staffRole, staffActive, false);
-                    if (!showCorrect) return null;
-                    return (
-                      <button
-                        type="button"
-                        className="text-sm text-accent hover:underline"
-                        onClick={() => void openElectricityCorrection(row)}
-                      >
-                        {t('admin.meterCorrectionAction')}
-                      </button>
-                    );
-                  }}
-                />
-              </div>
-            )}
-
+            <AdminElectricityLegalQueue
+              supabase={supabase}
+              staffRole={staffRole}
+              staffActive={staffActive}
+              showFilter
+              filterOn={elPendingOnly}
+              onFilterChange={setElPendingOnly}
+              onPendingIds={setElPendingIds}
+              onChanged={() => void loadAll()}
+            />
+            {elReadingNotice ? <p className="text-sm text-accent">{elReadingNotice}</p> : null}
+            {readingsHistoryBlock}
           </div>
+        );
+
+        const historyPanel = !selectedElId ? (
+          <div className="space-y-3">
+            {elAptPicker}
+            <AdminEmptyState title={t('form.pickApt')} />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {elAptPicker}
+            {readingsHistoryBlock}
+          </div>
+        );
+
+        const elFocusProperty =
+          elMeterPropertyId && Number.isFinite(Number(elMeterPropertyId)) && Number(elMeterPropertyId) > 0
+            ? Number(elMeterPropertyId)
+            : '';
+
+        return (
+          <AdminElectricity
+            supabase={supabase}
+            properties={properties}
+            canFinance={showElectricityFinance}
+            electricityMode={electricityMode}
+            canChangeElectricityMode={canChangeElMode}
+            onSaveElectricityMode={(mode) => void handleSaveElectricityMode(mode)}
+            tab={sectionQuery === 'счётчики' ? 'meter' : searchParams.get('tab')}
+            onTabChange={(next) => openUtilityTab('электроэнергия', next)}
+            focusPropertyId={elFocusProperty}
+            onPropertyChange={(id) => {
+              if (typeof window === 'undefined') return;
+              const params = new URLSearchParams(window.location.search);
+              params.set('section', 'электроэнергия');
+              if (id === '' || id == null) params.delete('property');
+              else params.set('property', String(id));
+              const qs = params.toString();
+              const url = qs ? `${pathname}?${qs}` : pathname;
+              window.history.replaceState(window.history.state, '', url);
+              setElMeterPropertyId(id === '' || id == null ? '' : String(id));
+            }}
+            meterPanel={meterPanel}
+            readingsPanel={readingsPanel}
+            historyPanel={historyPanel}
+          />
         );
       }
 

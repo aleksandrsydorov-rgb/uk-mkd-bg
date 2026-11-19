@@ -1,0 +1,34 @@
+{
+  "results": [
+    {
+      "check": "SectionPanelTabs five items",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "check": "No duplicate AdminPageHeader h1 in main work area",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "check": "Overview three cards",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "check": "Register table 12 headers",
+      "ok": true,
+      "detail": "12"
+    },
+    {
+      "check": "PropertyIdentityLink contains cardProperty",
+      "ok": true,
+      "detail": "/admin?section=%D1%8D%D0%BB%D0%B5%D0%BA%D1%82%D1%80%D0%BE%D1%8D%D0%BD%D0%B5%D1%80%D0%B3%D0%B8%D1%8F&tab=overview&cardProperty=5&cardTab=%D1%81%D1%87%D1%91%D1%82%D1%87%D0%B8%D0%BA%D0%B8"
+    },
+    {
+      "check": "Water overview tabs still render",
+      "ok": true,
+      "detail": "5"
+    }
+  ]
+}

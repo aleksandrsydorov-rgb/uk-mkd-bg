@@ -3676,6 +3676,10 @@ export const ru = {
       'Диапазон дат меняет только колонки показаний и расхода: начальные — последнее действительное показание до «С», конечные — последнее внутри «С»–«По», расход — по сохранённым показаниям (с учётом приборов, замен и корректировок). Начислено / оплачено / баланс — итоги за всё время.',
     utilRegWaterDateRangeHintShort:
       'Диапазон дат — для показаний; начислено / оплачено / баланс — за всё время.',
+    utilRegElDateRangeHint:
+      'Диапазон дат меняет колонки день/ночь (показания и расход по начислениям из electricity_charges). При замене счётчика строки могут не совпадать 1:1 с приборами. Начислено / оплачено / баланс — итоги за всё время.',
+    utilRegElDateRangeHintShort:
+      'Диапазон дат — для показаний и расхода; начислено / оплачено / баланс — за всё время.',
     utilRegFilterHintMore: 'Подробнее',
     utilRegFilterConnection: 'Статус подключения',
     utilRegFilterBalance: 'Финансовый баланс',
@@ -9702,6 +9706,10 @@ export const en: Messages = {
       'The date range changes reading and consumption columns only: opening = last valid reading before From, closing = last valid reading in From–To, consumption = sum of stored readings (meters, replacements, corrections). Charged / paid / balance are all-time totals.',
     utilRegWaterDateRangeHintShort:
       'Date range applies to readings; charged / paid / balance are all-time totals.',
+    utilRegElDateRangeHint:
+      'The date range changes day/night reading and consumption columns (from electricity_charges). After meter replacement, rows may not map 1:1 to physical meters. Charged / paid / balance are all-time totals.',
+    utilRegElDateRangeHintShort:
+      'Date range applies to readings/consumption; charged / paid / balance are all-time totals.',
     utilRegFilterHintMore: 'More',
     utilRegFilterConnection: 'Connection status',
     utilRegFilterBalance: 'Financial balance',
@@ -15737,6 +15745,10 @@ export const bg: Messages = {
       'Диапазонът от дати променя само колоните за показания и разход: начални — последното валидно показание преди „От“, крайни — последното в „От“–„До“, разход — по записаните показания (уреди, смени и корекции). Начислено / платено / салдо са общи за всички периоди.',
     utilRegWaterDateRangeHintShort:
       'Диапазонът от дати е за показанията; начислено / платено / салдо са за целия период.',
+    utilRegElDateRangeHint:
+      'Диапазонът от дати променя колоните ден/ноч (показания и разход по electricity_charges). При смяна на уред редовете може да не съвпадат 1:1 с уредите. Начислено / платено / салдо са за целия период.',
+    utilRegElDateRangeHintShort:
+      'Диапазонът от дати е за показания и разход; начислено / платено / салдо са за целия период.',
     utilRegFilterHintMore: 'Още',
     utilRegFilterConnection: 'Статус на връзката',
     utilRegFilterBalance: 'Финансово салдо',

@@ -162,17 +162,25 @@ export function currentElectricityTariffViewFromCore(row: {
   };
 }
 
-export function formatElectricityTariff(n: number, locale?: string) {
-  const unit = locale === 'en' ? '€/kWh' : '€/кВт·ч';
+/** Format a stored electricity rate without premature 2-dp rounding (min 2, up to 6 significant fraction digits). */
+export function formatElectricityTariffRate(n: number, locale?: string) {
   const value = Number(n);
   const safe = Number.isFinite(value) ? value : 0;
-  const num = locale
-    ? new Intl.NumberFormat(locale === 'en' || locale.startsWith('en') ? 'en-US' : locale === 'bg' || locale.startsWith('bg') ? 'bg-BG' : 'ru-RU', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(safe)
-    : safe.toFixed(2);
-  return `${num} ${unit}`;
+  const loc =
+    !locale || locale === 'en' || locale.startsWith('en')
+      ? 'en-US'
+      : locale === 'bg' || locale.startsWith('bg')
+        ? 'bg-BG'
+        : 'ru-RU';
+  return new Intl.NumberFormat(loc, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(safe);
+}
+
+export function formatElectricityTariff(n: number, locale?: string) {
+  const unit = locale === 'en' ? '€/kWh' : '€/кВт·ч';
+  return `${formatElectricityTariffRate(n, locale)} ${unit}`;
 }
 
 export function parseElectricityMode(value: unknown): ElectricityMode {

@@ -272,17 +272,33 @@ export function pickWaterSnapsForDateRange(
   return map;
 }
 
+type ElectricityChargeRow = {
+  property_id: number;
+  previous_day: number | string | null;
+  current_day: number | string | null;
+  consumption_day: number | string | null;
+  previous_night: number | string | null;
+  current_night: number | string | null;
+  consumption_night: number | string | null;
+  reading_date: string;
+};
+
+function electricitySnapFromRow(pid: number, r: ElectricityChargeRow): ElectricityChargeSnap {
+  return {
+    propertyId: pid,
+    previousDay: numOrNull(r.previous_day),
+    currentDay: numOrNull(r.current_day),
+    consumptionDay: numOrNull(r.consumption_day),
+    previousNight: numOrNull(r.previous_night),
+    currentNight: numOrNull(r.current_night),
+    consumptionNight: numOrNull(r.consumption_night),
+    readingDate: r.reading_date ?? null,
+  };
+}
+
+/** Latest electricity charge snap per property (optionally within YYYY-MM). */
 export function pickLatestElectricitySnaps(
-  rows: Array<{
-    property_id: number;
-    previous_day: number | string | null;
-    current_day: number | string | null;
-    consumption_day: number | string | null;
-    previous_night: number | string | null;
-    current_night: number | string | null;
-    consumption_night: number | string | null;
-    reading_date: string;
-  }>,
+  rows: ElectricityChargeRow[],
   periodYm = '',
 ): Map<number, ElectricityChargeSnap> {
   const map = new Map<number, ElectricityChargeSnap>();
@@ -291,15 +307,93 @@ export function pickLatestElectricitySnaps(
     if (!readingInPeriod(r.reading_date, periodYm)) continue;
     const pid = Number(r.property_id);
     if (!Number.isFinite(pid) || map.has(pid)) continue;
+    map.set(pid, electricitySnapFromRow(pid, r));
+  }
+  return map;
+}
+
+function compareElectricityChargeNewestFirst(a: ElectricityChargeRow, b: ElectricityChargeRow): number {
+  const byDate = calendarReadingDate(b.reading_date).localeCompare(calendarReadingDate(a.reading_date));
+  if (byDate !== 0) return byDate;
+  return 0;
+}
+
+/**
+ * Electricity register snaps for an inclusive calendar date range.
+ * Source = electricity_charges (posted day/night pair per confirmation), not raw meter_readings.
+ * — previous day/night = current on latest charge strictly before `periodFrom`
+ * — current day/night = current on latest charge inside [from, to]
+ * — consumption = sum of consumption_day / consumption_night for charges in range
+ * When both bounds are empty → latest overall.
+ * Limitation: after meter replacement, charge rows are not always 1:1 with physical meters;
+ * summed consumption may span multiple devices in the range.
+ */
+export function pickElectricitySnapsForDateRange(
+  rows: ElectricityChargeRow[],
+  periodFrom = '',
+  periodTo = '',
+): Map<number, ElectricityChargeSnap> {
+  const { periodFrom: from, periodTo: to } = clampWaterPeriodRange(periodFrom, periodTo);
+  if (!from && !to) return pickLatestElectricitySnaps(rows, '');
+
+  const byProperty = new Map<number, ElectricityChargeRow[]>();
+  for (const r of rows) {
+    const pid = Number(r.property_id);
+    if (!Number.isFinite(pid)) continue;
+    const list = byProperty.get(pid);
+    if (list) list.push(r);
+    else byProperty.set(pid, [r]);
+  }
+
+  const map = new Map<number, ElectricityChargeSnap>();
+  for (const [pid, list] of byProperty) {
+    const sorted = [...list].sort(compareElectricityChargeNewestFirst);
+    const inRange: ElectricityChargeRow[] = [];
+    const before: ElectricityChargeRow[] = [];
+    for (const r of sorted) {
+      const d = calendarReadingDate(r.reading_date);
+      if (!d) continue;
+      if (from && d < from) {
+        before.push(r);
+        continue;
+      }
+      if (to && d > to) continue;
+      inRange.push(r);
+    }
+
+    const endCharge = inRange[0] ?? null;
+    const baseline = from ? (before[0] ?? null) : null;
+
+    let consumptionDay: number | null = null;
+    let consumptionNight: number | null = null;
+    if (inRange.length > 0) {
+      let sumDay = 0;
+      let sumNight = 0;
+      let completeDay = true;
+      let completeNight = true;
+      for (const r of inRange) {
+        const cd = numOrNull(r.consumption_day);
+        const cn = numOrNull(r.consumption_night);
+        if (cd == null) completeDay = false;
+        else sumDay += cd;
+        if (cn == null) completeNight = false;
+        else sumNight += cn;
+      }
+      consumptionDay = completeDay ? sumDay : null;
+      consumptionNight = completeNight ? sumNight : null;
+    }
+
+    if (!endCharge && !baseline && consumptionDay == null && consumptionNight == null) continue;
+
     map.set(pid, {
       propertyId: pid,
-      previousDay: numOrNull(r.previous_day),
-      currentDay: numOrNull(r.current_day),
-      consumptionDay: numOrNull(r.consumption_day),
-      previousNight: numOrNull(r.previous_night),
-      currentNight: numOrNull(r.current_night),
-      consumptionNight: numOrNull(r.consumption_night),
-      readingDate: r.reading_date ?? null,
+      previousDay: baseline ? numOrNull(baseline.current_day) : null,
+      previousNight: baseline ? numOrNull(baseline.current_night) : null,
+      currentDay: endCharge ? numOrNull(endCharge.current_day) : null,
+      currentNight: endCharge ? numOrNull(endCharge.current_night) : null,
+      consumptionDay,
+      consumptionNight,
+      readingDate: endCharge?.reading_date ?? null,
     });
   }
   return map;

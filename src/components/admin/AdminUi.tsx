@@ -29,7 +29,9 @@ export const adminBtnDangerClass =
 export const adminBtnTertiaryClass =
   'inline-flex items-center justify-center text-sm text-accent hover:underline disabled:opacity-50';
 
-export const adminModalOverlayClass = 'fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,25,30,0.25)] p-4';
+/** z-index comes from overlayLayers via inline style on AdminModal / WorkplaceCardShell. */
+export const adminModalOverlayClass =
+  'fixed inset-0 flex items-center justify-center bg-[rgba(20,25,30,0.25)] p-4';
 export const adminModalPanelClass =
   'w-full max-h-[90vh] flex flex-col rounded-2xl border border-border bg-surface shadow-[0_4px_16px_rgba(0,0,0,0.06)]';
 export const adminModalHeaderClass = 'flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4';

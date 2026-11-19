@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   adminModalHeaderClass,
   adminModalOverlayClass,
@@ -15,13 +16,16 @@ import {
   adminBtnSecondaryClass,
 } from '@/components/admin/AdminUi';
 import { WorkplaceCardShell } from '@/components/ui/WorkplaceCardShell';
+import {
+  isTopmostOverlay,
+  modalLayerStack,
+  overlayZ,
+  syncBackgroundInert,
+  workplaceLayerStack,
+} from '@/components/ui/overlayLayers';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/** Open modal layers (topmost handles Escape / focus trap). */
-const modalLayerStack: symbol[] = [];
-const BASE_Z = 50;
 
 type AdminModalProps = {
   open: boolean;
@@ -130,18 +134,22 @@ function CompactAdminModal({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
-  const layerIdRef = useRef<symbol | null>(null);
-  const [layerZ, setLayerZ] = useState(BASE_Z);
+  const [layerZ, setLayerZ] = useState(() => overlayZ('modal', 1));
+  const [mounted, setMounted] = useState(false);
   const requestClose = onRequestClose ?? onClose;
   const requestCloseRef = useRef(requestClose);
   requestCloseRef.current = requestClose;
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     const layerId = Symbol('admin-modal');
-    layerIdRef.current = layerId;
     modalLayerStack.push(layerId);
-    setLayerZ(BASE_Z + modalLayerStack.length);
+    setLayerZ(overlayZ('modal', modalLayerStack.length));
+    syncBackgroundInert();
 
     previouslyFocused.current =
       returnFocusRef?.current ??
@@ -159,10 +167,8 @@ function CompactAdminModal({
     };
     const t = window.setTimeout(focusFirst, 0);
 
-    const isTopLayer = () => modalLayerStack[modalLayerStack.length - 1] === layerId;
-
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isTopLayer()) return;
+      if (!isTopmostOverlay('modal', layerId)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -198,8 +204,12 @@ function CompactAdminModal({
       document.removeEventListener('keydown', onKeyDown, true);
       const idx = modalLayerStack.indexOf(layerId);
       if (idx >= 0) modalLayerStack.splice(idx, 1);
-      layerIdRef.current = null;
-      document.body.style.overflow = modalLayerStack.length === 0 ? prevOverflow : 'hidden';
+      syncBackgroundInert();
+      if (modalLayerStack.length === 0 && workplaceLayerStack.length === 0) {
+        document.body.style.overflow = prevOverflow;
+      } else {
+        document.body.style.overflow = 'hidden';
+      }
       const restore = returnFocusRef?.current ?? previouslyFocused.current;
       if (restore && typeof restore.focus === 'function') {
         window.setTimeout(() => restore.focus(), 0);
@@ -207,18 +217,19 @@ function CompactAdminModal({
     };
   }, [open, returnFocusRef]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   function onOverlayClick(e: ReactMouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) requestCloseRef.current();
   }
 
-  return (
+  return createPortal(
     <div
       className={`${adminModalOverlayClass} items-stretch justify-stretch p-0 md:items-center md:justify-center md:p-4`}
       style={{ zIndex: layerZ }}
       onClick={onOverlayClick}
       role="presentation"
+      data-admin-modal-overlay="true"
     >
       <div
         ref={panelRef}
@@ -258,6 +269,7 @@ function CompactAdminModal({
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

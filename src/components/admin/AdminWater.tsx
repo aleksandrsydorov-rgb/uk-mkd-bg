@@ -1362,15 +1362,12 @@ export function AdminWater({
   return (
     <div className="space-y-3">
       {confirmDialog}
-      {/* Above WorkplaceCardShell overlay so tab switches can close details (BASE_Z≈40). */}
-      <div className="relative z-[80]">
-        <SectionPanelTabs
-          aria-label={t('admin.water')}
-          value={activeTab}
-          onChange={(id) => void selectTab(id as AdminUtilityTab)}
-          items={panelTabs}
-        />
-      </div>
+      <SectionPanelTabs
+        aria-label={t('admin.water')}
+        value={activeTab}
+        onChange={(id) => void selectTab(id as AdminUtilityTab)}
+        items={panelTabs}
+      />
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}

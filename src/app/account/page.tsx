@@ -3074,7 +3074,8 @@ export default function AccountPage() {
       {sidebarOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-[rgba(20,25,30,0.25)] md:hidden"
+          className="fixed inset-0 bg-[rgba(20,25,30,0.25)] md:hidden"
+          style={{ zIndex: 20 }}
           aria-label={t('common.closeMenu')}
           onClick={() => setSidebarOpen(false)}
         />
@@ -3082,7 +3083,8 @@ export default function AccountPage() {
       <aside
         data-workplace-sidebar="true"
         data-sidebar-open={sidebarOpen ? 'true' : 'false'}
-        className={`fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-border bg-surface transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
+        style={{ zIndex: 25 }}
+        className={`fixed inset-y-0 left-0 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-border bg-surface transition-transform duration-300 md:pointer-events-auto md:static md:h-auto md:w-auto md:flex-shrink-0 ${
           sidebarOpen
             ? 'translate-x-0 md:w-64'
             : 'pointer-events-none -translate-x-full md:pointer-events-auto md:w-16 md:translate-x-0'

@@ -10,20 +10,21 @@ import {
   type MouseEvent as ReactMouseEvent,
   type CSSProperties,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   adminBtnSecondaryClass,
   adminModalHeaderClass,
 } from '@/components/admin/AdminUi';
+import {
+  isTopmostOverlay,
+  modalLayerStack,
+  overlayZ,
+  syncBackgroundInert,
+  workplaceLayerStack,
+} from '@/components/ui/overlayLayers';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/**
- * Workplace cards sit below AppConfirmDialog / AdminModal (BASE_Z 50+).
- * A separate stack at 50 caused confirms to render under the card body — dirty cancel clicks missed.
- */
-const workplaceLayerStack: symbol[] = [];
-const BASE_Z = 40;
 
 export type WorkplaceCardShellProps = {
   open: boolean;
@@ -69,6 +70,7 @@ function readWorkAreaBox(): WorkAreaBox {
 
 /**
  * Large workplace card — fixed shell size, internal scroll only.
+ * Portaled to document.body so page tabs/sticky chrome cannot stack above it.
  * Desktop ≈ 70% of the *work area* (right of sidebar) × 82% height, centered in that area.
  * Full-viewport dimming stays independent of the centering frame.
  * Tab/content swaps must not change shell geometry or replay open animation.
@@ -93,11 +95,16 @@ export function WorkplaceCardShell({
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRefInner = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
-  const [layerZ, setLayerZ] = useState(BASE_Z);
+  const [layerZ, setLayerZ] = useState(() => overlayZ('workplace', 1));
   const [workArea, setWorkArea] = useState<WorkAreaBox>({ left: 0, width: 1024 });
+  const [mounted, setMounted] = useState(false);
   const requestClose = onRequestClose ?? onClose;
   const requestCloseRef = useRef(requestClose);
   requestCloseRef.current = requestClose;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -143,7 +150,8 @@ export function WorkplaceCardShell({
     if (!open) return;
     const layerId = Symbol('workplace-card');
     workplaceLayerStack.push(layerId);
-    setLayerZ(BASE_Z + workplaceLayerStack.length);
+    setLayerZ(overlayZ('workplace', workplaceLayerStack.length));
+    syncBackgroundInert();
 
     previouslyFocused.current =
       returnFocusRef?.current ??
@@ -162,10 +170,8 @@ export function WorkplaceCardShell({
       (nodes[0] ?? panel).focus();
     }, 0);
 
-    const isTopLayer = () => workplaceLayerStack[workplaceLayerStack.length - 1] === layerId;
-
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isTopLayer()) return;
+      if (!isTopmostOverlay('workplace', layerId)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -201,7 +207,8 @@ export function WorkplaceCardShell({
       document.removeEventListener('keydown', onKeyDown, true);
       const idx = workplaceLayerStack.indexOf(layerId);
       if (idx >= 0) workplaceLayerStack.splice(idx, 1);
-      if (workplaceLayerStack.length === 0) {
+      syncBackgroundInert();
+      if (workplaceLayerStack.length === 0 && modalLayerStack.length === 0) {
         document.body.style.overflow = prevOverflow;
         document.body.style.paddingRight = prevPaddingRight;
       }
@@ -219,7 +226,7 @@ export function WorkplaceCardShell({
     el.scrollTop = 0;
   }, [open, entityKey, bodyRefProp]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   function onOverlayClick(e: ReactMouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) requestCloseRef.current();
@@ -230,7 +237,7 @@ export function WorkplaceCardShell({
     width: workArea.width,
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-[rgba(20,25,30,0.28)]"
       style={{ zIndex: layerZ }}
@@ -308,6 +315,7 @@ export function WorkplaceCardShell({
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

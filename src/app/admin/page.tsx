@@ -82,8 +82,12 @@ import {
   rankPropertySearch,
 } from '@/lib/propertyIdentity';
 import {
+  APARTMENT_CARD_PROPERTY_PARAM,
+  APARTMENT_CARD_SECTION,
+  clearApartmentCardParams,
+  isApartmentCardOverlayOpen,
+  parseApartmentCardPropertyId,
   parseApartmentCardTab,
-  parsePropertyIdParam,
   type ApartmentCardTab,
 } from '@/lib/apartmentCardNav';
 import {
@@ -812,6 +816,8 @@ function AdminPortal() {
 
   // ---------- ДЕТАЛЬНЫЙ ПРОСМОТР КВАРТИРЫ ----------
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
+  /** Live URL cardTab (incl. overlay replaceState / popstate) — not Next searchParams alone. */
+  const [apartmentCardUrlTab, setApartmentCardUrlTab] = useState<ApartmentCardTab>('инфо');
 
   // ---------- CHAT STATE ----------
   type ChatThreadItem = {
@@ -1471,8 +1477,7 @@ function AdminPortal() {
         params.set('section', key);
         params.delete('tab');
         params.delete('property');
-        params.delete('cardTab');
-        params.delete('return');
+        clearApartmentCardParams(params);
         const qs = params.toString();
         if (qs !== searchParams.toString()) {
           router.push(`${pathname}?${qs}`, { scroll: false });
@@ -1480,12 +1485,12 @@ function AdminPortal() {
         closeMobileNav();
       };
 
-      // Leaving apartments with unsaved guest/pet edits on the open card.
+      // Leaving with unsaved guest/pet edits on the open apartment card (incl. overlay).
       if (
         !opts?.bypassLeaveGuard &&
         apartmentCardDirtyRef.current &&
-        (currentSection === 'квартиры' || detailProperty != null) &&
-        key !== 'квартиры'
+        detailProperty != null &&
+        key !== currentSection
       ) {
         void (async () => {
           const ok = await confirm({
@@ -1528,6 +1533,7 @@ function AdminPortal() {
       params.delete('wrForm');
       params.delete('wrReading');
       params.delete('wrMeter');
+      clearApartmentCardParams(params);
       const qs = params.toString();
       const current =
         typeof window !== 'undefined'
@@ -1550,6 +1556,7 @@ function AdminPortal() {
       const params = new URLSearchParams(searchParams.toString());
       params.set('section', key);
       params.set('tab', nextTab);
+      clearApartmentCardParams(params);
       const qs = params.toString();
       if (qs !== searchParams.toString()) {
         router.push(`${pathname}?${qs}`, { scroll: false });
@@ -1631,28 +1638,37 @@ function AdminPortal() {
     openSectionTab('уведомления', 'overview');
   }, [allowed, authReady, openSectionTab, searchParams, sectionQuery]);
 
-  // Deep-link: /admin?section=квартиры&property=<id>&cardTab=…
-  // When the card has unsaved guest/pet edits, keep the current property until the user confirms leave.
+  // Deep-link apartment card:
+  // - apartments: ?section=квартиры&property=<id>&cardTab=…
+  // - overlay elsewhere: ?section=<current>&…&cardProperty=<id>&cardTab=…
+  // Prefer live window search so replaceState closes (water shells) win over stale Next params.
+  // Dirty guest/pet edits keep the open property until the user confirms leave.
   useEffect(() => {
     if (!allowed || !authReady) return;
-    if (activeMenu !== 'квартиры') {
-      if (apartmentCardDirtyRef.current) return;
-      setDetailProperty(null);
-      return;
-    }
-    const pid = parsePropertyIdParam(searchParams.get('property'));
-    if (!pid) {
-      if (apartmentCardDirtyRef.current) return;
-      setDetailProperty(null);
-      return;
-    }
-    const match = properties.find((p) => p.id === pid) ?? null;
-    if (!match) return;
-    setDetailProperty((prev) => {
-      if (prev?.id === match.id) return prev;
-      if (prev && apartmentCardDirtyRef.current) return prev;
-      return match;
-    });
+    const syncFromLiveUrl = () => {
+      const live =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search)
+          : searchParams;
+      const section = live.get('section') ?? activeMenu;
+      const pid = parseApartmentCardPropertyId(live, section);
+      setApartmentCardUrlTab(parseApartmentCardTab(live.get('cardTab')));
+      if (!pid) {
+        if (apartmentCardDirtyRef.current) return;
+        setDetailProperty(null);
+        return;
+      }
+      const match = properties.find((p) => p.id === pid) ?? null;
+      if (!match) return;
+      setDetailProperty((prev) => {
+        if (prev?.id === match.id) return prev;
+        if (prev && apartmentCardDirtyRef.current) return prev;
+        return match;
+      });
+    };
+    syncFromLiveUrl();
+    window.addEventListener('popstate', syncFromLiveUrl);
+    return () => window.removeEventListener('popstate', syncFromLiveUrl);
   }, [allowed, authReady, activeMenu, searchParams, properties]);
 
   useEffect(() => {
@@ -2014,8 +2030,10 @@ function AdminPortal() {
     }
     setDetailProperty(property);
     const params = new URLSearchParams(searchParams.toString());
-    params.set('section', 'квартиры');
+    // Apartments register always owns the card via `property` (not overlay).
+    params.set('section', APARTMENT_CARD_SECTION);
     params.set('property', String(property.id));
+    params.delete(APARTMENT_CARD_PROPERTY_PARAM);
     const tab = parseApartmentCardTab(cardTab ?? null);
     if (tab !== 'инфо') params.set('cardTab', tab);
     else params.delete('cardTab');
@@ -2027,25 +2045,73 @@ function AdminPortal() {
     const ok = await confirmLeaveApartmentCard();
     if (!ok) return;
     apartmentCardDirtyRef.current = false;
+    const live =
+      typeof window !== 'undefined'
+        ? window.location.search.replace(/^\?/, '')
+        : searchParams.toString();
+    const params = new URLSearchParams(live);
+    const overlay = isApartmentCardOverlayOpen(params);
+    if (overlay) {
+      // Stay on the current module; only drop card params.
+      // history.replaceState only — router.replace races and can wipe a
+      // subsequent Link open (same pattern as water meter/finance shells).
+      params.delete(APARTMENT_CARD_PROPERTY_PARAM);
+      params.delete('cardTab');
+      const qs = params.toString();
+      const url = qs ? `${pathname}?${qs}` : pathname;
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(window.history.state, '', url);
+      }
+      setDetailProperty(null);
+      return;
+    }
     setDetailProperty(null);
-    const ret = searchParams.get('return');
+    const ret = params.get('return');
     if (ret) {
       router.replace(`${pathname}?${ret}`, { scroll: false });
       return;
     }
-    const params = new URLSearchParams(searchParams.toString());
     params.delete('property');
-    params.delete('cardTab');
-    params.delete('return');
+    clearApartmentCardParams(params);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  // Dirty + URL property mismatch (e.g. identity link while guest/pet form dirty): confirm or revert.
+  function syncApartmentCardTab(tab: ApartmentCardTab) {
+    if (!detailProperty) return;
+    const live =
+      typeof window !== 'undefined'
+        ? window.location.search.replace(/^\?/, '')
+        : searchParams.toString();
+    const params = new URLSearchParams(live);
+    const overlay = isApartmentCardOverlayOpen(params) || activeMenu !== APARTMENT_CARD_SECTION;
+    if (overlay) {
+      params.set(APARTMENT_CARD_PROPERTY_PARAM, String(detailProperty.id));
+      if (tab !== 'инфо') params.set('cardTab', tab);
+      else params.delete('cardTab');
+      const qs = params.toString();
+      const url = qs ? `${pathname}?${qs}` : pathname;
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(window.history.state, '', url);
+      }
+      setApartmentCardUrlTab(tab);
+      return;
+    }
+    params.set('section', APARTMENT_CARD_SECTION);
+    params.set('property', String(detailProperty.id));
+    params.delete(APARTMENT_CARD_PROPERTY_PARAM);
+    if (tab !== 'инфо') params.set('cardTab', tab);
+    else params.delete('cardTab');
+    const qs = params.toString();
+    setApartmentCardUrlTab(tab);
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  // Dirty + URL property mismatch (identity link while guest/pet form dirty): confirm or revert.
   useEffect(() => {
-    if (!allowed || !authReady || activeMenu !== 'квартиры') return;
+    if (!allowed || !authReady) return;
     if (!detailProperty || !apartmentCardDirtyRef.current) return;
-    const pid = parsePropertyIdParam(searchParams.get('property'));
+    const pid = parseApartmentCardPropertyId(searchParams, activeMenu);
     if (!pid || pid === detailProperty.id) return;
     const match = properties.find((p) => p.id === pid) ?? null;
     if (!match) return;
@@ -2054,9 +2120,18 @@ function AdminPortal() {
       const ok = await confirmLeaveApartmentCard();
       if (cancelled) return;
       if (!ok) {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set('section', 'квартиры');
-        params.set('property', String(detailProperty.id));
+        const live =
+          typeof window !== 'undefined'
+            ? window.location.search.replace(/^\?/, '')
+            : searchParams.toString();
+        const params = new URLSearchParams(live);
+        if (isApartmentCardOverlayOpen(params) || activeMenu !== APARTMENT_CARD_SECTION) {
+          params.set(APARTMENT_CARD_PROPERTY_PARAM, String(detailProperty.id));
+        } else {
+          params.set('section', APARTMENT_CARD_SECTION);
+          params.set('property', String(detailProperty.id));
+          params.delete(APARTMENT_CARD_PROPERTY_PARAM);
+        }
         const qs = params.toString();
         router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
         return;
@@ -3318,6 +3393,100 @@ function AdminPortal() {
   // ===================================================================
   // РЕНДЕР СЕКЦИЙ
   // ===================================================================
+  function renderApartmentDetailModal() {
+    if (!detailProperty) return null;
+    return (
+      <ApartmentDetailModal
+        property={detailProperty}
+        requests={requestsForProperty(detailProperty.id)}
+        meterReadings={metersForProperty(detailProperty.id)}
+        guests={guestsForProperty(detailProperty.id)}
+        pets={petsForProperty(detailProperty.id)}
+        chatMessages={chatForProperty(detailProperty.id)}
+        chatSeenAt={ukChatSeen[String(detailProperty.id)]}
+        supportRate={supportRate}
+        supportOutstanding={sfDebtOf(detailProperty)}
+        supportOver={supportOverpayment(detailProperty.overpayment)}
+        initialTab={apartmentCardUrlTab}
+        onTabChange={syncApartmentCardTab}
+        onClose={() => { void closeApartmentCard(); }}
+        onDirtyChange={(dirty) => {
+          apartmentCardDirtyRef.current = dirty;
+        }}
+        onEdit={() => {
+          void (async () => {
+            const ok = await confirmLeaveApartmentCard();
+            if (!ok) return;
+            apartmentCardDirtyRef.current = false;
+            const target = detailProperty;
+            setDetailProperty(null);
+            startEditProp(target);
+            const params = new URLSearchParams(
+              typeof window !== 'undefined'
+                ? window.location.search.replace(/^\?/, '')
+                : searchParams.toString(),
+            );
+            params.set('section', APARTMENT_CARD_SECTION);
+            params.delete('property');
+            clearApartmentCardParams(params);
+            const qs = params.toString();
+            router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+          })();
+        }}
+        onOpenChat={() => {
+          void (async () => {
+            const ok = await confirmLeaveApartmentCard();
+            if (!ok) return;
+            apartmentCardDirtyRef.current = false;
+            if (detailProperty) {
+              setSelectedChatThread({
+                key: `${detailProperty.id}:owner`,
+                property: detailProperty,
+                guestAccessId: null,
+                guestLabel: null,
+                lastMessage: null,
+                unread: 0,
+              });
+            }
+            setDetailProperty(null);
+            navigateAdminSection('чат');
+          })();
+        }}
+        onChanged={loadAll}
+        onDelete={
+          canManageCriticalAccess && !detailProperty.archived_at
+            ? () => { void handleDeleteProp(detailProperty.id); }
+            : undefined
+        }
+        onOpenTransfer={() => {
+          void (async () => {
+            await closeApartmentCard();
+            if (apartmentCardDirtyRef.current) return;
+            navigateAdminSection('смены');
+          })();
+        }}
+        onTakePayment={() => {
+          void (async () => {
+            const targetId = detailProperty.id;
+            await closeApartmentCard();
+            if (apartmentCardDirtyRef.current) return;
+            if (!visibleSectionSet.has('такса')) return;
+            const params = new URLSearchParams(
+              typeof window !== 'undefined'
+                ? window.location.search.replace(/^\?/, '')
+                : searchParams.toString(),
+            );
+            clearApartmentCardParams(params);
+            params.set('section', 'такса');
+            params.set('tab', 'register');
+            params.set('property', String(targetId));
+            router.push(`${pathname}?${params.toString()}`, { scroll: false });
+          })();
+        }}
+      />
+    );
+  }
+
   function renderContent() {
     switch (activeMenu) {
       // =============================================================
@@ -3982,94 +4151,6 @@ function AdminPortal() {
               <AdminEmptyState title={t('admin.noAptsFilter')} />
             ) : null}
 
-            {/* МОДАЛЬНОЕ ОКНО — ДЕТАЛЬНЫЙ ПРОСМОТР КВАРТИРЫ */}
-            {detailProperty && (
-              <ApartmentDetailModal
-                property={detailProperty}
-                requests={requestsForProperty(detailProperty.id)}
-                meterReadings={metersForProperty(detailProperty.id)}
-                guests={guestsForProperty(detailProperty.id)}
-                pets={petsForProperty(detailProperty.id)}
-                chatMessages={chatForProperty(detailProperty.id)}
-                chatSeenAt={ukChatSeen[String(detailProperty.id)]}
-                supportRate={supportRate}
-                supportOutstanding={sfDebtOf(detailProperty)}
-                supportOver={supportOverpayment(detailProperty.overpayment)}
-                initialTab={parseApartmentCardTab(searchParams.get('cardTab'))}
-                onTabChange={(tab) => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set('section', 'квартиры');
-                  params.set('property', String(detailProperty.id));
-                  if (tab !== 'инфо') params.set('cardTab', tab);
-                  else params.delete('cardTab');
-                  const qs = params.toString();
-                  router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-                }}
-                onClose={() => { void closeApartmentCard(); }}
-                onDirtyChange={(dirty) => {
-                  apartmentCardDirtyRef.current = dirty;
-                }}
-                onEdit={() => {
-                  void (async () => {
-                    const ok = await confirmLeaveApartmentCard();
-                    if (!ok) return;
-                    apartmentCardDirtyRef.current = false;
-                    startEditProp(detailProperty);
-                    setDetailProperty(null);
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.delete('property');
-                    params.delete('cardTab');
-                    const qs = params.toString();
-                    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-                  })();
-                }}
-                onOpenChat={() => {
-                  void (async () => {
-                    const ok = await confirmLeaveApartmentCard();
-                    if (!ok) return;
-                    apartmentCardDirtyRef.current = false;
-                    if (detailProperty) {
-                      setSelectedChatThread({
-                        key: `${detailProperty.id}:owner`,
-                        property: detailProperty,
-                        guestAccessId: null,
-                        guestLabel: null,
-                        lastMessage: null,
-                        unread: 0,
-                      });
-                    }
-                    setDetailProperty(null);
-                    navigateAdminSection('чат');
-                  })();
-                }}
-                onChanged={loadAll}
-                onDelete={
-                  canManageCriticalAccess && !detailProperty.archived_at
-                    ? () => { void handleDeleteProp(detailProperty.id); }
-                    : undefined
-                }
-                onOpenTransfer={() => {
-                  void (async () => {
-                    await closeApartmentCard();
-                    if (apartmentCardDirtyRef.current) return;
-                    navigateAdminSection('смены');
-                  })();
-                }}
-                onTakePayment={() => {
-                  void (async () => {
-                    const targetId = detailProperty.id;
-                    await closeApartmentCard();
-                    if (apartmentCardDirtyRef.current) return;
-                    if (!visibleSectionSet.has('такса')) return;
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set('section', 'такса');
-                    params.set('tab', 'register');
-                    params.set('property', String(targetId));
-                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-                  })();
-                }}
-              />
-            )}
           </div>
         );
 
@@ -6610,6 +6691,7 @@ function AdminPortal() {
             </div>
           )}
           {renderContent()}
+          {renderApartmentDetailModal()}
         </div>
       </main>
       <MobileBottomNav

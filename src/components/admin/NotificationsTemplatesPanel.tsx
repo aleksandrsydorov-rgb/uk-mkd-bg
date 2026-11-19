@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
   AdminCard,
@@ -33,6 +33,17 @@ type Props = {
   onDirtyChange: (dirty: boolean) => void;
 };
 
+function partsEqual(a: Parts | null, b: Parts | null): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.subject === b.subject &&
+    a.greeting === b.greeting &&
+    a.body === b.body &&
+    a.cta === b.cta &&
+    a.footer === b.footer
+  );
+}
+
 export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }: Props) {
   const { t, locale } = useI18n();
   const [catalog, setCatalog] = useState<TemplateListItem[]>([]);
@@ -51,6 +62,20 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
   const [previewSubject, setPreviewSubject] = useState<string | null>(null);
   const [previewNote, setPreviewNote] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+
+  /** Monotonic load token — ignore stale responses after fast type switches. */
+  const loadSeqRef = useRef(0);
+  const activeKeyRef = useRef('');
+
+  const editorDirty = useMemo(() => {
+    if (!parts || !savedParts) return false;
+    return !partsEqual(parts, savedParts);
+  }, [parts, savedParts]);
+
+  // Sync computed dirty to parent after commit — never from setState updaters / render.
+  useEffect(() => {
+    onDirtyChange(editorDirty);
+  }, [editorDirty, onDirtyChange]);
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -73,42 +98,43 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
     }
   }, []);
 
-  const loadOne = useCallback(
-    async (key: string) => {
-      if (!key) return;
-      setError(null);
-      setPreviewHtml(null);
-      setPreviewSubject(null);
-      setBanner(null);
-      try {
-        const res = await fetch(
-          `/api/email/templates?template_key=${encodeURIComponent(key)}&locale=${EMAIL_OUTBOUND_LOCALE}`
-        );
-        const json = (await res.json()) as {
-          ok?: boolean;
-          is_custom?: boolean;
-          effective?: Parts;
-          variables?: TemplateListItem['variables'];
-          updated_at?: string | null;
-          updated_by_email?: string | null;
-          error?: string;
-        };
-        if (!res.ok || !json.ok || !json.effective) throw new Error(json.error ?? 'load_failed');
-        setIsCustom(Boolean(json.is_custom));
-        setParts(json.effective);
-        setSavedParts(json.effective);
-        setVariables(json.variables ?? []);
-        setMeta({
-          updated_at: json.updated_at ?? null,
-          updated_by_email: json.updated_by_email ?? null,
-        });
-        onDirtyChange(false);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'load_failed');
-      }
-    },
-    [onDirtyChange]
-  );
+  const loadOne = useCallback(async (key: string) => {
+    if (!key) return;
+    const seq = ++loadSeqRef.current;
+    activeKeyRef.current = key;
+    setError(null);
+    setPreviewHtml(null);
+    setPreviewSubject(null);
+    setBanner(null);
+    try {
+      const res = await fetch(
+        `/api/email/templates?template_key=${encodeURIComponent(key)}&locale=${EMAIL_OUTBOUND_LOCALE}`
+      );
+      const json = (await res.json()) as {
+        ok?: boolean;
+        is_custom?: boolean;
+        effective?: Parts;
+        variables?: TemplateListItem['variables'];
+        updated_at?: string | null;
+        updated_by_email?: string | null;
+        error?: string;
+      };
+      // Stale: a newer loadOne started, or the selected key already moved on.
+      if (seq !== loadSeqRef.current || activeKeyRef.current !== key) return;
+      if (!res.ok || !json.ok || !json.effective) throw new Error(json.error ?? 'load_failed');
+      setIsCustom(Boolean(json.is_custom));
+      setParts(json.effective);
+      setSavedParts(json.effective);
+      setVariables(json.variables ?? []);
+      setMeta({
+        updated_at: json.updated_at ?? null,
+        updated_by_email: json.updated_by_email ?? null,
+      });
+    } catch (e) {
+      if (seq !== loadSeqRef.current || activeKeyRef.current !== key) return;
+      setError(e instanceof Error ? e.message : 'load_failed');
+    }
+  }, []);
 
   useEffect(() => {
     void loadCatalog();
@@ -119,30 +145,17 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
     void loadOne(templateKey);
   }, [templateKey, loadOne]);
 
-  const markField = useCallback(
-    (field: keyof Parts, value: string) => {
-      setParts((prev) => {
-        if (!prev) return prev;
-        const next = { ...prev, [field]: value };
-        const dirtyNow =
-          !savedParts ||
-          next.subject !== savedParts.subject ||
-          next.greeting !== savedParts.greeting ||
-          next.body !== savedParts.body ||
-          next.cta !== savedParts.cta ||
-          next.footer !== savedParts.footer;
-        onDirtyChange(dirtyNow);
-        return next;
-      });
-    },
-    [onDirtyChange, savedParts]
-  );
+  const markField = useCallback((field: keyof Parts, value: string) => {
+    // Pure state update only — dirty is derived from parts vs savedParts.
+    setParts((prev) => (prev ? { ...prev, [field]: value } : prev));
+  }, []);
 
   const insertVar = useCallback(
     (id: string) => {
       if (!parts) return;
       const token = `{{${id}}}`;
-      markField('body', `${parts.body}${parts.body.endsWith(' ') || !parts.body ? '' : ' '}${token}`);
+      const spacer = parts.body.endsWith(' ') || !parts.body ? '' : ' ';
+      markField('body', `${parts.body}${spacer}${token}`);
     },
     [markField, parts]
   );
@@ -156,9 +169,8 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
 
   const onCancel = () => {
     if (!savedParts) return;
-    if (dirty && !window.confirm(t('common.discardChangesBody'))) return;
+    if (editorDirty && !window.confirm(t('common.discardChangesBody'))) return;
     setParts(savedParts);
-    onDirtyChange(false);
     setPreviewHtml(null);
     setBanner(null);
   };
@@ -168,6 +180,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
     setSaving(true);
     setBanner(null);
     setError(null);
+    const snapshot = parts;
     try {
       const res = await fetch('/api/email/templates', {
         method: 'POST',
@@ -176,7 +189,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
           action: 'save',
           template_key: templateKey,
           locale: EMAIL_OUTBOUND_LOCALE,
-          ...parts,
+          ...snapshot,
         }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string; unknown_variables?: string[] };
@@ -186,12 +199,13 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
         }
         throw new Error(json.error ?? 'save_failed');
       }
-      setSavedParts(parts);
+      // Keep typed values; baseline catches up so editorDirty → false.
+      setSavedParts(snapshot);
       setIsCustom(true);
-      onDirtyChange(false);
       setBanner(t('admin.tplSaved'));
       await loadCatalog();
     } catch (e) {
+      // Preserve user input on failure (parts unchanged).
       setError(e instanceof Error ? e.message : 'save_failed');
     } finally {
       setSaving(false);
@@ -201,7 +215,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
   const onRestore = async () => {
     if (!canManage || !templateKey) return;
     if (!window.confirm(t('admin.tplRestoreConfirm'))) return;
-    if (dirty && !window.confirm(t('common.discardChangesBody'))) return;
+    if (editorDirty && !window.confirm(t('common.discardChangesBody'))) return;
     setSaving(true);
     setError(null);
     try {
@@ -217,7 +231,6 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
       const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) throw new Error(json.error ?? 'restore_failed');
       setBanner(t('admin.tplRestored'));
-      onDirtyChange(false);
       await loadOne(templateKey);
       await loadCatalog();
     } catch (e) {
@@ -278,8 +291,10 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
 
   const requestTemplateChange = (next: string) => {
     if (next === templateKey) return;
-    if (dirty && !window.confirm(t('common.discardChangesBody'))) return;
-    onDirtyChange(false);
+    if (editorDirty && !window.confirm(t('common.discardChangesBody'))) return;
+    // Invalidate in-flight loads for the previous key immediately.
+    loadSeqRef.current += 1;
+    activeKeyRef.current = next;
     setTemplateKey(next);
   };
 
@@ -405,13 +420,16 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
             </label>
 
             <div className="flex flex-wrap gap-2 pt-1">
-              <AdminPrimaryButton disabled={!canManage || saving || !dirty} onClick={() => void onSave()}>
+              <AdminPrimaryButton
+                disabled={!canManage || saving || !editorDirty}
+                onClick={() => void onSave()}
+              >
                 {t('common.save')}
               </AdminPrimaryButton>
               <button
                 type="button"
                 className={adminBtnSecondaryClass}
-                disabled={!canManage || saving || !dirty}
+                disabled={!canManage || saving || !editorDirty}
                 onClick={onCancel}
               >
                 {t('common.cancel')}
@@ -425,7 +443,7 @@ export function NotificationsTemplatesPanel({ canManage, dirty, onDirtyChange }:
                 {t('admin.tplPreview')}
               </button>
               <AdminDangerButton
-                disabled={!canManage || saving || (!isCustom && !dirty)}
+                disabled={!canManage || saving || (!isCustom && !editorDirty)}
                 onClick={() => void onRestore()}
               >
                 {t('admin.tplRestore')}

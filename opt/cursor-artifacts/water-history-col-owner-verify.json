@@ -1,0 +1,73 @@
+[
+  {
+    "check": "login",
+    "ok": true
+  },
+  {
+    "check": "no admin.colOwner in history register",
+    "ok": true
+  },
+  {
+    "check": "uses form.colOwner",
+    "ok": true
+  },
+  {
+    "check": "form.colOwner shared across registers",
+    "ok": true,
+    "usages": [
+      {
+        "file": "src/components/admin/AdminWaterHistoryRegister.tsx",
+        "count": 1
+      },
+      {
+        "file": "src/components/admin/AdminUtilityFinanceWorkplace.tsx",
+        "count": 3
+      },
+      {
+        "file": "src/components/admin/AdminSupportFeeWorkplace.tsx",
+        "count": 1
+      },
+      {
+        "file": "src/components/admin/AdminCapital.tsx",
+        "count": 1
+      },
+      {
+        "file": "src/app/admin/page.tsx",
+        "count": 2
+      }
+    ]
+  },
+  {
+    "check": "RU owner header",
+    "ok": true,
+    "headers": [
+      "Апартамент",
+      "Секция / блок",
+      "Владелец",
+      "Последняя запись"
+    ],
+    "expected": "Владелец"
+  },
+  {
+    "check": "EN owner header",
+    "ok": true,
+    "headers": [
+      "Apartment",
+      "Section / block",
+      "Owner",
+      "Last entry"
+    ],
+    "expected": "Owner"
+  },
+  {
+    "check": "BG owner header",
+    "ok": true,
+    "headers": [
+      "Апартамент",
+      "Секция / блок",
+      "Собственик",
+      "Последен запис"
+    ],
+    "expected": "Собственик"
+  }
+]

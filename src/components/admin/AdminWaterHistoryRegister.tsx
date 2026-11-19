@@ -228,7 +228,7 @@ export function AdminWaterHistoryRegister({
                 <tr className={adminTableHeadRowClass}>
                   <th className={adminTableCellClass}>{t('admin.utilRegColApt')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColSection')}</th>
-                  <th className={adminTableCellClass}>{t('admin.colOwner')}</th>
+                  <th className={adminTableCellClass}>{t('form.colOwner')}</th>
                   <th className={adminTableCellClass}>{t('admin.waterHistoryColLast')}</th>
                 </tr>
               </thead>

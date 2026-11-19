@@ -743,14 +743,12 @@ export function AdminWater({
 
   return (
     <div className="space-y-3">
-      <div className="min-w-0 overflow-x-auto">
-        <SectionPanelTabs
-          aria-label={t('admin.water')}
-          value={activeTab}
-          onChange={(id) => selectTab(id as AdminUtilityTab)}
-          items={panelTabs}
-        />
-      </div>
+      <SectionPanelTabs
+        aria-label={t('admin.water')}
+        value={activeTab}
+        onChange={(id) => selectTab(id as AdminUtilityTab)}
+        items={panelTabs}
+      />
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}

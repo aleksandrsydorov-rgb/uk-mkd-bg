@@ -190,7 +190,7 @@ export function SectionPanelTabs({
 
   if (useLinks) {
     return (
-      <nav aria-label={ariaLabel} className={`-mx-0.5 overflow-x-auto ${shellClass}`}>
+      <nav aria-label={ariaLabel} className={`section-panel-tabs-scroll ${shellClass}`}>
         {track}
       </nav>
     );
@@ -200,7 +200,7 @@ export function SectionPanelTabs({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={`-mx-0.5 overflow-x-auto ${shellClass}`}
+      className={`section-panel-tabs-scroll ${shellClass}`}
     >
       {track}
     </div>

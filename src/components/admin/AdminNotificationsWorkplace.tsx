@@ -182,14 +182,12 @@ export function AdminNotificationsWorkplace({
   return (
     <div className="min-w-0 space-y-4">
       <AdminPageHeader title={t('admin.notifySectionTitle')} secondary={t('admin.notifySectionLead')} />
-      <div className="min-w-0 overflow-x-auto">
-        <SectionPanelTabs
-          aria-label={t('admin.notifySectionTitle')}
-          value={activeTab}
-          onChange={(id) => requestTabChange(parseNotificationsTab(id))}
-          items={tabs}
-        />
-      </div>
+      <SectionPanelTabs
+        aria-label={t('admin.notifySectionTitle')}
+        value={activeTab}
+        onChange={(id) => requestTabChange(parseNotificationsTab(id))}
+        items={tabs}
+      />
       {activeTab === 'overview' ? (
         <NotificationsOverview
           supabase={supabase}

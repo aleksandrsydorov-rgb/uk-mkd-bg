@@ -140,6 +140,20 @@ table tbody tr:hover {
   background: #f8fafb;
 }
 
+/* SectionPanelTabs: keep overflow scroll for narrow viewports, hide the bar itself. */
+.section-panel-tabs-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.section-panel-tabs-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .chat-scroll {
   scrollbar-width: thin;
   scrollbar-color: #c5ccd3 transparent;

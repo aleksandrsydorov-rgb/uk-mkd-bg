@@ -38,6 +38,7 @@ import {
   formatSectionBlock,
   indexInternetSubs,
   listSectionsFromProperties,
+  parseUtilityRegisterSort,
   pickLatestElectricitySnaps,
   pickLatestWaterSnaps,
   sortUtilityModuleRows,
@@ -160,14 +161,7 @@ export function AdminUtilityFinanceWorkplace({
     const section = (params.get('ufSection') ?? '').trim();
     const periodYm = (params.get('ufPeriod') ?? '').trim();
     const connection = (params.get('ufConn') ?? '').trim();
-    const sortRaw = params.get('ufSort') ?? 'apartment';
-    const sort: UtilityModuleRegisterFilters['sort'] =
-      sortRaw === 'balance_desc' ||
-      sortRaw === 'balance_asc' ||
-      sortRaw === 'section' ||
-      sortRaw === 'apartment'
-        ? sortRaw
-        : 'apartment';
+    const sort = parseUtilityRegisterSort(params.get('ufSort'));
     return { query, status, section, periodYm, connection, sort };
   });
   /** Only push filter edits to the URL — never wipe return/deep-link q on remount. */
@@ -184,14 +178,7 @@ export function AdminUtilityFinanceWorkplace({
     const section = (params.get('ufSection') ?? '').trim();
     const periodYm = (params.get('ufPeriod') ?? '').trim();
     const connection = (params.get('ufConn') ?? '').trim();
-    const sortRaw = params.get('ufSort') ?? 'apartment';
-    const sort: UtilityModuleRegisterFilters['sort'] =
-      sortRaw === 'balance_desc' ||
-      sortRaw === 'balance_asc' ||
-      sortRaw === 'section' ||
-      sortRaw === 'apartment'
-        ? sortRaw
-        : 'apartment';
+    const sort = parseUtilityRegisterSort(params.get('ufSort'));
     return { query, status, section, periodYm, connection, sort };
   }
 
@@ -233,7 +220,7 @@ export function AdminUtilityFinanceWorkplace({
         !next.section &&
         !next.periodYm &&
         !next.connection &&
-        next.sort === 'apartment'
+        next.sort === 'section_apartment'
       ) {
         return;
       }
@@ -261,7 +248,7 @@ export function AdminUtilityFinanceWorkplace({
     else params.delete('ufPeriod');
     if (filters.connection) params.set('ufConn', filters.connection);
     else params.delete('ufConn');
-    if (filters.sort !== 'apartment') params.set('ufSort', filters.sort);
+    if (filters.sort !== 'section_apartment') params.set('ufSort', filters.sort);
     else params.delete('ufSort');
     const qs = params.toString();
     const currentQs = window.location.search.replace(/^\?/, '');
@@ -742,6 +729,7 @@ export function AdminUtilityFinanceWorkplace({
               }}
               className={`mt-1 block w-44 ${fieldClass}`}
             >
+              <option value="section_apartment">{t('admin.utilRegSortSectionApt')}</option>
               <option value="apartment">{t('admin.utilRegSortApt')}</option>
               <option value="section">{t('admin.utilRegSortSection')}</option>
               <option value="balance_desc">{t('admin.utilRegSortBalanceDesc')}</option>

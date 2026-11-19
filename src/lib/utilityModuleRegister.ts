@@ -4,8 +4,14 @@
  */
 
 import type { UtilityFinanceRegisterRow, UtilityFinanceStatusFilter } from '@/lib/utilityFinanceRegister';
+import { compareApartmentNumbers } from '@/lib/supportFeeRegister';
 
-export type UtilityRegisterSort = 'apartment' | 'balance_desc' | 'balance_asc' | 'section';
+export type UtilityRegisterSort =
+  | 'section_apartment'
+  | 'apartment'
+  | 'balance_desc'
+  | 'balance_asc'
+  | 'section';
 
 export type UtilityModuleRegisterFilters = {
   query: string;
@@ -22,8 +28,52 @@ export const EMPTY_UTILITY_MODULE_FILTERS: UtilityModuleRegisterFilters = {
   section: '',
   periodYm: '',
   connection: '',
-  sort: 'apartment',
+  sort: 'section_apartment',
 };
+
+const sectionCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/**
+ * Entrance labels on this complex mix Latin A with Cyrillic Б/В.
+ * Default localeCompare can put Cyrillic before Latin; pin a readable A→Б→В order
+ * without merging Latin/Cyrillic codes into one bucket.
+ */
+function sectionPrimaryRank(raw: string): number {
+  const s = raw.trim();
+  if (!s) return Number.POSITIVE_INFINITY;
+  const ch = s[0] ?? '';
+  const up = ch.toLocaleUpperCase();
+  const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const li = latin.indexOf(up);
+  if (li >= 0) return li * 2;
+  // Cyrillic counterparts sit just after the matching Latin letter when both exist.
+  if (up === 'А') return 0 * 2 + 1;
+  if (up === 'Б') return 1 * 2 + 1;
+  if (up === 'В') return 21 * 2 + 1; // after Latin V
+  const cyr = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ';
+  const ci = cyr.indexOf(up);
+  if (ci >= 0) return 200 + ci;
+  return 1000 + (ch.codePointAt(0) ?? 0);
+}
+
+function compareSectionCodes(a: string, b: string): number {
+  const as = String(a ?? '').trim();
+  const bs = String(b ?? '').trim();
+  const byRank = sectionPrimaryRank(as) - sectionPrimaryRank(bs);
+  if (byRank !== 0) return byRank;
+  return sectionCollator.compare(as, bs);
+}
+
+function compareSectionThenBlockThenApartment(
+  a: UtilityFinanceRegisterRow & { sectionCode?: string; blockCode?: string },
+  b: UtilityFinanceRegisterRow & { sectionCode?: string; blockCode?: string },
+): number {
+  const bySection = compareSectionCodes(String(a.sectionCode ?? ''), String(b.sectionCode ?? ''));
+  if (bySection !== 0) return bySection;
+  const byBlock = compareSectionCodes(String(a.blockCode ?? ''), String(b.blockCode ?? ''));
+  if (byBlock !== 0) return byBlock;
+  return compareApartmentNumbers(a.apartmentNumber, b.apartmentNumber);
+}
 
 export type WaterReadingSnap = {
   propertyId: number;
@@ -241,7 +291,7 @@ export function listSectionsFromProperties(
     const s = String(p.section_code ?? '').trim();
     if (s) set.add(s);
   }
-  return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return [...set].sort(compareSectionCodes);
 }
 
 export function filterUtilityModuleRows<T extends UtilityFinanceRegisterRow & { sectionCode?: string }>(
@@ -264,10 +314,9 @@ export function filterUtilityModuleRows<T extends UtilityFinanceRegisterRow & { 
   });
 }
 
-export function sortUtilityModuleRows<T extends UtilityFinanceRegisterRow & { sectionCode?: string }>(
-  rows: T[],
-  sort: UtilityRegisterSort,
-): T[] {
+export function sortUtilityModuleRows<
+  T extends UtilityFinanceRegisterRow & { sectionCode?: string; blockCode?: string },
+>(rows: T[], sort: UtilityRegisterSort): T[] {
   const copy = [...rows];
   if (sort === 'balance_desc') {
     return copy.sort((a, b) => b.balanceEur - a.balanceEur);
@@ -275,20 +324,17 @@ export function sortUtilityModuleRows<T extends UtilityFinanceRegisterRow & { se
   if (sort === 'balance_asc') {
     return copy.sort((a, b) => a.balanceEur - b.balanceEur);
   }
+  if (sort === 'section_apartment') {
+    return copy.sort(compareSectionThenBlockThenApartment);
+  }
   if (sort === 'section') {
     return copy.sort((a, b) => {
-      const s = String(a.sectionCode ?? '').localeCompare(String(b.sectionCode ?? ''), undefined, {
-        numeric: true,
-      });
+      const s = compareSectionCodes(String(a.sectionCode ?? ''), String(b.sectionCode ?? ''));
       if (s !== 0) return s;
-      return String(a.apartmentNumber).localeCompare(String(b.apartmentNumber), undefined, {
-        numeric: true,
-      });
+      return compareApartmentNumbers(a.apartmentNumber, b.apartmentNumber);
     });
   }
-  return copy.sort((a, b) =>
-    String(a.apartmentNumber).localeCompare(String(b.apartmentNumber), undefined, { numeric: true }),
-  );
+  return copy.sort((a, b) => compareApartmentNumbers(a.apartmentNumber, b.apartmentNumber));
 }
 
 export function utilityModuleFiltersActive(f: UtilityModuleRegisterFilters): boolean {
@@ -298,9 +344,21 @@ export function utilityModuleFiltersActive(f: UtilityModuleRegisterFilters): boo
     Boolean(f.section) ||
     Boolean(f.periodYm) ||
     Boolean(f.connection) ||
-    f.sort !== 'apartment'
+    f.sort !== 'section_apartment'
   );
 }
+
+export function parseUtilityRegisterSort(raw: string | null | undefined): UtilityRegisterSort {
+  if (
+    raw === 'balance_desc' ||
+    raw === 'balance_asc' ||
+    raw === 'section' ||
+    raw === 'apartment' ||
+    raw === 'section_apartment'
+  ) {
+    return raw;
+  }
+  return 'section_apartment';}
 
 export function formatSectionBlock(sectionCode: string, blockCode: string): string {
   const s = sectionCode.trim();

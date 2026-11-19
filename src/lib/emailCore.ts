@@ -237,10 +237,19 @@ export function isPermanentProviderFailure(
     'validation_error',
     'invalid_from_address',
     'domain_not_verified',
+    // Config / credential gates — retrying will not help and must not look like "awaiting".
+    'missing_api_key',
+    'token_decrypt_failed',
+    'provider_not_configured',
+    'provider_token_missing',
   ];
   if (permanentTokens.some((t) => code.includes(t))) return true;
-  if (responseClass === 'rejected' && /invalid|forbidden|not allowed|blocked/.test(code)) {
+  if (responseClass === 'rejected' && /invalid|forbidden|not allowed|blocked|missing_api|decrypt/.test(code)) {
     return true;
+  }
+  // Never treat timeout / network as permanent — provider may already have accepted.
+  if (code === 'timeout' || code === 'network_error' || code.includes('timeout')) {
+    return false;
   }
   return false;
 }

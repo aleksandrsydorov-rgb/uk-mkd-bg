@@ -28,6 +28,7 @@ import {
 } from '@/lib/email/notificationPrefsClient';
 import {
   NOTIFY_SETTINGS_GROUPS,
+  emailHistoryFailureReasonKey,
   emailHistorySkipReasonFromRow,
   emailHistoryStatusLabelKey,
   emailHistoryUserStatus,
@@ -278,6 +279,7 @@ function NotificationsOverview({
           host_sending_enabled?: unknown;
           encryption_configured?: unknown;
           send_block_reason?: unknown;
+          token_decrypt_ok?: unknown;
         };
         setHostSendingEnabled(
           typeof health.host_sending_enabled === 'boolean' ? health.host_sending_enabled : null
@@ -285,6 +287,9 @@ function NotificationsOverview({
         setEncryptionConfigured(
           typeof health.encryption_configured === 'boolean' ? health.encryption_configured : null
         );
+        if (health.token_decrypt_ok === false) {
+          setError(t('admin.emailTokenDecryptFailed'));
+        }
         setSendBlockReason(
           typeof health.send_block_reason === 'string' ? health.send_block_reason : null
         );
@@ -396,25 +401,59 @@ function NotificationsOverview({
         ok?: boolean;
         error?: string;
         reason?: string;
+        blocked_stage?: string | null;
         honesty?: string;
         connection_verified?: boolean;
-        worker?: { reason?: string | null; sent?: number; skipped?: boolean };
+        provider?: { error_code?: string | null; called?: boolean };
+        worker?: {
+          reason?: string | null;
+          sent?: number;
+          skipped?: boolean;
+          failed?: number;
+          last_send?: { blocked_stage?: string; error_code?: string | null };
+        };
       };
       await load();
       if (!res.ok || !body.ok) {
-        if (body.error === 'host_sending_disabled') setError(t('admin.emailHostGateBlocked'));
-        else if (body.error === 'encryption_key_not_configured')
+        const stage = String(body.blocked_stage ?? body.error ?? '').trim();
+        const providerErr = String(body.provider?.error_code ?? '').trim();
+        if (body.error === 'host_sending_disabled' || stage === 'host_sending_disabled') {
+          setError(t('admin.emailHostGateBlocked'));
+        } else if (
+          body.error === 'encryption_key_not_configured' ||
+          stage === 'encryption_key_not_configured'
+        ) {
           setError(t('admin.emailEncryptionMissing'));
-        else if (body.error === 'invalid_recipient') setError(t('admin.emailTestRecipientRequired'));
-        else if (body.error === 'complex_sending_disabled')
+        } else if (
+          body.error === 'token_decrypt_failed' ||
+          stage === 'token_decrypt_failed' ||
+          providerErr === 'token_decrypt_failed'
+        ) {
+          setError(t('admin.emailTokenDecryptFailed'));
+        } else if (
+          body.error === 'provider_token_missing' ||
+          stage === 'provider_token_missing' ||
+          providerErr === 'missing_api_key'
+        ) {
+          setError(t('admin.emailWorkerTokenMissing'));
+        } else if (body.error === 'invalid_recipient') {
+          setError(t('admin.emailTestRecipientRequired'));
+        } else if (body.error === 'complex_sending_disabled' || stage === 'db_not_ready') {
           setError(t('admin.emailComplexSendingOff'));
-        else if (body.error === 'worker_not_ready') {
+        } else if (body.error === 'rate_limited' || stage === 'rate_limited') {
+          setError(t('admin.emailTestRateLimited'));
+        } else if (body.error === 'worker_not_ready') {
           const reason = String(body.reason ?? body.worker?.reason ?? '');
-          if (reason.includes('LETTERMINT')) setError(t('admin.emailWorkerTokenMissing'));
-          else if (reason.includes('EMAIL_SENDING')) setError(t('admin.emailHostGateBlocked'));
+          if (reason.includes('LETTERMINT') || reason.includes('missing')) {
+            setError(t('admin.emailWorkerTokenMissing'));
+          } else if (reason.includes('EMAIL_SENDING')) setError(t('admin.emailHostGateBlocked'));
           else setError(t('admin.emailWorkerUnavailable'));
         } else if (body.honesty === 'QUEUED' || body.error === 'enqueue_blocked') {
           setError(t('admin.emailTestAwaitingNotVerified'));
+        } else if (stage === 'claim_failed' || stage === 'claim_missed_target') {
+          setError(t('admin.emailTestClaimFailed'));
+        } else if (stage === 'provider_rejected' || (body.worker?.failed ?? 0) > 0) {
+          setError(t('admin.emailTestProviderRejected'));
         } else {
           setError(t('admin.errGeneric'));
         }
@@ -668,6 +707,7 @@ function NotificationsOverview({
                 lastErrorCode: row.last_error_code,
                 userStatus: row.user_status,
               });
+              const failKey = st === 'failed' ? emailHistoryFailureReasonKey(row.last_error_code) : null;
               return (
                 <li key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-sm">
                   <div className="min-w-0">
@@ -678,6 +718,7 @@ function NotificationsOverview({
                   </div>
                   <div className="text-right text-xs text-secondary">
                     <p>{t(emailHistoryStatusLabelKey(st))}</p>
+                    {failKey ? <p className="text-muted">{t(failKey)}</p> : null}
                     <p className="text-muted">{formatWhen(row.created_at, locale)}</p>
                   </div>
                 </li>
@@ -1167,6 +1208,14 @@ function NotificationsHistory({
                           {st === 'skipped' && skipKey ? (
                             <p className="text-xs text-muted">{t(skipKey)}</p>
                           ) : null}
+                          {st === 'failed'
+                            ? (() => {
+                                const failKey = emailHistoryFailureReasonKey(row.last_error_code);
+                                return failKey ? (
+                                  <p className="text-xs text-muted">{t(failKey)}</p>
+                                ) : null;
+                              })()
+                            : null}
                         </td>
                       </tr>
                       {open ? (

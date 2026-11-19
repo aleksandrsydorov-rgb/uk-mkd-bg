@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/admin';
 import {
+  decryptProviderToken,
   encryptProviderToken,
   isEmailSettingsEncryptionConfigured,
 } from '@/lib/email/settingsCrypto';
@@ -149,16 +150,47 @@ export async function GET() {
   const encryptionConfigured = isEmailSettingsEncryptionConfigured();
   const workerSecretConfigured = Boolean((process.env.EMAIL_WORKER_SECRET ?? '').trim());
   const mailProvider = (process.env.EMAIL_MAIL_PROVIDER ?? '').trim().toLowerCase();
+
+  // Safe readiness: can this process decrypt the stored Project token? Never return secrets.
+  let tokenDecryptOk: boolean | null = null;
+  let hasCiphertext = false;
+  if (encryptionConfigured && (mailProvider === 'lettermint' || !mailProvider)) {
+    try {
+      const admin = createServiceRoleClient();
+      const tokenRes = await admin.rpc(
+        'email_core_worker_get_provider_token_ciphertext' as never
+      );
+      const cipher = tokenRes.data as unknown;
+      if (!tokenRes.error && typeof cipher === 'string' && cipher.trim()) {
+        hasCiphertext = true;
+        try {
+          const plain = decryptProviderToken(cipher);
+          tokenDecryptOk = Boolean(plain.trim());
+        } catch {
+          tokenDecryptOk = false;
+        }
+      } else {
+        tokenDecryptOk = (process.env.LETTERMINT_PROJECT_TOKEN ?? '').trim().length > 0;
+      }
+    } catch {
+      tokenDecryptOk = null;
+    }
+  }
+
   return NextResponse.json({
     host_sending_enabled: hostSending,
     encryption_configured: encryptionConfigured,
     worker_secret_configured: workerSecretConfigured,
     mail_provider_env: mailProvider === 'lettermint' || mailProvider === 'resend' ? mailProvider : null,
+    has_provider_ciphertext: hasCiphertext,
+    token_decrypt_ok: tokenDecryptOk,
     // Never expose secrets. Concrete block reasons for the admin UI:
     send_block_reason: !hostSending
       ? 'host_sending_disabled'
       : !encryptionConfigured
         ? 'encryption_key_not_configured'
-        : null,
+        : tokenDecryptOk === false
+          ? 'token_decrypt_failed'
+          : null,
   });
 }

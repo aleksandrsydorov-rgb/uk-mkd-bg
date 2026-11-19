@@ -285,13 +285,19 @@ export function AdminWater({
               : new URLSearchParams();
           params.set('section', 'вода');
           params.set('tab', item.id);
+          // Ordinary tab links = register screens. Keep filter keys; drop detail/action commands.
+          params.delete('property');
+          params.delete('meter');
+          params.delete('wrForm');
+          params.delete('wrReading');
+          params.delete('wrMeter');
           return {
             id: item.id,
             label: item.label,
             href: `/admin?${params.toString()}`,
           };
         }),
-    // Rebuild when tab/property change so href keeps filters + apartment context.
+    // Rebuild when tab/filters change so href keeps register filters, not open details.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- window.search captured per navigation
     [waterTabs, activeTab, focusPropertyId, propertyId],
   );
@@ -328,16 +334,26 @@ export function AdminWater({
   }, [onTabChange, tab, allowedWaterTabs, localTab, staffRole]);
 
   async function selectTab(next: AdminUtilityTab) {
-    if (next !== 'meter' && (detailMeterId || meterShellPropertyId != null)) {
+    // Leaving a tab always returns to that tab's register list — close explicit details/actions.
+    // Dirty forms still go through confirm (no force).
+    if (detailMeterId || meterShellPropertyId != null) {
       closeMeterDetail({ keepScroll: false });
     }
-    if (next !== 'readings' && readingsShell !== 'none') {
+    if (rowSubmit != null) {
+      const ok = await closeRowSubmit();
+      if (!ok) return;
+    }
+    if (readingsShell !== 'none') {
       const ok = await closeReadingsShell({ keepScroll: false });
       if (!ok) return;
     }
-    if (next !== 'history' && historyShellPropertyId != null) {
+    if (historyShellPropertyId != null) {
       const ok = await closeHistoryShell({ keepScroll: false });
       if (!ok) return;
+    }
+    // Drop leftover apartment focus so overview/payments do not reopen a finance card.
+    if (propertyId !== '') {
+      selectProperty('');
     }
     if (onTabChange) onTabChange(next);
     else setLocalTab(next);
@@ -1332,12 +1348,15 @@ export function AdminWater({
   return (
     <div className="space-y-3">
       {confirmDialog}
-      <SectionPanelTabs
-        aria-label={t('admin.water')}
-        value={activeTab}
-        onChange={(id) => void selectTab(id as AdminUtilityTab)}
-        items={panelTabs}
-      />
+      {/* Above WorkplaceCardShell overlay so tab switches can close details (BASE_Z≈40). */}
+      <div className="relative z-[80]">
+        <SectionPanelTabs
+          aria-label={t('admin.water')}
+          value={activeTab}
+          onChange={(id) => void selectTab(id as AdminUtilityTab)}
+          items={panelTabs}
+        />
+      </div>
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
@@ -1392,7 +1411,7 @@ export function AdminWater({
               {t('admin.openingStatus_needs_initial_readings')}
             </AdminInlineAlert>
           ) : null}
-          {meterLoading ? (
+          {meterLoading || (detailMeterId != null && !detailMeter && propertyId !== '') ? (
             <p className="text-sm text-muted">{t('common.loading')}</p>
           ) : !detailMeter ? (
             <AdminEmptyState

@@ -1514,11 +1514,26 @@ function AdminPortal() {
         closeMobileNav();
         return;
       }
-      const params = new URLSearchParams(searchParams.toString());
+      // Prefer live window search: detail shells clear property/meter via replaceState,
+      // while Next searchParams can still hold the old deep-link and would resurrect it.
+      const live =
+        typeof window !== 'undefined' ? window.location.search.replace(/^\?/, '') : searchParams.toString();
+      const params = new URLSearchParams(live);
       params.set('section', key);
       params.set('tab', nextTab);
+      // Tab chrome always opens the register list — drop detail/action commands only.
+      // Keep per-register filter params (wm*, wr*, wh*, uf*).
+      params.delete('property');
+      params.delete('meter');
+      params.delete('wrForm');
+      params.delete('wrReading');
+      params.delete('wrMeter');
       const qs = params.toString();
-      if (qs !== searchParams.toString()) {
+      const current =
+        typeof window !== 'undefined'
+          ? window.location.search.replace(/^\?/, '')
+          : searchParams.toString();
+      if (qs !== current) {
         router.push(`${pathname}?${qs}`, { scroll: false });
       }
       closeMobileNav();

@@ -377,6 +377,11 @@ export function AdminUtilityFinanceWorkplace({
   }
 
   useEffect(() => {
+    // Payments tab: register + pay popup only — never auto-open the embedded finance card.
+    if (listPaymentAction) {
+      if (view !== 'register') setView('register');
+      return;
+    }
     if (focusPropertyId == null || focusPropertyId === '') {
       preferRegisterRef.current = false;
       return;
@@ -384,7 +389,7 @@ export function AdminUtilityFinanceWorkplace({
     if (preferRegisterRef.current) return;
     setPropertyId((current) => (current === focusPropertyId ? current : focusPropertyId));
     setView('card');
-  }, [focusPropertyId]);
+  }, [focusPropertyId, listPaymentAction, view]);
 
   const loadRegister = useCallback(async () => {
     if (!canOperate) return;
@@ -713,19 +718,24 @@ export function AdminUtilityFinanceWorkplace({
     return <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>;
   }
 
-  if (view === 'register') {
-    const rowClickProps = (propertyId: number) => ({
-      tabIndex: 0 as const,
-      role: 'button' as const,
-      'aria-label': t('admin.utilFinOpenCard'),
-      className: `${adminTableRowClass} cursor-pointer hover:bg-hover/70 focus-visible:bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40`,
-      onClick: () => openCard(propertyId),
-      onKeyDown: (e: React.KeyboardEvent) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        openCard(propertyId);
-      },
-    });
+  if (view === 'register' || listPaymentAction) {
+    const rowClickProps = (propertyId: number) =>
+      listPaymentAction
+        ? {
+            className: adminTableRowClass,
+          }
+        : {
+            tabIndex: 0 as const,
+            role: 'button' as const,
+            'aria-label': t('admin.utilFinOpenCard'),
+            className: `${adminTableRowClass} cursor-pointer hover:bg-hover/70 focus-visible:bg-hover/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40`,
+            onClick: () => openCard(propertyId),
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              openCard(propertyId);
+            },
+          };
 
     const balanceClass = (status: UtilityFinanceRegisterRow['status']) =>
       `${adminTableCellClass} tabular-nums ${

@@ -4924,6 +4924,8 @@ export const ru = {
     errCapitalDup: 'По этой квартире начисление по выбранному решению уже существует.',
     errIdempotency: 'Операция уже была отправлена с другими данными. Обновите форму и попробуйте снова.',
     errNoAccess: 'У вас нет прав для этого действия.',
+    errUtilityModeSave:
+      'Не удалось сохранить режим показаний. Проверьте права администратора и повторите попытку.',
     errReadingsDisabled: 'Передача показаний отключена.',
     errGeneric: 'Не удалось выполнить операцию. Проверьте данные и повторите попытку.',
     errForbidden: 'Недостаточно прав.',
@@ -10844,6 +10846,8 @@ export const en: Messages = {
     errCapitalDup: 'This apartment already has a charge for the selected decision.',
     errIdempotency: 'This operation was already sent with different data. Refresh the form and try again.',
     errNoAccess: 'You do not have permission for this action.',
+    errUtilityModeSave:
+      'Could not save the meter-reading mode. Check administrator permissions and try again.',
     errReadingsDisabled: 'Meter submissions are disabled.',
     errGeneric: 'The operation could not be completed. Check the data and try again.',
     errForbidden: 'Insufficient permissions.',
@@ -16778,6 +16782,8 @@ export const bg: Messages = {
     errCapitalDup: 'За този апартамент начислението по избраното решение вече съществува.',
     errIdempotency: 'Операцията вече е изпратена с други данни. Обновете формата и опитайте отново.',
     errNoAccess: 'Нямате права за това действие.',
+    errUtilityModeSave:
+      'Режимът на показанията не можа да бъде запазен. Проверете правата на администратор и опитайте отново.',
     errReadingsDisabled: 'Подаването на показания е изключено.',
     errGeneric: 'Операцията не можа да бъде изпълнена. Проверете данните и опитайте отново.',
     errForbidden: 'Нямате достатъчно права.',

@@ -2738,6 +2738,7 @@ function AdminPortal() {
       setError(t('admin.errNoAccess'));
       return;
     }
+    const previous = electricityMode;
     setError(null);
     try {
       const { error } = await supabase.rpc('set_utility_information_mode', {
@@ -2746,8 +2747,13 @@ function AdminPortal() {
       });
       if (error) throw error;
       await refreshBuildingSettings();
-    } catch (e: any) {
-      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
+    } catch (e: unknown) {
+      setElectricityMode(previous);
+      setError(
+        toUserFacingMessage(e, t, {
+          fallback: t('admin.errUtilityModeSave'),
+        }),
+      );
     }
   }
 
@@ -2756,6 +2762,7 @@ function AdminPortal() {
       setError(t('admin.errNoAccess'));
       return;
     }
+    const previous = waterMode;
     setError(null);
     try {
       const { error } = await supabase.rpc('set_utility_information_mode', {
@@ -2764,8 +2771,13 @@ function AdminPortal() {
       });
       if (error) throw error;
       await refreshBuildingSettings();
-    } catch (e: any) {
-      setError(toUserFacingMessage(e, t, { fallback: t('admin.errGeneric') }));
+    } catch (e: unknown) {
+      setWaterMode(previous);
+      setError(
+        toUserFacingMessage(e, t, {
+          fallback: t('admin.errUtilityModeSave'),
+        }),
+      );
     }
   }
 

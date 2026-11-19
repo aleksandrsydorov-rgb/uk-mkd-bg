@@ -244,6 +244,7 @@ export type AdminRpcErrorKey =
   | 'admin.errCapitalDup'
   | 'admin.errIdempotency'
   | 'admin.errNoAccess'
+  | 'admin.errUtilityModeSave'
   | 'admin.errReadingsDisabled'
   | 'admin.errCorrectionReason'
   | 'admin.errCorrectionLatest'
@@ -308,7 +309,15 @@ export function mapAdminRpcError(message: string): AdminRpcErrorKey {
   }
   if (msg.includes('idempotency key conflict')) return 'admin.errIdempotency';
   if (msg.includes('water readings are disabled') || msg.includes('electricity readings are disabled')) return 'admin.errReadingsDisabled';
-  if (msg.includes('not authorized') || msg.includes('permission denied')) return 'admin.errNoAccess';
+  if (
+    msg.includes('not authorized') ||
+    msg.includes('permission denied') ||
+    msg.includes('not allowed') ||
+    msg.includes('not authenticated')
+  ) {
+    return 'admin.errNoAccess';
+  }
+  if (msg.includes('settings row not found')) return 'admin.errUtilityModeSave';
   if (msg.includes('mixed natural and legal')) return 'admin.elMixedBlock';
   if (msg.includes('owner type cannot be determined')) return 'admin.elUnknownBlock';
   if (msg.includes('legal-entity calculation does not apply')) return 'admin.elNotLegalBlock';

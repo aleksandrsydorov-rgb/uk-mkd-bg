@@ -37,10 +37,8 @@ import { buildWaterHistoryEntries, type WaterHistoryInput } from '@/lib/meterRea
 import { toUserFacingMessage } from '@/lib/userFacingError';
 import { parseRatesJson } from '@/lib/tariffs';
 import {
-  AdminPageHeader,
   AdminCard,
   AdminMetricCard,
-  AdminTabBar,
   AdminEmptyState,
   adminCardClass,
   adminFieldClass,
@@ -48,6 +46,7 @@ import {
   parseAdminUtilityTab,
   type AdminUtilityTab,
 } from '@/components/admin/AdminUi';
+import { SectionPanelTabs } from '@/components/ui/SectionPanelTabs';
 import { ApartmentCombobox } from '@/components/admin/ApartmentCombobox';
 import { AdminMeterCorrectionPanel } from '@/components/admin/AdminMeterCorrectionPanel';
 import { AdminUtilityFinanceWorkplace } from '@/components/admin/AdminUtilityFinanceWorkplace';
@@ -188,6 +187,28 @@ export function AdminWater({
   const activeTab = onTabChange
     ? parseAdminUtilityTab(tab, allowedWaterTabs)
     : parseAdminUtilityTab(localTab, allowedWaterTabs);
+
+  const panelTabs = useMemo(
+    () =>
+      waterTabs
+        .filter((item) => item.id === 'overview' || item.id === 'meter' || item.id === 'readings')
+        .map((item) => {
+          const params =
+            typeof window !== 'undefined'
+              ? new URLSearchParams(window.location.search)
+              : new URLSearchParams();
+          params.set('section', 'вода');
+          params.set('tab', item.id);
+          return {
+            id: item.id,
+            label: item.label,
+            href: `/admin?${params.toString()}`,
+          };
+        }),
+    // Rebuild when tab/property change so href keeps filters + apartment context.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- window.search captured per navigation
+    [waterTabs, activeTab, focusPropertyId, propertyId],
+  );
 
   const moduleBalanceTone = moduleTotals ? balanceTone(moduleTotals.balanceEur) : 'settled';
   const moduleBalanceStatus =
@@ -664,10 +685,9 @@ export function AdminWater({
       );
     }
     return (
-      <div className="space-y-4">
-        <AdminPageHeader title={t('admin.water')} secondary={t('admin.utilFinRegisterLead')} />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className={`${adminCardClass} flex min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
+          <div className={`${adminCardClass} flex h-full min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
             <span className="text-xs text-muted">{t('admin.waterMode')}</span>
             <span className="mt-0.5 text-[11px] text-secondary">{t('admin.waterModeWho')}</span>
             {canChangeWaterMode ? (
@@ -686,17 +706,21 @@ export function AdminWater({
               </span>
             )}
           </div>
-          <AdminMetricCard
-            label={t('admin.currentTariff')}
-            value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
-            secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
-          />
-          <AdminMetricCard
-            label={t('admin.waterBalance')}
-            value={moduleBalanceCard.value}
-            secondary={moduleBalanceCard.secondary}
-            alert={moduleBalanceCard.alert}
-          />
+          <div className="h-full min-h-[5.5rem] [&_button]:h-full">
+            <AdminMetricCard
+              label={t('admin.currentTariff')}
+              value={tariff ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³` : '—'}
+              secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
+            />
+          </div>
+          <div className="h-full min-h-[5.5rem] [&_button]:h-full">
+            <AdminMetricCard
+              label={t('admin.waterBalance')}
+              value={moduleBalanceCard.value}
+              secondary={moduleBalanceCard.secondary}
+              alert={moduleBalanceCard.alert}
+            />
+          </div>
         </div>
         <AdminUtilityFinanceWorkplace
           service="water"
@@ -711,129 +735,102 @@ export function AdminWater({
     );
   }
 
-  const tone = balanceTone(balance.balance_eur);
-  const statusLabel =
-    tone === 'debt' ? t('admin.balDebt') : tone === 'over' ? t('admin.balOver') : t('admin.balSettled');
   const waterModeLabel =
     waterMode === 'staff_only' ? t('admin.elModeStaffOnly') : t('admin.elModeOwnerAndStaff');
   const retiredMeters = meters.filter((m) => m.retired_at);
-  const detailTabs = waterTabs.filter((item) => item.id === 'meter' || item.id === 'readings');
   const onOverview = activeTab === 'overview';
-
-  const waterModeCard = (
-    <div className={`${adminCardClass} flex min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
-      <span className="text-xs text-muted">{t('admin.waterMode')}</span>
-      <span className="mt-0.5 text-[11px] text-secondary">{t('admin.waterModeWho')}</span>
-      {canChangeWaterMode ? (
-        <select
-          className={`mt-2 ${fieldClass}`}
-          value={waterMode}
-          aria-label={t('admin.waterMode')}
-          onChange={(e) => onSaveWaterMode?.(e.target.value as WaterMode)}
-        >
-          <option value="owner_and_staff">{t('admin.elModeOwnerAndStaff')}</option>
-          <option value="staff_only">{t('admin.elModeStaffOnly')}</option>
-        </select>
-      ) : (
-        <span className="mt-2 text-base font-semibold leading-tight text-foreground">{waterModeLabel}</span>
-      )}
-    </div>
-  );
-
-  const overviewCards = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {waterModeCard}
-      <AdminMetricCard
-        label={t('admin.currentTariff')}
-        value={
-          tariffLoading
-            ? t('common.loading')
-            : tariff
-              ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³`
-              : '—'
-        }
-        secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
-      />
-      <AdminMetricCard
-        label={t('admin.waterBalance')}
-        value={moduleBalanceCard.value}
-        secondary={moduleBalanceCard.secondary}
-        alert={moduleBalanceCard.alert}
-      />
-    </div>
-  );
-
-  if (onOverview) {
-    return (
-      <div className="space-y-4">
-        <AdminPageHeader title={t('admin.water')} secondary={t('admin.waterLead')} />
-        {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
-        {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
-        {overviewCards}
-        <div className="flex flex-wrap gap-3 text-sm">
-          <button
-            type="button"
-            className="font-medium text-accent hover:underline"
-            onClick={() => selectTab('meter')}
-          >
-            {t('admin.utilTabMeter')}
-          </button>
-          <button
-            type="button"
-            className="font-medium text-accent hover:underline"
-            onClick={() => selectTab('readings')}
-          >
-            {t('admin.utilTabReadings')}
-          </button>
-        </div>
-        {canFinance ? (
-          <AdminUtilityFinanceWorkplace
-            service="water"
-            supabase={supabase}
-            properties={sorted}
-            canOperate={canFinance}
-            focusPropertyId={focusPropertyId ?? ''}
-            onPropertyChange={selectProperty}
-            onModuleTotals={setModuleTotals}
-          />
-        ) : (
-          <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
-        )}
-      </div>
-    );
-  }
+  const onMeterOrReadings = activeTab === 'meter' || activeTab === 'readings';
 
   return (
-    <div className="space-y-4">
-      <AdminPageHeader title={t('admin.water')} secondary={t('admin.waterLead')} />
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          className="text-sm font-medium text-accent hover:underline"
-          onClick={() => selectTab('overview')}
-        >
-          ← {t('admin.utilRegWaterTitle')}
-        </button>
-      </div>
-      <AdminCard>
-        <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
-        <ApartmentCombobox
-          className="mt-1 max-w-xl"
-          properties={sorted}
-          value={propertyId}
-          onChange={(id) => {
-            selectProperty(id);
-            setSuccess(null);
-            setError(null);
-            closeWaterCorrection();
-          }}
+    <div className="space-y-3">
+      <div className="min-w-0 overflow-x-auto">
+        <SectionPanelTabs
+          aria-label={t('admin.water')}
+          value={activeTab}
+          onChange={(id) => selectTab(id as AdminUtilityTab)}
+          items={panelTabs}
         />
-      </AdminCard>
+      </div>
 
       {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
       {success ? <AdminInlineAlert tone="success">{success}</AdminInlineAlert> : null}
 
-      <AdminTabBar tabs={detailTabs} active={activeTab} onChange={(id) => selectTab(id as AdminUtilityTab)} />
+      {onOverview ? (
+        <>
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
+            <div className={`${adminCardClass} flex h-full min-h-[5.5rem] w-full flex-col px-3 py-2.5 text-left`}>
+              <span className="text-xs text-muted">{t('admin.waterMode')}</span>
+              <span className="mt-0.5 text-[11px] text-secondary">{t('admin.waterModeWho')}</span>
+              {canChangeWaterMode ? (
+                <select
+                  className={`mt-2 ${fieldClass}`}
+                  value={waterMode}
+                  aria-label={t('admin.waterMode')}
+                  onChange={(e) => onSaveWaterMode?.(e.target.value as WaterMode)}
+                >
+                  <option value="owner_and_staff">{t('admin.elModeOwnerAndStaff')}</option>
+                  <option value="staff_only">{t('admin.elModeStaffOnly')}</option>
+                </select>
+              ) : (
+                <span className="mt-2 text-base font-semibold leading-tight text-foreground">
+                  {waterModeLabel}
+                </span>
+              )}
+            </div>
+            <div className="h-full min-h-[5.5rem] [&_button]:h-full">
+              <AdminMetricCard
+                label={t('admin.currentTariff')}
+                value={
+                  tariffLoading
+                    ? t('common.loading')
+                    : tariff
+                      ? `${formatEur(Number(tariff.price_eur_per_m3), locale)} / м³`
+                      : '—'
+                }
+                secondary={tariff ? t('admin.tariffManageInCore') : t('admin.noTariff')}
+              />
+            </div>
+            <div className="h-full min-h-[5.5rem] [&_button]:h-full">
+              <AdminMetricCard
+                label={t('admin.waterBalance')}
+                value={moduleBalanceCard.value}
+                secondary={moduleBalanceCard.secondary}
+                alert={moduleBalanceCard.alert}
+              />
+            </div>
+          </div>
+          {canFinance ? (
+            <AdminUtilityFinanceWorkplace
+              service="water"
+              supabase={supabase}
+              properties={sorted}
+              canOperate={canFinance}
+              focusPropertyId={focusPropertyId ?? ''}
+              onPropertyChange={selectProperty}
+              onModuleTotals={setModuleTotals}
+            />
+          ) : (
+            <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>
+          )}
+        </>
+      ) : null}
+
+      {onMeterOrReadings ? (
+        <AdminCard>
+          <label className="block text-xs text-muted">{t('admin.pickProperty')}</label>
+          <ApartmentCombobox
+            className="mt-1 max-w-xl"
+            properties={sorted}
+            value={propertyId}
+            onChange={(id) => {
+              selectProperty(id);
+              setSuccess(null);
+              setError(null);
+              closeWaterCorrection();
+            }}
+          />
+        </AdminCard>
+      ) : null}
 
       {activeTab === 'meter' && (
       <div className={adminCardClass + ' p-4 md:p-5'}>
@@ -990,19 +987,6 @@ export function AdminWater({
         <div className={adminCardClass + ' p-4 md:p-5'}>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">{t('account.utilSubmitTitle')}</p>
           <form onSubmit={handleSubmitReading} className="mt-4 grid gap-3 sm:grid-cols-3">
-            <label className="block text-sm text-secondary sm:col-span-3">
-              {t('admin.pickProperty')}
-              <ApartmentCombobox
-                className="mt-1"
-                properties={sorted}
-                value={propertyId}
-                onChange={(id) => {
-                  selectProperty(id);
-                  setSuccess(null);
-                  setError(null);
-                }}
-              />
-            </label>
             <input
               className={fieldClass}
               type="number"

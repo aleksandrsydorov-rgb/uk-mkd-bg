@@ -1,0 +1,42 @@
+[
+  {
+    "check": "pay buttons present",
+    "ok": true,
+    "btnCount": 115
+  },
+  {
+    "check": "payment popup opens",
+    "ok": true
+  },
+  {
+    "check": "popup shows water service context",
+    "ok": true
+  },
+  {
+    "check": "still on payments register (no card nav)",
+    "ok": true,
+    "url": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments"
+  },
+  {
+    "check": "register filters still mounted",
+    "ok": true,
+    "urlBefore": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments",
+    "urlAfter": "http://127.0.0.1:3078/admin?section=%D0%B2%D0%BE%D0%B4%D0%B0&tab=payments"
+  },
+  {
+    "check": "apartment finance card not opened",
+    "ok": true
+  },
+  {
+    "check": "popup closed without payment",
+    "ok": true
+  },
+  {
+    "check": "mobile pay button",
+    "ok": true
+  },
+  {
+    "check": "mobile popup opens",
+    "ok": true
+  }
+]

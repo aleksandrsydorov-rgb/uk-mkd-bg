@@ -56,12 +56,14 @@ import {
   AdminPrimaryButton,
   AdminSecondaryButton,
   AdminTableShell,
+  adminBtnSecondaryClass,
   adminCardClass,
   adminFieldClass,
   adminTableCellClass,
   adminTableHeadRowClass,
   adminTableRowClass,
 } from '@/components/admin/AdminUi';
+import { AdminModal } from '@/components/admin/AdminModal';
 import {
   emptyReceiptPayFields,
   PaymentReceiptPayFields,
@@ -77,6 +79,7 @@ import {
 import type { PaymentReceiptRow } from '@/lib/paymentReceipts/types';
 import { PropertyIdentityLink } from '@/components/admin/PropertyIdentityLink';
 import { formatPropertyIdentity } from '@/lib/propertyIdentity';
+import { useAppConfirm } from '@/components/ui/AppConfirmDialog';
 
 type PropertyOption = {
   id: number;
@@ -176,6 +179,7 @@ export function AdminUtilityFinanceWorkplace({
   onModuleTotals,
   showDebtorsSignal = 0,
   ledgerKinds,
+  listPaymentAction = false,
 }: {
   service: UtilityFinanceService;
   supabase: SupabaseClient<Database>;
@@ -191,12 +195,17 @@ export function AdminUtilityFinanceWorkplace({
   showDebtorsSignal?: number;
   /** When set, ops history shows only these ledger kinds (e.g. payment / payment_reversal). */
   ledgerKinds?: readonly string[];
+  /** Water Payments tab: per-row «Register payment» opens the existing pay form in a modal. */
+  listPaymentAction?: boolean;
 }) {
   const { t, locale } = useI18n();
+  const { confirm, dialog: confirmDialog } = useAppConfirm(t('common.close'));
   const [view, setView] = useState<'register' | 'card'>('register');
   const [propertyId, setPropertyId] = useState<number | ''>(
     focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : '',
   );
+  const [payPopupId, setPayPopupId] = useState<number | ''>('');
+  const payReturnFocusRef = useRef<HTMLElement | null>(null);
   const [filters, setFilters] = useState<UtilityModuleRegisterFilters>(() => {
     if (typeof window === 'undefined') return EMPTY_UTILITY_MODULE_FILTERS;
     return readUtilityFiltersFromSearch(window.location.search);
@@ -310,6 +319,56 @@ export function AdminUtilityFinanceWorkplace({
     () => (propertyId === '' ? null : properties.find((p) => p.id === propertyId) ?? null),
     [properties, propertyId],
   );
+  const payPopupProperty = useMemo(
+    () => (payPopupId === '' ? null : properties.find((p) => p.id === payPopupId) ?? null),
+    [payPopupId, properties],
+  );
+  const payTargetId = payPopupId !== '' ? payPopupId : propertyId;
+
+  function payFormDirty() {
+    return (
+      payAmount.trim() !== '' ||
+      payNote.trim() !== '' ||
+      payReceiptFields.payerName.trim() !== '' ||
+      payReceiptFields.paymentMethod.trim() !== '' ||
+      payReceiptFields.externalRef.trim() !== ''
+    );
+  }
+
+  function resetPayFormFields() {
+    setPayAmount('');
+    setPayNote('');
+    setPayReceiptFields(emptyReceiptPayFields());
+    setLastPayReceipt(null);
+    setLastPayAmountLabel(null);
+    payKeyRef.current = crypto.randomUUID();
+  }
+
+  function openPayPopup(id: number, el: HTMLElement | null) {
+    payReturnFocusRef.current = el;
+    setPayPopupId(id);
+    resetPayFormFields();
+    setSuccess(null);
+    setError(null);
+  }
+
+  async function closePayPopup(opts?: { force?: boolean }) {
+    if (!opts?.force && payFormDirty() && !lastPayAmountLabel) {
+      const ok = await confirm({
+        title: t('common.discardChangesTitle'),
+        description: t('common.discardChangesBody'),
+        confirmLabel: t('common.leaveWithoutSaving'),
+        cancelLabel: t('common.continueEditing'),
+        tone: 'danger',
+      });
+      if (!ok) return false;
+    }
+    setPayPopupId('');
+    resetPayFormFields();
+    setError(null);
+    // Keep success flash on the register briefly after a completed payment.
+    return true;
+  }
 
   useEffect(() => {
     if (focusPropertyId == null || focusPropertyId === '') {
@@ -547,6 +606,7 @@ export function AdminUtilityFinanceWorkplace({
 
   function openCard(id: number) {
     preferRegisterRef.current = false;
+    setPayPopupId('');
     setPropertyId(id);
     onPropertyChange?.(id);
     setView('card');
@@ -554,6 +614,7 @@ export function AdminUtilityFinanceWorkplace({
     setError(null);
     setLastPayReceipt(null);
     setLastPayAmountLabel(null);
+    resetPayFormFields();
   }
 
   function backToRegister() {
@@ -572,7 +633,7 @@ export function AdminUtilityFinanceWorkplace({
 
   async function handlePay(e: React.FormEvent) {
     e.preventDefault();
-    if (!canOperate || propertyId === '' || payBusy) return;
+    if (!canOperate || payTargetId === '' || payBusy) return;
     const amount = Number(payAmount);
     if (!(amount > 0) || Number.isNaN(amount)) {
       setError(t('admin.errAmount'));
@@ -581,6 +642,7 @@ export function AdminUtilityFinanceWorkplace({
     setPayBusy(true);
     setLastPayReceipt(null);
     setError(null);
+    const targetId = Number(payTargetId);
     const idem = payKeyRef.current;
     const intentErr = await prepareReceiptIntentFromFields(supabase, idem, payReceiptFields);
     if (intentErr) {
@@ -595,7 +657,7 @@ export function AdminUtilityFinanceWorkplace({
     }
     const payRpc = paymentRpcForService(service);
     const { data: payData, error: rpcErr } = await supabase.rpc(payRpc as 'record_water_payment', {
-      p_property_id: Number(propertyId),
+      p_property_id: targetId,
       p_amount_eur: amount,
       p_note: payNote.trim() || null,
       p_idempotency_key: idem,
@@ -629,14 +691,16 @@ export function AdminUtilityFinanceWorkplace({
         .then(({ notifyPropertyOwnersEvent }) =>
           notifyPropertyOwnersEvent(supabase, {
             eventKey: 'meters_payment_recorded',
-            propertyId: Number(propertyId),
-            entityId: `${service}_pay:${propertyId}:${Date.now()}`,
+            propertyId: targetId,
+            entityId: `${service}_pay:${targetId}:${Date.now()}`,
             payload: { utility: service, amount_eur: amount },
           }),
         )
         .catch(() => undefined);
     }
-    await Promise.all([loadCard(), loadRegister()]);
+    // Refresh register (and complex debt totals) without remounting filters/sort.
+    await loadRegister();
+    if (view === 'card' && propertyId !== '') await loadCard();
   }
 
   if (!canOperate) {
@@ -873,6 +937,11 @@ export function AdminUtilityFinanceWorkplace({
                   <th className={adminTableCellClass}>{t('admin.utilRegColCharged')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColPaid')}</th>
                   <th className={adminTableCellClass}>{t('admin.utilRegColBalanceEur')}</th>
+                  {listPaymentAction ? (
+                    <th className={adminTableCellClass}>
+                      <span className="sr-only">{t('admin.recordPayment')}</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -901,6 +970,21 @@ export function AdminUtilityFinanceWorkplace({
                     <td className={balanceClass(row.status)}>
                       {formatEur(Math.abs(row.balanceEur), locale)}
                     </td>
+                    {listPaymentAction ? (
+                      <td className={`${adminTableCellClass} whitespace-nowrap`}>
+                        <button
+                          type="button"
+                          className={`${adminBtnSecondaryClass} px-2.5 py-1.5 text-xs`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPayPopup(row.propertyId, e.currentTarget);
+                          }}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          {t('admin.recordPayment')}
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -1009,6 +1093,97 @@ export function AdminUtilityFinanceWorkplace({
             </table>
           </AdminTableShell>
         )}
+
+        {listPaymentAction ? (
+          <AdminModal
+            open={payPopupId !== ''}
+            size="lg"
+            title={t('admin.recordPayment')}
+            titleMeta={
+              payPopupProperty ? (
+                <span>
+                  {formatPropertyIdentity(payPopupProperty, t)}
+                  {' · '}
+                  {t(serviceTitleKey(service))}
+                </span>
+              ) : null
+            }
+            closeLabel={t('common.close')}
+            onClose={() => void closePayPopup()}
+            onRequestClose={() => void closePayPopup()}
+            returnFocusRef={payReturnFocusRef}
+            entityKey={payPopupId === '' ? 'pay' : payPopupId}
+          >
+            <div className="space-y-4">
+              {error ? <AdminInlineAlert tone="danger">{error}</AdminInlineAlert> : null}
+              {success && lastPayAmountLabel ? (
+                <AdminInlineAlert tone="success">{success}</AdminInlineAlert>
+              ) : null}
+              <dl className="grid grid-cols-2 gap-2 text-sm">
+                <dt className="text-muted">{t('admin.utilFinApartment')}</dt>
+                <dd>
+                  {payPopupProperty ? formatPropertyIdentity(payPopupProperty, t) : '—'}
+                  {payPopupProperty?.owner_name ? ` — ${payPopupProperty.owner_name}` : ''}
+                </dd>
+                <dt className="text-muted">{t('admin.utilFinService')}</dt>
+                <dd>{t(serviceTitleKey(service))}</dd>
+              </dl>
+              {lastPayAmountLabel ? (
+                <PaymentSuccessBanner
+                  amountLabel={lastPayAmountLabel}
+                  receipt={lastPayReceipt}
+                  supabase={supabase}
+                  onFillUk={goFillUk}
+                  onReceiptChange={setLastPayReceipt}
+                />
+              ) : null}
+              <form onSubmit={handlePay} className="space-y-3">
+                <label className="block text-xs text-secondary">
+                  {t('admin.amountEur')}
+                  <input
+                    className={`mt-1 ${fieldClass}`}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    required
+                    disabled={payBusy}
+                  />
+                  <span className="mt-1 block text-[11px] text-muted">{t('admin.utilFinAmountHint')}</span>
+                </label>
+                <label className="block text-xs text-secondary">
+                  {t('admin.noteOptional')}
+                  <input
+                    className={`mt-1 ${fieldClass}`}
+                    value={payNote}
+                    onChange={(e) => setPayNote(e.target.value)}
+                    disabled={payBusy}
+                  />
+                </label>
+                <PaymentReceiptPayFields
+                  values={payReceiptFields}
+                  onChange={setPayReceiptFields}
+                  fieldClass={fieldClass}
+                  defaultPayerHint={payPopupProperty?.owner_name ?? undefined}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <AdminPrimaryButton type="submit" disabled={payBusy || payPopupId === ''}>
+                    {payBusy ? t('receipt.forming') : t('admin.recordPayment')}
+                  </AdminPrimaryButton>
+                  <AdminSecondaryButton
+                    type="button"
+                    disabled={payBusy}
+                    onClick={() => void closePayPopup({ force: Boolean(lastPayAmountLabel) })}
+                  >
+                    {t('common.close')}
+                  </AdminSecondaryButton>
+                </div>
+              </form>
+            </div>
+          </AdminModal>
+        ) : null}
+        {confirmDialog}
       </div>
     );
   }

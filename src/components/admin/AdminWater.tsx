@@ -1469,6 +1469,7 @@ export function AdminWater({
             onPropertyChange={selectProperty}
             onModuleTotals={setModuleTotals}
             ledgerKinds={['payment', 'payment_reversal']}
+            listPaymentAction
           />
         ) : (
           <AdminInlineAlert tone="warning">{t('admin.waterNoAccess')}</AdminInlineAlert>

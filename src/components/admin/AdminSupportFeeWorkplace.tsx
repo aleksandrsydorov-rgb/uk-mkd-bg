@@ -217,7 +217,88 @@ export function AdminSupportFeeWorkplace({
   const [launch, setLaunch] = useState<SupportFeeLaunchContext | null>(null);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   const [assessmentsLoading, setAssessmentsLoading] = useState(false);
-  const [filters, setFilters] = useState<SupportFeeRegisterFilters>(EMPTY_SUPPORT_FEE_REGISTER_FILTERS);
+  const [filters, setFilters] = useState<SupportFeeRegisterFilters>(() => {
+    if (typeof window === 'undefined') return EMPTY_SUPPORT_FEE_REGISTER_FILTERS;
+    const params = new URLSearchParams(window.location.search);
+    const apartmentQuery = (params.get('q') ?? '').trim();
+    const statusRaw = params.get('sfStatus') ?? 'all';
+    const status: SupportFeeRegisterFilters['status'] =
+      statusRaw === 'debt' || statusRaw === 'settled' || statusRaw === 'void' || statusRaw === 'waived'
+        ? statusRaw
+        : 'all';
+    return { ...EMPTY_SUPPORT_FEE_REGISTER_FILTERS, apartmentQuery, status };
+  });
+  /** Only push filter edits to the URL — never wipe return/deep-link q on remount. */
+  const userFilterEditRef = useRef(false);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+
+  function readSupportFeeFiltersFromLocation(): SupportFeeRegisterFilters {
+    const params = new URLSearchParams(window.location.search);
+    const apartmentQuery = (params.get('q') ?? '').trim();
+    const statusRaw = params.get('sfStatus') ?? 'all';
+    const status: SupportFeeRegisterFilters['status'] =
+      statusRaw === 'debt' || statusRaw === 'settled' || statusRaw === 'void' || statusRaw === 'waived'
+        ? statusRaw
+        : 'all';
+    return { ...EMPTY_SUPPORT_FEE_REGISTER_FILTERS, apartmentQuery, status };
+  }
+
+  // Re-hydrate after apartment-card «return» / Back-Forward (replaceState + soft nav).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncFromUrl = () => {
+      if (userFilterEditRef.current) return;
+      const next = readSupportFeeFiltersFromLocation();
+      setFilters((prev) =>
+        prev.apartmentQuery === next.apartmentQuery && prev.status === next.status ? prev : next,
+      );
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') syncFromUrl();
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    document.addEventListener('visibilitychange', onVisible);
+    const poll = window.setInterval(() => {
+      if (userFilterEditRef.current) return;
+      const next = readSupportFeeFiltersFromLocation();
+      const cur = filtersRef.current;
+      if (cur.apartmentQuery === next.apartmentQuery && cur.status === next.status) return;
+      // Only pull when the live URL has a q/status the local state lacks (return restore).
+      if (!next.apartmentQuery && next.status === 'all') return;
+      if (cur.apartmentQuery === next.apartmentQuery && cur.status === next.status) return;
+      setFilters(next);
+    }, 400);
+    return () => {
+      window.removeEventListener('popstate', syncFromUrl);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(poll);
+    };
+  }, []);
+
+  // Keep register search/status in the URL so apartment-card «return» restores them.
+  useEffect(() => {
+    if (!userFilterEditRef.current || typeof window === 'undefined') return;
+    if (tab !== 'register' || view !== 'register') return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('section', 'такса');
+    params.set('tab', 'register');
+    const nextQ = filters.apartmentQuery.trim();
+    const nextStatus = filters.status;
+    if (nextQ) params.set('q', nextQ);
+    else params.delete('q');
+    if (nextStatus !== 'all') params.set('sfStatus', nextStatus);
+    else params.delete('sfStatus');
+    const qs = params.toString();
+    const currentQs = window.location.search.replace(/^\?/, '');
+    if (qs === currentQs) {
+      userFilterEditRef.current = false;
+      return;
+    }
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(window.history.state, '', url);
+    userFilterEditRef.current = false;
+  }, [filters.apartmentQuery, filters.status, tab, view]);
 
   // Charges tab
   const [chargeYear, setChargeYear] = useState<number>(sofiaCalendarYear() + 1);
@@ -1227,7 +1308,10 @@ export function AdminSupportFeeWorkplace({
             {t('admin.sfFilterApt')}
             <input
               value={filters.apartmentQuery}
-              onChange={(e) => setFilters((f) => ({ ...f, apartmentQuery: e.target.value }))}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({ ...f, apartmentQuery: e.target.value }));
+              }}
               placeholder={t('admin.sfFilterAptPh')}
               className={`mt-1 block w-44 ${fieldClass}`}
             />
@@ -1236,12 +1320,13 @@ export function AdminSupportFeeWorkplace({
             {t('admin.sfFilterStatus')}
             <select
               value={filters.status === 'debt' || filters.status === 'settled' ? filters.status : 'all'}
-              onChange={(e) =>
+              onChange={(e) => {
+                userFilterEditRef.current = true;
                 setFilters((f) => ({
                   ...f,
                   status: e.target.value as SupportFeeRegisterFilters['status'],
-                }))
-              }
+                }));
+              }}
               className={`mt-1 block w-40 ${fieldClass}`}
             >
               <option value="all">{t('admin.sfFilterAll')}</option>
@@ -1252,7 +1337,10 @@ export function AdminSupportFeeWorkplace({
           <AdminSecondaryButton
             type="button"
             disabled={!filtersActive}
-            onClick={() => setFilters(EMPTY_SUPPORT_FEE_REGISTER_FILTERS)}
+            onClick={() => {
+              userFilterEditRef.current = true;
+              setFilters(EMPTY_SUPPORT_FEE_REGISTER_FILTERS);
+            }}
           >
             {t('admin.sfFilterReset')}
           </AdminSecondaryButton>

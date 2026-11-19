@@ -48,10 +48,16 @@ export function PropertyIdentityLink({
     ? formatPropertyIdentityCompact(property, t)
     : formatPropertyIdentity(property, t);
   const tab = cardTab ?? (module ? cardTabForModule(module) : 'инфо');
+  // Prefer the live browser query: register filters may be written via replaceState
+  // without updating Next.js useSearchParams, and «return» must keep q/status/page.
+  const liveSearch =
+    typeof window !== 'undefined'
+      ? window.location.search.replace(/^\?/, '')
+      : searchParams.toString();
   const href = buildApartmentCardHref({
     propertyId: property.id,
     cardTab: tab,
-    returnSearch: searchParams.toString(),
+    returnSearch: liveSearch,
     pathname: pathname || '/admin',
   });
 

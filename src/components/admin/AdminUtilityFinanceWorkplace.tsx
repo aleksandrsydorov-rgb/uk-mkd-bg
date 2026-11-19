@@ -125,7 +125,72 @@ export function AdminUtilityFinanceWorkplace({
   const [propertyId, setPropertyId] = useState<number | ''>(
     focusPropertyId != null && focusPropertyId !== '' ? focusPropertyId : '',
   );
-  const [filters, setFilters] = useState<UtilityFinanceRegisterFilters>(EMPTY_UTILITY_FINANCE_FILTERS);
+  const [filters, setFilters] = useState<UtilityFinanceRegisterFilters>(() => {
+    if (typeof window === 'undefined') return EMPTY_UTILITY_FINANCE_FILTERS;
+    const params = new URLSearchParams(window.location.search);
+    const query = (params.get('q') ?? '').trim();
+    const statusRaw = params.get('ufStatus') ?? 'all';
+    const status: UtilityFinanceRegisterFilters['status'] =
+      statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
+    return { query, status };
+  });
+  /** Only push filter edits to the URL — never wipe return/deep-link q on remount. */
+  const userFilterEditRef = useRef(false);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+
+  function readUtilityFiltersFromLocation(): UtilityFinanceRegisterFilters {
+    const params = new URLSearchParams(window.location.search);
+    const query = (params.get('q') ?? '').trim();
+    const statusRaw = params.get('ufStatus') ?? 'all';
+    const status: UtilityFinanceRegisterFilters['status'] =
+      statusRaw === 'debt' || statusRaw === 'credit' || statusRaw === 'settled' ? statusRaw : 'all';
+    return { query, status };
+  }
+
+  // Re-hydrate after apartment-card «return» / Back-Forward without wiping typed filters.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncFromUrl = () => {
+      if (userFilterEditRef.current) return;
+      const next = readUtilityFiltersFromLocation();
+      setFilters((prev) => (prev.query === next.query && prev.status === next.status ? prev : next));
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    const poll = window.setInterval(() => {
+      if (userFilterEditRef.current) return;
+      const next = readUtilityFiltersFromLocation();
+      const cur = filtersRef.current;
+      if (cur.query === next.query && cur.status === next.status) return;
+      if (!next.query && next.status === 'all') return;
+      setFilters(next);
+    }, 400);
+    return () => {
+      window.removeEventListener('popstate', syncFromUrl);
+      window.clearInterval(poll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userFilterEditRef.current || typeof window === 'undefined') return;
+    if (view !== 'register') return;
+    const params = new URLSearchParams(window.location.search);
+    const nextQ = filters.query.trim();
+    const nextStatus = filters.status;
+    if (nextQ) params.set('q', nextQ);
+    else params.delete('q');
+    if (nextStatus !== 'all') params.set('ufStatus', nextStatus);
+    else params.delete('ufStatus');
+    const qs = params.toString();
+    const currentQs = window.location.search.replace(/^\?/, '');
+    if (qs === currentQs) {
+      userFilterEditRef.current = false;
+      return;
+    }
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(window.history.state, '', url);
+    userFilterEditRef.current = false;
+  }, [filters.query, filters.status, view]);
   const [registerRows, setRegisterRows] = useState<UtilityFinanceRegisterRow[]>([]);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
@@ -351,7 +416,10 @@ export function AdminUtilityFinanceWorkplace({
             {t('admin.sfFilterApt')}
             <input
               value={filters.query}
-              onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))}
+              onChange={(e) => {
+                userFilterEditRef.current = true;
+                setFilters((f) => ({ ...f, query: e.target.value }));
+              }}
               placeholder={t('admin.sfFilterAptPh')}
               className={`mt-1 block w-44 ${fieldClass}`}
             />
@@ -360,12 +428,13 @@ export function AdminUtilityFinanceWorkplace({
             {t('admin.sfFilterStatus')}
             <select
               value={filters.status}
-              onChange={(e) =>
+              onChange={(e) => {
+                userFilterEditRef.current = true;
                 setFilters((f) => ({
                   ...f,
                   status: e.target.value as UtilityFinanceRegisterFilters['status'],
-                }))
-              }
+                }));
+              }}
               className={`mt-1 block w-40 ${fieldClass}`}
             >
               <option value="all">{t('admin.sfFilterAll')}</option>
@@ -377,7 +446,10 @@ export function AdminUtilityFinanceWorkplace({
           <AdminSecondaryButton
             type="button"
             disabled={!filtersActive}
-            onClick={() => setFilters(EMPTY_UTILITY_FINANCE_FILTERS)}
+            onClick={() => {
+              userFilterEditRef.current = true;
+              setFilters(EMPTY_UTILITY_FINANCE_FILTERS);
+            }}
           >
             {t('admin.sfFilterReset')}
           </AdminSecondaryButton>
